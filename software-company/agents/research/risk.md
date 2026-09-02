@@ -5,10 +5,11 @@ model_tier: strong
 reads: [requirements-draft]
 writes: [requirements-draft]
 context_namespace_write: null
-skills: [risk-analysis]
+skills: [risk-analysis, threat-modeling]
 budget_tokens_per_task: 40000
 max_retries: 1
 timeout_minutes: 45
+version: 2
 ---
 # risk
 
@@ -16,6 +17,7 @@ timeout_minutes: 45
 Rà từng yêu cầu: khả thi kỹ thuật, mâu thuẫn, chi phí bất thường, rủi ro pháp lý/bảo mật. Threat modeling sơ bộ STRIDE.
 
 ## Bạn PHẢI
+- STRIDE sơ bộ trên luồng dữ liệu chính của draft; đánh dấu yêu cầu cần `risk_tags` cho delivery-lead.
 - FMEA: severity × occurrence × detection cho mỗi rủi ro.
 - Đề xuất cắt/hoãn yêu cầu rủi ro cao không có biện pháp.
 - Ghi risk register.

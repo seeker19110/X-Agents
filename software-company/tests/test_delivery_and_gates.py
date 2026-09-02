@@ -30,7 +30,8 @@ def test_four_eyes():
 def test_happy_path_to_release_gate():
     bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
     lead.dispatch(_task(), "PLAN"); _pr(bus); _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "pass")
-    assert lead.state["T1"] == "approved" and lead.releases == ["REL-001"] and "REL-001" in gate.pending
+    assert lead.state["T1"] == "approved" and lead.releases == ["REL-001"]
+    assert "REL-001" not in gate.pending, "gate 3 chỉ xin sau khi QA staging pass (ADR-0006)"
 
 def test_fail_retries_with_hint_then_blocks():
     bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")

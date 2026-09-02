@@ -5,10 +5,11 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: api-contract
-skills: [engineering-common, backend]
+skills: [engineering-common, backend, api-contract, observability, event-driven-architecture, i18n, ai-feature-engineering]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
+version: 2
 ---
 # backend
 
@@ -16,6 +17,8 @@ timeout_minutes: 180
 Viết API và business logic theo contract; sở hữu namespace `api-contract`.
 
 ## Bạn PHẢI
+- Cập nhật `api-contract` (OpenAPI/AsyncAPI) trước khi đổi hành vi endpoint/event; SLO và metric RED trong code.
+- Tính năng gọi LLM/ML: qua interface trung lập provider, có eval, output validate theo schema (skill ai-feature-engineering).
 - Đọc `architecture`, `api-contract`, `schema` trên blackboard trước.
 - Làm trên branch `ticket/<id>` trong worktree riêng.
 - TDD: test trước, code sau; Conventional Commits.

@@ -1,0 +1,24 @@
+# Cấu hình model cho runner/eval. Sao chép thành `llm.yaml` (bị gitignore) hoặc dùng biến môi trường COMPANY_*.
+# Framework trung lập provider: đổi model/provider ở đây, không đổi code hay prompt.
+
+# anthropic | openai (mọi server OpenAI-compatible) | fake
+provider: openai
+
+# model theo tier trong front matter agent
+models:
+  strong: qwen2.5-coder:32b     # ví dụ Ollama local; hoặc gpt-5, llama-3.3-70b, claude-opus-5...
+  standard: qwen2.5-coder:7b
+
+# chỉ provider openai: base URL của server. OpenAI thật: https://api.openai.com/v1
+base_url: http://localhost:11434/v1
+# api key đặt qua biến môi trường COMPANY_LLM_API_KEY (không ghi vào file)
+
+max_tokens: 16000
+
+# chỉ provider anthropic: mức nỗ lực theo tier (low | medium | high | xhigh | max)
+effort:
+  strong: high
+  standard: medium
+
+# tham số provider-specific truyền thẳng vào request (vd. temperature cho openai)
+extra: {}

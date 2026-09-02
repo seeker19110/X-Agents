@@ -22,18 +22,21 @@
 
 | Topic | Producer | Consumer | Key |
 |-------|----------|----------|-----|
-| research-requests | human / support-docs | intake | project_id |
-| research-findings | domain, ux-designer, codebase, tech-scout | synthesizer | project_id |
-| requirements-draft | synthesizer | risk, clarifier, ux-designer | project_id |
+| research-requests | human / support-docs / account-manager | intake | project_id |
+| research-findings | intake, researcher | synthesizer, researcher | project_id |
+| requirements-draft | synthesizer | risk, clarifier, researcher | project_id |
 | clarification-questions | clarifier | human gate | project_id |
 | clarification-answers | human gate | intake | project_id |
-| approved-specs | human gate | delivery-lead, security-engineer | project_id |
+| approved-specs | human gate | delivery-lead, security-engineer, account-manager | project_id |
 | tasks | delivery-lead | engineering (6 agent) | ticket_id |
 | pull-requests | engineering | reviewer, qa-debugger, security-engineer (khi risk_tags) | ticket_id |
-| review-results | reviewer, qa-debugger, security-engineer | delivery-lead | ticket_id |
+| review-results | reviewer, qa-debugger, security-engineer | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
 | release-candidates | delivery-lead | release-engineer, security-engineer | release_id |
-| release-events | release-engineer | support-docs, human gate | release_id |
+| release-events | release-engineer | delivery-lead, qa-debugger (staging), support-docs, account-manager (production), human gate | release_id |
 | incidents | support-docs | delivery-lead | incident_id |
+| external-feedback | human (khách, người dùng) | support-docs, account-manager | project_id |
+| change-requests | account-manager | delivery-lead, intake | change_id |
+| acceptance-results | account-manager | delivery-lead | release_id |
 | shared-context | theo namespace | tất cả | namespace |
 | audit-log | tất cả | supervisor | actor |
 | supervisor-actions | supervisor | tất cả | target |
@@ -46,9 +49,15 @@ engineering:        đọc shared-context → code trên branch → pull-request
 reviewer:           review-results(source=reviewer, verdict=pass|block, findings[])
 qa-debugger:        review-results(source=qa, verdict=pass|fail, root_cause?)
 security-engineer:  review-results(source=security) — chỉ khi ticket có risk_tags
-delivery-lead:      đủ review bắt buộc và tất cả pass → release-candidates
+delivery-lead:      đủ review bắt buộc và tất cả pass → approved → release-candidates
                     có fail/block → tasks(ticket, retry+1, hint); retry ≥ 3 → blocked
-supervisor:         retry > MAX_RETRY hoặc token > budget → supervisor-actions(pause, escalate)
+                    ticket có depends_on chưa xong → waiting; tự dispatch theo priority khi phụ thuộc approved
+release-engineer:   gộp branch → build/test/scan/sign → release-events(env=staging) → ticket merged
+qa-debugger:        hồi quy + perf + a11y trên staging → review-results(ticket_id=release_id, source=qa)
+delivery-lead:      QA staging pass → xin human gate 3; fail → ticket quay lại với hint
+release-engineer:   gate 3 approve → release-events(env=production) → ticket released; rolled_back → ticket quay lại
+account-manager:    UAT với khách → acceptance-results(accepted → closed | rejected → ticket quay lại | conditional)
+supervisor:         retry > MAX_RETRY, token > budget, review quá 2h → supervisor-actions(warn, pause, escalate)
 ```
 
 Review bắt buộc: `{reviewer, qa}` ∪ `{security nếu risk_tags}` — code trong
@@ -56,13 +65,14 @@ Review bắt buộc: `{reviewer, qa}` ∪ `{security nếu risk_tags}` — code 
 
 ## Trạng thái ticket
 
-`draft → dispatched → in_progress → in_review → changes_requested → approved → released → closed`
+`draft → (waiting) → dispatched → in_progress → in_review → changes_requested → approved → merged → released → closed`
 cộng `blocked` và `escalated` có thể vào từ bất kỳ trạng thái nào.
 
 ## Human gate
 
-Ba điểm bắt buộc: `approved-specs`, plan sau delivery-lead (kèm threat model), `release-events`
-production. Timeout 24h, supervisor nhắc ở 12h. Không bao giờ tự đi tiếp. Checklist trong
+Ba điểm bắt buộc của công ty: `approved-specs`, plan sau delivery-lead (kèm threat model), release production
+(chỉ sau khi QA staging pass). Điểm thứ tư thuộc về khách: nghiệm thu (`acceptance-results`, người ký của khách,
+account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao giờ tự đi tiếp. Checklist trong
 `gates/checklists.md`.
 
 ## Thành phần dùng chung (đứng độc lập, không phụ thuộc repo khác)

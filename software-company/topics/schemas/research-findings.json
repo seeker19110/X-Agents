@@ -30,10 +30,13 @@
         "kind": {
           "enum": [
             "intake",
+            "researcher",
             "domain",
+            "ux",
             "codebase",
             "tech"
-          ]
+          ],
+          "description": "researcher = báo cáo gộp 4 mục (ADR-0006); các kind lẻ giữ để tương thích"
         },
         "data": {
           "type": "object"

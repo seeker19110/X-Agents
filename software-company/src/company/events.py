@@ -11,19 +11,20 @@ Topic = Literal[
     "clarification-questions", "clarification-answers", "approved-specs",
     "tasks", "pull-requests", "review-results", "release-candidates",
     "release-events", "incidents", "shared-context", "audit-log", "supervisor-actions",
+    "change-requests", "acceptance-results", "external-feedback",
 ]
 Assignee = Literal["backend", "frontend", "mobile", "database", "platform", "data"]
 Namespace = Literal[
     "prd", "glossary", "design", "architecture", "api-contract", "schema", "threat-model",
-    "infra", "analytics", "docs", "knowledge",
+    "infra", "analytics", "docs", "knowledge", "contract",
 ]
 ReviewSource = Literal["reviewer", "qa", "security"]
 
 NAMESPACE_OWNERS: dict[str, set[str]] = {
-    "prd": {"spec-writer"}, "glossary": {"domain"}, "design": {"ux-designer"},
+    "prd": {"spec-writer"}, "glossary": {"researcher"}, "design": {"researcher"},
     "architecture": {"delivery-lead"}, "api-contract": {"delivery-lead", "backend"},
     "schema": {"database"}, "threat-model": {"security-engineer"}, "infra": {"platform"},
-    "analytics": {"data"}, "docs": {"support-docs"}, "knowledge": {"supervisor"},
+    "analytics": {"data"}, "docs": {"support-docs"}, "knowledge": {"supervisor"}, "contract": {"account-manager"},
 }
 
 # Ticket có bất kỳ tag nào dưới đây bắt buộc thêm review của security-engineer (ADR-0003).
@@ -53,6 +54,7 @@ class Task(BaseModel):
     estimate_tokens: int | None = None
     budget_tokens: int = 120_000
     risk_tags: list[str] = []
+    priority: int = 3  # 1 = cao nhất (WSJF/MoSCoW quy về 1..5); delivery-lead dispatch theo priority rồi thứ tự tạo
 
 class PullRequest(BaseModel):
     ticket_id: str
@@ -90,6 +92,25 @@ class AuditLog(BaseModel):
     evidence: str | None = None
     tokens: int = 0
 
+class ChangeRequest(BaseModel):
+    """Khách yêu cầu đổi phạm vi sau khi spec đã duyệt (account-manager tạo). Không sửa spec trực tiếp."""
+    change_id: str
+    project_id: str
+    requested_by: str
+    description: str
+    affects_requirements: list[str] = []
+    impact: dict[str, Any] = {}
+    decision: Literal["pending", "accepted", "rejected", "deferred"] = "pending"
+
+class AcceptanceResult(BaseModel):
+    """Kết quả nghiệm thu (UAT) của khách trên một release (account-manager ghi nhận)."""
+    release_id: str
+    project_id: str
+    verdict: Literal["accepted", "rejected", "conditional"]
+    signed_by: str
+    findings: list[Finding] = []
+    evidence_ref: str | None = None
+
 class SupervisorAction(BaseModel):
     target: str
     action: Literal["pause", "resume", "escalate", "budget_cut", "warn"]
@@ -99,14 +120,16 @@ class SupervisorAction(BaseModel):
 PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "tasks": Task, "pull-requests": PullRequest, "review-results": ReviewResult,
     "shared-context": SharedContext, "audit-log": AuditLog, "supervisor-actions": SupervisorAction,
+    "change-requests": ChangeRequest, "acceptance-results": AcceptanceResult,
 }
 
-TicketState = Literal["draft", "dispatched", "in_progress", "in_review", "changes_requested",
-                      "approved", "released", "closed", "blocked", "escalated"]
+TicketState = Literal["draft", "waiting", "dispatched", "in_progress", "in_review", "changes_requested",
+                      "approved", "merged", "released", "closed", "blocked", "escalated"]
 TRANSITIONS: dict[str, set[str]] = {
-    "draft": {"dispatched"}, "dispatched": {"in_progress"}, "in_progress": {"in_review"},
-    "in_review": {"changes_requested", "approved"}, "changes_requested": {"dispatched"},
-    "approved": {"released"}, "released": {"closed"}, "blocked": {"dispatched", "escalated"},
+    "draft": {"dispatched", "waiting"}, "waiting": {"dispatched"}, "dispatched": {"in_progress"},
+    "in_progress": {"in_review"}, "in_review": {"changes_requested", "approved"}, "changes_requested": {"dispatched"},
+    "approved": {"merged"}, "merged": {"released", "changes_requested"}, "released": {"closed", "changes_requested"},
+    "blocked": {"dispatched", "escalated"},
     "escalated": {"dispatched", "closed"}, "closed": set(),
 }
 def can_transition(src: str, dst: str) -> bool:

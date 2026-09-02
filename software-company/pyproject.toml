@@ -1,6 +1,6 @@
 [project]
 name = "software-company"
-version = "0.2.0"
+version = "0.3.0"
 description = "Multi-agent công ty gia công phần mềm, event-driven (7 khối, 22 agent)"
 requires-python = ">=3.11"
 dependencies = [
@@ -9,6 +9,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+anthropic = ["anthropic>=1.0"]   # provider anthropic; provider openai-compatible không cần SDK
 graph = ["langgraph>=0.2"]
 
 [dependency-groups]

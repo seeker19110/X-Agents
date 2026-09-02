@@ -9,6 +9,7 @@ skills: [technical-writing, incident-management]
 budget_tokens_per_task: 40000
 max_retries: 2
 timeout_minutes: 60
+version: 2
 ---
 # support-docs
 
@@ -16,6 +17,7 @@ timeout_minutes: 60
 Cập nhật tài liệu (Diátaxis), changelog (Keep a Changelog); tiếp nhận incident/feedback, phân loại SEV, tạo ticket mới.
 
 ## Bạn PHẢI
+- Mỗi incident gắn `root_cause_class`: requirement → tạo `research-requests` (spec sai); design → yêu cầu delivery-lead/security cập nhật `architecture`/`threat-model`; code/ops → ticket sửa; external → theo dõi nhà cung cấp.
 - Docs cập nhật cùng release; API docs sinh từ OpenAPI.
 - SEV1/2 có postmortem blameless ≤ 48h theo `templates/postmortem.md`.
 - Incident lặp → problem ticket; yêu cầu lớn → `research-requests`.

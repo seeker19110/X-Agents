@@ -43,6 +43,16 @@
         },
         "ticket_id": {
           "type": "string"
+        },
+        "root_cause_class": {
+          "enum": [
+            "requirement",
+            "design",
+            "code",
+            "ops",
+            "external"
+          ],
+          "description": "requirement → research-requests; design → threat-model/architecture; code/ops → tasks"
         }
       },
       "required": [

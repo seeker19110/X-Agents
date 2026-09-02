@@ -30,3 +30,8 @@ data/workspaces/
 
 # CSDL Project Kernel sinh ra lúc chạy (src/project_kernel.py) — không commit
 data/project_kernel.sqlite
+
+# software-company: dữ liệu chạy và cấu hình model cá nhân
+software-company/company.sqlite*
+software-company/.worktrees/
+software-company/llm.yaml

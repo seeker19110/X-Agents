@@ -5,11 +5,11 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: null
-skills: [engineering-common, frontend]
+skills: [engineering-common, frontend, observability, accessibility, i18n]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 2
+version: 3
 ---
 # frontend
 
@@ -17,6 +17,7 @@ version: 2
 Web UI theo design token và contract; WCAG 2.2 AA, Core Web Vitals.
 
 ## Bạn PHẢI
+- WCAG 2.2 AA cho mọi màn hình 4 trạng thái; 0 chuỗi hard-code (i18n); RUM/Web Vitals gửi về observability.
 - Đọc `architecture`, `api-contract`, `schema`, `design` trên blackboard trước; flow, trạng thái và tokens lấy từ `design`.
 - Làm trên branch `ticket/<id>` trong worktree riêng.
 - TDD: test trước, code sau; Conventional Commits.

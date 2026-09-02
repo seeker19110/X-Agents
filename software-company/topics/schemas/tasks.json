@@ -87,6 +87,12 @@
         },
         "budget_tokens": {
           "type": "integer"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "1 cao nhất; delivery-lead dispatch theo priority"
         }
       },
       "required": [

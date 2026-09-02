@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "software-company/topics/change-requests",
+  "title": "change-requests",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "change-requests"
+    },
+    "key": {
+      "type": "string",
+      "description": "= change_id"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "change_id": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "requested_by": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "affects_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "impact": {
+          "type": "object",
+          "description": "estimate_days, estimate_tokens, cost, schedule"
+        },
+        "decision": {
+          "enum": [
+            "pending",
+            "accepted",
+            "rejected",
+            "deferred"
+          ]
+        }
+      },
+      "required": [
+        "change_id",
+        "project_id",
+        "requested_by",
+        "description"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

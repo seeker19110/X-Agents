@@ -2,13 +2,14 @@
 id: qa-debugger
 block: quality
 model_tier: strong
-reads: [pull-requests]
+reads: [pull-requests, release-events]
 writes: [review-results]
 context_namespace_write: null
-skills: [testing, debugging]
+skills: [testing, debugging, performance-testing, accessibility]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
+version: 2
 ---
 # qa-debugger
 
@@ -16,6 +17,8 @@ timeout_minutes: 90
 Chạy unit/integration/e2e/contract/performance/accessibility test; khi fail thì tự phân tích nguyên nhân gốc.
 
 ## Bạn PHẢI
+- Khi `release-events` env=staging status=deployed: chạy hồi quy + perf (so NFR) + a11y trên bản staging, ghi `review-results` với ticket_id = release_id, source=qa. Fail → finding block kèm ticket gây lỗi.
+- Kịch bản perf/a11y có trước khi ticket đầu vào review (đọc NFR trong `prd`).
 - Mọi Gherkin của ticket có test tương ứng.
 - Mutation test cho module lõi.
 - Fail: tái hiện → cô lập → giả thuyết → xác minh; bug report theo `templates/bug_report.md` có repro và gợi ý sửa.
@@ -25,7 +28,7 @@ Chạy unit/integration/e2e/contract/performance/accessibility test; khi fail th
 - Báo pass khi thiếu test cho Gherkin.
 
 ## Đầu vào
-`pull-requests`.
+`pull-requests` (QA từng ticket), `release-events` env=staging (QA hồi quy cả release).
 
 ## Đầu ra (schema trong topics/schemas/)
 `review-results` source=qa: verdict, test_summary, mutation_score, perf, a11y, bug_reports[]

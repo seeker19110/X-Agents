@@ -28,7 +28,7 @@ def test_namespace_owner_enforced():
 
 def test_new_namespaces_writable_by_owner():
     bus = InMemoryBus()
-    for actor, ns in (("ux-designer", "design"), ("security-engineer", "threat-model"),
+    for actor, ns in (("researcher", "design"), ("security-engineer", "threat-model"),
                       ("platform", "infra"), ("data", "analytics")):
         bus.publish(Envelope(topic="shared-context", key=ns, actor=actor,
                              payload={"namespace": ns, "version": 1, "content_ref": "x"}))
