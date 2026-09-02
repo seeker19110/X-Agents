@@ -92,18 +92,35 @@ account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao 
   `local_checks` thành `{"unverified": true}`.
 - **Guardrail review**: `DeliveryLead.max_retries` (mặc định 3) và `Supervisor.max_retries`
   dùng cùng một giá trị.
-- **Bus**: `InMemoryBus` cho test/demo; đổi sang Redis Streams/Kafka bằng cách giữ nguyên
+- **Bus**: `InMemoryBus` cho test/demo (RLock, an toàn nhiều thread); đổi sang Redis Streams/Kafka bằng cách giữ nguyên
   interface `publish/subscribe/replay`.
 - **Checkpoint**: LangGraph (tùy chọn, `graph.py`) — checkpointer do người triển khai chọn.
+- **Blackboard + artifact store** (ADR-0012, `blackboard.py`): `shared-context.content` mang toàn văn artifact qua bus
+  (nguồn sự thật), mirror ra `<db>.artifacts/<namespace>/v<n>.<ext>` + `latest.<ext>`. Agent chủ namespace bị schema
+  bắt buộc trả `content`; agent hạ nguồn nhận toàn văn trong prompt (không chỉ `summary`).
+- **Ngữ cảnh có hạn mức** (`context.py`): `max_input_chars` (mặc định 120 000, `llm.yaml`/`COMPANY_MAX_INPUT_CHARS`).
+  Payload ưu tiên trước blackboard; chuỗi dài nhất bị cắt giữa có nhãn khi vượt; blackboard chia water-filling giữa
+  các namespace. Audit `context_trimmed` khi có cắt.
+- **Guard injection theo nguồn** (`guard.py`): payload từ agent nội bộ khớp mẫu → từ chối chạy; payload từ khách/người
+  dùng/web hoặc trường không tin cậy (`diff`, `text`...) → thay đoạn khớp bằng nhãn, đi tiếp (`injection_sanitized`).
+- **Retry lỗi transport** (`llm.py` `RetryingClient`): adapter phân loại lỗi mạng/429/5xx là `TransientError`, thử lại
+  với backoff mũ; hết retry thì orchestrator hoãn event thay vì tính lỗi agent.
+- **Ngân sách tiền**: `Pricing` (bảng `prices` trong `llm.yaml`) quy mỗi lượt gọi ra `audit-log.cost_usd`; supervisor
+  cắt theo `Task.budget_usd` và pause cả dự án theo `budget_usd`.
+- **Metrics** (`metrics.py`): tổng hợp từ `audit-log` theo agent/model/ticket/dự án, không cần hạ tầng ngoài; xuất
+  Prometheus text qua `orchestrator metrics --prometheus`.
 
-## Orchestrator (ADR-0007)
+## Orchestrator (ADR-0007, ADR-0012)
 
 `company.orchestrator` là vòng lặp nối các dòng trong bảng topic ở trên: mỗi event → tra `ROUTES` → gọi runner →
 publish → event mới. Bảng route phải khớp front matter `reads`/`writes` (kiểm lúc khởi tạo). Ba chỗ vòng lặp dừng và
 chờ người: gate `spec` (`SPEC-<project>`), gate `plan` (`PLAN-<project>-<n>`, sau khi delivery-lead sinh ticket và
 code kiểm estimate/budget/depends_on), gate `release` (`REL-xxx`, production). Ticket bị supervisor pause/budget_cut/
-escalate thì event của nó bị hoãn đến `resume`. Đầu vào của người (`clarification-answers`, `acceptance-results`,
-`change-requests` decision, `external-feedback`) đi qua `orchestrator publish` / `decide-change`. Agent ghi blackboard
-bằng `context_writes` trong đầu ra; threat model đi trước ticket đầu; ticket blocked hoặc bị escalate mở gate
-`escalation` (approve = mở lại với hint, reject = đóng). Mỗi event xử lý xong ghi `audit-log` action=orchestrated;
-mở lại bus SQLite thì replay dựng lại trạng thái và xếp hàng phần chưa xử lý.
+escalate thì event của nó bị hoãn đến `resume`; sự kiện gặp lỗi transport (`TransientError`, sau khi đã hết retry)
+cũng bị hoãn (`transient:`), tự thử lại mỗi `tick`. Đầu vào của người (`clarification-answers`, `acceptance-results`,
+`change-requests` decision, `external-feedback`) đi qua `orchestrator publish` / `decide-change`; `comment`/`takeover`
+cho người can thiệp trực tiếp vào một ticket đang chạy mà không cần đợi gate. Agent ghi blackboard bằng `context_writes`
+(kèm toàn văn) trong đầu ra; threat model đi trước ticket đầu; ticket blocked hoặc bị escalate mở gate `escalation`
+(approve = mở lại với hint, reject = đóng). `--workers N` chạy event của các ticket độc lập song song trong một tiến
+trình (bus có lock; event đổi trạng thái chung luôn chạy một mình). Mỗi event xử lý xong ghi `audit-log`
+action=orchestrated; mở lại bus SQLite thì replay dựng lại trạng thái và xếp hàng phần chưa xử lý.

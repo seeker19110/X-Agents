@@ -22,3 +22,29 @@ effort:
 
 # tham số provider-specific truyền thẳng vào request (vd. temperature cho openai)
 extra: {}
+
+# --- ADR-0012 ---
+# Thử lại lỗi transport (mạng, 408/409/429/5xx): số lần và giây cơ sở (chờ = base × 2^i + jitter, trần 30s).
+# Lỗi nội dung (JSON hỏng, schema sai, model từ chối) KHÔNG retry. COMPANY_LLM_RETRIES ghi đè.
+retries: 3
+retry_base: 1.0
+
+# Trần ký tự cho prompt (system + đầu vào + blackboard). Vượt thì runner cắt có nhãn (context.py).
+# ≈ 37k token với 120000. COMPANY_MAX_INPUT_CHARS ghi đè.
+max_input_chars: 120000
+
+# Bảng giá USD / 1M token, khớp theo TIỀN TỐ tên model (không phân biệt hoa thường). Thiếu cached_input → input/10;
+# thiếu cache_write → = input. Model không có trong bảng → cost_usd = 0 và bị đếm ở `unpriced_calls` (không phải miễn phí).
+# Điền theo bảng giá hiện hành của provider; số dưới đây chỉ là ví dụ định dạng.
+prices:
+  claude-opus-5: {input: 15.0, output: 75.0, cached_input: 1.5, cache_write: 18.75}
+  claude-sonnet-5: {input: 3.0, output: 15.0, cached_input: 0.3, cache_write: 3.75}
+  gpt-5: {input: 1.25, output: 10.0, cached_input: 0.125}
+  qwen2.5-coder: {input: 0.0, output: 0.0}   # local: 0 nhưng vẫn "có giá" để không bị đếm là unpriced
+
+# Trần chi phí mỗi dự án (USD). Chạm 80% → supervisor warn; chạm 100% → pause dự án cho tới khi người `resume`.
+# Bỏ trống = không giới hạn. COMPANY_BUDGET_USD ghi đè. Trần theo ticket đặt ở Task.budget_usd.
+# budget_usd: 50.0
+
+# Tool web cho researcher bật bằng `orchestrator --web`; máy tìm kiếm qua biến môi trường COMPANY_SEARCH_URL
+# (vd. SearXNG: http://searx.local/search?q={q}&format=json). Không đặt → DuckDuckGo HTML.
