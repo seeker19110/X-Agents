@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 GateKind = Literal["spec", "plan", "release", "escalation"]
@@ -12,7 +12,7 @@ class GateRequest:
     kind: GateKind
     subject_id: str
     checklist: list[str]
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     decision: Decision = "pending"
     reason: str = ""
     decided_by: str | None = None
@@ -36,7 +36,7 @@ class HumanGate:
         self.history.append(self.pending.pop(subject_id)); return req
 
     def due(self, now: datetime | None = None) -> tuple[list[str], list[str]]:
-        now = now or datetime.now(timezone.utc); remind, overdue = [], []
+        now = now or datetime.now(UTC); remind, overdue = [], []
         for sid, r in self.pending.items():
             age = now - r.created_at
             if age > self.timeout: overdue.append(sid)

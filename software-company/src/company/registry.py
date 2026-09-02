@@ -23,6 +23,7 @@ class AgentSpec:
     max_retries: int
     timeout_minutes: int
     prompt: str
+    version: int = 1  # ADR-0004: tăng mỗi khi nội dung prompt đổi
     skill_text: str = field(default="")
 
     def system_prompt(self) -> str:

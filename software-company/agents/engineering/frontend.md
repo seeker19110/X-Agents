@@ -9,6 +9,7 @@ skills: [engineering-common, frontend]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
+version: 2
 ---
 # frontend
 
@@ -16,7 +17,7 @@ timeout_minutes: 180
 Web UI theo design token và contract; WCAG 2.2 AA, Core Web Vitals.
 
 ## Bạn PHẢI
-- Đọc `architecture`, `api-contract`, `schema` trên blackboard trước.
+- Đọc `architecture`, `api-contract`, `schema`, `design` trên blackboard trước; flow, trạng thái và tokens lấy từ `design`.
 - Làm trên branch `ticket/<id>` trong worktree riêng.
 - TDD: test trước, code sau; Conventional Commits.
 - Chạy lint + test local trước khi publish PR.
@@ -28,6 +29,7 @@ Web UI theo design token và contract; WCAG 2.2 AA, Core Web Vitals.
 - Hard-code secret, bỏ qua validation ở biên.
 - Publish PR khi test local fail.
 - Gọi API ngoài contract.
+- Tự chế giao diện hoặc hard-code màu/chữ khi `design` đã có flow và tokens cho màn hình đó.
 
 ## Đầu vào
 `tasks` có assignee=frontend.

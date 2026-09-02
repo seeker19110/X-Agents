@@ -3,13 +3,15 @@ from __future__ import annotations
 from collections import defaultdict
 
 from .bus import InMemoryBus
-from .events import Envelope, ReviewResult, Task, can_transition
+from .events import BUDGET_FACTOR, Envelope, ReviewResult, Task, can_transition
 from .gates import GateRequest, HumanGate
 
 
 class DeliveryLead:
     """Logic xác định của delivery-lead: dispatch, gom review, retry, release candidate.
     LLM chỉ dùng để viết plan/ticket; phần đóng vòng ở đây là code."""
+    BASE_REVIEWS: frozenset[str] = frozenset({"reviewer", "qa"})
+
     def __init__(self, bus: InMemoryBus, gate: HumanGate, max_retries: int = 3):
         self.bus, self.gate, self.max_retries = bus, gate, max_retries
         self.tickets: dict[str, Task] = {}
@@ -25,9 +27,16 @@ class DeliveryLead:
             raise ValueError(f"{tid}: không thể {src} → {dst}")
         self.state[tid] = dst
 
+    def required_reviews(self, tid: str) -> set[str]:
+        """reviewer + qa luôn; thêm security khi ticket có risk_tags (ADR-0003)."""
+        extra = {"security"} if self.tickets[tid].risk_tags else set()
+        return set(self.BASE_REVIEWS) | extra
+
     def dispatch(self, task: Task, plan_id: str) -> Task:
         if not self.gate.is_approved(plan_id):
             raise PermissionError("plan chưa được human gate duyệt")
+        if task.estimate_tokens is not None and task.budget_tokens < task.estimate_tokens * BUDGET_FACTOR:
+            raise ValueError(f"{task.ticket_id}: budget_tokens {task.budget_tokens} < estimate_tokens × {BUDGET_FACTOR}")
         self.tickets[task.ticket_id] = task
         self._set(task.ticket_id, "dispatched")
         self.bus.publish(Envelope(topic="tasks", key=task.ticket_id, actor="delivery-lead", payload=task.model_dump()))
@@ -41,7 +50,7 @@ class DeliveryLead:
     def _on_review(self, env: Envelope) -> None:
         r = ReviewResult.model_validate(env.payload); tid = r.ticket_id
         self.reviews[tid][r.source] = r
-        if len(self.reviews[tid]) < 2:
+        if not self.required_reviews(tid) <= set(self.reviews[tid]):
             return
         if all(x.verdict == "pass" for x in self.reviews[tid].values()):
             self._set(tid, "approved")

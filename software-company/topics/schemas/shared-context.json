@@ -28,9 +28,13 @@
           "enum": [
             "prd",
             "glossary",
+            "design",
             "architecture",
             "api-contract",
             "schema",
+            "threat-model",
+            "infra",
+            "analytics",
             "docs",
             "knowledge"
           ]

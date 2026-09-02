@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -12,21 +12,30 @@ Topic = Literal[
     "tasks", "pull-requests", "review-results", "release-candidates",
     "release-events", "incidents", "shared-context", "audit-log", "supervisor-actions",
 ]
-Assignee = Literal["backend", "frontend", "mobile", "database"]
-Namespace = Literal["prd", "glossary", "architecture", "api-contract", "schema", "docs", "knowledge"]
+Assignee = Literal["backend", "frontend", "mobile", "database", "platform", "data"]
+Namespace = Literal[
+    "prd", "glossary", "design", "architecture", "api-contract", "schema", "threat-model",
+    "infra", "analytics", "docs", "knowledge",
+]
+ReviewSource = Literal["reviewer", "qa", "security"]
 
 NAMESPACE_OWNERS: dict[str, set[str]] = {
-    "prd": {"spec-writer"}, "glossary": {"domain"}, "architecture": {"delivery-lead"},
-    "api-contract": {"delivery-lead", "backend"}, "schema": {"database"},
-    "docs": {"support-docs"}, "knowledge": {"supervisor"},
+    "prd": {"spec-writer"}, "glossary": {"domain"}, "design": {"ux-designer"},
+    "architecture": {"delivery-lead"}, "api-contract": {"delivery-lead", "backend"},
+    "schema": {"database"}, "threat-model": {"security-engineer"}, "infra": {"platform"},
+    "analytics": {"data"}, "docs": {"support-docs"}, "knowledge": {"supervisor"},
 }
+
+# Ticket có bất kỳ tag nào dưới đây bắt buộc thêm review của security-engineer (ADR-0003).
+RISK_TAGS = frozenset({"auth", "payment", "pii", "crypto", "upload", "admin", "external-api"})
+BUDGET_FACTOR = 1.5  # budget_tokens ≥ estimate_tokens × BUDGET_FACTOR (skill cost-estimation)
 
 class Envelope(BaseModel):
     event_id: str = Field(default_factory=lambda: uuid4().hex)
     topic: Topic
     key: str
     actor: str
-    ts: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
     payload: dict[str, Any]
 
 class Task(BaseModel):
@@ -41,7 +50,9 @@ class Task(BaseModel):
     depends_on: list[str] = []
     retry: int = 0
     hint: str | None = None
+    estimate_tokens: int | None = None
     budget_tokens: int = 120_000
+    risk_tags: list[str] = []
 
 class PullRequest(BaseModel):
     ticket_id: str
@@ -58,7 +69,7 @@ class Finding(BaseModel):
 
 class ReviewResult(BaseModel):
     ticket_id: str
-    source: Literal["reviewer", "qa"]
+    source: ReviewSource
     verdict: Literal["pass", "block", "fail"]
     findings: list[Finding] = []
     root_cause: str | None = None

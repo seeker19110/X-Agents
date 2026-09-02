@@ -30,7 +30,8 @@
         "source": {
           "enum": [
             "reviewer",
-            "qa"
+            "qa",
+            "security"
           ]
         },
         "verdict": {

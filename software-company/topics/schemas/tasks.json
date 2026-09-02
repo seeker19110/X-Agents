@@ -38,8 +38,21 @@
             "backend",
             "frontend",
             "mobile",
-            "database"
+            "database",
+            "platform",
+            "data"
           ]
+        },
+        "risk_tags": {
+          "type": "array",
+          "description": "auth|payment|pii|crypto|upload|admin|external-api — có tag thì bắt buộc review security",
+          "items": {
+            "type": "string"
+          }
+        },
+        "estimate_tokens": {
+          "type": "integer",
+          "minimum": 0
         },
         "title": {
           "type": "string"

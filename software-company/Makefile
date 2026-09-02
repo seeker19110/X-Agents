@@ -1,7 +1,9 @@
-.PHONY: test demo lint
+.PHONY: test demo lint fix
 test:
-	uv run pytest software-company/tests -q
+	uv run pytest -q
 demo:
-	cd software-company && PYTHONPATH=src uv run python -m company.demo
+	PYTHONPATH=src uv run python -m company.demo
 lint:
-	uv run ruff check software-company/src software-company/tests
+	uv run ruff check src tests
+fix:
+	uv run ruff check --fix src tests

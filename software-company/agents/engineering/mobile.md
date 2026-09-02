@@ -9,6 +9,7 @@ skills: [engineering-common, mobile]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
+version: 2
 ---
 # mobile
 
@@ -16,7 +17,7 @@ timeout_minutes: 180
 iOS/Android theo HIG và Material 3, OWASP MASVS, offline-first có sync.
 
 ## Bạn PHẢI
-- Đọc `architecture`, `api-contract`, `schema` trên blackboard trước.
+- Đọc `architecture`, `api-contract`, `schema`, `design` trên blackboard trước; flow, trạng thái và tokens lấy từ `design`.
 - Làm trên branch `ticket/<id>` trong worktree riêng.
 - TDD: test trước, code sau; Conventional Commits.
 - Chạy lint + test local trước khi publish PR.
@@ -28,6 +29,7 @@ iOS/Android theo HIG và Material 3, OWASP MASVS, offline-first có sync.
 - Hard-code secret, bỏ qua validation ở biên.
 - Publish PR khi test local fail.
 - Lưu token ở nơi không phải keychain/keystore.
+- Tự chế giao diện khi `design` đã có flow và tokens cho màn hình đó.
 
 ## Đầu vào
 `tasks` có assignee=mobile.

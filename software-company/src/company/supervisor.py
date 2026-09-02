@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from .bus import InMemoryBus
 from .events import NAMESPACE_OWNERS, AuditLog, Envelope, SupervisorAction, Task
@@ -58,7 +58,7 @@ class Supervisor:
                 self._act(env.actor, "pause", "ghi sai namespace")
 
     def check_timeouts(self, now: datetime | None = None) -> list[str]:
-        now = now or datetime.now(timezone.utc); stuck = []
+        now = now or datetime.now(UTC); stuck = []
         for key, ts in self.last_seen.items():
             if now - ts > self.ticket_timeout:
                 stuck.append(key); self._act(key, "escalate", f"không hoạt động > {self.ticket_timeout}")
