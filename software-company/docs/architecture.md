@@ -86,3 +86,13 @@ account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao 
 - **Bus**: `InMemoryBus` cho test/demo; đổi sang Redis Streams/Kafka bằng cách giữ nguyên
   interface `publish/subscribe/replay`.
 - **Checkpoint**: LangGraph (tùy chọn, `graph.py`) — checkpointer do người triển khai chọn.
+
+## Orchestrator (ADR-0007)
+
+`company.orchestrator` là vòng lặp nối các dòng trong bảng topic ở trên: mỗi event → tra `ROUTES` → gọi runner →
+publish → event mới. Bảng route phải khớp front matter `reads`/`writes` (kiểm lúc khởi tạo). Ba chỗ vòng lặp dừng và
+chờ người: gate `spec` (`SPEC-<project>`), gate `plan` (`PLAN-<project>-<n>`, sau khi delivery-lead sinh ticket và
+code kiểm estimate/budget/depends_on), gate `release` (`REL-xxx`, production). Ticket bị supervisor pause/budget_cut/
+escalate thì event của nó bị hoãn đến `resume`. Đầu vào của người (`clarification-answers`, `acceptance-results`,
+`change-requests` decision, `external-feedback`) đi qua `orchestrator publish`. Mỗi event xử lý xong ghi
+`audit-log` action=orchestrated; mở lại bus SQLite thì replay dựng lại trạng thái và xếp hàng phần chưa xử lý.

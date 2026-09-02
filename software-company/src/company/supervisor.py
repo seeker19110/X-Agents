@@ -26,12 +26,21 @@ class Supervisor:
         self.error_signatures: dict[str, list[str]] = defaultdict(list)
         self.actions: list[SupervisorAction] = []
         self.knowledge: list[dict] = []
+        self.replaying = False  # dựng lại từ log: cộng dồn ngân sách/chữ ký lỗi nhưng không phát lại supervisor-actions
         bus.subscribe("*", self._on)
 
     def _act(self, target: str, action: str, reason: str, evidence: str | None = None) -> None:
         a = SupervisorAction(target=target, action=action, reason=reason, evidence=evidence)
         self.actions.append(a)
-        self.bus.publish(Envelope(topic="supervisor-actions", key=target, actor="supervisor", payload=a.model_dump()))
+        if not self.replaying:
+            self.bus.publish(Envelope(topic="supervisor-actions", key=target, actor="supervisor", payload=a.model_dump()))
+
+    def replay(self, env: Envelope) -> None:
+        prev, self.replaying = self.replaying, True
+        try:
+            self._on(env)
+        finally:
+            self.replaying = prev
 
     def _on(self, env: Envelope) -> None:
         if env.actor == "supervisor":

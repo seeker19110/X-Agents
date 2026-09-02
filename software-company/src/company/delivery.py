@@ -28,10 +28,28 @@ class DeliveryLead:
         self.release_tickets: dict[str, list[str]] = {}
         self.release_qa: dict[str, ReviewResult] = {}
         self.acceptance: dict[str, AcceptanceResult] = {}
-        bus.subscribe("review-results", self._on_review)
-        bus.subscribe("pull-requests", self._on_pr)
-        bus.subscribe("release-events", self._on_release_event)
-        bus.subscribe("acceptance-results", self._on_acceptance)
+        self.replaying = False  # True khi dựng lại trạng thái từ log: đổi state nhưng không publish/xin gate lại
+        self.handlers = {"review-results": self._on_review, "pull-requests": self._on_pr,
+                         "release-events": self._on_release_event, "acceptance-results": self._on_acceptance}
+        for topic, fn in self.handlers.items():
+            bus.subscribe(topic, fn)
+
+    def _emit(self, env: Envelope) -> None:
+        if not self.replaying:
+            self.bus.publish(env)
+
+    def replay(self, env: Envelope) -> None:
+        """Áp một event cũ vào trạng thái (dùng khi orchestrator mở lại bus bền vững). Lỗi chuyển trạng thái bị bỏ qua
+        vì event đã xảy ra rồi; mục tiêu là khôi phục, không phải kiểm tra."""
+        fn = self.handlers.get(env.topic)
+        if fn is None: return
+        prev, self.replaying = self.replaying, True
+        try:
+            fn(env)
+        except (ValueError, PermissionError, KeyError):
+            pass
+        finally:
+            self.replaying = prev
 
     # ---------- trạng thái ----------
 
@@ -53,11 +71,11 @@ class DeliveryLead:
 
     def _publish_task(self, task: Task) -> None:
         self._set(task.ticket_id, "dispatched")
-        self.bus.publish(Envelope(topic="tasks", key=task.ticket_id, actor="delivery-lead", payload=task.model_dump()))
+        self._emit(Envelope(topic="tasks", key=task.ticket_id, actor="delivery-lead", payload=task.model_dump()))
 
     def dispatch(self, task: Task, plan_id: str) -> Task:
         """Ticket vào hàng chờ nếu phụ thuộc chưa xong; ngược lại publish ngay. Phụ thuộc phải là ticket đã biết."""
-        if not self.gate.is_approved(plan_id):
+        if not self.replaying and not self.gate.is_approved(plan_id):
             raise PermissionError("plan chưa được human gate duyệt")
         if task.estimate_tokens is not None and task.budget_tokens < task.estimate_tokens * BUDGET_FACTOR:
             raise ValueError(f"{task.ticket_id}: budget_tokens {task.budget_tokens} < estimate_tokens × {BUDGET_FACTOR}")
@@ -130,7 +148,7 @@ class DeliveryLead:
 
     def _create_release_candidate(self, tids: list[str]) -> str:
         rid = f"REL-{len(self.releases)+1:03d}"; self.releases.append(rid); self.release_tickets[rid] = tids
-        self.bus.publish(Envelope(topic="release-candidates", key=rid, actor="delivery-lead",
+        self._emit(Envelope(topic="release-candidates", key=rid, actor="delivery-lead",
             payload={"release_id": rid, "project_id": self.tickets[tids[0]].project_id, "tickets": tids, "version": "0.0.0"}))
         return rid
 
@@ -154,8 +172,9 @@ class DeliveryLead:
         """QA hồi quy/perf/a11y trên staging (ticket_id = release_id). Pass → mới xin gate 3."""
         rid = r.ticket_id; self.release_qa[rid] = r
         if r.verdict == "pass":
-            self.gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead",
-                                          checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook", "rollback"]))
+            if not self.replaying:
+                self.gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead",
+                                              checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook", "rollback"]))
             return
         hint = r.root_cause or "; ".join(f.text for f in r.findings if f.level == "block") or "QA staging fail"
         for tid in self.release_tickets[rid]:
