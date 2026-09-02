@@ -289,3 +289,18 @@ def test_replay_per_ticket_releases_keeps_ids_from_log():
     assert lead.release_tickets == {"REL-001": ["T2"], "REL-002": ["T1"]}
     lead2 = _replay_into(bus, tasks)
     assert lead2.release_tickets == lead.release_tickets and lead2.releases == lead.releases
+
+
+# ---------- ADR-0021: ticket thường chỉ cần reviewer ở lượt PR ----------
+
+def test_plain_ticket_needs_only_reviewer_but_risky_ticket_needs_qa_and_security():
+    bus, _, lead = _setup()
+    lead.dispatch(_task("T1"), "PLAN"); lead.dispatch(_task("T2", risk_tags=["auth"]), "PLAN")
+    assert lead.required_reviews("T1") == {"reviewer"}
+    assert lead.required_reviews("T2") == {"reviewer", "qa", "security"}
+    _pr(bus, "T1"); _rev(bus, "T1", "reviewer")
+    assert lead.state["T1"] == "approved", "một lượt review là đủ"
+    _pr(bus, "T2"); _rev(bus, "T2", "reviewer"); _rev(bus, "T2", "qa")
+    assert lead.state["T2"] == "in_review"
+    _rev(bus, "T2", "security")
+    assert lead.state["T2"] == "approved"

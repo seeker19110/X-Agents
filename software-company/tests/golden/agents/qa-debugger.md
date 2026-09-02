@@ -1,4 +1,4 @@
-<!-- golden agent=qa-debugger version=8 -->
+<!-- golden agent=qa-debugger version=9 -->
 # qa-debugger
 
 ## Vai trò
@@ -7,6 +7,8 @@ Chạy unit/integration/e2e/contract/performance/accessibility test; khi fail th
 ## Bạn PHẢI
 - Khi `release-events` env=staging status=deployed: chạy hồi quy + perf (so NFR) + a11y trên bản staging, ghi `review-results` với ticket_id = release_id, source=qa. Fail → finding block kèm ticket gây lỗi.
 - Kịch bản perf/a11y có trước khi ticket đầu vào review (đọc NFR trong `prd`).
+- Ở lượt PR (`pull-requests`) bạn chỉ được gọi cho ticket có `risk_tags`; ticket thường reviewer kiêm chấm test, bạn
+  gặp chúng ở hồi quy staging.
 - Mọi Gherkin của ticket có test tương ứng.
 - Mutation test cho module lõi.
 - Fail: tái hiện → cô lập → giả thuyết → xác minh; bug report theo `templates/bug_report.md` có repro và gợi ý sửa.

@@ -154,8 +154,9 @@ def test_resume_from_sqlite_does_not_redo_work(tmp_path):
     assert [e.event_id for e in o2.queue] == [e.event_id for e in o1.queue]
     o2.run()
     assert o2.lead.state["T1"] == "merged" and o2.lead.state["T2"] == "merged" and o2.stats["errors"] == 0
-    # 8 (nghiên cứu + threat model + plan) + T1: 3 + REL-001: 2 + T2: 4 (thêm security) + REL-002: 3 (security DAST) = 20
-    assert n_calls + len(c2.calls) == 20
+    # 8 (nghiên cứu + threat model + plan) + T1: 2 (ADR-0021: không QA ở PR) + REL-001: 2 + T2: 4 (qa + security)
+    # + REL-002: 3 (security DAST) = 19
+    assert n_calls + len(c2.calls) == 19
 
 
 def test_poll_picks_up_gate_decision_from_other_process(tmp_path):
@@ -343,15 +344,16 @@ def test_overdue_review_is_reassigned_once():
     calls = []
     def lazy(system, user):
         a = _agent_of(system); calls.append(a)
-        if a == "qa-debugger" and calls.count("qa-debugger") == 1: raise LLMError("timeout")
+        if a == "qa-debugger" and "`pull-requests`" in user and calls.count("qa-debugger:pr") == 0:  # lượt QA ở PR (T2)
+            calls.append("qa-debugger:pr"); raise LLMError("timeout")
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=lazy))
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     later = datetime.now(UTC) + timedelta(hours=3)
-    assert orch.lead.state["T1"] == "in_review" and orch.lead.overdue_reviews(later) == {"T1": {"qa"}}
+    assert orch.lead.state["T2"] == "in_review" and orch.lead.overdue_reviews(later) == {"T2": {"qa"}}
     orch.tick(now=later)
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
-    assert orch.lead.state["T1"] == "merged" and acts.count("review.reassign") == 1 and acts.count("llm_error") == 1
+    assert orch.lead.state["T2"] == "merged" and acts.count("review.reassign") == 1 and acts.count("llm_error") == 1
 
 
 def test_incomplete_answers_go_back_to_clarifier_then_spec_writer():

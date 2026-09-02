@@ -28,5 +28,5 @@ Thực tế: nghiên cứu 6, quản lý 1, kỹ thuật 6, chất lượng 3, v
 
 ## Hệ quả
 - `Assignee` thêm platform, data; `ReviewResult.source` thêm security; namespace thêm design, threat-model, infra, analytics.
-- Delivery-lead chờ đủ review theo `risk_tags` (reviewer + qa, cộng security khi có tag).
+- Delivery-lead chờ đủ review theo `risk_tags` (reviewer; cộng qa + security khi có tag — ADR-0021).
 - Ticket có thêm `estimate_tokens`, `risk_tags`.

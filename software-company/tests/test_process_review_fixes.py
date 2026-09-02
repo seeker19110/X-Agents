@@ -64,6 +64,7 @@ def test_review_tre_khi_ticket_da_changes_requested_khong_lam_no_approved():
 def test_pr_thu_hai_thay_pr_cu_thay_vi_ném_loi():
     """PR mới khi ticket đang in_review = PR thay thế: vòng review làm lại, không phải chuyển trạng thái sai."""
     bus = InMemoryBus(); lead = _lead(bus)
+    lead.tickets["T1"] = lead.tickets["T1"].model_copy(update={"risk_tags": ["pii"]})  # cần thêm qa + security
     bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload=PR))
     _review(bus, "reviewer")
     bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend", payload={**PR, "pr_ref": "#2"}))
