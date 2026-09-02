@@ -578,7 +578,9 @@ class Sim:
         st = self.orch.status()
         # paused chỉ là kẹt khi có event đang bị hoãn vì nó (ticket approved bị cắt ngân sách không giữ ai lại)
         paused_blocking = sorted({r.split(":", 1)[1] for r in st["deferred"].values() if r.startswith("paused:")})
-        stuck = st["stalled"] or [g for g, k in st["gates_pending"].items() if k == "escalation"] or paused_blocking
+        # paused (budget_cut sau khi ticket đã approved) không giữ ai lại: event bị hoãn vì nó là review-results đã được
+        # delivery-lead xử lý đồng bộ lúc publish. Kẹt thật = dự án stalled hoặc gate escalation đang chờ người.
+        stuck = st["stalled"] or [g for g, k in st["gates_pending"].items() if k == "escalation"]
         if not stuck and (self.gate.pending or self.orch.lead.releases or not self.real): return True
         if not stuck: return True
         self.say(f"\n!! Dự án kẹt ({what}): stalled={st['stalled']} escalation={[g for g, k in st['gates_pending'].items() if k == 'escalation']} "
