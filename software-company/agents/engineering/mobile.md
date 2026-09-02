@@ -9,7 +9,7 @@ skills: [engineering-common, mobile, ui-ux-design, observability, accessibility,
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 5
+version: 6
 ---
 # mobile
 

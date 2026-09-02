@@ -9,7 +9,7 @@ skills: [requirements-engineering, technical-writing, customer-acceptance, ui-ux
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
-version: 4
+version: 5
 ---
 # spec-writer
 
