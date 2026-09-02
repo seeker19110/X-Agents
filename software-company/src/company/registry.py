@@ -24,7 +24,13 @@ class AgentSpec:
     timeout_minutes: int
     prompt: str
     version: int = 1  # ADR-0004: tăng mỗi khi nội dung prompt đổi
+    skills_core: list[str] = field(default_factory=list)  # ADR-0008: skill phụ, chỉ nạp quy trình + checklist
     skill_text: str = field(default="")
+    skill_core_text: str = field(default="")
+
+    @property
+    def all_skills(self) -> list[str]:
+        return [*self.skills, *self.skills_core]
 
     @property
     def namespaces_write(self) -> list[str]:
@@ -32,7 +38,13 @@ class AgentSpec:
         return [] if ns is None else ([ns] if isinstance(ns, str) else list(ns))
 
     def system_prompt(self) -> str:
-        return f"{self.prompt}\n\n# Skills\n{self.skill_text}"
+        out = f"{self.prompt}\n\n# Skills\n{self.skill_text}"
+        if self.skill_core_text:
+            out += ("\n\n# Skills phụ (chỉ quy trình + checklist)\n"
+                    "Bản rút gọn: bạn vẫn phải đạt checklist bên dưới, nhưng KHÔNG sở hữu các lĩnh vực này — "
+                    "phần chuyên sâu thuộc agent chủ quản, cần chi tiết thì hỏi qua topic thay vì tự quyết.\n\n"
+                    f"{self.skill_core_text}")
+        return out
 
 def _split(text: str) -> tuple[dict, str]:
     m = _FM.match(text)
@@ -40,16 +52,35 @@ def _split(text: str) -> tuple[dict, str]:
         raise ValueError("thiếu front matter")
     return yaml.safe_load(m.group(1)), text[m.end():]
 
-def load_skill(name: str) -> str:
+CORE_SECTIONS = ("## Quy trình", "## Checklist")  # ADR-0008: phần bắt buộc của mọi skill
+
+
+def load_skill(name: str, core_only: bool = False) -> str:
+    """Toàn văn skill, hoặc chỉ phần lõi (H1 + quy trình + checklist) khi `core_only`.
+
+    Phần lõi là thứ agent phải làm theo; phần bị cắt (tiêu chuẩn tham chiếu, quy tắc chi tiết, ví dụ)
+    là kiến thức chuyên sâu chỉ agent chủ quản của skill cần nạp đầy đủ."""
     p = SKILLS_DIR / f"{name}.md"
     _, body = _split(p.read_text(encoding="utf-8"))
-    return body.strip()
+    body = body.strip()
+    if not core_only:
+        return body
+    parts = re.split(r"\n(?=## )", body)
+    keep = [parts[0].split("\n## ", 1)[0].strip()]  # H1 "# Skill: <name>"
+    keep += [s.strip() for s in parts if s.startswith(CORE_SECTIONS)]
+    if len(keep) == 1:
+        raise ValueError(f"skill {name}: không tìm thấy mục lõi {CORE_SECTIONS}")
+    return "\n\n".join(keep)
 
 def load_agents() -> dict[str, AgentSpec]:
     out: dict[str, AgentSpec] = {}
     for p in sorted(AGENTS_DIR.rglob("*.md")):
         fm, body = _split(p.read_text(encoding="utf-8"))
         spec = AgentSpec(prompt=body.strip(), **fm)
+        dup = set(spec.skills) & set(spec.skills_core)
+        if dup:
+            raise ValueError(f"{spec.id}: skill vừa đầy đủ vừa rút gọn: {sorted(dup)}")
         spec.skill_text = "\n\n".join(load_skill(s) for s in spec.skills)
+        spec.skill_core_text = "\n\n".join(load_skill(s, core_only=True) for s in spec.skills_core)
         out[spec.id] = spec
     return out

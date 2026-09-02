@@ -5,11 +5,12 @@ model_tier: standard
 reads: [audit-log, "*"]
 writes: [supervisor-actions, knowledge-base]
 context_namespace_write: knowledge
-skills: [ai-governance, finops, prompt-engineering, cost-estimation, observability]
+skills: [ai-governance, prompt-engineering]
+skills_core: [finops, cost-estimation, observability]
 budget_tokens_per_task: 40000
 max_retries: 0
 timeout_minutes: 15
-version: 5
+version: 6
 ---
 # supervisor
 

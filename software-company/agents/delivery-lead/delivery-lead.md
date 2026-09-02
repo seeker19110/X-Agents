@@ -5,11 +5,12 @@ model_tier: strong
 reads: [approved-specs, review-results, incidents, change-requests, acceptance-results]
 writes: [tasks, release-candidates, audit-log]
 context_namespace_write: [architecture, api-contract]
-skills: [architecture, project-management, api-contract, cost-estimation, risk-analysis, release, event-driven-architecture, incident-management, customer-acceptance]
+skills: [project-management, architecture, cost-estimation]
+skills_core: [api-contract, risk-analysis, release, event-driven-architecture, incident-management, customer-acceptance]
 budget_tokens_per_task: 100000
 max_retries: 3
 timeout_minutes: 120
-version: 5
+version: 6
 ---
 # delivery-lead
 

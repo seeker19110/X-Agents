@@ -48,7 +48,7 @@ def contract(a: AgentSpec) -> dict:
     return {
         "block": a.block, "model_tier": a.model_tier, "version": a.version,
         "reads": a.reads, "writes": a.writes, "context_namespace_write": a.context_namespace_write,
-        "skills": a.skills, "budget_tokens_per_task": a.budget_tokens_per_task,
+        "skills": a.skills, "skills_core": a.skills_core, "budget_tokens_per_task": a.budget_tokens_per_task,
         "max_retries": a.max_retries, "timeout_minutes": a.timeout_minutes,
     }
 
@@ -121,7 +121,8 @@ def test_front_matter_is_well_formed(agent_id: str):
         assert ch in TOPICS | NON_TOPIC_CHANNELS, f"{agent_id}: kênh lạ `{ch}`"
     assert a.reads and a.writes, "agent phải có ít nhất một topic đọc và một topic ghi"
     assert a.max_retries >= 0 and a.timeout_minutes > 0
-    assert len(a.skills) == len(set(a.skills)), "skill trùng lặp"
+    assert len(a.all_skills) == len(set(a.all_skills)), "skill trùng lặp giữa skills/skills_core"
+    assert a.skills, "agent phải sở hữu ít nhất một skill ở mức đầy đủ"
 
 
 @pytest.mark.parametrize("agent_id", IDS)

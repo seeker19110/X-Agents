@@ -1,4 +1,4 @@
-<!-- golden agent=qa-debugger version=4 -->
+<!-- golden agent=qa-debugger version=5 -->
 # qa-debugger
 
 ## Vai trò
@@ -128,38 +128,14 @@ Tái hiện: 2 request hoàn tiền song song cùng `order_id` → số dư tr�
 ## Ví dụ xấu
 "Đôi khi bị lỗi, chắc do mạng." Không phiên bản, không bước tái hiện, không bằng chứng; sửa bằng cách thêm `try/except` nuốt lỗi rồi đóng ticket.
 
-# Skill: performance-testing
+# Skills phụ (chỉ quy trình + checklist)
+Bản rút gọn: bạn vẫn phải đạt checklist bên dưới, nhưng KHÔNG sở hữu các lĩnh vực này — phần chuyên sâu thuộc agent chủ quản, cần chi tiết thì hỏi qua topic thay vì tự quyết.
 
-## Tiêu chuẩn tham chiếu
-- ISO/IEC 25010 — hiệu năng là thuộc tính chất lượng có tiêu chí đo được
-- Công cụ tạo tải có kịch bản dạng code (k6, Gatling, Locust) và lưu được kết quả
-- RED/USE để đọc kết quả: nhìn cả phía dịch vụ và phía tài nguyên
-- Google SRE: ngưỡng pass gắn với SLO, đo ở phân vị cao chứ không đo trung bình
-- Little's Law (concurrency = throughput × latency) để thiết kế kịch bản hợp lý
+# Skill: performance-testing
 
 ## Quy trình (làm đúng thứ tự)
 Lấy NFR có số từ spec → dựng hồ sơ tải từ dữ liệu thật (nhịp truy cập, tỉ lệ theo endpoint, giờ cao điểm) → chuẩn bị môi trường và dữ liệu cỡ production → chạy thử nhỏ để hiệu chỉnh kịch bản → đo baseline → chạy load, stress, soak, spike → phân tích nút thắt bằng dữ liệu quan sát → sửa → đo lại → lưu baseline mới.
 Chỉ tối ưu sau khi đã đo và biết nút thắt ở đâu; tối ưu theo cảm giác là lãng phí.
-
-## Quy tắc — thiết kế phép đo
-- Mọi NFR hiệu năng phải có: chỉ số (p95/p99 độ trễ, throughput, tỉ lệ lỗi), điều kiện (tải, cỡ dữ liệu), và ngưỡng — trước khi code.
-- Báo cáo theo phân vị, không theo trung bình; nêu cả tỉ lệ lỗi và độ lệch, vì độ trễ đẹp mà lỗi 5% là kết quả vô nghĩa.
-- Bốn kiểu chạy có mục đích khác nhau: load (đúng tải kỳ vọng), stress (tìm điểm gãy và cách gãy), soak (chạy dài tìm rò rỉ), spike (tăng đột ngột, kiểm khả năng hồi phục).
-- Kịch bản phải giống hành vi thật: có think time, có phân bố dữ liệu thật (không cùng một id), có tỉ lệ đọc/ghi thật, có đăng nhập nếu luồng thật cần.
-- Dữ liệu cỡ production: đo trên bảng 1.000 dòng rồi kết luận cho bảng 10 triệu dòng là sai từ gốc.
-- Bộ tạo tải không được là nút thắt; kiểm tài nguyên máy chạy tải và đo từ nhiều điểm nếu cần.
-- Khởi động nóng (warm-up) tách khỏi kết quả; nêu rõ trạng thái cache khi đo.
-
-## Quy tắc — môi trường và tính so sánh được
-- Chạy trên staging có cấu hình tương đương production; khác biệt nào còn lại phải ghi rõ và ước lượng ảnh hưởng.
-- Mỗi lần đo ghi: phiên bản build, cấu hình, cỡ dữ liệu, thời điểm, và kịch bản dùng — để lần sau so sánh được.
-- Baseline lưu trong `docs` và so với bản phát hành trước; hồi quy vượt ngưỡng đã thống nhất là finding block trên release candidate, không phải warn.
-- Đo lặp lại đủ số lần để loại nhiễu; một lần chạy không kết luận được.
-- Kết quả gắn với dữ liệu quan sát (trace, metric hệ thống) để chỉ ra nút thắt cụ thể: truy vấn nào, khóa nào, hàng đợi nào, GC hay mạng.
-
-## Quy tắc — phía client
-- Hiệu năng giao diện đo bằng Core Web Vitals ở p75 trên thiết bị và mạng thực tế; ngân sách bundle kiểm trong CI (xem `frontend`).
-- Ứng dụng di động đo thời gian tới màn hình dùng được, mức tiêu thụ pin và dữ liệu cho tác vụ nền (xem `mobile`).
 
 ## Checklist (supervisor và human gate dùng để chấm)
 - [ ] Mọi endpoint/màn hình có NFR hiệu năng đều có kịch bản tải tương ứng
@@ -171,52 +147,11 @@ Chỉ tối ưu sau khi đã đo và biết nút thắt ở đâu; tối ưu the
 - [ ] Hồi quy so với bản trước được kiểm và xử lý như finding block
 - [ ] Nút thắt được chỉ ra bằng bằng chứng quan sát, không bằng phỏng đoán
 
-## Ví dụ tốt
-NFR-07: p95 < 300ms tại 200 RPS với 10 triệu đơn. Kịch bản `perf/orders_get.js` (k6), think time 1–3s, id ngẫu nhiên theo phân bố thật; kết quả p95 = 212ms, p99 = 480ms, lỗi 0.02%; soak 2h bộ nhớ phẳng; nút thắt trước đó là truy vấn thiếu index `(tenant_id, created_at)`, đã sửa và ghi baseline `docs/perf/2026-09-02.md`.
-
-## Ví dụ xấu
-"Chạy thử thấy nhanh" — không số, không tải, không cỡ dữ liệu; đo trên bảng rỗng với cùng một `order_id` nên mọi thứ nằm trong cache; báo cáo độ trễ trung bình 40ms trong khi p99 là 6 giây và 4% request lỗi.
-
 # Skill: accessibility
-
-## Tiêu chuẩn tham chiếu
-- WCAG 2.2 AA (bốn nguyên tắc POUR: cảm nhận được, thao tác được, hiểu được, bền vững)
-- ISO 9241-210 (thiết kế lấy người dùng làm trung tâm)
-- EN 301 549 (bắt buộc với hợp đồng khu vực công EU) và Section 508 (Mỹ)
-- ARIA Authoring Practices Guide — mẫu tương tác chuẩn cho từng component
-- WAI-ARIA 1.2: luật thứ nhất là đừng dùng ARIA nếu HTML ngữ nghĩa đã đủ
 
 ## Quy trình (làm đúng thứ tự)
 HTML ngữ nghĩa trước → bàn phím → tên/vai trò/giá trị (accessible name) → tương phản và kích thước → thông báo động (live region) → kiểm tự động (axe) → kiểm thủ công bằng screen reader trên luồng Must.
 Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi thẻ HTML nào đã có sẵn ngữ nghĩa đó.
-
-## Quy tắc — cấu trúc và ngữ nghĩa
-- Dùng phần tử đúng ngữ nghĩa: `button` cho hành động, `a[href]` cho điều hướng, `label` + `input`, `table` có `th[scope]`; `div` gắn `onClick` là lỗi block.
-- Mỗi trang có đúng một `h1`, thứ bậc heading không nhảy cấp, có landmark (`header/nav/main/footer`) và liên kết bỏ qua điều hướng.
-- Khai báo ngôn ngữ (`lang="vi"`); tiêu đề trang duy nhất và mô tả đúng nội dung; đổi route thì đổi title và chuyển focus về đầu vùng nội dung.
-- Mọi phần tử tương tác có accessible name (chữ nhìn thấy, `aria-label`, hoặc `aria-labelledby`); nút chỉ có icon bắt buộc phải có nhãn.
-
-## Quy tắc — bàn phím và focus
-- Toàn bộ luồng Must đi hết được bằng bàn phím, không bẫy focus; thứ tự tab khớp thứ tự đọc; không dùng `tabindex` dương.
-- Focus visible rõ ở mọi theme, tương phản viền focus ≥ 3:1; không `outline: none` nếu chưa có thay thế.
-- Modal/sheet: focus vào bên trong khi mở, giữ focus trong đó, Esc đóng, và trả focus về phần tử đã mở nó.
-- Phím tắt một ký tự phải tắt được hoặc đổi được (WCAG 2.2) và không chiếm phím của screen reader.
-- Nội dung hiện khi hover phải hiện được bằng focus, giữ được và tắt được (WCAG 1.4.13).
-
-## Quy tắc — cảm nhận và trạng thái
-- Tương phản ≥ 4.5:1 cho chữ thường, ≥ 3:1 cho chữ lớn và cho thành phần UI mang thông tin; kiểm ở cả light và dark.
-- Không truyền thông tin chỉ bằng màu, chỉ bằng hình dạng, hay chỉ bằng vị trí; luôn kèm chữ hoặc icon.
-- Target ≥ 24×24 CSS px (WCAG 2.2 AA); trên mobile theo `ui-ux-design` là 44/48; nhỏ hơn thì phải có khoảng đệm không chồng lấn.
-- Zoom 200% và reflow ở 320px không mất nội dung, không cuộn ngang hai chiều; giãn chữ không làm cắt chữ.
-- Mọi màn hình đủ 5 trạng thái (loading, empty, error, success, validation) đều phải đạt AA — trạng thái lỗi là chỗ hay bị bỏ quên nhất.
-- Thay đổi động thông báo qua live region: `aria-live="polite"` cho thông tin, `role="alert"` chỉ cho lỗi chặn; không phát live region theo từng ký tự.
-- Form: label hiển thị, lỗi liên kết bằng `aria-describedby`, `aria-invalid` khi sai; error summary ở đầu form có liên kết tới từng field.
-- Không tự động phát media; không nội dung nháy quá 3 lần mỗi giây; video có phụ đề, audio có bản ghi chữ.
-
-## Quy tắc — kiểm chứng
-- Kiểm tự động (axe/Lighthouse/pa11y trong CI) là sàn, chỉ bắt được khoảng một phần ba vấn đề; 0 lỗi critical/serious là điều kiện cần.
-- Luồng Must phải được kiểm thủ công với ít nhất một screen reader theo nền tảng: NVDA hoặc JAWS (Windows), VoiceOver (macOS/iOS), TalkBack (Android).
-- Ghi kết quả vào review-results với vị trí cụ thể và tiêu chí WCAG bị vi phạm (ví dụ 1.4.3), không ghi nhận xét chung chung.
 
 ## Checklist (supervisor và human gate dùng để chấm)
 - [ ] axe/Lighthouse 0 lỗi critical/serious trong CI
@@ -227,9 +162,3 @@ Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi t
 - [ ] Zoom 200% và reflow 320px không mất nội dung
 - [ ] Đã kiểm thủ công ít nhất một screen reader trên luồng Must, có ghi kết quả
 - [ ] Mỗi finding dẫn chiếu đúng tiêu chí WCAG
-
-## Ví dụ tốt
-Nút chỉ có icon: `<button aria-label="Xóa đơn hàng">` với focus ring tương phản 3:1; lỗi form `<p id="err-card" role="alert">Thẻ bị từ chối. Thử thẻ khác.</p>` và input có `aria-describedby="err-card" aria-invalid="true"`; NVDA đọc đủ nhãn, lỗi và trạng thái.
-
-## Ví dụ xấu
-`<div class="btn" onclick=...>` không focus được; lỗi chỉ tô đỏ viền input, không có chữ; modal mở nhưng focus vẫn ở nền và Esc không đóng; tương phản 3.1:1 vì "nhìn cho dịu mắt".

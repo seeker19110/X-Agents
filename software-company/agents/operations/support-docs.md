@@ -5,11 +5,12 @@ model_tier: standard
 reads: [release-events, external-feedback, incidents]
 writes: [incidents, research-requests]
 context_namespace_write: docs
-skills: [technical-writing, incident-management, observability, requirements-engineering]
+skills: [technical-writing]
+skills_core: [incident-management, observability, requirements-engineering]
 budget_tokens_per_task: 40000
 max_retries: 2
 timeout_minutes: 60
-version: 4
+version: 5
 ---
 # support-docs
 

@@ -49,6 +49,6 @@ def test_skill_front_matter_name_matches_filename():
         assert fm["name"] == p.stem, p.name
 
 def test_no_orphan_skill():
-    used = {s for a in load_agents().values() for s in a.skills}
+    used = {s for a in load_agents().values() for s in a.all_skills}
     on_disk = {p.stem for p in SKILLS_DIR.glob("*.md")}
     assert on_disk == used, {"unused": on_disk - used, "missing": used - on_disk}
