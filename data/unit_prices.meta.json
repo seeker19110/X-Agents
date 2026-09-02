@@ -1,6 +1,0 @@
-{
-  "ngay_hieu_luc": "2026-01-01",
-  "nguon": "Đơn giá tham khảo nội bộ — CHƯA đối chiếu công bố giá của Sở Xây dựng",
-  "vung": "Chưa phân vùng",
-  "ghi_chu": "Cập nhật giá thì sửa cả 'ngay_hieu_luc' ở đây. Trường này là ngày hiệu lực do người cập nhật KHAI BÁO, không phải ngày sửa file — clone git mới sẽ đặt lại thời gian sửa file thành hôm nay, khiến bảng giá cũ trông như vừa cập nhật."
-}
