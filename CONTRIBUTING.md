@@ -18,7 +18,7 @@ Chi tiết, tiêu chí vào/ra và ma trận kiểm thử: [`docs/QUY-TRINH-GIT.
 ## Lệnh kiểm tra chuẩn
 
 ```bash
-cd software-company   # hoặc: cd Studio-creators (phòng ban video, cùng lệnh)
+cd software-company   # hoặc: cd Studio-creators (phòng ban video), cd gateway (proxy xoay vòng tài khoản) — cùng lệnh
 uv sync
 make lint      # ruff + mypy
 make test      # hoặc `make cov` để kèm ngưỡng coverage như CI
