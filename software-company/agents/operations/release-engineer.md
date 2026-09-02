@@ -1,7 +1,7 @@
 ---
 id: release-engineer
 block: operations
-model_tier: strong
+model_tier: standard
 reads: [release-candidates]
 writes: [release-events]
 context_namespace_write: null

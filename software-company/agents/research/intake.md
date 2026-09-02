@@ -1,7 +1,7 @@
 ---
 id: intake
 block: research
-model_tier: standard
+model_tier: light
 reads: [research-requests, clarification-answers, change-requests]
 writes: [research-findings]
 context_namespace_write: null

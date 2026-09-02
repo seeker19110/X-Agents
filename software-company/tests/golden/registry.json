@@ -4,7 +4,7 @@
     "budget_tokens_per_task": 60000,
     "context_namespace_write": "contract",
     "max_retries": 2,
-    "model_tier": "strong",
+    "model_tier": "standard",
     "reads": [
       "approved-specs",
       "release-events",
@@ -64,7 +64,7 @@
     "budget_tokens_per_task": 20000,
     "context_namespace_write": null,
     "max_retries": 2,
-    "model_tier": "standard",
+    "model_tier": "light",
     "reads": [
       "requirements-draft",
       "clarification-answers"
@@ -200,7 +200,7 @@
     "budget_tokens_per_task": 20000,
     "context_namespace_write": null,
     "max_retries": 1,
-    "model_tier": "standard",
+    "model_tier": "light",
     "reads": [
       "research-requests",
       "clarification-answers",
@@ -305,7 +305,7 @@
     "budget_tokens_per_task": 80000,
     "context_namespace_write": null,
     "max_retries": 2,
-    "model_tier": "strong",
+    "model_tier": "standard",
     "reads": [
       "release-candidates"
     ],
@@ -333,7 +333,7 @@
       "design"
     ],
     "max_retries": 1,
-    "model_tier": "strong",
+    "model_tier": "standard",
     "reads": [
       "research-findings",
       "requirements-draft"
@@ -466,7 +466,7 @@
     "budget_tokens_per_task": 40000,
     "context_namespace_write": "knowledge",
     "max_retries": 0,
-    "model_tier": "standard",
+    "model_tier": "light",
     "reads": [
       "audit-log",
       "*"

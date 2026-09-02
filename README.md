@@ -14,9 +14,10 @@ Nguyên tắc chung cho mọi công ty:
 
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 4 human gate, ADR 0001–0018 |
-| [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 4 human gate, ADR 0001–0005 |
+| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 4 human gate, ADR 0001–0019 |
+| [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 4 human gate, ADR 0001–0006 |
 | [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:8100/v1` |
+| [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
 | [`docs/QUY-TRINH-GIT.md`](docs/QUY-TRINH-GIT.md) | Quy trình Git chung: nhánh, commit, PR, CI, merge squash | |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) | Đóng góp và báo lỗi bảo mật | |
 
@@ -35,9 +36,14 @@ cd ../Studio-creators && uv sync && make test && make demo
 
 Chạy model thật: sao chép `llm.example.yaml` → `llm.yaml` trong công ty tương ứng (bị gitignore), hoặc đặt biến môi trường
 `COMPANY_LLM_*` / `STUDIO_LLM_*`. Provider hỗ trợ: `anthropic`, `openai` (mọi server OpenAI-compatible: OpenAI, OpenRouter,
-Ollama, Groq, vLLM, Gemini OpenAI-compat…), `claude-code` (CLI `claude -p` đã đăng nhập trên máy, không cần key — Studio-creators), `fake`.
+Ollama, Groq, vLLM, Gemini OpenAI-compat…), `claude-code` (CLI `claude -p` đã đăng nhập gói Claude trên máy, không cần key), `fake`.
 
-Dùng gateway xoay vòng tài khoản Google (miễn phí theo quota Antigravity):
+**Chạy bằng gói tài khoản, không mua token**: khai nhiều `backends:` trong `llm.yaml` (Claude Pro/Max qua `claude-code`,
+Google Antigravity qua gateway, model local). Mỗi agent có tier `strong` / `standard` / `light`; `routing.prefer` chọn gói
+theo tier (việc nặng đi gói mạnh, việc nhẹ đi gói miễn phí); gói nào hết hạn mức thì tự nghỉ và lượt đó đi gói kế.
+Bảng agent → tier, lý do và chiến lược ưu tiên: [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md).
+
+Bật gateway xoay vòng tài khoản Google (miễn phí theo quota Antigravity):
 
 ```bash
 cd gateway && uv sync
@@ -52,7 +58,7 @@ make setup      # ghi ../software-company/llm.yaml trỏ vào gateway
 topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
         │                              │
         ▼                              ▼
-   sqlite_bus ◄──── orchestrator ──► runner (vòng lặp tool, guard, cắt ngữ cảnh) ──► llm (adapter provider)
+   sqlite_bus ◄──── orchestrator ──► runner (vòng lặp tool, guard, cắt ngữ cảnh) ──► routing → llm (adapter từng gói tài khoản)
         │                 │
         │                 ├── human gate: chờ con người duyệt (gate_cli approve/reject)
         │                 └── supervisor: watchdog, ngân sách token, bài học

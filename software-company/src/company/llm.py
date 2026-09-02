@@ -2,12 +2,19 @@
 biến môi trường hoặc file `llm.yaml`, không hard-code vào code của công ty.
 
 Cấu hình (ưu tiên: biến môi trường > llm.yaml > mặc định):
-    COMPANY_LLM_PROVIDER   anthropic | openai | fake            (openai = mọi server OpenAI-compatible: OpenAI,
-                                                                Ollama, Groq, vLLM, LM Studio, OpenRouter, Azure...)
+    COMPANY_LLM_PROVIDER   anthropic | openai | claude-code | fake
+                           (openai = mọi server OpenAI-compatible: OpenAI, Ollama, Groq, vLLM, LM Studio, OpenRouter,
+                            Azure, ../gateway; claude-code = CLI `claude -p` đã đăng nhập gói Claude trên máy, không key)
     COMPANY_MODEL_STRONG   model cho tier `strong`  (vd. claude-opus-5, gpt-5, llama3.3, qwen2.5-coder)
     COMPANY_MODEL_STANDARD model cho tier `standard`
+    COMPANY_MODEL_LIGHT    model cho tier `light` (rẻ/nhanh; thiếu thì dùng standard)
     COMPANY_LLM_BASE_URL   base URL cho provider openai (vd. http://localhost:11434/v1)
     COMPANY_LLM_API_KEY    key cho provider openai (Anthropic dùng ANTHROPIC_API_KEY / `ant auth login`)
+    COMPANY_LLM_BACKENDS   lọc/sắp thứ tự backend của `backends:` trong llm.yaml (vd. "claude-sub,antigravity")
+
+ADR-0019 — nhiều tài khoản subscription thay vì API: `backends:` trong llm.yaml khai báo từng gói (Claude Max qua
+claude-code, Antigravity qua gateway, model local...) với model theo tier; `routing.py` gộp thành một client, chọn
+backend theo tier và tự chuyển khi một gói hết quota. Không có `backends:` thì `provider`/`models` là một backend duy nhất.
 
 Token trả về là số thật từ `usage` của provider, để runner ghi vào `audit-log.tokens` và supervisor cộng dồn.
 
@@ -38,7 +45,7 @@ from .tools import ToolCall, ToolSpec
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_FILE = ROOT / "llm.yaml"
-TIERS = ("strong", "standard")
+TIERS = ("strong", "standard", "light")   # light: việc cơ học/ngắn (intake, clarifier, supervisor) — model rẻ nhất
 TRANSIENT_HTTP = frozenset({408, 409, 425, 429, 500, 502, 503, 504, 529})
 
 
@@ -105,11 +112,14 @@ def neutral_messages(user: str, messages: list[dict[str, Any]] | None) -> list[d
 @dataclass
 class LLMConfig:
     provider: str = "anthropic"
-    models: dict[str, str] = field(default_factory=lambda: {"strong": "", "standard": ""})
+    models: dict[str, str] = field(default_factory=lambda: {"strong": "", "standard": "", "light": ""})
     base_url: str | None = None
     api_key: str | None = None
     max_tokens: int = 16_000
-    effort: dict[str, str] = field(default_factory=lambda: {"strong": "high", "standard": "medium"})
+    effort: dict[str, str] = field(default_factory=lambda: {"strong": "high", "standard": "medium", "light": "low"})
+    name: str = "default"            # tên backend (ADR-0019), hiện trong ghi chú audit khi xoay
+    backends: list[dict[str, Any]] = field(default_factory=list)   # ADR-0019: mỗi phần tử = một backend, cùng khoá như cấp trên
+    routing: dict[str, Any] = field(default_factory=dict)          # cooldown_s, transient_cooldown_s, prefer{tier: backend}
     extra: dict[str, Any] = field(default_factory=dict)  # tham số provider-specific, truyền thẳng vào request
     retries: int = 3                 # số lần thử lại lỗi transport (0 = tắt)
     retry_base: float = 1.0          # giây; chờ = base × 2^i + jitter, trần 30s
@@ -118,10 +128,36 @@ class LLMConfig:
     budget_usd: float | None = None  # trần chi phí mỗi dự án; supervisor pause dự án khi chạm (None = không giới hạn)
 
     def model_for(self, tier: str) -> str:
-        m = self.models.get(tier) or self.models.get("standard") or ""
+        """light → standard → strong: backend không có model rẻ thì dùng model tầm trung, không bao giờ lùi lên tier cao
+        hơn yêu cầu trừ khi đó là model duy nhất."""
+        m = self.models.get(tier) or self.models.get("standard") or self.models.get("strong") or ""
         if not m:
             raise LLMError(f"chưa cấu hình model cho tier `{tier}` (COMPANY_MODEL_{tier.upper()} hoặc llm.yaml)")
         return m
+
+    def tiers_configured(self) -> frozenset[str]:
+        return frozenset(t for t in TIERS if self.models.get(t))
+
+    def backend_config(self, data: dict[str, Any]) -> LLMConfig:
+        """Cấu hình cho một phần tử `backends:`: thừa kế mọi khoá dùng chung (retry, giá, trần ký tự) từ cấp trên,
+        ghi đè provider / models / base_url / api_key / effort / extra / max_tokens theo phần tử."""
+        cfg = LLMConfig(**{k: v for k, v in self.__dict__.items() if k not in {"backends", "routing"}})
+        cfg.models = dict(self.models) if data.get("inherit_models") else {t: "" for t in TIERS}
+        cfg.effort, cfg.extra = dict(self.effort), dict(self.extra)
+        _apply_yaml(cfg, data)
+        cfg.name = str(data.get("name") or cfg.provider)
+        if data.get("api_key"): cfg.api_key = str(data["api_key"])
+        if data.get("api_key_env"): cfg.api_key = os.environ.get(str(data["api_key_env"]), cfg.api_key)
+        return cfg
+
+
+def _apply_yaml(cfg: LLMConfig, data: dict[str, Any]) -> None:
+    cfg.provider = data.get("provider", cfg.provider)
+    cfg.models.update({k: str(v) for k, v in (data.get("models") or {}).items()})
+    cfg.effort.update(data.get("effort") or {})
+    cfg.base_url = data.get("base_url", cfg.base_url)
+    cfg.max_tokens = int(data.get("max_tokens", cfg.max_tokens))
+    if "extra" in data: cfg.extra = dict(data.get("extra") or {})
 
 
 def load_config(path: Path | None = None) -> LLMConfig:
@@ -129,17 +165,14 @@ def load_config(path: Path | None = None) -> LLMConfig:
     p = path or CONFIG_FILE
     if p.exists():
         data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        cfg.provider = data.get("provider", cfg.provider)
-        cfg.models.update({k: str(v) for k, v in (data.get("models") or {}).items()})
-        cfg.effort.update(data.get("effort") or {})
-        cfg.base_url = data.get("base_url", cfg.base_url)
-        cfg.max_tokens = int(data.get("max_tokens", cfg.max_tokens))
-        cfg.extra = dict(data.get("extra") or {})
+        _apply_yaml(cfg, data)
         cfg.retries = int(data.get("retries", cfg.retries))
         cfg.retry_base = float(data.get("retry_base", cfg.retry_base))
         cfg.max_input_chars = int(data.get("max_input_chars", cfg.max_input_chars))
         cfg.prices = {str(k): {kk: float(vv) for kk, vv in (v or {}).items()} for k, v in (data.get("prices") or {}).items()}
         if data.get("budget_usd") is not None: cfg.budget_usd = float(data["budget_usd"])
+        cfg.backends = [dict(b) for b in (data.get("backends") or []) if isinstance(b, dict)]
+        cfg.routing = dict(data.get("routing") or {})
     env = os.environ
     cfg.provider = env.get("COMPANY_LLM_PROVIDER", cfg.provider)
     for t in TIERS:
@@ -149,6 +182,12 @@ def load_config(path: Path | None = None) -> LLMConfig:
     if env.get("COMPANY_LLM_RETRIES"): cfg.retries = int(env["COMPANY_LLM_RETRIES"])
     if env.get("COMPANY_MAX_INPUT_CHARS"): cfg.max_input_chars = int(env["COMPANY_MAX_INPUT_CHARS"])
     if env.get("COMPANY_BUDGET_USD"): cfg.budget_usd = float(env["COMPANY_BUDGET_USD"])
+    if env.get("COMPANY_LLM_BACKENDS"):
+        wanted = [s.strip() for s in env["COMPANY_LLM_BACKENDS"].split(",") if s.strip()]
+        by_name = {str(b.get("name") or b.get("provider")): b for b in cfg.backends}
+        missing = [w for w in wanted if w not in by_name]
+        if missing: raise LLMError(f"COMPANY_LLM_BACKENDS nhắc backend không có trong llm.yaml: {missing}")
+        cfg.backends = [by_name[w] for w in wanted]
     return cfg
 
 
@@ -210,17 +249,37 @@ class RetryingClient:
         raise TransientError(f"hết {self.retries} lần thử lại: {last}") from last
 
 
-def make_client(cfg: LLMConfig | None = None) -> ModelClient:
-    """Client theo cấu hình, đã bọc retry (trừ fake) và gắn `pricing`, `max_input_chars`, `budget_usd` để runner/
-    supervisor đọc mà không cần biết cấu hình."""
-    cfg = cfg or load_config()
+def _single_client(cfg: LLMConfig) -> Any:
+    """Một backend: adapter theo provider, đã bọc retry (trừ fake)."""
     client: Any
     if cfg.provider == "anthropic": client = AnthropicClient(cfg)
     elif cfg.provider == "openai": client = OpenAICompatClient(cfg)
+    elif cfg.provider == "claude-code": client = ClaudeCodeClient(cfg)
     elif cfg.provider == "fake": client = FakeClient()
-    else: raise LLMError(f"provider lạ: {cfg.provider} (anthropic | openai | fake)")
+    else: raise LLMError(f"provider lạ: {cfg.provider} (anthropic | openai | claude-code | fake)")
     if cfg.provider != "fake" and cfg.retries > 0:
         client = RetryingClient(client, retries=cfg.retries, base=cfg.retry_base)
+    return client
+
+
+def make_client(cfg: LLMConfig | None = None) -> ModelClient:
+    """Client theo cấu hình, đã bọc retry (trừ fake) và gắn `pricing`, `max_input_chars`, `budget_usd` để runner/
+    supervisor đọc mà không cần biết cấu hình. Có `backends:` → `RoutingClient` gộp nhiều gói tài khoản (ADR-0019)."""
+    cfg = cfg or load_config()
+    client: Any
+    if cfg.backends:
+        from .routing import Backend, RoutingClient
+        bs = []
+        for data in cfg.backends:
+            bc = cfg.backend_config(data)
+            bs.append(Backend(name=bc.name, client=_single_client(bc), tiers=bc.tiers_configured(),
+                              supports_tools=bool(data.get("supports_tools", bc.provider != "claude-code"))))
+        r = cfg.routing
+        client = RoutingClient(bs, cooldown_s=float(r.get("cooldown_s", 3600)),
+                               transient_cooldown_s=float(r.get("transient_cooldown_s", 60)),
+                               prefer={str(k): str(v) for k, v in (r.get("prefer") or {}).items()})
+    else:
+        client = _single_client(cfg)
     client.pricing = Pricing(cfg.prices)
     client.max_input_chars = cfg.max_input_chars
     client.budget_usd = cfg.budget_usd
@@ -420,6 +479,75 @@ class OpenAICompatClient:
         return Completion(text=(choice.get("message") or {}).get("content") or "",
                           input_tokens=int(usage.get("prompt_tokens", 0)), output_tokens=int(usage.get("completion_tokens", 0)),
                           model=data.get("model", model), stop_reason=finish, cached_input_tokens=cached, tool_calls=calls)
+
+
+# ---------- provider: Claude Code CLI (gói Claude Pro/Max đã đăng nhập trên máy, không cần API key) ----------
+
+class ClaudeCodeClient:
+    """Gọi `claude -p --output-format json` như một model backend: mỗi lượt là một tiến trình con, không tool của CLI,
+    system prompt qua `--system-prompt`, schema nhúng vào user message (CLI không có structured output).
+    Token thật lấy từ `usage` (input + cache read + cache creation, cùng nghĩa với adapter Anthropic).
+
+    KHÔNG hỗ trợ tool-use của công ty (`tools`): CLI không trả `tool_calls` cho lớp ngoài. Khối kỹ thuật cần tool phải
+    đi backend khác — `RoutingClient` tự bỏ qua backend này khi request có `tools`. Hội thoại nhiều lượt (`messages`)
+    được trải phẳng thành văn bản."""
+
+    def __init__(self, cfg: LLMConfig | None = None, binary: str = "claude", timeout: float = 900.0,
+                 runner: Callable[[list[str]], str] | None = None):
+        import shutil
+        self.cfg = cfg or load_config()
+        self.binary = shutil.which(binary) or binary
+        self.timeout = timeout
+        self._run = runner or self._subprocess  # test thay bằng hàm giả
+
+    def _subprocess(self, args: list[str]) -> str:
+        import subprocess
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                               stdin=subprocess.DEVNULL, timeout=self.timeout)
+        except FileNotFoundError as e:
+            raise LLMError(f"không tìm thấy `{self.binary}` (cài Claude Code hoặc đổi provider)") from e
+        except subprocess.TimeoutExpired as e:
+            raise TransientError(f"claude -p quá {self.timeout}s") from e
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout)[-500:]
+            if any(s in err.lower() for s in ("limit", "rate", "overloaded", "529", "503")):
+                raise TransientError(f"claude -p thoát mã {r.returncode}: {err}")
+            raise LLMError(f"claude -p thoát mã {r.returncode}: {err}")
+        return r.stdout
+
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
+                 messages: list[dict[str, Any]] | None = None) -> Completion:
+        if tools:
+            raise LLMError("claude-code không hỗ trợ tool-use; agent cần tool phải đi backend anthropic/openai")
+        model = self.cfg.model_for(model_tier)
+        msgs = neutral_messages(user, messages)
+        prompt = msgs[0]["content"] if len(msgs) == 1 else "\n\n".join(f"[{m['role']}]\n{m.get('content') or ''}" for m in msgs)
+        hint = "\n\n# JSON Schema bắt buộc cho câu trả lời\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
+        args = [self.binary, "-p", "--output-format", "json", "--model", model, "--tools", "", "--max-turns", "1",
+                "--system-prompt", system, prompt + hint]
+        out = self._run(args)
+        try:
+            data = json.loads(out[out.index("{"):]) if "{" in out else {}
+        except json.JSONDecodeError as e:
+            raise LLMError(f"claude -p trả về không phải JSON: {out[:300]}") from e
+        if not isinstance(data, dict) or "result" not in data:
+            raise LLMError(f"claude -p thiếu trường result: {out[:300]}")
+        if data.get("is_error"):
+            msg = str(data.get("result"))[:300]
+            if any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")):
+                raise TransientError(f"claude -p lỗi: {msg}")
+            raise LLMError(f"claude -p lỗi: {msg}")
+        if data.get("stop_reason") == "refusal":
+            raise Refused("model từ chối")
+        u = data.get("usage") or {}
+        read = int(u.get("cache_read_input_tokens", 0) or 0); write = int(u.get("cache_creation_input_tokens", 0) or 0)
+        used = next(iter((data.get("modelUsage") or {}).keys()), model)
+        return Completion(text=str(data["result"]), input_tokens=int(u.get("input_tokens", 0) or 0) + read + write,
+                          output_tokens=int(u.get("output_tokens", 0) or 0), model=used,
+                          stop_reason=str(data.get("stop_reason") or "end_turn"), cached_input_tokens=read,
+                          cache_write_tokens=write)
 
 
 # ---------- provider: giả (test / eval offline) ----------

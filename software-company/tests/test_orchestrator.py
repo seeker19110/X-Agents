@@ -132,7 +132,7 @@ def test_full_lifecycle_stops_at_gates_and_humans():
     assert all(a["tokens"] == 1300 for a in audits if a["action"].startswith("produced:")), "token thật từ client"
     assert orch.stats["errors"] == 0 and not orch.queue
     tiers = {c["model_tier"] for c in client.calls}
-    assert tiers == {"strong", "standard"}, "model theo tier của từng agent"
+    assert tiers == {"strong", "standard", "light"}, "model theo tier của từng agent (ADR-0019)"
 
 
 # ---------- khôi phục từ bus bền vững ----------

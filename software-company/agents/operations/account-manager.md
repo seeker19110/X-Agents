@@ -1,7 +1,7 @@
 ---
 id: account-manager
 block: operations
-model_tier: strong
+model_tier: standard
 reads: [approved-specs, release-events, external-feedback, acceptance-results]
 writes: [change-requests, acceptance-results, research-requests]
 context_namespace_write: contract
