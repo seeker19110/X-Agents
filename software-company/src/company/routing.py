@@ -29,7 +29,7 @@ QUOTA_PATTERNS = re.compile(
     r"429|402|quota|rate.?limit|resource_exhausted|usage limit|hit your limit|limit reached|exhausted|cooldown|"
     r"insufficient|billing|thử lại sau|overloaded|529", re.IGNORECASE)
 RETRY_AFTER_PATTERNS = (re.compile(r"retry.?after[:\s]+(\d+)", re.IGNORECASE),
-                        re.compile(r"thử lại sau\s+(\d+)\s*s", re.IGNORECASE),
+                        re.compile(r"thử lại sau(?: khoảng)?\s+(\d+)\s*s", re.IGNORECASE),
                         re.compile(r"resets? in\s+(\d+)\s*s", re.IGNORECASE))
 MISSING_PATTERNS = re.compile(r"không tìm thấy|not found|no such file|chưa cấu hình model|chưa có tài khoản|pool trống", re.IGNORECASE)
 

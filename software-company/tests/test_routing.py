@@ -108,6 +108,7 @@ def test_quota_classifier():
     assert is_quota_error(LLMError("You've hit your limit · resets 3pm"))
     assert not is_quota_error(LLMError("đầu ra không phải JSON"))
     assert retry_after_seconds("mọi tài khoản đều cooldown, thử lại sau 77s") == 77
+    assert retry_after_seconds("Mọi tài khoản Antigravity đều đang cooldown hoặc hết hạn. Thử lại sau khoảng 77s.") == 77   # câu thật của gateway
     assert retry_after_seconds("Retry-After: 30") == 30 and retry_after_seconds("no hint") is None
 
 
