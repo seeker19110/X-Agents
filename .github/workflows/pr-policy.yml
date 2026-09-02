@@ -1,0 +1,23 @@
+name: PR policy
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+jobs:
+  # TÊN `metadata` LÀ BẤT BIẾN (required status check của branch protection `main`).
+  metadata:
+    name: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tiêu đề PR theo Conventional Commits
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|refactor|docs|test|chore|style|perf|build|ci|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          if ! printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "Tiêu đề PR sai quy ước: $TITLE" >&2
+            echo "Mẫu đúng: feat(software-company): thêm cổng eval" >&2
+            echo "Lưu ý: scope chỉ nhận chữ thường." >&2
+            exit 1
+          fi
