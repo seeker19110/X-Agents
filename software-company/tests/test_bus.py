@@ -1,6 +1,7 @@
 import pytest
-from company.bus import InMemoryBus, BusError, PermissionDenied
+from company.bus import BusError, InMemoryBus, PermissionDenied
 from company.events import Envelope, Task
+
 
 def test_publish_valid_task():
     bus = InMemoryBus()

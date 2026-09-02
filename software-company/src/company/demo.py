@@ -1,11 +1,13 @@
 """Chạy thử một ticket qua toàn bộ vòng lõi bằng logic xác định (không gọi LLM)."""
 from __future__ import annotations
-from .bus import InMemoryBus
+
 from .blackboard import Blackboard
-from .events import Envelope, Task, PullRequest, ReviewResult, AuditLog
-from .gates import HumanGate, GateRequest
-from .supervisor import Supervisor
+from .bus import InMemoryBus
 from .delivery import DeliveryLead
+from .events import AuditLog, Envelope, PullRequest, ReviewResult, Task
+from .gates import GateRequest, HumanGate
+from .supervisor import Supervisor
+
 
 def run() -> None:
     bus = InMemoryBus(); bb = Blackboard(bus); gate = HumanGate(); sup = Supervisor(bus)

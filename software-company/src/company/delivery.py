@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 from collections import defaultdict
+
 from .bus import InMemoryBus
-from .events import Envelope, Task, ReviewResult, can_transition
-from .gates import HumanGate, GateRequest
+from .events import Envelope, ReviewResult, Task, can_transition
+from .gates import GateRequest, HumanGate
+
 
 class DeliveryLead:
     """Logic xác định của delivery-lead: dispatch, gom review, retry, release candidate.

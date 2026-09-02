@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+
 from .bus import InMemoryBus
-from .events import Envelope, SupervisorAction, AuditLog, Task, NAMESPACE_OWNERS
+from .events import NAMESPACE_OWNERS, AuditLog, Envelope, SupervisorAction, Task
+
 
 @dataclass
 class Budget:

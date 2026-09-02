@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
+
 from company.bus import InMemoryBus
-from company.events import Envelope, Task, AuditLog, ReviewResult
+from company.events import AuditLog, Envelope, ReviewResult, Task
 from company.supervisor import Supervisor
+
 
 def _task(retry=0, budget=1000):
     return Task(ticket_id="T1", project_id="P", requirement_id="R1", assignee="backend", title="x", acceptance=["a"], retry=retry, budget_tokens=budget)

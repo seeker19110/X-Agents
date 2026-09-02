@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from .bus import InMemoryBus
 from .events import Envelope, SharedContext
+
 
 class Blackboard:
     """Đọc/ghi shared-context. Ghi đi qua bus nên được kiểm quyền owner."""

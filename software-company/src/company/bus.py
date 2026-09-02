@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 import json
 from collections import defaultdict
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Callable, Iterable
+
 from pydantic import ValidationError
-from .events import Envelope, PAYLOAD_MODELS, NAMESPACE_OWNERS
+
+from .events import NAMESPACE_OWNERS, PAYLOAD_MODELS, Envelope
 
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "topics" / "schemas"
 

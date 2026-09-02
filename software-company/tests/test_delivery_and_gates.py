@@ -1,8 +1,9 @@
 import pytest
 from company.bus import InMemoryBus
-from company.events import Envelope, Task, PullRequest, ReviewResult
-from company.gates import HumanGate, GateRequest
 from company.delivery import DeliveryLead
+from company.events import Envelope, PullRequest, ReviewResult, Task
+from company.gates import GateRequest, HumanGate
+
 
 def _setup():
     bus = InMemoryBus(); gate = HumanGate(); lead = DeliveryLead(bus, gate)

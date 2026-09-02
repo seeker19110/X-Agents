@@ -1,12 +1,14 @@
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 AGENTS_DIR, SKILLS_DIR = ROOT / "agents", ROOT / "skills"
-_FM = re.compile(r"^---\n(.*?)\n---\n", re.S)
+_FM = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
 @dataclass
 class AgentSpec:
