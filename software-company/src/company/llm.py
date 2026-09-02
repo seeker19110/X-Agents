@@ -10,6 +10,14 @@ Cấu hình (ưu tiên: biến môi trường > llm.yaml > mặc định):
     COMPANY_LLM_API_KEY    key cho provider openai (Anthropic dùng ANTHROPIC_API_KEY / `ant auth login`)
 
 Token trả về là số thật từ `usage` của provider, để runner ghi vào `audit-log.tokens` và supervisor cộng dồn.
+
+ADR-0012:
+- `TransientError` (mạng, 408/409/429/5xx) được `RetryingClient` thử lại với backoff mũ + jitter (`retries` trong
+  llm.yaml / COMPANY_LLM_RETRIES, mặc định 3); lỗi nội dung (JSON hỏng, schema sai, từ chối) KHÔNG retry — vẫn là
+  việc của delivery-lead/supervisor. Hết retry thì orchestrator hoãn event để nhịp sau thử lại, không tính lỗi agent.
+- `Pricing` quy token ra USD theo bảng `prices` (USD / 1M token, khớp theo tiền tố tên model); model không có giá → 0
+  và đánh dấu `unpriced` để không ai tưởng là miễn phí.
+- `max_input_chars` là trần ký tự cho prompt (system + đầu vào + blackboard), runner cắt theo `context.py`.
 """
 from __future__ import annotations
 
@@ -31,33 +39,14 @@ from .tools import ToolCall, ToolSpec
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_FILE = ROOT / "llm.yaml"
 TIERS = ("strong", "standard")
+TRANSIENT_HTTP = frozenset({408, 409, 425, 429, 500, 502, 503, 504, 529})
 
 
 class LLMError(Exception): ...
 class Refused(LLMError):
     """Model từ chối trả lời. Không retry mù; để supervisor escalate."""
-
-
-class Transient(LLMError):
-    """Lỗi tạm thời của provider (429, 5xx, đứt mạng): retry có backoff thì qua được, không phải lỗi của prompt."""
-
-
-MAX_ATTEMPTS = 4       # tổng số lần gọi cho một request (1 lần đầu + 3 lần thử lại)
-BACKOFF_BASE = 1.0     # giây; lần thử thứ n chờ BACKOFF_BASE * 2**(n-1) cộng jitter
-
-
-def with_retry(call: Callable[[], Any], attempts: int = MAX_ATTEMPTS, sleep: Callable[[float], None] = time.sleep) -> Any:
-    """Gọi lại khi provider trả lỗi tạm thời. `Refused` và lỗi cấu hình KHÔNG retry: gọi lại cũng vậy thôi,
-    chỉ tốn token. Hết lượt thì ném `Transient` cuối cùng để runner ghi audit và supervisor escalate."""
-    last: Exception | None = None
-    for n in range(1, attempts + 1):
-        try:
-            return call()
-        except Transient as e:
-            last = e
-            if n == attempts: break
-            sleep(BACKOFF_BASE * 2 ** (n - 1) * (1 + random.random() * 0.1))
-    raise last  # type: ignore[misc]
+class TransientError(LLMError):
+    """Lỗi vận chuyển (mạng, quá tải, rate limit): thử lại được, không phải lỗi của agent."""
 
 
 @dataclass
@@ -122,6 +111,11 @@ class LLMConfig:
     max_tokens: int = 16_000
     effort: dict[str, str] = field(default_factory=lambda: {"strong": "high", "standard": "medium"})
     extra: dict[str, Any] = field(default_factory=dict)  # tham số provider-specific, truyền thẳng vào request
+    retries: int = 3                 # số lần thử lại lỗi transport (0 = tắt)
+    retry_base: float = 1.0          # giây; chờ = base × 2^i + jitter, trần 30s
+    max_input_chars: int = 120_000   # trần ký tự prompt (≈ 37k token); runner cắt payload/blackboard theo context.py
+    prices: dict[str, dict[str, float]] = field(default_factory=dict)  # model (tiền tố) → {input, output, cached_input, cache_write} USD/1M
+    budget_usd: float | None = None  # trần chi phí mỗi dự án; supervisor pause dự án khi chạm (None = không giới hạn)
 
     def model_for(self, tier: str) -> str:
         m = self.models.get(tier) or self.models.get("standard") or ""
@@ -141,21 +135,96 @@ def load_config(path: Path | None = None) -> LLMConfig:
         cfg.base_url = data.get("base_url", cfg.base_url)
         cfg.max_tokens = int(data.get("max_tokens", cfg.max_tokens))
         cfg.extra = dict(data.get("extra") or {})
+        cfg.retries = int(data.get("retries", cfg.retries))
+        cfg.retry_base = float(data.get("retry_base", cfg.retry_base))
+        cfg.max_input_chars = int(data.get("max_input_chars", cfg.max_input_chars))
+        cfg.prices = {str(k): {kk: float(vv) for kk, vv in (v or {}).items()} for k, v in (data.get("prices") or {}).items()}
+        if data.get("budget_usd") is not None: cfg.budget_usd = float(data["budget_usd"])
     env = os.environ
     cfg.provider = env.get("COMPANY_LLM_PROVIDER", cfg.provider)
     for t in TIERS:
         if env.get(f"COMPANY_MODEL_{t.upper()}"): cfg.models[t] = env[f"COMPANY_MODEL_{t.upper()}"]
     cfg.base_url = env.get("COMPANY_LLM_BASE_URL", cfg.base_url)
     cfg.api_key = env.get("COMPANY_LLM_API_KEY", cfg.api_key)
+    if env.get("COMPANY_LLM_RETRIES"): cfg.retries = int(env["COMPANY_LLM_RETRIES"])
+    if env.get("COMPANY_MAX_INPUT_CHARS"): cfg.max_input_chars = int(env["COMPANY_MAX_INPUT_CHARS"])
+    if env.get("COMPANY_BUDGET_USD"): cfg.budget_usd = float(env["COMPANY_BUDGET_USD"])
     return cfg
 
 
+# ---------- giá tiền ----------
+
+class Pricing:
+    """USD cho một Completion theo bảng giá (USD / 1M token). Khớp tên model theo tiền tố dài nhất, không phân biệt hoa
+    thường (`claude-opus-5` khớp `claude-opus-5-20260101`). Không có giá → (0.0, priced=False)."""
+
+    def __init__(self, prices: dict[str, dict[str, float]] | None = None):
+        self.prices = {k.lower(): v for k, v in (prices or {}).items()}
+
+    def rate(self, model: str) -> dict[str, float] | None:
+        m = (model or "").lower()
+        best = max((k for k in self.prices if m.startswith(k)), key=len, default=None)
+        return self.prices.get(best) if best else None
+
+    def cost(self, c: Completion) -> tuple[float, bool]:
+        r = self.rate(c.model)
+        if not r: return 0.0, False
+        inp, out = float(r.get("input", 0.0)), float(r.get("output", 0.0))
+        cached_rate = float(r.get("cached_input", inp / 10))
+        write_rate = float(r.get("cache_write", inp))
+        fresh = max(c.input_tokens - c.cached_input_tokens - c.cache_write_tokens, 0)
+        usd = (fresh * inp + c.cached_input_tokens * cached_rate + c.cache_write_tokens * write_rate + c.output_tokens * out) / 1e6
+        return round(usd, 6), True
+
+
+# ---------- retry lỗi transport ----------
+
+class RetryingClient:
+    """Bọc một ModelClient: thử lại `TransientError` với backoff mũ + jitter; lỗi khác đi thẳng. `drain_retries()` trả
+    về (và xoá) ghi chú các lần thử lại từ lần gọi trước để runner ghi audit `llm_retry`."""
+
+    def __init__(self, inner: ModelClient, retries: int = 3, base: float = 1.0, max_wait: float = 30.0,
+                 sleep: Callable[[float], None] = time.sleep):
+        self.inner, self.retries, self.base, self.max_wait, self.sleep = inner, retries, base, max_wait, sleep
+        self.notes: list[str] = []
+
+    def drain_retries(self) -> list[str]:
+        n, self.notes = self.notes, []
+        return n
+
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
+                 messages: list[dict[str, Any]] | None = None) -> Completion:
+        last: TransientError | None = None
+        for i in range(self.retries + 1):
+            try:
+                return self.inner.complete(system=system, user=user, schema=schema, model_tier=model_tier,
+                                           cache_key=cache_key, tools=tools, messages=messages)
+            except TransientError as e:
+                last = e
+                if i >= self.retries: break
+                wait = min(self.base * (2 ** i), self.max_wait) * (1 + random.random() * 0.25)
+                self.notes.append(f"lần {i + 1}: {str(e)[:120]} → chờ {wait:.1f}s")
+                self.sleep(wait)
+        assert last is not None
+        raise TransientError(f"hết {self.retries} lần thử lại: {last}") from last
+
+
 def make_client(cfg: LLMConfig | None = None) -> ModelClient:
+    """Client theo cấu hình, đã bọc retry (trừ fake) và gắn `pricing`, `max_input_chars`, `budget_usd` để runner/
+    supervisor đọc mà không cần biết cấu hình."""
     cfg = cfg or load_config()
-    if cfg.provider == "anthropic": return AnthropicClient(cfg)
-    if cfg.provider == "openai": return OpenAICompatClient(cfg)
-    if cfg.provider == "fake": return FakeClient()
-    raise LLMError(f"provider lạ: {cfg.provider} (anthropic | openai | fake)")
+    client: Any
+    if cfg.provider == "anthropic": client = AnthropicClient(cfg)
+    elif cfg.provider == "openai": client = OpenAICompatClient(cfg)
+    elif cfg.provider == "fake": client = FakeClient()
+    else: raise LLMError(f"provider lạ: {cfg.provider} (anthropic | openai | fake)")
+    if cfg.provider != "fake" and cfg.retries > 0:
+        client = RetryingClient(client, retries=cfg.retries, base=cfg.retry_base)
+    client.pricing = Pricing(cfg.prices)
+    client.max_input_chars = cfg.max_input_chars
+    client.budget_usd = cfg.budget_usd
+    return client
 
 
 def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -187,15 +256,13 @@ def anthropic_input_tokens(usage: Any) -> tuple[int, int, int]:
 class AnthropicClient:
     """Claude qua SDK chính thức: streaming, adaptive thinking, structured output theo JSON Schema."""
 
-    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0, attempts: int = MAX_ATTEMPTS,
-                 sleep: Callable[[float], None] = time.sleep):
+    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0):
         try:
             import anthropic
         except ImportError as e:  # pragma: no cover
             raise RuntimeError("cài SDK: uv sync --extra anthropic") from e
         self.cfg = cfg or load_config()
         self._anthropic = anthropic
-        self.attempts, self.sleep = attempts, sleep
         # Không có timeout thì một request treo giữ luôn cả orchestrator (vòng lặp tuần tự, một tiến trình).
         self._client = anthropic.Anthropic(timeout=timeout)
 
@@ -232,18 +299,15 @@ class AnthropicClient:
         )
         if tools:
             kwargs["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools]
-        def once():
-            try:
-                with self._client.messages.stream(**kwargs) as stream:
-                    return stream.get_final_message()
-            except self._anthropic.APIConnectionError as e:
-                raise Transient(f"lỗi mạng: {e}") from e
-            except self._anthropic.APIStatusError as e:
-                if e.status_code == 429 or e.status_code >= 500:
-                    raise Transient(f"API {e.status_code}: {e.message}") from e
-                raise LLMError(f"API {e.status_code}: {e.message}") from e
-
-        msg = with_retry(once, attempts=self.attempts, sleep=self.sleep)
+        try:
+            with self._client.messages.stream(**kwargs) as stream:
+                msg = stream.get_final_message()
+        except self._anthropic.APIConnectionError as e:
+            raise TransientError(f"lỗi mạng: {e}") from e
+        except self._anthropic.APIStatusError as e:
+            if e.status_code in TRANSIENT_HTTP:
+                raise TransientError(f"API {e.status_code}: {e.message}") from e
+            raise LLMError(f"API {e.status_code}: {e.message}") from e
         if msg.stop_reason == "refusal":
             raise Refused(f"model từ chối: {getattr(getattr(msg, 'stop_details', None), 'category', None)}")
         text = next((b.text for b in msg.content if b.type == "text"), "")
@@ -260,10 +324,8 @@ class OpenAICompatClient:
     """POST {base_url}/chat/completions. Dùng `response_format: json_schema` nếu server hỗ trợ; nếu server từ chối
     (400) thì lùi về `json_object` + schema nhúng trong prompt. Chạy với OpenAI, Ollama, Groq, vLLM, LM Studio..."""
 
-    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0, attempts: int = MAX_ATTEMPTS,
-                 sleep: Callable[[float], None] = time.sleep):
+    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0):
         self.cfg = cfg or load_config()
-        self.attempts, self.sleep = attempts, sleep
         self.base_url = (self.cfg.base_url or "https://api.openai.com/v1").rstrip("/")
         self.api_key = self.cfg.api_key or os.environ.get("OPENAI_API_KEY", "")
         self.timeout = timeout
@@ -271,12 +333,6 @@ class OpenAICompatClient:
         self._cache_key_ok: bool | None = None
 
     def _post(self, body: dict[str, Any]) -> dict[str, Any]:
-        def send():
-            return self._send(body)
-
-        return with_retry(send, attempts=self.attempts, sleep=self.sleep)
-
-    def _send(self, body: dict[str, Any]) -> dict[str, Any]:
         req = urllib.request.Request(f"{self.base_url}/chat/completions", data=json.dumps(body).encode("utf-8"),
                                      headers={"Content-Type": "application/json",
                                               **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {})})
@@ -284,12 +340,10 @@ class OpenAICompatClient:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", "replace")[:500]
-            if e.code == 429 or e.code >= 500:
-                raise Transient(f"HTTP {e.code}: {detail}") from e
-            raise LLMError(f"HTTP {e.code}: {detail}") from e
+            msg = f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:500]}"
+            raise (TransientError if e.code in TRANSIENT_HTTP else LLMError)(msg) from e
         except (urllib.error.URLError, TimeoutError) as e:
-            raise Transient(f"lỗi mạng: {getattr(e, 'reason', e)}") from e
+            raise TransientError(f"lỗi mạng: {getattr(e, 'reason', e)}") from e
 
     def _post_cacheable(self, body: dict[str, Any]) -> dict[str, Any]:
         """Như `_post`, nhưng nếu server từ chối vì không biết `prompt_cache_key` thì gỡ ra và thôi gửi từ lần sau.

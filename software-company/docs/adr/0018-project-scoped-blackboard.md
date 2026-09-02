@@ -1,4 +1,4 @@
-# ADR-0012: Blackboard phân vùng theo dự án
+# ADR-0018: Blackboard phân vùng theo dự án
 
 Trạng thái: Accepted · Ngày: 2026-09-02
 

@@ -71,6 +71,7 @@ class Task(BaseModel):
     estimate_tokens: int | None = None
     budget_tokens: int = 120_000
     risk_tags: list[str] = []
+    budget_usd: float | None = None  # trần chi phí tiền của ticket (tuỳ chọn); supervisor cắt khi chạm, ngoài budget_tokens
     priority: int = 3  # 1 = cao nhất (WSJF/MoSCoW quy về 1..5); delivery-lead dispatch theo priority rồi thứ tự tạo
 
 class PullRequest(BaseModel):
@@ -101,6 +102,7 @@ class SharedContext(BaseModel):
     content_ref: str
     summary: str = ""
     project_id: str | None = None  # None = phạm vi toàn công ty (vd. knowledge); dự án khác nhau không ghi đè nhau
+    content: str | None = None  # toàn văn artifact; bus là nguồn sự thật, artifact store chỉ mirror ra file cho người đọc
 
 class AuditLog(BaseModel):
     actor: str
@@ -109,6 +111,7 @@ class AuditLog(BaseModel):
     project_id: str | None = None
     evidence: str | None = None
     tokens: int = 0
+    cost_usd: float = 0.0  # từ bảng giá `prices` trong llm.yaml; 0 khi model không có giá (supervisor đếm `unpriced`)
 
 class ChangeRequest(BaseModel):
     """Khách yêu cầu đổi phạm vi sau khi spec đã duyệt (account-manager tạo). Không sửa spec trực tiếp."""

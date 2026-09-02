@@ -55,6 +55,13 @@
             "null"
           ],
           "description": "null = toàn công ty (knowledge)"
+        },
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "toàn văn artifact (markdown/yaml); bus là nguồn sự thật, artifact store chỉ là bản mirror ra file"
         }
       },
       "required": [

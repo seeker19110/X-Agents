@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -17,9 +18,13 @@ class PermissionDenied(BusError): ...
 
 class InMemoryBus:
     """Bus tối giản: partition theo key, validate payload, subscriber theo topic.
-    Thay bằng Redis Streams / Kafka bằng cách giữ nguyên interface publish/subscribe/replay."""
+    Thay bằng Redis Streams / Kafka bằng cách giữ nguyên interface publish/subscribe/replay.
+
+    `publish` giữ một RLock: subscriber (delivery-lead, supervisor, orchestrator) chạy tuần tự dù nhiều thread gọi
+    model song song (ADR-0012); handler được phép publish lồng nhau (RLock)."""
 
     def __init__(self, enforce_owners: bool = True):
+        self._lock = threading.RLock()
         self._log: list[Envelope] = []
         self._subs: dict[str, list[Callable[[Envelope], None]]] = defaultdict(list)
         self.enforce_owners = enforce_owners
@@ -58,16 +63,19 @@ class InMemoryBus:
             ns = env.payload["namespace"]
             if env.actor not in NAMESPACE_OWNERS.get(ns, set()):
                 raise PermissionDenied(f"{env.actor} không được ghi namespace {ns}")
-        self._log.append(env)
-        for fn in list(self._subs.get(env.topic, [])) + list(self._subs.get("*", [])):
-            fn(env)
+        with self._lock:
+            self._log.append(env)
+            for fn in list(self._subs.get(env.topic, [])) + list(self._subs.get("*", [])):
+                fn(env)
         return env
 
     def subscribe(self, topic: str, fn: Callable[[Envelope], None]) -> None:
         self._subs[topic].append(fn)
 
     def replay(self, topic: str | None = None, key: str | None = None) -> Iterable[Envelope]:
-        for e in self._log:
+        with self._lock:
+            snapshot = list(self._log)  # thread khác có thể publish trong lúc duyệt
+        for e in snapshot:
             if (topic is None or e.topic == topic) and (key is None or e.key == key):
                 yield e
 

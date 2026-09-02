@@ -50,6 +50,10 @@
         },
         "tokens": {
           "type": "integer"
+        },
+        "cost_usd": {
+          "type": "number",
+          "description": "chi phí USD tính từ bảng giá trong llm.yaml (0 nếu model không có giá)"
         }
       },
       "required": [

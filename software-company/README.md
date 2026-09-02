@@ -31,16 +31,18 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0017)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0018)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
 gates/         checklist human gate
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
 topics/        18 JSON Schema topic + bảng owner namespace
-src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard,
-               llm (ModelClient + adapter, tool-use), runner (vòng lặp tool), orchestrator (vòng lặp tự động),
-               workspace (worktree), tools (tool có ranh giới tin cậy), evals (ghi/phát lại), graph
+src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard (artifact store),
+               llm (ModelClient + adapter, tool-use, retry, bảng giá), runner (vòng lặp tool, guard, cắt ngữ cảnh),
+               orchestrator (vòng lặp tự động, song song, người can thiệp), workspace (worktree), tools (tool có ranh
+               giới tin cậy), web (tool web cho researcher), guard (chống injection), context (hạn mức ngữ cảnh),
+               metrics (từ audit-log), evals (ghi/phát lại), graph
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
 tests/         pytest (bus, registry↔events nhất quán, delivery+gates, supervisor, orchestrator, golden 20 agent)
 ```
@@ -68,8 +70,13 @@ PYTHONPATH=src uv run python -m company.orchestrator run --repo ../khach --base 
 PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release
 PYTHONPATH=src uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 PYTHONPATH=src uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
-PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard
-PYTHONPATH=src uv run python -m company.orchestrator report              # estimate vs actual, hành động supervisor
+PYTHONPATH=src uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
+PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard, chi phí
+PYTHONPATH=src uv run python -m company.orchestrator report              # estimate vs actual, chi phí USD theo agent/model, hành động supervisor
+PYTHONPATH=src uv run python -m company.orchestrator metrics [--prometheus]   # hoặc: make metrics [PROM=1] — gọi/token/USD/thời gian
+PYTHONPATH=src uv run python -m company.orchestrator show prd            # toàn văn artifact mới nhất (mirror ở company.artifacts/)
+PYTHONPATH=src uv run python -m company.orchestrator comment T1 --by human:lead --text "dùng hàm add có sẵn"   # hint giữa vòng, không tính retry
+PYTHONPATH=src uv run python -m company.orchestrator takeover T1 --by human:lead   # người sửa tay trong .worktrees/T1 → lint/test → PR dưới tên người
 PYTHONPATH=src uv run python -m company.gate_cli list          # hoặc: make gate
 PYTHONPATH=src uv run python -m company.evals reviewer         # hoặc: make eval AGENT=reviewer (model thật)
 PYTHONPATH=src uv run python -m company.evals reviewer --record   # make eval-record AGENT=reviewer — sau khi đổi prompt/skill
@@ -84,11 +91,13 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   Rồi `make eval-record AGENT=<id>` bằng model thật và commit `evals/recordings/<id>.json`; CI phát lại và đỏ nếu bản ghi lệch prompt (ADR-0010).
 - PR của khối kỹ thuật chỉ có bằng chứng khi chạy với `--repo`: `local_checks.verified_by=workspace` do code điền từ lint/test thật; không có repo thì `{"unverified": true}`.
 - Mỗi PR có rollback plan, observability, license của dependency mới (`templates/pull_request.md`).
+- Agent sở hữu namespace phải ghi TOÀN VĂN artifact vào `context_writes[].content` (schema bắt buộc); chỉ có con trỏ thì audit `context_no_content`.
+- Điền bảng `prices` trong `llm.yaml` cho model đang dùng; lời gọi không có giá bị đếm ở `unpriced_calls`, không được coi là miễn phí.
 
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0017; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0018; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -124,41 +133,57 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Vòng học đóng**: `Supervisor.calibration()` (median actual/estimate theo assignee, đọc từ bus) đi vào đầu vào của
   delivery-lead mỗi lần lập kế hoạch; `sprint_report` có `rework_rate`, `review_catch_rate`, `prs_unverified`;
   kế hoạch có `depends_on` vòng bị từ chối trước gate.
+- **Blackboard có toàn văn + artifact store** (ADR-0012): `shared-context.content` mang cả PRD/C4/OpenAPI/threat model
+  qua bus (nguồn sự thật), mirror ra `<db>.artifacts/<namespace>/v<n>.<ext>` + `latest.<ext>` (`--artifacts`, `show`);
+  agent hạ nguồn đọc toàn văn trong prompt, agent chủ namespace bị schema ép trả `content`.
+- **Ngữ cảnh có hạn mức** (`context.py`): `max_input_chars` (llm.yaml / `COMPANY_MAX_INPUT_CHARS`); payload ưu tiên,
+  chuỗi dài nhất cắt giữa có nhãn, blackboard chia water-filling, nhãn cắt chỉ đường dẫn artifact; audit `context_trimmed`.
+- **Guard injection theo nguồn** (`guard.py`): regex Anh/Việt; nguồn nội bộ khớp → từ chối; nguồn ngoài (khách, web)
+  và trường không tin cậy (`diff`, `text`) → thay bằng `[đã lọc]`, đi tiếp, audit `injection_sanitized`.
+- **Retry lỗi transport** (`RetryingClient`): mạng/408/429/5xx thử lại backoff mũ (`retries`, `retry_base`), audit
+  `llm_retry`; lỗi nội dung không retry. Hết retry → orchestrator hoãn event (`transient:`), nhịp sau thử lại, agent đã
+  xong không chạy lại; `stats.transient` tách khỏi `stats.errors`.
+- **Ngân sách tiền**: bảng `prices` (USD/1M token, khớp tiền tố model, giá cache) → `audit-log.cost_usd`; supervisor
+  warn/cut theo `Task.budget_usd`, pause cả dự án theo `budget_usd`; `report` có `cost_by_agent`, `cost_by_model`,
+  `project_cost_usd`, `unpriced_calls`.
+- **Tool cho researcher**: đọc repo khách chỉ đọc (không `run`, không ghi) + `web_search`/`fetch_url` khi `--web`
+  (chỉ http/https công khai, chặn host nội bộ, bóc HTML, lọc injection, URL vào audit; `COMPANY_SEARCH_URL` cho SearXNG).
+- **Chạy song song** `--workers N` trong một tiến trình: bus có RLock, phần xác định vẫn tuần tự; event đổi trạng thái
+  chung (gate, plan, RC, clarifier) chạy một mình.
+- **Metrics** (`metrics.py`, `orchestrator metrics [--prometheus]`): gọi/token/USD/thời gian/cache/tool theo agent, model,
+  ticket, dự án; sự kiện sức khoẻ; thời gian chờ gate; lead time ticket; xuất Prometheus text.
+- **Người can thiệp giữa vòng**: `comment` (hint cho ticket đang chạy, không tính retry), `takeover` (người sửa tay trong
+  worktree, code chạy lint/test, PR dưới tên người thay PR của agent, review làm lại).
+- Test: pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+  vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
 - **Schema là nguồn sự thật**: bus validate đủ JSON Schema (enum, type, ràng buộc) cho cả payload và envelope;
   envelope có `schema_version`, `correlation_id`, `causation_id`. `tests/test_schema_consistency.py` khoá schema ↔ model.
-- **Blackboard phân vùng theo dự án** (ADR-0012): artifact thuộc một `project_id`, chỉ `knowledge` là chung.
+- **Blackboard phân vùng theo dự án** (ADR-0018): artifact thuộc một `project_id`, chỉ `knowledge` là chung.
 - **Lint/test theo stack** (ADR-0013): Python, Node, Go, Rust, Gradle, Maven; stack lạ thì `local_checks` nói rõ
   không kiểm được thay vì báo pass giả.
 - **Cổng eval có răng**: CI chạy `--replay --strict`; agent trong `evals/recordings/REQUIRED.txt` thiếu bản ghi
   hoặc bản ghi ở phiên bản prompt cũ thì đỏ.
 - **Bốn human gate là gate thật**: spec, plan, release và nghiệm thu của khách (`acceptance`, ADR-0017) — cùng hạn 24h,
   nhắc ở 12h, four-eyes, và quá hạn thì supervisor escalate chứ không im lặng.
-- **Hạn mức theo dự án** (`--project-budget`) bên cạnh hạn mức ticket: nhiều ticket đều trong ngân sách vẫn có thể
-  đốt hết tiền của khách. Phiên bản release suy ra từ nội dung (SemVer), không còn hằng số.
 - **Lỗi tạm thời của provider** (429, 5xx, đứt mạng) được thử lại có backoff; `Refused` và 4xx thì không. Anthropic
   có timeout nên một request treo không giữ luôn cả orchestrator.
-- Test: 242 ca gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite (kể cả hai tiến trình), gate,
-  worktree, tool boundary, vòng tool, orchestrator với repo git thật, eval ghi/phát lại, đường lỗi adapter qua server
-  HTTP giả; ruff và mypy sạch, coverage 94% với sàn 90.
+  artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover; ruff sạch.
 
 ### Chưa có
 - **Bản ghi eval bằng model thật**: cơ chế và cổng `--strict` đã có (`evals/recordings/REQUIRED.txt`), nhưng
   `evals/recordings/` còn trống nên danh sách bắt buộc chưa có tên nào. Chạy `make eval-record` rồi thêm id vào file.
 - **Deploy thật**: release-engineer vẫn mô phỏng; chưa đẩy `company/integration` lên `main`/tag phiên bản; xung đột
   giải quyết bằng làm lại trên nền mới, chưa rebase tự động. Chưa dựng **CI/CD cho sản phẩm của khách** (CI của chính
-  repo này thì có). **Kafka/Redis** thay SQLite khi chạy nhiều máy (orchestrator hiện tuần tự một tiến trình).
-- **Tool cho khối nghiên cứu** đọc codebase khách (dùng lại `WorkspaceTools` chỉ đọc, chưa nối route); blackboard
-  vẫn chỉ tham chiếu (`content_ref`), artifact PRD/C4/OpenAPI chưa được viết ra file.
-- **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env. Phát hiện
-  prompt injection là lưới chắn thô theo mẫu, không phải hàng rào — xem `SECURITY.md`.
+  repo này thì có). **Kafka/Redis** thay SQLite khi chạy nhiều máy (song song mới ở mức thread trong một tiến trình).
+- **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env. Guard
+  injection là lưới chắn theo mẫu, không phải hàng rào — xem `SECURITY.md`.
 - **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn; **giao diện UAT cho khách**.
 
 ### Bước tiếp theo
 1. Chạy `make eval-record AGENT=<id>` cho 20 agent với model thật, commit bản ghi để CI eval có răng.
 2. Release-engineer thật: đẩy `company/integration` lên `main` + tag khi gate release duyệt; CI/CD.
-3. Nối `WorkspaceTools` chỉ đọc cho researcher (codebase-analysis); sandbox container cho `run`.
-4. Adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`); giao diện web cho human gate.
-5. Chạy nhiều orchestrator song song (khóa theo key) khi có bus Redis/Kafka.
+3. Sandbox container cho `run`; adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`) để chạy nhiều tiến trình.
+4. Giao diện web cho human gate + thông báo; giao diện UAT cho khách.
 
 ## Thứ tự triển khai khuyến nghị
 

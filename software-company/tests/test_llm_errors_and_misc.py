@@ -10,7 +10,7 @@ import pytest
 from company import demo
 from company.events import Envelope
 from company.graph import RESEARCH_ORDER, research_order
-from company.llm import Completion, LLMError, OpenAICompatClient, Refused, Transient, with_retry
+from company.llm import Completion, LLMError, OpenAICompatClient, Refused, RetryingClient, TransientError
 from company.registry import load_agents
 from company.sqlite_bus import SQLiteBus
 
@@ -21,10 +21,10 @@ def _server(handler_cls):
     return srv, f"http://127.0.0.1:{srv.server_port}"
 
 
-def _client(url, **kw):
+def _client(url, retries=3):
     from company.llm import LLMConfig
     cfg = LLMConfig(provider="openai", models={"strong": "m", "standard": "m"}, base_url=url)
-    return OpenAICompatClient(cfg, sleep=lambda _s: None, **kw)
+    return RetryingClient(OpenAICompatClient(cfg), retries=retries, sleep=lambda _s: None)
 
 
 def _complete(c):
@@ -67,8 +67,8 @@ def test_rate_limit_is_retried_then_succeeds():
 def test_server_error_gives_up_after_attempts_as_transient():
     srv, url = _server(_AlwaysDown)
     try:
-        with pytest.raises(Transient):
-            _complete(_client(url, attempts=2))
+        with pytest.raises(TransientError):
+            _complete(_client(url, retries=1))
     finally:
         srv.shutdown()
 
@@ -78,29 +78,36 @@ def test_client_error_is_not_retried():
     srv, url = _server(_BadRequest)
     try:
         with pytest.raises(LLMError) as e:
-            _complete(_client(url, attempts=3))
-        assert not isinstance(e.value, Transient)
+            _complete(_client(url))
+        assert not isinstance(e.value, TransientError)
     finally:
         srv.shutdown()
 
 
-def test_with_retry_does_not_retry_refusal():
-    calls = []
-    def call():
-        calls.append(1); raise Refused("từ chối")
+class _Raising:
+    """ModelClient giả chỉ để đo hành vi retry của RetryingClient."""
+    def __init__(self, exc):
+        self.exc, self.calls = exc, 0
+    def complete(self, **kw):
+        self.calls += 1
+        raise self.exc
+
+
+def test_retrying_client_does_not_retry_refusal():
+    inner = _Raising(Refused("từ chối"))
     with pytest.raises(Refused):
-        with_retry(call, attempts=4, sleep=lambda _s: None)
-    assert len(calls) == 1
+        RetryingClient(inner, retries=3, sleep=lambda _s: None).complete(
+            system="s", user="u", schema={}, model_tier="standard")
+    assert inner.calls == 1, "model từ chối thì gọi lại cũng vậy, chỉ tốn token"
 
 
-def test_with_retry_backs_off_between_attempts():
+def test_retrying_client_backs_off_between_attempts():
     waits: list[float] = []
-    calls = []
-    def call():
-        calls.append(1); raise Transient("429")
-    with pytest.raises(Transient):
-        with_retry(call, attempts=3, sleep=waits.append)
-    assert len(calls) == 3 and len(waits) == 2 and waits[1] > waits[0], "backoff phải tăng dần"
+    inner = _Raising(TransientError("429"))
+    with pytest.raises(TransientError):
+        RetryingClient(inner, retries=2, sleep=waits.append).complete(
+            system="s", user="u", schema={}, model_tier="standard")
+    assert inner.calls == 3 and len(waits) == 2 and waits[1] > waits[0], "backoff phải tăng dần"
 
 
 def test_completion_json_rejects_garbage():

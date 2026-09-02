@@ -53,7 +53,7 @@ def test_replay_by_key():
 
 
 def test_blackboard_isolates_projects_but_shares_knowledge():
-    """Hai dự án trên cùng bus không ghi đè artifact của nhau; `knowledge` là namespace chung (ADR-0012)."""
+    """Hai dự án trên cùng bus không ghi đè artifact của nhau; `knowledge` là namespace chung (ADR-0018)."""
     from company.blackboard import Blackboard
 
     bus = InMemoryBus(); bb = Blackboard(bus)

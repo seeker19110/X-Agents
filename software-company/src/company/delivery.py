@@ -108,8 +108,24 @@ class DeliveryLead:
 
     def _on_pr(self, env: Envelope) -> None:
         tid = env.key
+        if self.state.get(tid) == "in_review" and env.actor.split(":", 1)[0] == "human":
+            # người tiếp quản (ADR-0012): PR mới thay PR của agent, vòng review làm lại từ đầu
+            self.reviews[tid] = {}; self.review_since[tid] = env.ts; return
         if self.state.get(tid) == "dispatched": self._set(tid, "in_progress")
         self._set(tid, "in_review"); self.reviews[tid] = {}; self.review_since[tid] = env.ts
+
+    def human_hint(self, tid: str, hint: str) -> Task:
+        """Người can thiệp giữa vòng (ADR-0012): ticket đang `in_review` (PR chờ/đang review) → về `changes_requested`
+        rồi phát lại task với hint; `dispatched`/`in_progress` (agent lỗi, chưa có PR) → phát lại với hint. Không tính
+        retry — đây là hướng dẫn thêm, không phải thất bại của agent. Ticket blocked/escalated đi qua gate escalation."""
+        st = self.state.get(tid)
+        if tid not in self.tickets or st not in {"in_review", "dispatched", "in_progress", "changes_requested"}:
+            raise ValueError(f"{tid}: không can thiệp được ở trạng thái {st} (blocked/escalated → gate escalation)")
+        nt = self.tickets[tid].model_copy(update={"hint": hint}); self.tickets[tid] = nt
+        if st == "in_review": self._set(tid, "changes_requested")
+        elif st != "changes_requested": self.state[tid] = "changes_requested"  # dispatched/in_progress: agent chưa nộp gì
+        self.review_since.pop(tid, None)
+        self._publish_task(nt); return nt
 
     def overdue_reviews(self, now: datetime | None = None) -> dict[str, set[str]]:
         """Ticket ở in_review quá review_timeout: trả về nguồn review còn thiếu để supervisor giao lại/escalate."""

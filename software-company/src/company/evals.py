@@ -131,7 +131,7 @@ def stale_recordings(agent_ids: list[str] | None = None) -> dict[str, list[str]]
         for case in load_cases(aid):
             bus = InMemoryBus(); bb = Blackboard(bus)
             for ctx in case.get("context", []):
-                bb.write(ctx["actor"], ctx["namespace"], ctx["content_ref"], ctx.get("summary", ""))
+                bb.write(ctx["actor"], ctx["namespace"], ctx["content_ref"], ctx.get("summary", ""), content=ctx.get("content"))
             probe = _Probe(); AgentRunner(bus, probe, agents, blackboard=bb)
             try: _run_case(aid, case, probe, agents, bb, bus)
             except (RunnerError, LLMError): pass
@@ -201,7 +201,7 @@ def run_eval(agent_id: str, client: ModelClient, agents: dict | None = None) -> 
     for case in load_cases(agent_id):
         bus = InMemoryBus(); bb = Blackboard(bus)
         for ctx in case.get("context", []):
-            bb.write(ctx["actor"], ctx["namespace"], ctx["content_ref"], ctx.get("summary", ""))
+            bb.write(ctx["actor"], ctx["namespace"], ctx["content_ref"], ctx.get("summary", ""), content=ctx.get("content"))
         try:
             r = _run_case(agent_id, case, client, agents, bb, bus)
         except (RunnerError, LLMError) as e:

@@ -1,4 +1,4 @@
-.PHONY: test cov lint types fix demo golden gate eval eval-record eval-replay run watch status
+.PHONY: test cov lint types fix demo golden gate eval eval-record eval-replay run watch status report metrics
 test:
 	uv run pytest -q
 cov:
@@ -28,3 +28,7 @@ watch:
 	PYTHONPATH=src uv run python -m company.orchestrator run --watch 5
 status:
 	PYTHONPATH=src uv run python -m company.orchestrator status
+report:
+	PYTHONPATH=src uv run python -m company.orchestrator report
+metrics:       # gọi/token/USD/thời gian theo agent, model, ticket; thêm PROM=1 để xuất Prometheus text
+	PYTHONPATH=src uv run python -m company.orchestrator metrics $(if $(PROM),--prometheus,)
