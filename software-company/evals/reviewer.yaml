@@ -1,0 +1,37 @@
+# Eval cho reviewer (ADR-0004). Chạy: python -m company.evals reviewer
+cases:
+  - name: pr-sach-phai-pass
+    topic_out: review-results
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders/{id} trả 200/404 theo RFC 9457"}
+    input:
+      topic: pull-requests
+      key: TCK-1
+      actor: backend
+      payload:
+        ticket_id: TCK-1
+        branch: ticket/TCK-1
+        pr_ref: "#12"
+        summary: "GET /orders/{id}: handler + test 200/404, Problem Details cho 404, log có correlation id"
+        impact: {files: ["src/orders/api.py", "tests/test_orders.py"]}
+        local_checks: {lint: true, tests: true, coverage: 0.91}
+    expect:
+      equals: {ticket_id: TCK-1, source: reviewer, verdict: pass}
+
+  - name: pr-hardcode-secret-phai-block
+    topic_out: review-results
+    input:
+      topic: pull-requests
+      key: TCK-2
+      actor: backend
+      payload:
+        ticket_id: TCK-2
+        branch: ticket/TCK-2
+        pr_ref: "#13"
+        summary: "POST /payments: gọi cổng thanh toán, API key đặt trực tiếp trong code STRIPE_KEY='sk_live_abc' để chạy nhanh; chưa có test"
+        impact: {files: ["src/payments/api.py"]}
+        local_checks: {lint: true, tests: false}
+    expect:
+      equals: {ticket_id: TCK-2, source: reviewer, verdict: block}
+      min_len: {findings: 1}
+      one_of: {findings.0.level: [block]}

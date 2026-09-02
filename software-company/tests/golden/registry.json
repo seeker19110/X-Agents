@@ -1,0 +1,439 @@
+{
+  "backend": {
+    "block": "engineering",
+    "budget_tokens_per_task": 120000,
+    "context_namespace_write": "api-contract",
+    "max_retries": 3,
+    "model_tier": "strong",
+    "reads": [
+      "tasks"
+    ],
+    "skills": [
+      "engineering-common",
+      "backend"
+    ],
+    "timeout_minutes": 180,
+    "version": 1,
+    "writes": [
+      "pull-requests"
+    ]
+  },
+  "clarifier": {
+    "block": "research",
+    "budget_tokens_per_task": 20000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "standard",
+    "reads": [
+      "requirements-draft"
+    ],
+    "skills": [
+      "requirements-engineering"
+    ],
+    "timeout_minutes": 30,
+    "version": 1,
+    "writes": [
+      "clarification-questions"
+    ]
+  },
+  "codebase": {
+    "block": "research",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": null,
+    "max_retries": 1,
+    "model_tier": "standard",
+    "reads": [
+      "research-findings"
+    ],
+    "skills": [
+      "codebase-analysis"
+    ],
+    "timeout_minutes": 60,
+    "version": 1,
+    "writes": [
+      "research-findings"
+    ]
+  },
+  "data": {
+    "block": "engineering",
+    "budget_tokens_per_task": 100000,
+    "context_namespace_write": "analytics",
+    "max_retries": 3,
+    "model_tier": "strong",
+    "reads": [
+      "tasks"
+    ],
+    "skills": [
+      "engineering-common",
+      "data-engineering",
+      "database",
+      "privacy-compliance",
+      "observability"
+    ],
+    "timeout_minutes": 180,
+    "version": 1,
+    "writes": [
+      "pull-requests"
+    ]
+  },
+  "database": {
+    "block": "engineering",
+    "budget_tokens_per_task": 80000,
+    "context_namespace_write": "schema",
+    "max_retries": 3,
+    "model_tier": "strong",
+    "reads": [
+      "tasks"
+    ],
+    "skills": [
+      "engineering-common",
+      "database"
+    ],
+    "timeout_minutes": 120,
+    "version": 1,
+    "writes": [
+      "pull-requests"
+    ]
+  },
+  "delivery-lead": {
+    "block": "delivery",
+    "budget_tokens_per_task": 100000,
+    "context_namespace_write": "architecture",
+    "max_retries": 3,
+    "model_tier": "strong",
+    "reads": [
+      "approved-specs",
+      "review-results",
+      "incidents"
+    ],
+    "skills": [
+      "architecture",
+      "project-management",
+      "api-contract",
+      "cost-estimation"
+    ],
+    "timeout_minutes": 120,
+    "version": 2,
+    "writes": [
+      "tasks",
+      "release-candidates",
+      "audit-log"
+    ]
+  },
+  "domain": {
+    "block": "research",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": "glossary",
+    "max_retries": 1,
+    "model_tier": "standard",
+    "reads": [
+      "research-findings"
+    ],
+    "skills": [
+      "requirements-engineering",
+      "domain-research"
+    ],
+    "timeout_minutes": 60,
+    "version": 1,
+    "writes": [
+      "research-findings"
+    ]
+  },
+  "frontend": {
+    "block": "engineering",
+    "budget_tokens_per_task": 120000,
+    "context_namespace_write": null,
+    "max_retries": 3,
+    "model_tier": "strong",
+    "reads": [
+      "tasks"
+    ],
+    "skills": [
+      "engineering-common",
+      "frontend"
+    ],
+    "timeout_minutes": 180,
+    "version": 2,
+    "writes": [
+      "pull-requests"
+    ]
+  },
+  "intake": {
+    "block": "research",
+    "budget_tokens_per_task": 20000,
+    "context_namespace_write": null,
+    "max_retries": 1,
+    "model_tier": "standard",
+    "reads": [
+      "research-requests",
+      "clarification-answers"
+    ],
+    "skills": [
+      "requirements-engineering"
+    ],
+    "timeout_minutes": 30,
+    "version": 1,
+    "writes": [
+      "research-findings"
+    ]
+  },
+  "mobile": {
+    "block": "engineering",
+    "budget_tokens_per_task": 120000,
+    "context_namespace_write": null,
+    "max_retries": 3,
+    "model_tier": "strong",
+    "reads": [
+      "tasks"
+    ],
+    "skills": [
+      "engineering-common",
+      "mobile"
+    ],
+    "timeout_minutes": 180,
+    "version": 2,
+    "writes": [
+      "pull-requests"
+    ]
+  },
+  "platform": {
+    "block": "engineering",
+    "budget_tokens_per_task": 120000,
+    "context_namespace_write": "infra",
+    "max_retries": 3,
+    "model_tier": "strong",
+    "reads": [
+      "tasks"
+    ],
+    "skills": [
+      "engineering-common",
+      "iac-platform",
+      "observability",
+      "devops",
+      "finops"
+    ],
+    "timeout_minutes": 180,
+    "version": 1,
+    "writes": [
+      "pull-requests"
+    ]
+  },
+  "qa-debugger": {
+    "block": "quality",
+    "budget_tokens_per_task": 80000,
+    "context_namespace_write": null,
+    "max_retries": 1,
+    "model_tier": "strong",
+    "reads": [
+      "pull-requests"
+    ],
+    "skills": [
+      "testing",
+      "debugging"
+    ],
+    "timeout_minutes": 90,
+    "version": 1,
+    "writes": [
+      "review-results"
+    ]
+  },
+  "release-engineer": {
+    "block": "operations",
+    "budget_tokens_per_task": 80000,
+    "context_namespace_write": null,
+    "max_retries": 2,
+    "model_tier": "strong",
+    "reads": [
+      "release-candidates"
+    ],
+    "skills": [
+      "release",
+      "devops"
+    ],
+    "timeout_minutes": 120,
+    "version": 1,
+    "writes": [
+      "release-events"
+    ]
+  },
+  "reviewer": {
+    "block": "quality",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": null,
+    "max_retries": 1,
+    "model_tier": "strong",
+    "reads": [
+      "pull-requests"
+    ],
+    "skills": [
+      "code-review",
+      "security",
+      "license-compliance"
+    ],
+    "timeout_minutes": 60,
+    "version": 2,
+    "writes": [
+      "review-results"
+    ]
+  },
+  "risk": {
+    "block": "research",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": null,
+    "max_retries": 1,
+    "model_tier": "strong",
+    "reads": [
+      "requirements-draft"
+    ],
+    "skills": [
+      "risk-analysis"
+    ],
+    "timeout_minutes": 45,
+    "version": 1,
+    "writes": [
+      "requirements-draft"
+    ]
+  },
+  "security-engineer": {
+    "block": "quality",
+    "budget_tokens_per_task": 80000,
+    "context_namespace_write": "threat-model",
+    "max_retries": 1,
+    "model_tier": "strong",
+    "reads": [
+      "approved-specs",
+      "pull-requests",
+      "release-candidates"
+    ],
+    "skills": [
+      "threat-modeling",
+      "security",
+      "privacy-compliance",
+      "license-compliance"
+    ],
+    "timeout_minutes": 90,
+    "version": 1,
+    "writes": [
+      "review-results"
+    ]
+  },
+  "spec-writer": {
+    "block": "research",
+    "budget_tokens_per_task": 80000,
+    "context_namespace_write": "prd",
+    "max_retries": 1,
+    "model_tier": "strong",
+    "reads": [
+      "requirements-draft",
+      "clarification-answers"
+    ],
+    "skills": [
+      "requirements-engineering",
+      "technical-writing"
+    ],
+    "timeout_minutes": 90,
+    "version": 1,
+    "writes": [
+      "approved-specs"
+    ]
+  },
+  "supervisor": {
+    "block": "supervision",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": "knowledge",
+    "max_retries": 0,
+    "model_tier": "standard",
+    "reads": [
+      "audit-log",
+      "*"
+    ],
+    "skills": [
+      "ai-governance",
+      "finops",
+      "prompt-engineering"
+    ],
+    "timeout_minutes": 15,
+    "version": 2,
+    "writes": [
+      "supervisor-actions",
+      "knowledge-base"
+    ]
+  },
+  "support-docs": {
+    "block": "operations",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": "docs",
+    "max_retries": 2,
+    "model_tier": "standard",
+    "reads": [
+      "release-events",
+      "external-feedback"
+    ],
+    "skills": [
+      "technical-writing",
+      "incident-management"
+    ],
+    "timeout_minutes": 60,
+    "version": 1,
+    "writes": [
+      "incidents",
+      "research-requests"
+    ]
+  },
+  "synthesizer": {
+    "block": "research",
+    "budget_tokens_per_task": 60000,
+    "context_namespace_write": null,
+    "max_retries": 1,
+    "model_tier": "strong",
+    "reads": [
+      "research-findings"
+    ],
+    "skills": [
+      "requirements-engineering"
+    ],
+    "timeout_minutes": 60,
+    "version": 1,
+    "writes": [
+      "requirements-draft"
+    ]
+  },
+  "tech-scout": {
+    "block": "research",
+    "budget_tokens_per_task": 40000,
+    "context_namespace_write": null,
+    "max_retries": 1,
+    "model_tier": "standard",
+    "reads": [
+      "research-findings"
+    ],
+    "skills": [
+      "tech-evaluation"
+    ],
+    "timeout_minutes": 60,
+    "version": 1,
+    "writes": [
+      "research-findings"
+    ]
+  },
+  "ux-designer": {
+    "block": "research",
+    "budget_tokens_per_task": 50000,
+    "context_namespace_write": "design",
+    "max_retries": 1,
+    "model_tier": "standard",
+    "reads": [
+      "research-findings",
+      "requirements-draft"
+    ],
+    "skills": [
+      "ux-design",
+      "requirements-engineering"
+    ],
+    "timeout_minutes": 90,
+    "version": 1,
+    "writes": [
+      "research-findings"
+    ]
+  }
+}

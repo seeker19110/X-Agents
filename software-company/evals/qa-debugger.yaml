@@ -1,0 +1,17 @@
+# Eval cho qa-debugger. Chạy: python -m company.evals qa-debugger
+cases:
+  - name: test-local-fail-phai-fail-va-co-root-cause
+    topic_out: review-results
+    input:
+      topic: pull-requests
+      key: TCK-3
+      actor: backend
+      payload:
+        ticket_id: TCK-3
+        branch: ticket/TCK-3
+        pr_ref: "#14"
+        summary: "Cache kết quả GET /orders bằng dict toàn cục; test_concurrent_reads fail ngẫu nhiên: KeyError khi 2 request cùng ghi/xóa key"
+        local_checks: {lint: true, tests: false, test_output: "FAILED tests/test_orders.py::test_concurrent_reads - KeyError: 'ORD-9'"}
+    expect:
+      equals: {ticket_id: TCK-3, source: qa, verdict: fail}
+      min_len: {root_cause: 10}
