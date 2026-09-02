@@ -174,7 +174,8 @@ def load_config(path: Path | None = None) -> LLMConfig:
         cfg.backends = [dict(b) for b in (data.get("backends") or []) if isinstance(b, dict)]
         cfg.routing = dict(data.get("routing") or {})
     env = os.environ
-    cfg.provider = env.get("COMPANY_LLM_PROVIDER", cfg.provider)
+    if env.get("COMPANY_LLM_PROVIDER"):   # biến môi trường thắng file: một provider được chỉ đích danh → bỏ `backends:`
+        cfg.provider, cfg.backends = env["COMPANY_LLM_PROVIDER"], []
     for t in TIERS:
         if env.get(f"COMPANY_MODEL_{t.upper()}"): cfg.models[t] = env[f"COMPANY_MODEL_{t.upper()}"]
     cfg.base_url = env.get("COMPANY_LLM_BASE_URL", cfg.base_url)
@@ -481,6 +482,18 @@ class OpenAICompatClient:
                           model=data.get("model", model), stop_reason=finish, cached_input_tokens=cached, tool_calls=calls)
 
 
+
+def reported_model(model_usage: dict[str, Any], requested: str) -> str:
+    """`claude -p` liệt kê trong `modelUsage` cả model phụ mà CLI tự gọi (Haiku cho việc lặt vặt) — thường đứng TRƯỚC
+    model chính. Chọn khoá khớp tên model đã yêu cầu; không có thì khoá tiêu nhiều output token nhất; rỗng thì tên yêu cầu."""
+    if not model_usage: return requested
+    for k in model_usage:
+        if k == requested or k.startswith(requested) or requested.startswith(k): return k
+    def out(k: str) -> int:
+        v = model_usage.get(k)
+        return int(v.get("outputTokens", 0) or 0) if isinstance(v, dict) else 0
+    return max(model_usage, key=out)
+
 # ---------- provider: Claude Code CLI (gói Claude Pro/Max đã đăng nhập trên máy, không cần API key) ----------
 
 class ClaudeCodeClient:
@@ -543,7 +556,7 @@ class ClaudeCodeClient:
             raise Refused("model từ chối")
         u = data.get("usage") or {}
         read = int(u.get("cache_read_input_tokens", 0) or 0); write = int(u.get("cache_creation_input_tokens", 0) or 0)
-        used = next(iter((data.get("modelUsage") or {}).keys()), model)
+        used = reported_model(data.get("modelUsage") or {}, model)
         return Completion(text=str(data["result"]), input_tokens=int(u.get("input_tokens", 0) or 0) + read + write,
                           output_tokens=int(u.get("output_tokens", 0) or 0), model=used,
                           stop_reason=str(data.get("stop_reason") or "end_turn"), cached_input_tokens=read,

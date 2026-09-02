@@ -15,8 +15,9 @@ from company.llm import (
     TransientError,
     load_config,
     make_client,
+    reported_model,
 )
-from company.routing import Backend, RoutingClient, is_quota_error, retry_after_seconds
+from company.routing import Backend, RoutingClient, is_missing_error, is_quota_error, retry_after_seconds
 from company.tools import ToolSpec
 
 
@@ -231,3 +232,22 @@ def test_claude_code_client_errors_and_limits():
         system="s", user="u", schema={}, model_tier="strong",
         messages=[{"role": "user", "content": "A"}, {"role": "assistant", "content": "B"}, {"role": "user", "content": "C"}])
     assert "[assistant]\nB" in seen[0][-1] and seen[0][-1].startswith("[user]\nA")
+
+
+def test_claude_code_reports_requested_model_not_internal_haiku():
+    """`claude -p` liệt kê Haiku (helper nội bộ) trước model chính trong modelUsage; audit phải ghi model chính."""
+    out = json.dumps({"result": "{}", "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1},
+                      "modelUsage": {"claude-haiku-4-5-20251001": {"outputTokens": 40}, "claude-opus-5": {"outputTokens": 9}}})
+    c = _cc(runner=lambda a: out).complete(system="s", user="u", schema={}, model_tier="strong")
+    assert c.model == "claude-opus-5"
+    assert reported_model({"claude-haiku-4-5-20251001": {"outputTokens": 40}, "x": {"outputTokens": 90}}, "claude-opus-5") == "x"
+    assert reported_model({}, "claude-opus-5") == "claude-opus-5"
+
+
+def test_escaped_vietnamese_gateway_body_counts_as_missing_pool():
+    """Gateway trả 503 với thân JSON escape tiếng Việt: pool trống phải nghỉ dài (cooldown_s), không phải 60s."""
+    body = r'HTTP 503: {"error": {"message": "Ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n Antigravity n\u00e0o."}}'
+    assert is_missing_error(LLMError(body))
+    a, b = _Client("a", [LLMError(body)]), _Client("b")
+    r = _router(Backend("a", a), Backend("b", b), cooldown_s=1800, transient_cooldown_s=60)
+    assert _call(r).model == "b-standard" and r.status()[0]["cooldown_remaining"] == 1800
