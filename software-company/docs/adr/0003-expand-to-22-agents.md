@@ -1,6 +1,8 @@
 # ADR-0003: Mở rộng 18 → 22 agent
 
-Trạng thái: Accepted · Ngày: 2026-09-02 · Bổ sung ADR-0002
+Trạng thái: Accepted, đã sửa bởi ADR-0009 · Ngày: 2026-09-02 · Bổ sung ADR-0002
+
+> Đính chính: `ux-designer` cuối cùng KHÔNG được tách (ADR-0009). Thực tế là 20 agent, khối nghiên cứu 6 — không phải 22 và 9 như bảng dưới. Ba agent còn lại đã được tạo đúng.
 
 ## Bối cảnh
 Rà soát sau khi tách khỏi MEP-Agents cho thấy 4 lỗ hổng: không ai sở hữu thiết kế UX,

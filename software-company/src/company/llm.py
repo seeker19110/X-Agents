@@ -36,15 +36,24 @@ class Refused(LLMError):
 
 @dataclass
 class Completion:
+    """`input_tokens` LUÔN là tổng input đã tính tiền, kể cả phần đọc từ cache và phần ghi cache — mỗi adapter
+    tự quy đổi về nghĩa này vì provider đếm khác nhau (Anthropic tách cache ra khỏi `input_tokens`, OpenAI gộp vào
+    `prompt_tokens`). `cached_input_tokens` và `cache_write_tokens` chỉ để báo cáo hiệu quả cache, không cộng thêm."""
     text: str
     input_tokens: int
     output_tokens: int
     model: str
     stop_reason: str = "end_turn"
+    cached_input_tokens: int = 0  # phần input phục vụ từ cache (đã nằm trong input_tokens)
+    cache_write_tokens: int = 0   # phần input ghi vào cache lần đầu (đã nằm trong input_tokens)
 
     @property
     def tokens(self) -> int:
         return self.input_tokens + self.output_tokens
+
+    @property
+    def cache_hit_ratio(self) -> float:
+        return self.cached_input_tokens / self.input_tokens if self.input_tokens else 0.0
 
     def json(self) -> dict[str, Any]:
         text = self.text.strip()
@@ -58,8 +67,12 @@ class Completion:
 
 
 class ModelClient(Protocol):
-    """Một lời gọi = system + user + JSON Schema đầu ra + tier. Provider nào cũng phải trả `Completion`."""
-    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str) -> Completion: ...
+    """Một lời gọi = system + user + JSON Schema đầu ra + tier. Provider nào cũng phải trả `Completion`.
+
+    `cache_key` (thường là agent id) giúp provider định tuyến request cùng một system prompt vào cùng một
+    cache; provider không hỗ trợ thì bỏ qua."""
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None) -> Completion: ...
 
 
 # ---------- cấu hình ----------
@@ -126,6 +139,15 @@ def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
 
 # ---------- provider: Anthropic ----------
 
+def anthropic_input_tokens(usage: Any) -> tuple[int, int, int]:
+    """(tổng input tính tiền, đọc từ cache, ghi vào cache) từ `usage` của Anthropic.
+
+    Anthropic để token cache RA NGOÀI `input_tokens`. Không cộng lại thì `audit-log.tokens` bỏ sót gần hết
+    system prompt (phần lặp giữa các lượt nằm hết trong cache) và hạn mức của supervisor sẽ không bao giờ chạm."""
+    read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    return usage.input_tokens + read + write, read, write
+
 class AnthropicClient:
     """Claude qua SDK chính thức: streaming, adaptive thinking, structured output theo JSON Schema."""
 
@@ -138,7 +160,8 @@ class AnthropicClient:
         self._anthropic = anthropic
         self._client = anthropic.Anthropic()
 
-    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str) -> Completion:
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None) -> Completion:
         kwargs: dict[str, Any] = dict(
             model=self.cfg.model_for(model_tier), max_tokens=self.cfg.max_tokens,
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
@@ -158,8 +181,10 @@ class AnthropicClient:
         if msg.stop_reason == "refusal":
             raise Refused(f"model từ chối: {getattr(getattr(msg, 'stop_details', None), 'category', None)}")
         text = next((b.text for b in msg.content if b.type == "text"), "")
-        return Completion(text=text, input_tokens=msg.usage.input_tokens, output_tokens=msg.usage.output_tokens,
-                          model=msg.model, stop_reason=msg.stop_reason or "end_turn")
+        inp, read, write = anthropic_input_tokens(msg.usage)
+        return Completion(text=text, input_tokens=inp, output_tokens=msg.usage.output_tokens,
+                          model=msg.model, stop_reason=msg.stop_reason or "end_turn",
+                          cached_input_tokens=read, cache_write_tokens=write)
 
 
 # ---------- provider: OpenAI-compatible (không cần SDK) ----------
@@ -174,6 +199,7 @@ class OpenAICompatClient:
         self.api_key = self.cfg.api_key or os.environ.get("OPENAI_API_KEY", "")
         self.timeout = timeout
         self._json_schema_ok: bool | None = None
+        self._cache_key_ok: bool | None = None
 
     def _post(self, body: dict[str, Any]) -> dict[str, Any]:
         req = urllib.request.Request(f"{self.base_url}/chat/completions", data=json.dumps(body).encode("utf-8"),
@@ -187,14 +213,34 @@ class OpenAICompatClient:
         except urllib.error.URLError as e:
             raise LLMError(f"lỗi mạng: {e.reason}") from e
 
-    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str) -> Completion:
+    def _post_cacheable(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Như `_post`, nhưng nếu server từ chối vì không biết `prompt_cache_key` thì gỡ ra và thôi gửi từ lần sau.
+        Tách riêng khỏi dò `json_schema` để một lỗi 400 không bị quy sai cho tính năng kia."""
+        try:
+            data = self._post(body)
+        except LLMError as e:
+            if "prompt_cache_key" not in body or not str(e).startswith("HTTP 400"):
+                raise
+            self._cache_key_ok = False
+            data = self._post({k: v for k, v in body.items() if k != "prompt_cache_key"})
+        else:
+            if "prompt_cache_key" in body:
+                self._cache_key_ok = True
+        return data
+
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None) -> Completion:
         model = self.cfg.model_for(model_tier)
         base: dict[str, Any] = {"model": model, "max_tokens": self.cfg.max_tokens, **self.cfg.extra,
                                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        # Prompt cache: system prompt của mỗi agent là bất biến (ADR-0004) nên định tuyến theo agent id cho tỉ lệ
+        # hit cao nhất. Server không hiểu tham số này thì bỏ qua; nếu từ chối (400) thì gửi lại không có nó.
+        if cache_key and self._cache_key_ok is not False:
+            base["prompt_cache_key"] = cache_key
         data: dict[str, Any] | None = None
         if self._json_schema_ok is not False:
             try:
-                data = self._post({**base, "response_format": {"type": "json_schema", "json_schema": {
+                data = self._post_cacheable({**base, "response_format": {"type": "json_schema", "json_schema": {
                     "name": "payload", "strict": True, "schema": strict_schema(schema)}}})
                 self._json_schema_ok = True
             except LLMError as e:
@@ -202,16 +248,18 @@ class OpenAICompatClient:
                 self._json_schema_ok = False
         if data is None:
             fallback_user = user + "\n\n# JSON Schema bắt buộc\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
-            data = self._post({**base, "response_format": {"type": "json_object"},
+            data = self._post_cacheable({**base, "response_format": {"type": "json_object"},
                                "messages": [{"role": "system", "content": system}, {"role": "user", "content": fallback_user}]})
         choice = (data.get("choices") or [{}])[0]
         finish = choice.get("finish_reason") or "stop"
         if finish == "content_filter":
             raise Refused("model từ chối (content_filter)")
         usage = data.get("usage") or {}
+        # OpenAI-compatible: `prompt_tokens` ĐÃ gồm phần cache, nên `cached_tokens` chỉ để báo cáo, không cộng thêm.
+        cached = int((usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0)
         return Completion(text=(choice.get("message") or {}).get("content") or "",
                           input_tokens=int(usage.get("prompt_tokens", 0)), output_tokens=int(usage.get("completion_tokens", 0)),
-                          model=data.get("model", model), stop_reason=finish)
+                          model=data.get("model", model), stop_reason=finish, cached_input_tokens=cached)
 
 
 # ---------- provider: giả (test / eval offline) ----------
@@ -224,8 +272,10 @@ class FakeClient:
     tokens_per_call: tuple[int, int] = (1_000, 300)
     calls: list[dict[str, Any]] = field(default_factory=list)
 
-    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str) -> Completion:
-        self.calls.append({"system": system, "user": user, "schema": schema, "model_tier": model_tier})
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None) -> Completion:
+        self.calls.append({"system": system, "user": user, "schema": schema, "model_tier": model_tier,
+                           "cache_key": cache_key})
         if self.handler:
             payload = self.handler(system, user)
         elif self.responses:

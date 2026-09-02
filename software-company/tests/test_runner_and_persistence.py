@@ -24,6 +24,7 @@ from company.llm import (
     LLMConfig,
     LLMError,
     OpenAICompatClient,
+    anthropic_input_tokens,
     load_config,
     make_client,
     strict_schema,
@@ -315,3 +316,86 @@ def test_run_eval_account_manager_offline():
 
 def test_python_executable_used_for_checks():
     assert Path(sys.executable).exists()
+
+
+# ---------- đếm token khi bật prompt cache ----------
+
+def test_completion_counts_cache_tokens_in_total():
+    """`input_tokens` là tổng input đã tính tiền; cached/write chỉ để báo cáo, không cộng thêm lần nữa."""
+    c = Completion(text="{}", input_tokens=10_000, output_tokens=300, model="m",
+                   cached_input_tokens=9_000, cache_write_tokens=0)
+    assert c.tokens == 10_300
+    assert c.cache_hit_ratio == 0.9
+    assert Completion(text="{}", input_tokens=0, output_tokens=0, model="m").cache_hit_ratio == 0.0
+
+
+class _Usage:
+    def __init__(self, **kw): self.__dict__.update(kw)
+
+
+def test_anthropic_usage_adds_cache_tokens_to_input():
+    """Anthropic tách token cache RA KHỎI input_tokens; adapter phải cộng lại, nếu không audit-log báo thiếu."""
+    hit = _Usage(input_tokens=500, output_tokens=300, cache_creation_input_tokens=0, cache_read_input_tokens=9_000)
+    assert anthropic_input_tokens(hit) == (9_500, 9_000, 0)  # trước đây chỉ đếm 500
+
+    miss = _Usage(input_tokens=500, output_tokens=300, cache_creation_input_tokens=9_000, cache_read_input_tokens=0)
+    assert anthropic_input_tokens(miss) == (9_500, 0, 9_000)
+
+    old_sdk = _Usage(input_tokens=500, output_tokens=300)  # SDK cũ không có trường cache
+    assert anthropic_input_tokens(old_sdk) == (500, 0, 0)
+
+
+class _CacheSrv(BaseHTTPRequestHandler):
+    """Server OpenAI-compatible giả: từ chối `prompt_cache_key` (400), và báo cached_tokens trong usage."""
+    seen: ClassVar[list[dict]] = []
+    reject_cache_key: ClassVar[bool] = True
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        _CacheSrv.seen.append(body)
+        if _CacheSrv.reject_cache_key and "prompt_cache_key" in body:
+            self.send_response(400); self.end_headers(); self.wfile.write(b'{"error":"unknown param"}'); return
+        out = {"id": "x", "model": body["model"], "choices": [{"finish_reason": "stop", "message": {
+            "role": "assistant", "content": json.dumps({"ticket_id": "T", "source": "reviewer", "verdict": "pass"})}}],
+               "usage": {"prompt_tokens": 10_000, "completion_tokens": 300,
+                         "prompt_tokens_details": {"cached_tokens": 9_000}}}
+        self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers()
+        self.wfile.write(json.dumps(out).encode())
+    def log_message(self, *a): pass
+
+
+def _cache_srv_client():
+    srv = HTTPServer(("127.0.0.1", 0), _CacheSrv); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    cfg = LLMConfig(provider="openai", models={"strong": "local-model", "standard": "local-model"},
+                    base_url=f"http://127.0.0.1:{srv.server_port}/v1", api_key="k")
+    return srv, OpenAICompatClient(cfg)
+
+
+def test_openai_compat_sends_cache_key_and_reports_hit():
+    _CacheSrv.seen.clear(); _CacheSrv.reject_cache_key = False
+    srv, client = _cache_srv_client()
+    try:
+        c = client.complete(system="s", user="u", schema=payload_schema("review-results"),
+                            model_tier="strong", cache_key="backend")
+        assert _CacheSrv.seen[0]["prompt_cache_key"] == "backend"
+        # prompt_tokens của OpenAI ĐÃ gồm phần cache: không được cộng cached_tokens thêm lần nữa
+        assert c.input_tokens == 10_000 and c.tokens == 10_300 and c.cache_hit_ratio == 0.9
+    finally:
+        srv.shutdown()
+
+
+def test_openai_compat_drops_cache_key_when_server_rejects_it():
+    """Server không biết tham số này thì gỡ ra và chạy tiếp, không quy nhầm cho json_schema."""
+    _CacheSrv.seen.clear(); _CacheSrv.reject_cache_key = True
+    srv, client = _cache_srv_client()
+    try:
+        c = client.complete(system="s", user="u", schema=payload_schema("review-results"),
+                            model_tier="strong", cache_key="backend")
+        assert c.json()["verdict"] == "pass"
+        assert client._json_schema_ok is not False, "lỗi 400 vì cache_key không được quy cho json_schema"
+        assert [("prompt_cache_key" in b) for b in _CacheSrv.seen] == [True, False]
+        c2 = client.complete(system="s", user="u", schema=payload_schema("review-results"),
+                             model_tier="strong", cache_key="backend")
+        assert c2.json()["verdict"] == "pass"
+        assert "prompt_cache_key" not in _CacheSrv.seen[-1], "đã biết server từ chối thì không gửi lại"
+    finally:
+        srv.shutdown()
