@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "software-company/topics/release-events",
+  "title": "release-events",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "release-events"
+    },
+    "key": {
+      "type": "string",
+      "description": "= release_id"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "release_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "env": {
+          "enum": [
+            "staging",
+            "canary",
+            "production"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pending_human",
+            "deployed",
+            "rolled_back",
+            "failed"
+          ]
+        },
+        "rollback_plan": {
+          "type": "string"
+        },
+        "runbook_ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "release_id",
+        "version",
+        "env",
+        "status"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

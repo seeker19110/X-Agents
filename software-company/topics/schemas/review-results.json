@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "software-company/topics/review-results",
+  "title": "review-results",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "review-results"
+    },
+    "key": {
+      "type": "string",
+      "description": "= ticket_id"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "ticket_id": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "reviewer",
+            "qa"
+          ]
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "block",
+            "fail"
+          ]
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "enum": [
+                  "block",
+                  "warn",
+                  "nit"
+                ]
+              },
+              "location": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "level",
+              "text"
+            ]
+          }
+        },
+        "root_cause": {
+          "type": "string"
+        },
+        "bug_reports": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metrics": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "source",
+        "verdict"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "software-company/topics/pull-requests",
+  "title": "pull-requests",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "pull-requests"
+    },
+    "key": {
+      "type": "string",
+      "description": "= ticket_id"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "ticket_id": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "pr_ref": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "impact": {
+          "type": "object"
+        },
+        "local_checks": {
+          "type": "object",
+          "properties": {
+            "lint": {
+              "type": "boolean"
+            },
+            "tests": {
+              "type": "boolean"
+            },
+            "coverage": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "required": [
+        "ticket_id",
+        "branch",
+        "pr_ref",
+        "local_checks"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

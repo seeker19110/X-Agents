@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "software-company/topics/tasks",
+  "title": "tasks",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "tasks"
+    },
+    "key": {
+      "type": "string",
+      "description": "= ticket_id"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "ticket_id": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "requirement_id": {
+          "type": "string"
+        },
+        "assignee": {
+          "enum": [
+            "backend",
+            "frontend",
+            "mobile",
+            "database"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "acceptance": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "estimate_days": {
+          "type": "number"
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "retry": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hint": {
+          "type": "string"
+        },
+        "budget_tokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "project_id",
+        "requirement_id",
+        "assignee",
+        "title",
+        "acceptance",
+        "retry"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}

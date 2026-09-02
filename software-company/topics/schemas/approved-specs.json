@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "software-company/topics/approved-specs",
+  "title": "approved-specs",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "topic": {
+      "const": "approved-specs"
+    },
+    "key": {
+      "type": "string",
+      "description": "= project_id"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "project_id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending_human",
+            "approved",
+            "changes_requested",
+            "rejected"
+          ]
+        },
+        "artifacts": {
+          "type": "object",
+          "properties": {
+            "prd": {
+              "type": "string"
+            },
+            "requirements": {
+              "type": "string"
+            },
+            "glossary": {
+              "type": "string"
+            },
+            "adr": {
+              "type": "string"
+            },
+            "risks": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "prd",
+            "requirements"
+          ]
+        },
+        "reviewer": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "status",
+        "artifacts"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_id",
+    "topic",
+    "key",
+    "actor",
+    "ts",
+    "payload"
+  ],
+  "additionalProperties": false
+}
