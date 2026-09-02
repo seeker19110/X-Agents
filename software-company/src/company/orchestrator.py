@@ -204,20 +204,21 @@ class StepResult:
 class Orchestrator:
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
                  max_retries: int = 3, repo: Path | None = None, base: str = "HEAD", max_turns: int = 25,
-                 integration: str = "company/integration"):
+                 integration: str = "company/integration", project_budget_tokens: int | None = None):
         self.bus = bus
         self.repo, self.max_turns = (Path(repo) if repo else None), max_turns
         if self.repo is not None and not (self.repo / ".git").exists():
             raise ValueError(f"repo không phải git repository: {self.repo}")
         self.integration = Integration(self.repo, integration, base) if self.repo is not None else None
         self.void_releases: set[str] = set()
+        self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
         self.blackboard = Blackboard(bus)
         self.gate = PersistentGate(bus)
         self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries)
-        self.supervisor = Supervisor(bus, max_retries=max_retries)
+        self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_tokens=project_budget_tokens)
         self.runner = AgentRunner(bus, client, self.agents, self.blackboard)
         self.processed: set[str] = set()
         self.paused: set[str] = set()
@@ -239,6 +240,7 @@ class Orchestrator:
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self.void_releases.add(d["release_id"])
+                elif a["action"] == "threat_model.missing": self.missing_threat_model.add(d["subject_id"])
                 elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d["subject_id"] in self.plans:
                     self._dispatch_plan(d["subject_id"], replaying=True)
             elif env.topic == "supervisor-actions": self._track_pause(env)
@@ -292,6 +294,8 @@ class Orchestrator:
         remind, overdue = self.gate.due(now)
         for sid in [*remind, *overdue]:
             self._audit(f"gate.{'overdue' if sid in overdue else 'remind'}", {"subject_id": sid}, once=f"gate:{sid}")
+        for sid in overdue:  # quá hạn không tự đi tiếp, nhưng cũng không im lặng: supervisor nhận việc
+            self.supervisor.escalate_gate(sid, f"gate quá hạn {self.gate.timeout}", once_key=f"gate.escalate:{sid}")
         for tid, missing in self.lead.overdue_reviews(now).items():
             pr = self.latest("pull-requests", tid)
             for src in sorted(missing):
@@ -335,9 +339,9 @@ class Orchestrator:
             agent = env.payload["assignee"] if r.agent == "$assignee" else r.agent
             self._call(agent, env, r, res)
         if env.topic == "release-events" and _deployed("production")(env, self):
-            self._audit("uat.pending", {"release_id": env.key, "note": "account-manager tổ chức UAT; khách ký acceptance-results"},
-                        once=f"uat:{env.key}")
+            self._open_acceptance_gate(env.key, res)
         if env.topic == "acceptance-results":
+            self._close_acceptance_gate(env, res)
             self._record_lessons(env.payload["release_id"])
         self._mark(env, res)
         return res
@@ -475,7 +479,8 @@ class Orchestrator:
         n = 1 + sum(1 for p in self.plans.values() if p["project_id"] == project)
         plan_id = f"PLAN-{project}-{n}"
         plan = {"plan_id": plan_id, "project_id": project, "source_event": env.event_id, "source_topic": env.topic,
-                "tickets": [t.model_dump() for t in tickets], "problems": problems}
+                "tickets": [t.model_dump() for t in tickets], "problems": problems,
+                "threat_model": "missing" if f"SPEC-{project}" in self.missing_threat_model else "ok"}
         if problems:
             self._audit("plan_rejected", plan, actor="delivery-lead", tokens=g.tokens, project_id=project)
             res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}"); self.stats["errors"] += 1
@@ -502,8 +507,13 @@ class Orchestrator:
                                 context_writes=g.context_writes)
             self.stats["runs"] += 1
         except (RunnerError, LLMError) as e:
+            # Không chặn kế hoạch (người duyệt gate plan vẫn quyết được), nhưng phải hiện ra: audit riêng +
+            # ghi vào chính plan để checklist `threat-model` ở gate không bị tick nhầm là đã có.
+            self._audit("threat_model.missing", {"subject_id": sid, "error": str(e)[:300]},
+                        project_id=env.payload.get("project_id"))
+            self.missing_threat_model.add(sid)
             res.actions.append(f"error:security-engineer:{str(e)[:120]}"); self.stats["errors"] += 1
-            return True  # không có threat model không chặn plan; gate plan có mục threat-model để người thấy thiếu
+            return True
         if p["verdict"] == "block":
             self._audit("spec_blocked_by_security", {"subject_id": sid, "findings": p.get("findings", [])}, project_id=env.payload.get("project_id"))
             res.actions.append(f"spec_blocked:{sid}"); return False
@@ -585,6 +595,32 @@ class Orchestrator:
             res.actions.append(f"reopen:{tid}")
         elif decision in {"reject", "rollback"} and tid in self.lead.tickets:
             self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
+
+    # ---------- gate 4: nghiệm thu của khách ----------
+
+    def _open_acceptance_gate(self, rid: str, res: StepResult) -> None:
+        """Sau production: mở gate `acceptance` cho khách ký. Là gate thật nên có hạn 24h, có nhắc ở 12h và
+        được escalate khi quá hạn — trước đây chỉ là một dòng audit `uat.pending` không ai theo dõi."""
+        sid = f"UAT-{rid}"
+        if sid in self.gate.pending or self.gate.is_approved(sid) or f"uat:{rid}" in self.once: return
+        self._remember(f"uat:{rid}")
+        self.gate.request(GateRequest(kind="acceptance", subject_id=sid, created_by="account-manager",
+                                      checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
+        res.actions.append(f"gate:acceptance:{sid}")
+
+    def _close_acceptance_gate(self, env: Envelope, res: StepResult) -> None:
+        """Khách ký `acceptance-results` → đóng gate nghiệm thu bằng chính chữ ký đó (four-eyes: người ký của khách
+        khác account-manager). Conditional coi như chưa duyệt: gate đóng nhưng phần còn lại đi qua change request."""
+        rid = env.payload.get("release_id"); sid = f"UAT-{rid}"
+        if sid not in self.gate.pending: return
+        verdict = env.payload.get("verdict")
+        decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")
+        by = str(env.payload.get("signed_by") or env.actor)
+        try:
+            self.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}")
+            res.actions.append(f"gate:acceptance:{sid}:{decision}")
+        except (KeyError, PermissionError) as e:
+            self._audit("handler_error", {"agent": "account-manager", "error": str(e)[:300]})
 
     # ---------- vòng học ----------
 
@@ -679,6 +715,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repo", type=Path, help="git repo của khách: khối kỹ thuật sửa code thật trong worktree ticket/<id>")
     ap.add_argument("--base", default="HEAD", help="nhánh/commit gốc để tạo nhánh tích hợp lần đầu (mặc định HEAD)")
     ap.add_argument("--integration", default="company/integration", help="nhánh tích hợp: ticket rẽ từ đây, merge vào đây")
+    ap.add_argument("--project-budget", type=int, help="hạn mức token cho CẢ dự án; vượt thì supervisor cắt toàn dự án")
     sub = ap.add_subparsers(dest="cmd", required=True)
     rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--watch", type=float,
         help="chạy liên tục, mỗi N giây nạp event mới (gate CLI, publish) rồi xử lý")
@@ -709,7 +746,8 @@ def main(argv: list[str] | None = None) -> int:
         env = bus.publish(Envelope(topic="change-requests", key=ns.change_id, actor=ns.by, payload=payload))
         print(f"{ns.change_id}: {ns.decision} by {ns.by} event={env.event_id}"); return 0
     from .llm import make_client
-    orch = Orchestrator(bus, make_client(), repo=ns.repo, base=ns.base, integration=ns.integration)
+    orch = Orchestrator(bus, make_client(), repo=ns.repo, base=ns.base, integration=ns.integration,
+                        project_budget_tokens=ns.project_budget)
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "report":

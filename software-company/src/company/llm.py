@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -34,6 +36,28 @@ TIERS = ("strong", "standard")
 class LLMError(Exception): ...
 class Refused(LLMError):
     """Model từ chối trả lời. Không retry mù; để supervisor escalate."""
+
+
+class Transient(LLMError):
+    """Lỗi tạm thời của provider (429, 5xx, đứt mạng): retry có backoff thì qua được, không phải lỗi của prompt."""
+
+
+MAX_ATTEMPTS = 4       # tổng số lần gọi cho một request (1 lần đầu + 3 lần thử lại)
+BACKOFF_BASE = 1.0     # giây; lần thử thứ n chờ BACKOFF_BASE * 2**(n-1) cộng jitter
+
+
+def with_retry(call: Callable[[], Any], attempts: int = MAX_ATTEMPTS, sleep: Callable[[float], None] = time.sleep) -> Any:
+    """Gọi lại khi provider trả lỗi tạm thời. `Refused` và lỗi cấu hình KHÔNG retry: gọi lại cũng vậy thôi,
+    chỉ tốn token. Hết lượt thì ném `Transient` cuối cùng để runner ghi audit và supervisor escalate."""
+    last: Exception | None = None
+    for n in range(1, attempts + 1):
+        try:
+            return call()
+        except Transient as e:
+            last = e
+            if n == attempts: break
+            sleep(BACKOFF_BASE * 2 ** (n - 1) * (1 + random.random() * 0.1))
+    raise last  # type: ignore[misc]
 
 
 @dataclass
@@ -163,14 +187,17 @@ def anthropic_input_tokens(usage: Any) -> tuple[int, int, int]:
 class AnthropicClient:
     """Claude qua SDK chính thức: streaming, adaptive thinking, structured output theo JSON Schema."""
 
-    def __init__(self, cfg: LLMConfig | None = None):
+    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0, attempts: int = MAX_ATTEMPTS,
+                 sleep: Callable[[float], None] = time.sleep):
         try:
             import anthropic
         except ImportError as e:  # pragma: no cover
             raise RuntimeError("cài SDK: uv sync --extra anthropic") from e
         self.cfg = cfg or load_config()
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic()
+        self.attempts, self.sleep = attempts, sleep
+        # Không có timeout thì một request treo giữ luôn cả orchestrator (vòng lặp tuần tự, một tiến trình).
+        self._client = anthropic.Anthropic(timeout=timeout)
 
     @staticmethod
     def _messages(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -205,13 +232,18 @@ class AnthropicClient:
         )
         if tools:
             kwargs["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools]
-        try:
-            with self._client.messages.stream(**kwargs) as stream:
-                msg = stream.get_final_message()
-        except self._anthropic.APIConnectionError as e:
-            raise LLMError(f"lỗi mạng: {e}") from e
-        except self._anthropic.APIStatusError as e:
-            raise LLMError(f"API {e.status_code}: {e.message}") from e
+        def once():
+            try:
+                with self._client.messages.stream(**kwargs) as stream:
+                    return stream.get_final_message()
+            except self._anthropic.APIConnectionError as e:
+                raise Transient(f"lỗi mạng: {e}") from e
+            except self._anthropic.APIStatusError as e:
+                if e.status_code == 429 or e.status_code >= 500:
+                    raise Transient(f"API {e.status_code}: {e.message}") from e
+                raise LLMError(f"API {e.status_code}: {e.message}") from e
+
+        msg = with_retry(once, attempts=self.attempts, sleep=self.sleep)
         if msg.stop_reason == "refusal":
             raise Refused(f"model từ chối: {getattr(getattr(msg, 'stop_details', None), 'category', None)}")
         text = next((b.text for b in msg.content if b.type == "text"), "")
@@ -228,8 +260,10 @@ class OpenAICompatClient:
     """POST {base_url}/chat/completions. Dùng `response_format: json_schema` nếu server hỗ trợ; nếu server từ chối
     (400) thì lùi về `json_object` + schema nhúng trong prompt. Chạy với OpenAI, Ollama, Groq, vLLM, LM Studio..."""
 
-    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0):
+    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0, attempts: int = MAX_ATTEMPTS,
+                 sleep: Callable[[float], None] = time.sleep):
         self.cfg = cfg or load_config()
+        self.attempts, self.sleep = attempts, sleep
         self.base_url = (self.cfg.base_url or "https://api.openai.com/v1").rstrip("/")
         self.api_key = self.cfg.api_key or os.environ.get("OPENAI_API_KEY", "")
         self.timeout = timeout
@@ -237,6 +271,12 @@ class OpenAICompatClient:
         self._cache_key_ok: bool | None = None
 
     def _post(self, body: dict[str, Any]) -> dict[str, Any]:
+        def send():
+            return self._send(body)
+
+        return with_retry(send, attempts=self.attempts, sleep=self.sleep)
+
+    def _send(self, body: dict[str, Any]) -> dict[str, Any]:
         req = urllib.request.Request(f"{self.base_url}/chat/completions", data=json.dumps(body).encode("utf-8"),
                                      headers={"Content-Type": "application/json",
                                               **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {})})
@@ -244,9 +284,12 @@ class OpenAICompatClient:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            raise LLMError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:500]}") from e
-        except urllib.error.URLError as e:
-            raise LLMError(f"lỗi mạng: {e.reason}") from e
+            body = e.read().decode("utf-8", "replace")[:500]
+            if e.code == 429 or e.code >= 500:
+                raise Transient(f"HTTP {e.code}: {body}") from e
+            raise LLMError(f"HTTP {e.code}: {body}") from e
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise Transient(f"lỗi mạng: {getattr(e, 'reason', e)}") from e
 
     def _post_cacheable(self, body: dict[str, Any]) -> dict[str, Any]:
         """Như `_post`, nhưng nếu server từ chối vì không biết `prompt_cache_key` thì gỡ ra và thôi gửi từ lần sau.

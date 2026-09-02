@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-GateKind = Literal["spec", "plan", "release", "escalation"]
+GateKind = Literal["spec", "plan", "release", "escalation", "acceptance"]
 Decision = Literal["approve", "request_changes", "reject", "hold", "rollback", "pending"]
 
 @dataclass
@@ -34,6 +34,10 @@ class HumanGate:
             raise PermissionError("người duyệt phải khác người tạo (four-eyes)")
         req.decision, req.decided_by, req.reason = decision, by, reason
         self.history.append(self.pending.pop(subject_id)); return req
+
+    def overdue(self, now: datetime | None = None) -> list[GateRequest]:
+        """Gate quá hạn, để orchestrator escalate — quá hạn không bao giờ tự đi tiếp, nhưng cũng không im lặng."""
+        return [r for r in self.pending.values() if (now or datetime.now(UTC)) - r.created_at > self.timeout]
 
     def due(self, now: datetime | None = None) -> tuple[list[str], list[str]]:
         now = now or datetime.now(UTC); remind, overdue = [], []

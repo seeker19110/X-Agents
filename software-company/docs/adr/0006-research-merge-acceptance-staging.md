@@ -32,7 +32,7 @@ dù sở hữu namespace đó, kỹ thuật không có `observability`...).
    +performance-testing/accessibility; release-engineer +observability/incident-management; risk +threat-modeling;
    spec-writer +customer-acceptance; delivery-lead +risk-analysis/release/event-driven.
 
-Tổng: nghiên cứu 6, quản lý 1, kỹ thuật 6, chất lượng 3, vận hành 3, giám sát 1 = 20 agent; 35 skill.
+Tổng: nghiên cứu 6, quản lý 1, kỹ thuật 6, chất lượng 3, vận hành 3, giám sát 1 = 20 agent; 38 skill (con số 35 trong bản gốc đã lỗi thời).
 
 ## Hệ quả
 - Mọi prompt đổi đều tăng `version` và golden được sinh lại.

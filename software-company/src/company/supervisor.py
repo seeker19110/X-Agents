@@ -21,13 +21,19 @@ class Supervisor:
     """Watchdog + cost controller + knowledge base. Subscribe mọi topic."""
     WARN_AT, CUT_AT = 0.8, 1.0
 
-    def __init__(self, bus: InMemoryBus, max_retries: int = 3, ticket_timeout: timedelta = timedelta(hours=4)):
+    def __init__(self, bus: InMemoryBus, max_retries: int = 3, ticket_timeout: timedelta = timedelta(hours=4),
+                 project_budget_tokens: int | None = None):
         self.bus, self.max_retries, self.ticket_timeout = bus, max_retries, ticket_timeout
+        # Hạn mức cả dự án: ngân sách theo ticket không chặn được trường hợp nhiều ticket cùng đốt token.
+        self.project_budget_tokens = project_budget_tokens
         self.budgets: dict[str, Budget] = {}
+        self.project_budgets: dict[str, Budget] = {}
         self.last_seen: dict[str, datetime] = {}
         self.error_signatures: dict[str, list[str]] = defaultdict(list)
         self.actions: list[SupervisorAction] = []
         self.knowledge: list[dict] = []
+        self._escalated_once: set[str] = set()
+        self.project_of: dict[str, str] = {}  # ticket → dự án, để quy token của ticket về đúng ngân sách dự án
         self.replaying = False  # dựng lại từ log: cộng dồn ngân sách/chữ ký lỗi nhưng không phát lại supervisor-actions
         bus.subscribe("*", self._on)
 
@@ -51,6 +57,7 @@ class Supervisor:
         if env.topic == "tasks":
             t = Task.model_validate(env.payload)
             self.budgets.setdefault(t.ticket_id, Budget(t.budget_tokens))
+            self.project_of[t.ticket_id] = t.project_id
             if t.retry >= self.max_retries:
                 self._act(t.ticket_id, "escalate", f"retry {t.retry} ≥ {self.max_retries}")
         elif env.topic == "audit-log":
@@ -59,6 +66,7 @@ class Supervisor:
                 b = self.budgets[a.ticket_id]; b.used += a.tokens
                 if b.ratio >= self.CUT_AT: self._act(a.ticket_id, "budget_cut", f"dùng {b.used}/{b.limit} token")
                 elif b.ratio >= self.WARN_AT: self._act(a.ticket_id, "warn", f"đã dùng {b.ratio:.0%} ngân sách")
+            self._charge_project(a.project_id or self.project_of.get(a.ticket_id or ""), a.tokens)
         elif env.topic == "review-results" and env.payload.get("verdict") in {"fail", "block"}:
             sig = env.payload.get("root_cause") or " | ".join(f["text"] for f in env.payload.get("findings", []))
             sigs = self.error_signatures[env.key]; sigs.append(sig)
@@ -67,6 +75,24 @@ class Supervisor:
         elif env.topic == "shared-context":
             if env.actor not in NAMESPACE_OWNERS.get(env.payload["namespace"], set()):
                 self._act(env.actor, "pause", "ghi sai namespace")
+
+    def escalate_gate(self, subject_id: str, reason: str, once_key: str | None = None) -> None:
+        """Gate quá hạn: người duyệt im lặng cũng là một dạng bế tắc, phải hiện ra như mọi bế tắc khác."""
+        key = once_key or f"gate:{subject_id}"
+        if key in self._escalated_once: return
+        self._escalated_once.add(key)
+        self._act(subject_id, "escalate", reason)
+
+    def _charge_project(self, project_id: str | None, tokens: int) -> None:
+        """Cộng dồn token theo dự án. Vượt hạn mức dự án thì cắt cả dự án, không chỉ một ticket:
+        mười ticket mỗi cái trong ngân sách vẫn có thể đốt hết tiền của khách."""
+        if not project_id or not self.project_budget_tokens or not tokens: return
+        b = self.project_budgets.setdefault(project_id, Budget(self.project_budget_tokens))
+        b.used += tokens
+        if b.ratio >= self.CUT_AT: self._act(project_id, "budget_cut", f"dự án dùng {b.used}/{b.limit} token")
+        elif b.ratio >= self.WARN_AT and f"project.warn:{project_id}" not in self._escalated_once:
+            self._escalated_once.add(f"project.warn:{project_id}")
+            self._act(project_id, "warn", f"dự án đã dùng {b.ratio:.0%} ngân sách")
 
     def check_timeouts(self, now: datetime | None = None, active: set[str] | None = None) -> list[str]:
         """Escalate key im lặng quá ticket_timeout. `active` (ticket đang chạy, từ delivery-lead) giới hạn phạm vi
@@ -122,6 +148,7 @@ class Supervisor:
         unverified = sum(1 for e in self.bus.replay(topic="pull-requests")
                          if (e.payload.get("local_checks") or {}).get("verified_by") != "workspace")
         return {"tickets": tickets, "actions": dict(actions), "lessons": len(self.knowledge),
+                "projects": {p: {"used": b.used, "limit": b.limit} for p, b in sorted(self.project_budgets.items())},
                 "rework_rate": round(sum(1 for r in tickets.values() if r["retry"]) / len(tickets), 2) if tickets else None,
                 "review_catch_rate": round(caught / len(reviews), 2) if reviews else None,
                 "prs": prs, "prs_unverified": unverified, "calibration": self.calibration()}

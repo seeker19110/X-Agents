@@ -2,7 +2,7 @@
 
 Mô phỏng một công ty gia công phần mềm bằng hệ đa agent event-driven: 7 khối, 20 agent,
 mọi trao đổi đi qua topic có key, tri thức chung nằm trên blackboard, con người duyệt ở
-3 điểm cố định. Nguyên tắc: tính toán xác định, guardrail có hạn mức, đo token thật,
+4 điểm cố định. Nguyên tắc: tính toán xác định, guardrail có hạn mức, đo token thật,
 cô lập workspace theo ticket, prompt là code. Đây là "công ty AI" đầu tiên trong hub X-Agents.
 
 ## Các khối
@@ -33,7 +33,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ```
 docs/          kiến trúc, tiêu chuẩn, ADR (0001–0013)
 agents/        system prompt từng agent (có version), nhóm theo khối
-skills/        38 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
+skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
 gates/         checklist human gate
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
@@ -88,7 +88,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0013; 20 system prompt có version; 38 skill có version; 8 template; checklist 4 gate.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0016; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
