@@ -11,12 +11,14 @@ Quyết định kiến trúc: `software-company/docs/adr/0019-subscription-routi
 |---|---|---|---|
 | **Claude Pro/Max** | provider `claude-code`: CLI `claude -p` đã `claude login` trên máy | Opus / Sonnet / Haiku theo gói | Suy luận và code tốt nhất; hạn mức theo cửa sổ 5 giờ + tuần; **không tool-use** cho lớp ngoài (khối kỹ thuật cần tool phải đi backend khác). Nhiều tài khoản Claude trên một máy: mỗi tài khoản một backend với `config_dir` riêng (`CLAUDE_CONFIG_DIR`) |
 | **ChatGPT Plus/Pro** | provider `codex`: Codex CLI `codex exec --json` đã `codex login` (app Codex trên Windows đi kèm CLI, tự tìm trong `%LOCALAPPDATA%/OpenAI/Codex/bin`) | GPT theo gói (vd. `gpt-5.6-terra`); `effort` → `model_reasoning_effort` | Structured output qua `--output-schema`; sandbox read-only trong thư mục rỗng; **không tool-use** của công ty. Nhiều tài khoản ChatGPT: mỗi tài khoản một backend với `config_dir` riêng (`CODEX_HOME`) |
-| **Google Antigravity** | provider `openai` → `../gateway` (`http://127.0.0.1:8100/v1`), xoay vòng nhiều tài khoản Google | `gemini-3.7-flash` (+`-medium`/`-low`), `gemini-3.1-pro`, `claude-sonnet-4-6` | Miễn phí theo quota từng tài khoản; gateway tự đổi tài khoản, hết cả pool thì trả 429 kèm "thử lại sau Ns"; có tool-use |
+| **Google Antigravity** | provider `openai` → `../gateway` (`http://127.0.0.1:8100/v1`), xoay vòng nhiều tài khoản Google | `gemini-3.7-flash` (+`-medium`/`-low`), `gemini-3.6-flash`, `gemini-3.1-pro`, `claude-sonnet-4-6` (alias khác map về 4 model upstream này, xem `gateway/README.md`) | Miễn phí theo quota từng tài khoản; gateway tự đổi tài khoản, hết cả pool thì trả 429 kèm "thử lại sau khoảng Ns"; có tool-use |
 | **Model local** | provider `openai` → Ollama / vLLM / LM Studio | qwen3, llama, gemma... | Không bao giờ hết quota; chất lượng thấp hơn — lưới đỡ cuối cho việc nhẹ |
 | (API trả phí) | provider `anthropic` / `openai` với key | tuỳ | Vẫn hỗ trợ, nhưng không phải mặc định của hub |
 
 Khai báo trong `llm.yaml` của từng công ty dưới khoá `backends:` (mẫu trong `llm.example.yaml`). Thứ tự khai báo là
-thứ tự ưu tiên; `routing.prefer` ghi đè theo tier.
+thứ tự ưu tiên; `routing.prefer` ghi đè theo tier. Khi mọi backend đều đang nghỉ: software-company ném `TransientError`
+(orchestrator hoãn event, nhịp sau thử lại), Studio-creators ném `LLMError` (chạy lại `run` sau). Backend CLI có thể ép
+`supports_tools: true` nếu muốn thử tool-use qua đó (mặc định false).
 
 ## 2. Ba tier
 
