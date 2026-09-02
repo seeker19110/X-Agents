@@ -36,7 +36,7 @@ agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        35 skill: rule + checklist + ví dụ, theo tiêu chuẩn ngành
 gates/         checklist human gate
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
-topics/        17 JSON Schema topic + bảng owner namespace
+topics/        18 JSON Schema topic + bảng owner namespace
 src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard,
                llm (ModelClient + adapter), runner, workspace, evals, graph
 evals/         ca eval prompt theo agent (YAML)
@@ -71,7 +71,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 
 ### Đã có
 - Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0006; 20 system prompt có version; 35 skill; 8 template; checklist 4 gate.
-- 17 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results; namespace contract).
+- 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
   supervisor (warn/cut/escalate, sprint_report), gates, blackboard, demo.
@@ -92,7 +92,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   sinh JSON, chưa tự viết code vào worktree.
 - **CI/CD, deploy thật** cho release-engineer/platform; **Kafka/Redis** thay SQLite khi chạy nhiều máy.
 - **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn.
-- **Eval mới phủ reviewer, qa-debugger**; cần ca eval cho 18 agent còn lại (ưu tiên researcher, account-manager) và chạy khi `version` tăng (CI).
+- **Eval mới phủ reviewer, qa-debugger, researcher, account-manager**; cần ca eval cho 16 agent còn lại và chạy khi `version` tăng (CI).
 - **Giao diện UAT cho khách**: nghiệm thu hiện qua account-manager ghi `acceptance-results` bằng CLI/code.
 
 ### Bước tiếp theo

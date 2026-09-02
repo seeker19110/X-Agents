@@ -28,7 +28,7 @@ UPDATE = os.environ.get("UPDATE_GOLDEN") == "1"
 
 TOPICS = set(get_args(Topic))
 # Giá trị reads/writes hợp lệ nhưng không phải topic trên bus: subscribe mọi topic, nguồn ngoài, kho tri thức.
-NON_TOPIC_CHANNELS = {"*", "external-feedback", "knowledge-base"}
+NON_TOPIC_CHANNELS = {"*", "knowledge-base"}
 BLOCKS = {"research", "delivery", "engineering", "quality", "operations", "supervision"}
 MODEL_TIERS = {"standard", "strong"}
 REQUIRED_SECTIONS = ["## Vai trò", "## Bạn PHẢI", "## Bạn KHÔNG ĐƯỢC", "## Đầu vào", "## Đầu ra", "## Definition of done"]
@@ -158,7 +158,7 @@ def test_every_topic_has_a_writer_and_a_reader():
     """Không có topic mồ côi: mỗi topic (trừ topic human/ngoài) có ít nhất một agent ghi và một agent đọc."""
     readers = {t for a in AGENTS.values() for t in a.reads} | {"*"}
     writers = {t for a in AGENTS.values() for t in a.writes}
-    human_written = {"clarification-answers", "research-requests", "approved-specs", "shared-context"}  # account-manager ghi change-requests/acceptance-results
+    human_written = {"clarification-answers", "research-requests", "approved-specs", "shared-context", "external-feedback"}  # account-manager ghi change-requests/acceptance-results
     human_read = {"clarification-questions", "release-events", "supervisor-actions", "shared-context", "audit-log"}
     for t in TOPICS:
         assert t in writers or t in human_written, f"không ai ghi `{t}`"

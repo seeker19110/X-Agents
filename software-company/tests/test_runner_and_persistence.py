@@ -281,5 +281,37 @@ def test_run_eval_offline_with_fake_client():
     assert not all(r.passed for r in bad)
 
 
+def _input_payload(user: str) -> dict:
+    return json.loads(user.split("```json\n", 1)[1].split("\n```", 1)[0])
+
+
+def test_run_eval_researcher_offline():
+    def handler(system: str, user: str) -> dict:
+        p = _input_payload(user); goal = p["data"]["goal"]; has_repo = any("repo" in a for a in p["data"].get("attachments", []))
+        return {"project_id": p["project_id"], "kind": "researcher", "sources": ["brief"], "data": {
+            "domain": {"glossary": ["lịch hẹn", "chi nhánh", "lễ tân"], "processes": ["đặt → xác nhận → nhắc"],
+                       "regulations": ["Nghị định 13/2023"] if "13/2023" in json.dumps(p, ensure_ascii=False) else []},
+            "ux": {"personas": ["bệnh nhân", "lễ tân"], "flows": ["đặt lịch"], "screens": []},
+            "codebase": {"architecture": "HIS export CSV", "debt": [], "touchpoints": ["CSV"]} if has_repo else "không áp dụng: sản phẩm mới, chưa có codebase",
+            "tech": {"options": ["Next.js + Postgres"], "licenses": ["MIT"], "costs": {"monthly_usd": 40},
+                     "ai_risks": ["prompt injection", "chi phí LLM"] if "AI" in goal else []}}}
+    res = run_eval("researcher", FakeClient(handler=handler))
+    assert [r.passed for r in res] == [True, True], [(r.name, r.failures) for r in res]
+
+
+def test_run_eval_account_manager_offline():
+    def handler(system: str, user: str) -> dict:
+        p = _input_payload(user)
+        if "uat_log" in p:
+            fail = "fail" in p["uat_log"]
+            return {"release_id": p["release_id"], "project_id": "P1", "verdict": "rejected" if fail else "accepted",
+                    "signed_by": "chị Lan (PO)" if not fail else "chưa ký: chị Lan từ chối",
+                    "findings": [{"level": "block", "text": "REQ-3: báo cáo theo UTC, lệch 7 giờ"}] if fail else []}
+        return {"change_id": "CR-1", "project_id": p["project_id"], "requested_by": p["from"], "description": "Xuất Excel danh sách lịch hẹn",
+                "affects_requirements": [], "impact": {"estimate_days": 1.5, "estimate_tokens": 40_000}, "decision": "pending"}
+    res = run_eval("account-manager", FakeClient(handler=handler))
+    assert [r.passed for r in res] == [True, True, True], [(r.name, r.failures) for r in res]
+
+
 def test_python_executable_used_for_checks():
     assert Path(sys.executable).exists()

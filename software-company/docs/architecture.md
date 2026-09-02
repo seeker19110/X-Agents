@@ -34,6 +34,7 @@
 | release-candidates | delivery-lead | release-engineer, security-engineer | release_id |
 | release-events | release-engineer | delivery-lead, qa-debugger (staging), support-docs, account-manager (production), human gate | release_id |
 | incidents | support-docs | delivery-lead | incident_id |
+| external-feedback | human (khách, người dùng) | support-docs, account-manager | project_id |
 | change-requests | account-manager | delivery-lead, intake | change_id |
 | acceptance-results | account-manager | delivery-lead | release_id |
 | shared-context | theo namespace | tất cả | namespace |

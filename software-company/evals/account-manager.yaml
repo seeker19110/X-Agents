@@ -1,0 +1,57 @@
+# Eval cho account-manager (nghiệm thu khách, change request). Chạy: python -m company.evals account-manager
+cases:
+  - name: uat-dat-het-must-phai-accepted-co-nguoi-ky-cua-khach
+    topic_out: acceptance-results
+    context:
+      - {actor: account-manager, namespace: contract, content_ref: docs/sow.md, summary: "SOW P1; UAT-01..UAT-05 map REQ-1..REQ-5 (Must); người ký phía khách: chị Lan (PO)"}
+    input:
+      topic: release-events
+      key: REL-001
+      actor: release-engineer
+      payload:
+        release_id: REL-001
+        version: "1.0.0"
+        env: production
+        status: deployed
+        uat_log: "UAT-01..UAT-05 đều pass trên production ngày 2026-09-02, chị Lan (PO khách) xác nhận qua email, project P1"
+    expect:
+      equals: {release_id: REL-001, project_id: P1, verdict: accepted}
+      contains: {signed_by: "Lan"}
+
+  - name: uat-fail-must-phai-rejected-finding-truy-vet-requirement
+    topic_out: acceptance-results
+    context:
+      - {actor: account-manager, namespace: contract, content_ref: docs/sow.md, summary: "SOW P1; UAT-03 = REQ-3 'xuất báo cáo theo giờ Việt Nam' (Must); người ký: chị Lan"}
+    input:
+      topic: release-events
+      key: REL-002
+      actor: release-engineer
+      payload:
+        release_id: REL-002
+        version: "1.1.0"
+        env: production
+        status: deployed
+        uat_log: "UAT-03 fail: báo cáo xuất theo UTC, lệch 7 giờ so với yêu cầu REQ-3; các UAT khác pass; chị Lan từ chối ký, project P1"
+    expect:
+      equals: {release_id: REL-002, verdict: rejected}
+      min_len: {findings: 1}
+      contains: {findings.0.text: "REQ-3"}
+      one_of: {findings.0.level: [block]}
+
+  - name: yeu-cau-ngoai-spec-phai-thanh-change-request-pending-co-impact
+    topic_out: change-requests
+    context:
+      - {actor: spec-writer, namespace: prd, content_ref: docs/prd.md, summary: "PRD P1 v1: REQ-1..REQ-5, out-of-scope: xuất Excel"}
+    input:
+      topic: external-feedback
+      key: P1
+      actor: human
+      payload:
+        project_id: P1
+        from: "chị Lan (PO khách)"
+        channel: email
+        text: "Team ơi, thêm cho mình nút xuất Excel danh sách lịch hẹn nhé, tuần sau cần dùng luôn"
+    expect:
+      equals: {project_id: P1, decision: pending}
+      contains: {description: "Excel", requested_by: "Lan"}
+      min_len: {impact: 1}

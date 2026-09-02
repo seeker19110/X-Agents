@@ -11,7 +11,7 @@ Topic = Literal[
     "clarification-questions", "clarification-answers", "approved-specs",
     "tasks", "pull-requests", "review-results", "release-candidates",
     "release-events", "incidents", "shared-context", "audit-log", "supervisor-actions",
-    "change-requests", "acceptance-results",
+    "change-requests", "acceptance-results", "external-feedback",
 ]
 Assignee = Literal["backend", "frontend", "mobile", "database", "platform", "data"]
 Namespace = Literal[

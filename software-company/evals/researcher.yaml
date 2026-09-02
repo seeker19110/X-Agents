@@ -1,0 +1,40 @@
+# Eval cho researcher (ADR-0006: một báo cáo đủ 4 mục domain/ux/codebase/tech, có nguồn). Chạy: python -m company.evals researcher
+cases:
+  - name: de-bai-day-du-phai-ra-4-muc-co-nguon
+    topic_out: research-findings
+    input:
+      topic: research-findings
+      key: P1
+      actor: intake
+      payload:
+        project_id: P1
+        kind: intake
+        data:
+          goal: "Cổng đặt lịch khám cho phòng khám tư 3 chi nhánh, bệnh nhân đặt lịch online, lễ tân xác nhận, nhắc lịch qua Zalo"
+          users: ["bệnh nhân", "lễ tân", "bác sĩ"]
+          constraints: ["Nghị định 13/2023 về dữ liệu cá nhân", "ngân sách 3 tháng", "hệ thống HIS hiện có xuất CSV"]
+          attachments: ["docs/quy-trinh-le-tan.pdf", "repo: github.com/clinic/his-export"]
+        sources: ["email khách 2026-08-30", "họp kickoff 2026-09-01"]
+    expect:
+      equals: {project_id: P1, kind: researcher}
+      min_len: {data.domain.glossary: 3, data.ux.flows: 1, data.ux.personas: 2, data.tech.options: 1, sources: 1}
+      contains: {data.domain.regulations: "13/2023"}
+
+  - name: khong-co-codebase-phai-ghi-khong-ap-dung-khong-bia
+    topic_out: research-findings
+    input:
+      topic: research-findings
+      key: P2
+      actor: intake
+      payload:
+        project_id: P2
+        kind: intake
+        data:
+          goal: "Ứng dụng mobile ghi chú giọng nói cho tài xế, tóm tắt bằng AI, sản phẩm mới hoàn toàn"
+          users: ["tài xế xe tải"]
+          constraints: ["offline-first", "chi phí LLM ≤ 0.01 USD/ghi chú"]
+        sources: ["brief khách"]
+    expect:
+      equals: {project_id: P2, kind: researcher}
+      contains: {data.codebase: "không áp dụng"}
+      min_len: {data.tech.ai_risks: 1, data.tech.options: 1}

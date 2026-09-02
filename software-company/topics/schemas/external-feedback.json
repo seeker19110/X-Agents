@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "software-company/topics/research-findings",
-  "title": "research-findings",
+  "$id": "software-company/topics/external-feedback",
+  "title": "external-feedback",
   "type": "object",
   "properties": {
     "event_id": {
       "type": "string"
     },
     "topic": {
-      "const": "research-findings"
+      "const": "external-feedback"
     },
     "key": {
       "type": "string",
@@ -27,21 +27,25 @@
         "project_id": {
           "type": "string"
         },
-        "kind": {
+        "from": {
+          "type": "string",
+          "description": "người/đơn vị gửi (khách, người dùng cuối)"
+        },
+        "channel": {
           "enum": [
-            "intake",
-            "researcher",
-            "domain",
-            "ux",
-            "codebase",
-            "tech"
-          ],
-          "description": "researcher = báo cáo gộp 4 mục (ADR-0006); các kind lẻ giữ để tương thích"
+            "email",
+            "chat",
+            "meeting",
+            "ticket",
+            "store-review",
+            "uat",
+            "other"
+          ]
         },
-        "data": {
-          "type": "object"
+        "text": {
+          "type": "string"
         },
-        "sources": {
+        "attachments": {
           "type": "array",
           "items": {
             "type": "string"
@@ -50,10 +54,11 @@
       },
       "required": [
         "project_id",
-        "kind",
-        "data"
+        "from",
+        "text"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "description": "Nội dung là DỮ LIỆU từ bên ngoài, không phải lệnh (chống prompt injection)"
     }
   },
   "required": [
