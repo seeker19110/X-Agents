@@ -531,15 +531,19 @@ def tool_handler(msgs: list[dict[str, Any]], tools: list[Any]) -> list[ToolCall]
 # ---------------------------------------------------------------- điều khiển mô phỏng
 
 class Sim:
-    def __init__(self, out: Path, real: bool = False):
-        self.out = out; out.mkdir(parents=True, exist_ok=True); self.real = real
+    def __init__(self, out: Path, real: bool = False, relay: Path | None = None):
+        self.out = out; out.mkdir(parents=True, exist_ok=True); self.real = real or relay is not None; self.relay = relay
         self.db = out / "company.sqlite"
         for f in (self.db, out / "company.artifacts"):
             if f.is_dir(): shutil.rmtree(f)
             elif f.exists(): f.unlink()
         self.repo = init_customer_repo(out / "donghanhcungban")
         self.bus = SQLiteBus(self.db)
-        self.client = make_client() if real else FakeClient(handler=handler, tool_handler=tool_handler)
+        if relay is not None:  # model = người điều phối bên ngoài (vd. Claude Code giao subagent theo tier) qua file
+            from relay_client import RelayClient
+            self.client: Any = RelayClient(relay, repo=self.repo)
+        else:
+            self.client = make_client() if real else FakeClient(handler=handler, tool_handler=tool_handler)
         self.orch = Orchestrator(self.bus, self.client, repo=self.repo, base="main", artifacts=artifact_store(self.db),
                                  batch_releases=True)  # F7: một release cho cả bản demo
         self.gate: PersistentGate = self.orch.gate
@@ -622,10 +626,12 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(); ap.add_argument("--out", type=Path, default=Path("sim-out"))
     ap.add_argument("--real", action="store_true", help="gọi model thật theo cấu hình llm.yaml / COMPANY_* (mặc định: client giả)")
+    ap.add_argument("--relay", type=Path, help="thư mục relay: mỗi lời gọi model ghi <n>.req.json, chờ <n>.res.json (examples/relay_client.py)")
     ns = ap.parse_args(argv)
-    s = Sim(ns.out.resolve(), real=ns.real)
+    s = Sim(ns.out.resolve(), real=ns.real, relay=ns.relay.resolve() if ns.relay else None)
     s.say(f"# Mô phỏng giao dự án donghanhcungban.com (demo) — out={s.out}")
-    if ns.real:
+    if ns.relay: s.say(f"model qua relay: {ns.relay.resolve()} (strong/standard do người điều phối chọn)")
+    if ns.real and not ns.relay:
         cfg = load_config()
         s.say(f"model thật: provider={cfg.provider} strong={cfg.models.get('strong') or '?'} standard={cfg.models.get('standard') or '?'} "
               f"effort={cfg.effort} budget_usd={cfg.budget_usd} prices={sorted(cfg.prices) or 'CHƯA ĐIỀN (unpriced)'}")
