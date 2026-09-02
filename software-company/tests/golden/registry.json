@@ -407,11 +407,11 @@
       "requirements-engineering",
       "technical-writing",
       "customer-acceptance",
-      "ux-design",
+      "ui-ux-design",
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 3,
+    "version": 4,
     "writes": [
       "approved-specs"
     ]
