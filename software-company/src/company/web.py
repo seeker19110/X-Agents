@@ -55,10 +55,25 @@ def check_url(url: str) -> str:
     return url
 
 
+class _CheckedRedirect(urllib.request.HTTPRedirectHandler):
+    """Kiểm cả chặng chuyển hướng, không chỉ URL đầu.
+
+    `check_url` một lần là chưa đủ: một host công khai trả 302 về `http://169.254.169.254/` (metadata của cloud) hay
+    `http://127.0.0.1:.../` thì urlopen đi theo và ta vẫn lấy về nội dung nội bộ — đúng thứ hàm chặn host được viết ra
+    để ngăn. Mỗi chặng phải qua lại `check_url`; chặng xấu ném ToolError và cả lời gọi dừng."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        check_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_CheckedRedirect)
+
+
 def default_fetcher(url: str) -> tuple[int, str, bytes]:
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html,application/json,text/plain;q=0.9,*/*;q=0.5"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with _OPENER.open(req, timeout=TIMEOUT) as r:
             return r.status, r.headers.get("Content-Type", ""), r.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as e:
         return e.code, e.headers.get("Content-Type", "") if e.headers else "", b""

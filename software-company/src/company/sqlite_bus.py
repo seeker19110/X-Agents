@@ -73,5 +73,12 @@ class SQLiteBus(InMemoryBus):
         for (body,) in rows:
             yield Envelope.model_validate_json(body)
 
+    def latest(self, topic: str, key: str) -> Envelope | None:
+        """Như lớp cha nhưng để SQLite tìm: `ORDER BY seq DESC LIMIT 1` trên index (topic, key), không quét log."""
+        with self._lock:
+            row = self._db.execute("SELECT body FROM events WHERE topic = ? AND key = ? ORDER BY seq DESC LIMIT 1",
+                                   (topic, key)).fetchone()
+        return Envelope.model_validate_json(row[0]) if row else None
+
     def close(self) -> None:
         self._db.close()

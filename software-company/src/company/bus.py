@@ -79,5 +79,15 @@ class InMemoryBus:
             if (topic is None or e.topic == topic) and (key is None or e.key == key):
                 yield e
 
+    def latest(self, topic: str, key: str) -> Envelope | None:
+        """Event mới nhất của một (topic, key). Tách riêng khỏi `replay` vì đây là đường nóng: orchestrator hỏi
+        "bản draft/PR/RC gần nhất" cho gần như mọi event, và dựng cả danh sách chỉ để lấy phần tử cuối là O(N)
+        mỗi lần — trên bus bền vững còn kèm parse lại từng envelope."""
+        with self._lock:
+            for e in reversed(self._log):
+                if e.topic == topic and e.key == key:
+                    return e
+        return None
+
     def __len__(self) -> int:
         return len(self._log)
