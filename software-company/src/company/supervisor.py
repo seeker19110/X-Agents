@@ -66,11 +66,15 @@ class Supervisor:
             if env.actor not in NAMESPACE_OWNERS.get(env.payload["namespace"], set()):
                 self._act(env.actor, "pause", "ghi sai namespace")
 
-    def check_timeouts(self, now: datetime | None = None) -> list[str]:
+    def check_timeouts(self, now: datetime | None = None, active: set[str] | None = None) -> list[str]:
+        """Escalate key im lặng quá ticket_timeout. `active` (ticket đang chạy, từ delivery-lead) giới hạn phạm vi
+        để không escalate ticket đã đóng; mỗi key chỉ escalate một lần cho tới khi có event mới."""
         now = now or datetime.now(UTC); stuck = []
         for key, ts in self.last_seen.items():
+            if active is not None and key not in active: continue
             if now - ts > self.ticket_timeout:
-                stuck.append(key); self._act(key, "escalate", f"không hoạt động > {self.ticket_timeout}")
+                stuck.append(key); self.last_seen[key] = now
+                self._act(key, "escalate", f"không hoạt động > {self.ticket_timeout}")
         return stuck
 
     def detect_injection(self, text: str) -> bool:

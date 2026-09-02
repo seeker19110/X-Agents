@@ -1,5 +1,6 @@
 ---
 name: codebase-analysis
+version: 1
 standards: [C4 model, SBOM]
 ---
 # Skill: codebase-analysis

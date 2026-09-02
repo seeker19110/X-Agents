@@ -1,5 +1,6 @@
 ---
 name: project-management
+version: 1
 standards: [PMBOK 7, Scrum Guide 2020, DORA]
 ---
 # Skill: project-management

@@ -1,5 +1,6 @@
 ---
 name: mobile
+version: 1
 standards: [Apple HIG, Material 3, OWASP MASVS, Store policies]
 ---
 # Skill: mobile

@@ -5,11 +5,11 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: schema
-skills: [engineering-common, database, observability]
+skills: [engineering-common, database, observability, privacy-compliance, performance-testing]
 budget_tokens_per_task: 80000
 max_retries: 3
 timeout_minutes: 120
-version: 2
+version: 3
 ---
 # database
 

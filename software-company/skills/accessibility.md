@@ -1,5 +1,6 @@
 ---
 name: accessibility
+version: 1
 standards: [WCAG 2.2 AA, ISO 9241-210, EN 301 549, ARIA Authoring Practices]
 ---
 # Skill: accessibility

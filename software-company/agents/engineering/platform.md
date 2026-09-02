@@ -5,11 +5,11 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: infra
-skills: [engineering-common, iac-platform, observability, devops, finops]
+skills: [engineering-common, iac-platform, observability, devops, finops, security, incident-management]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 1
+version: 2
 ---
 # platform
 

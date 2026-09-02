@@ -1,5 +1,6 @@
 ---
 name: engineering-common
+version: 1
 standards: [Twelve-Factor, OWASP ASVS L2, Conventional Commits, Trunk-based + feature flag, OpenTelemetry]
 ---
 # Skill: engineering-common

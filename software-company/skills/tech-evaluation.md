@@ -1,5 +1,6 @@
 ---
 name: tech-evaluation
+version: 1
 standards: [OSS license compatibility, TCO]
 ---
 # Skill: tech-evaluation

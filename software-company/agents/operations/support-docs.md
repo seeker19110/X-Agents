@@ -2,14 +2,14 @@
 id: support-docs
 block: operations
 model_tier: standard
-reads: [release-events, external-feedback]
+reads: [release-events, external-feedback, incidents]
 writes: [incidents, research-requests]
 context_namespace_write: docs
-skills: [technical-writing, incident-management]
+skills: [technical-writing, incident-management, observability, requirements-engineering]
 budget_tokens_per_task: 40000
 max_retries: 2
 timeout_minutes: 60
-version: 2
+version: 3
 ---
 # support-docs
 

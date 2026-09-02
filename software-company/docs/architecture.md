@@ -27,7 +27,7 @@
 | requirements-draft | synthesizer | risk, clarifier, researcher | project_id |
 | clarification-questions | clarifier | human gate | project_id |
 | clarification-answers | human gate | intake | project_id |
-| approved-specs | human gate | delivery-lead, security-engineer, account-manager | project_id |
+| approved-specs | spec-writer → human gate `spec` | security-engineer (threat model), delivery-lead (plan), account-manager | project_id |
 | tasks | delivery-lead | engineering (6 agent) | ticket_id |
 | pull-requests | engineering | reviewer, qa-debugger, security-engineer (khi risk_tags) | ticket_id |
 | review-results | reviewer, qa-debugger, security-engineer | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
@@ -94,5 +94,7 @@ publish → event mới. Bảng route phải khớp front matter `reads`/`writes
 chờ người: gate `spec` (`SPEC-<project>`), gate `plan` (`PLAN-<project>-<n>`, sau khi delivery-lead sinh ticket và
 code kiểm estimate/budget/depends_on), gate `release` (`REL-xxx`, production). Ticket bị supervisor pause/budget_cut/
 escalate thì event của nó bị hoãn đến `resume`. Đầu vào của người (`clarification-answers`, `acceptance-results`,
-`change-requests` decision, `external-feedback`) đi qua `orchestrator publish`. Mỗi event xử lý xong ghi
-`audit-log` action=orchestrated; mở lại bus SQLite thì replay dựng lại trạng thái và xếp hàng phần chưa xử lý.
+`change-requests` decision, `external-feedback`) đi qua `orchestrator publish` / `decide-change`. Agent ghi blackboard
+bằng `context_writes` trong đầu ra; threat model đi trước ticket đầu; ticket blocked hoặc bị escalate mở gate
+`escalation` (approve = mở lại với hint, reject = đóng). Mỗi event xử lý xong ghi `audit-log` action=orchestrated;
+mở lại bus SQLite thì replay dựng lại trạng thái và xếp hàng phần chưa xử lý.

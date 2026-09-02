@@ -1,5 +1,6 @@
 ---
 name: release
+version: 1
 standards: [Google SRE, GitOps, Blue-green/Canary, SemVer]
 ---
 # Skill: release

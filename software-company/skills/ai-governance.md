@@ -1,5 +1,6 @@
 ---
 name: ai-governance
+version: 1
 standards: [NIST AI RMF, ISO/IEC 42001, OWASP Top 10 for LLM]
 ---
 # Skill: ai-governance

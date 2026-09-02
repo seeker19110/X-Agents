@@ -1,5 +1,6 @@
 ---
 name: performance-testing
+version: 1
 standards: [ISO/IEC 25010 (performance efficiency), k6/Gatling/Locust, RED/USE, Google SRE SLO]
 ---
 # Skill: performance-testing

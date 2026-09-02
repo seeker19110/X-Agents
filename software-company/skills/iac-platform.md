@@ -1,5 +1,6 @@
 ---
 name: iac-platform
+version: 1
 standards: [Terraform/OpenTofu, CIS Benchmarks, OPA/Conftest, AWS/GCP/Azure Well-Architected, Kubernetes hardening NSA/CISA]
 ---
 # Skill: iac-platform

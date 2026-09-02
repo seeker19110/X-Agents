@@ -1,5 +1,6 @@
 ---
 name: ai-feature-engineering
+version: 1
 standards: [OWASP Top 10 for LLM, NIST AI RMF, ISO/IEC 42001, Eval-driven development, EU AI Act (phân loại rủi ro)]
 ---
 # Skill: ai-feature-engineering

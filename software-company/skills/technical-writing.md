@@ -1,5 +1,6 @@
 ---
 name: technical-writing
+version: 1
 standards: [Diátaxis, Keep a Changelog, Google developer docs style]
 ---
 # Skill: technical-writing

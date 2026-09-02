@@ -1,5 +1,6 @@
 ---
 name: api-contract
+version: 1
 standards: [OpenAPI 3.1, AsyncAPI, RFC 9110, RFC 9457, SemVer]
 ---
 # Skill: api-contract

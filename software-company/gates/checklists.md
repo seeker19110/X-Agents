@@ -43,8 +43,9 @@ Kết quả: approve / hold / rollback
 Kết quả: accepted / conditional(danh sách còn lại + hạn) / rejected(lý do)
 
 ## Gate bất thường (supervisor escalate)
-- Ticket retry ≥ 3, timeout, vượt budget, nghi injection, cùng lỗi lặp ≥ 2 lần, review quá 2h thiếu nguồn
-- Quyết định: retry với hướng dẫn / cắt phạm vi / hoãn / dừng / rollback prompt version
+Orchestrator mở gate `escalation` (subject = ticket_id) khi ticket `blocked` (hết retry) hoặc supervisor `escalate`
+(cùng lỗi lặp, im lặng quá timeout). `gate_cli approve <ticket> --reason "<hint>"` = mở lại ticket với hint, retry về 0,
+resume; `reject` = đóng ticket. Checklist: root_cause đã rõ; hint đủ cụ thể để agent làm khác lần trước; ngân sách còn.
 
 ## Chỉ người được ký
 - Chấp nhận rủi ro bảo mật (threat accepted)

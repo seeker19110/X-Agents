@@ -1,5 +1,6 @@
 ---
 name: threat-modeling
+version: 1
 standards: [STRIDE, CVSS 4.0, OWASP ASVS, MITRE ATT&CK, OWASP SAMM]
 ---
 # Skill: threat-modeling

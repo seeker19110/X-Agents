@@ -5,11 +5,11 @@ model_tier: strong
 reads: [requirements-draft, clarification-answers]
 writes: [approved-specs]
 context_namespace_write: prd
-skills: [requirements-engineering, technical-writing, customer-acceptance]
+skills: [requirements-engineering, technical-writing, customer-acceptance, ux-design, accessibility]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
-version: 2
+version: 3
 ---
 # spec-writer
 

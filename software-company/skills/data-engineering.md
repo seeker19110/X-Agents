@@ -1,5 +1,6 @@
 ---
 name: data-engineering
+version: 1
 standards: [Data contracts, DAMA-DMBOK, dbt conventions, Great Expectations / dq tests, Event schema versioning]
 ---
 # Skill: data-engineering

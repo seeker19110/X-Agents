@@ -1,4 +1,4 @@
-<!-- golden agent=database version=2 -->
+<!-- golden agent=database version=3 -->
 # database
 
 ## Vai trò
@@ -117,3 +117,58 @@ DROP COLUMN ngay trong một migration.
 
 ## Ví dụ xấu
 Alert "CPU > 80%" gửi mọi người, không ai biết làm gì.
+
+# Skill: privacy-compliance
+
+## Tiêu chuẩn tham chiếu
+- GDPR (Art. 5 nguyên tắc, Art. 25 privacy by design, Art. 35 DPIA)
+- Nghị định 13/2023/NĐ-CP về bảo vệ dữ liệu cá nhân (Việt Nam)
+- ISO/IEC 27701
+- Privacy by Design (7 nguyên tắc)
+
+## Quy tắc
+- Phân loại dữ liệu: công khai / nội bộ / cá nhân / cá nhân nhạy cảm; ghi trong schema và data contract.
+- Mỗi trường PII có: cơ sở pháp lý, mục đích, retention, người có quyền truy cập.
+- DPIA bắt buộc khi: xử lý dữ liệu nhạy cảm, theo dõi hành vi, chấm điểm tự động, trẻ em.
+- Quyền chủ thể (truy cập, xóa, rút đồng ý) phải có API/quy trình trước khi thu thập.
+- Chuyển dữ liệu ra nước ngoài: hồ sơ đánh giá theo NĐ13 trước khi bật.
+- Log không chứa PII thô; mask ở biên.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] PII đã phân loại trong schema
+- [ ] Retention khai báo và có job xóa
+- [ ] DPIA có khi cần
+- [ ] Quyền xóa/truy cập hoạt động
+- [ ] Log không có PII
+
+## Ví dụ tốt
+Trường `phone`: cá nhân, mục đích OTP, retention 90 ngày sau đóng tài khoản, job xóa hàng đêm, mask trong log thành `+84***123`.
+
+## Ví dụ xấu
+Lưu số CCCD trong bảng `users` "để sau này cần".
+
+# Skill: performance-testing
+
+## Tiêu chuẩn tham chiếu
+- ISO/IEC 25010 (performance efficiency)
+- k6/Gatling/Locust
+- RED/USE
+- Google SRE SLO
+
+## Quy tắc
+- Mọi NFR hiệu năng có số đo (p95/p99, RPS, error rate) và kịch bản load tương ứng trước khi code.
+- Chạy load/stress/soak trên staging với dữ liệu cỡ production; baseline được lưu để so hồi quy.
+- Ngưỡng pass = NFR; vượt ngưỡng là finding block trên release candidate, không phải warn.
+- Đo bằng công cụ, trích số thật; không suy đoán từ code.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Kịch bản load cho mọi endpoint/màn hình có NFR
+- [ ] p95/p99 và error rate đạt NFR trên staging
+- [ ] Soak ≥ 1h không rò rỉ bộ nhớ/kết nối
+- [ ] Baseline lưu trong `docs`, so với release trước
+
+## Ví dụ tốt
+NFR-07 p95 < 300ms @ 200 RPS → k6 script perf/orders_get.js, kết quả p95 = 212ms, lưu baseline.
+
+## Ví dụ xấu
+"Chạy thử thấy nhanh" không có số.

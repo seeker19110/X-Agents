@@ -1,5 +1,6 @@
 ---
 name: devops
+version: 1
 standards: [CIS Benchmarks, NIST SSDF, IaC, OpenTelemetry]
 ---
 # Skill: devops

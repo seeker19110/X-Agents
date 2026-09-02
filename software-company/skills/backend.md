@@ -1,5 +1,6 @@
 ---
 name: backend
+version: 1
 standards: [RFC 9110, RFC 9457, OWASP API Top 10, Idempotency]
 ---
 # Skill: backend

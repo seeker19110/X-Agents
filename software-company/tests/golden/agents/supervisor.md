@@ -1,4 +1,4 @@
-<!-- golden agent=supervisor version=3 -->
+<!-- golden agent=supervisor version=4 -->
 # supervisor
 
 ## Vai trò
@@ -110,3 +110,61 @@ Không biết tốn bao nhiêu.
 
 ## Ví dụ xấu
 Sửa prompt trong dashboard lúc 2h sáng để "cho nó qua".
+
+# Skill: cost-estimation
+
+## Tiêu chuẩn tham chiếu
+- Ước lượng 3 điểm (PERT): (O + 4M + P) / 6
+- Reference-class forecasting: so với ticket tương tự đã xong (từ `knowledge`)
+- FinOps unit economics: chi phí / ticket, / tính năng, / khách
+- DORA: lead time thực tế để hiệu chỉnh
+
+## Quy tắc
+- TRƯỚC khi dispatch, mỗi ticket có: `estimate_days`, `estimate_tokens`, `budget_tokens = ceil(estimate_tokens × 1.5)`.
+- Ước lượng dựa trên tham chiếu: tìm ≥ 2 ticket tương tự trong `knowledge`; không có thì ghi "chưa có tham chiếu" và dùng PERT.
+- Ticket > 1 ngày hoặc > 200k token → chia nhỏ, không dispatch.
+- Tổng estimate của sprint ≤ ngân sách dự án human đã duyệt ở Gate 2.
+- Sau khi ticket đóng: ghi actual vs estimate vào `knowledge`; sai lệch > 50% → bài học.
+- Delivery-lead báo mỗi sprint: estimate/actual theo assignee, DORA 4 chỉ số.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Mọi ticket có estimate_tokens trước dispatch
+- [ ] budget ≥ estimate × 1.5
+- [ ] Không ticket > 1 ngày / 200k token
+- [ ] Tổng sprint ≤ ngân sách duyệt
+- [ ] Actual ghi vào knowledge
+
+## Ví dụ tốt
+TCK-31 "thêm endpoint GET /orders/{id}": tham chiếu TCK-12, TCK-19 (avg 42k token) → estimate 45k, budget 68k, 0.5d.
+
+## Ví dụ xấu
+Mọi ticket budget 120k "cho chắc".
+
+# Skill: observability
+
+## Tiêu chuẩn tham chiếu
+- OpenTelemetry (traces, metrics, logs; semantic conventions)
+- Google SRE: SLI/SLO, error budget, alert theo burn rate
+- RED (Rate, Errors, Duration) cho service; USE (Utilization, Saturation, Errors) cho tài nguyên
+- Structured logging (JSON) có correlation/trace id
+
+## Quy tắc
+- Mỗi dịch vụ mới có trước khi nhận traffic: dashboard RED, SLO khai báo trong code, alert theo burn rate có runbook.
+- Log: JSON, có trace_id, không PII thô, level đúng; không log trong vòng lặp nóng.
+- Trace xuyên biên dịch vụ; sampling khai báo.
+- Alert chỉ khi cần người hành động; mỗi alert map về một runbook; alert không có runbook bị xóa.
+- Metric có nhãn giới hạn cardinality (không user_id, không request_id).
+- Error budget âm → đóng băng tính năng, chỉ nhận ticket ổn định.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Dashboard RED có
+- [ ] SLO trong code
+- [ ] Alert có runbook
+- [ ] Log JSON có trace_id, không PII
+- [ ] Cardinality nhãn kiểm soát
+
+## Ví dụ tốt
+`orders-api`: SLO 99.9% thành công / 30 ngày; alert burn rate 14.4× trong 1h → page; runbook RB-07.
+
+## Ví dụ xấu
+Alert "CPU > 80%" gửi mọi người, không ai biết làm gì.

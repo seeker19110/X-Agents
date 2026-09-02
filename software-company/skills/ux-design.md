@@ -1,5 +1,6 @@
 ---
 name: ux-design
+version: 1
 standards: [ISO 9241-210, WCAG 2.2 AA, Nielsen 10 heuristics, Material 3 / HIG, Design tokens W3C]
 ---
 # Skill: ux-design

@@ -1,5 +1,6 @@
 ---
 name: customer-acceptance
+version: 1
 standards: [ISO/IEC/IEEE 29119-1 (acceptance testing), PMBOK 7 (scope/change control), ISO 21502, IEEE 730 (biên bản)]
 ---
 # Skill: customer-acceptance

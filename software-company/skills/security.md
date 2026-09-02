@@ -1,5 +1,6 @@
 ---
 name: security
+version: 1
 standards: [OWASP ASVS, SLSA L3, SBOM SPDX/CycloneDX, Sigstore]
 ---
 # Skill: security

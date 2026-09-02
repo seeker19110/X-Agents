@@ -1,5 +1,6 @@
 ---
 name: license-compliance
+version: 1
 standards: [SPDX, OpenChain ISO/IEC 5230, OSI, Reuse.software]
 ---
 # Skill: license-compliance

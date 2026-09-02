@@ -1,5 +1,6 @@
 ---
 name: risk-analysis
+version: 1
 standards: [FMEA, STRIDE, ISO 31000]
 ---
 # Skill: risk-analysis

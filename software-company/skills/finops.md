@@ -1,5 +1,6 @@
 ---
 name: finops
+version: 1
 standards: [FinOps Foundation]
 ---
 # Skill: finops
