@@ -244,3 +244,48 @@ def test_release_engineer_cannot_override_rc_version():
     assert evs and all(e["version"] == rc[e["release_id"]] for e in evs) and "9.9.9" not in {e["version"] for e in evs}
     n = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.version_overridden")
     assert n == len(evs)
+
+
+# ---------- F19: khôi phục từ log ở chế độ gom release ----------
+
+def _replay_into(bus, tasks, **kw):
+    """Như orchestrator mở lại bus: ticket dựng lại từ plan (dispatch ở chế độ replaying), rồi áp từng event trong log."""
+    lead2 = DeliveryLead(InMemoryBus(), HumanGate(), **kw)
+    lead2.replaying = True
+    try:
+        for t in tasks: lead2.dispatch(t, "PLAN")
+    finally:
+        lead2.replaying = False
+    for env in bus.replay(): lead2.replay(env)
+    return lead2
+
+
+def test_replay_batch_releases_rebuilds_rc_from_log_instead_of_recreating():
+    """Lần chạy thật: T1, T2 approved → MỘT RC REL-001 gom cả hai. Trước đây replay chạy lại flush_releases theo thứ tự
+    review trong log → REL-001=[T1], REL-002=[T2]... và release-events của REL-001 áp sai ticket (T2 kẹt `approved`)."""
+    bus, _, lead = _setup(); lead.batch_releases = True
+    tasks = [_task("T1"), _task("T2")]
+    for t in tasks: lead.dispatch(t, "PLAN")
+    _approve_ticket(bus, "T1")
+    assert lead.releases == [], "T2 còn chạy → chưa gom"
+    _approve_ticket(bus, "T2")
+    assert lead.releases == ["REL-001"] and lead.release_tickets["REL-001"] == ["T1", "T2"]
+    _release_event(bus, "REL-001", "staging", "deployed")
+    assert lead.state == {"T1": "merged", "T2": "merged"}
+
+    lead2 = _replay_into(bus, tasks, batch_releases=True)
+    assert lead2.releases == ["REL-001"]
+    assert lead2.release_tickets == {"REL-001": ["T1", "T2"]}
+    assert lead2.versions == lead.versions
+    assert lead2.state == {"T1": "merged", "T2": "merged"}
+    assert [e.key for e in bus.replay(topic="release-candidates")] == ["REL-001"], "replay không phát RC mới"
+
+
+def test_replay_per_ticket_releases_keeps_ids_from_log():
+    bus, _, lead = _setup()
+    tasks = [_task("T1"), _task("T2")]
+    for t in tasks: lead.dispatch(t, "PLAN")
+    _approve_ticket(bus, "T2"); _approve_ticket(bus, "T1")
+    assert lead.release_tickets == {"REL-001": ["T2"], "REL-002": ["T1"]}
+    lead2 = _replay_into(bus, tasks)
+    assert lead2.release_tickets == lead.release_tickets and lead2.releases == lead.releases
