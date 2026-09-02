@@ -258,6 +258,7 @@ class Orchestrator:
         self.blackboard = Blackboard(bus, store=artifacts)
         self.gate = PersistentGate(bus)
         self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries, batch_releases=batch_releases)
+        self.lead.require_integration = self.integration is not None
         budget_usd = project_budget_usd if project_budget_usd is not None else getattr(client, "budget_usd", None)
         self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_usd=budget_usd)
         self.runner = AgentRunner(bus, client, self.agents, self.blackboard)
@@ -284,7 +285,11 @@ class Orchestrator:
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self.void_releases.add(d["release_id"])
-                elif a["action"] == "integration.merged": self.integrated.add(d["ticket_id"])
+                elif a["action"] == "integration.merged":
+                    self.integrated.add(d["ticket_id"])
+                    prev_r, self.lead.replaying = self.lead.replaying, True
+                    try: self.lead.mark_integrated(d["ticket_id"])
+                    finally: self.lead.replaying = prev_r
                 elif a["action"] == "threat_model.missing": self.missing_threat_model.add(d["subject_id"])
                 elif a["action"] == "project.stalled":
                     self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
@@ -362,8 +367,19 @@ class Orchestrator:
                     results = list(ex.map(self.process, batch))
             out += [r for r in results if r is not None]
             self._check_escalations()
+            self._integrate_pending(out)
         self._check_escalations()  # supervisor escalate ở event cuối hàng đợi: gate vẫn phải mở, không chờ event kế tiếp
+        self._integrate_pending(out)
         return out
+
+    def _integrate_pending(self, out: list[StepResult]) -> None:
+        """Ticket approved mà chưa lên nhánh tích hợp thì merge ngay, không phụ thuộc vào việc có event nào của nó
+        được xử lý: review-results cuối cùng có thể bị hoãn (ticket vừa bị supervisor cắt ngân sách) và từ F15 ticket
+        phụ thuộc chỉ bắt đầu sau khi merge — không có bước này dự án đứng im."""
+        if self.integration is None: return
+        res = StepResult("integration", "integration", "-")
+        self._integrate_approved(res)
+        if res.actions: out.append(res)
 
     def tick(self, now: datetime | None = None) -> list[StepResult]:
         """Một nhịp của chế độ watch: nạp event từ tiến trình khác, thử lại event hoãn vì lỗi transport, chạy hàng đợi,
@@ -584,7 +600,10 @@ class Orchestrator:
         if m.ok:
             with self._lock: self.integrated.add(tid)
             self._audit("integration.merged", {"release_id": release_id, "ticket_id": tid, "sha": m.sha, "branch": self.integration.branch}, ticket_id=tid)
-            res.actions.append(f"integrated:{tid}@{m.sha}"); return True
+            res.actions.append(f"integrated:{tid}@{m.sha}")
+            started = self.lead.mark_integrated(tid)  # F15: ticket phụ thuộc bắt đầu trên nền đã có code này
+            if started: res.actions.append("dispatch:" + ",".join(started))
+            return True
         hint = f"xung đột với nhánh tích hợp {self.integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
         self._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
         try:

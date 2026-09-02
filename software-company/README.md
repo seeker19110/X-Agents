@@ -135,8 +135,9 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   lệch prompt — cổng "đổi prompt phải chạy eval" của ADR-0004 được máy cưỡng chế.
 - **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration` (worktree `.worktrees/_integration`, rẽ từ `--base`
   lần đầu); khi release-candidate xuất hiện, orchestrator `merge --no-ff` từng branch ticket vào đó rồi mới cho
-  release-engineer chạy (đầu vào có `integration_sha`); ticket approved được merge ngay (trước khi ticket phụ thuộc
-  tạo worktree), RC chỉ merge phần chưa có. Xung đột → RC huỷ (`release.void`), ticket về `changes_requested`
+  release-engineer chạy (đầu vào có `integration_sha`); ticket approved được merge ngay mỗi vòng `run()`; ticket phụ thuộc chỉ bắt đầu
+  khi dependency đã merge (không phải lúc approved); rác lint/test (`__pycache__`, `.pyc`, `.ruff_cache`…) không bao giờ vào
+  commit của ticket; RC chỉ merge phần chưa có. Xung đột → RC huỷ (`release.void`), ticket về `changes_requested`
   với hint là file xung đột, worktree tạo lại từ nền mới. `main` của khách không bị chạm.
 - **Vòng học đóng**: `Supervisor.calibration()` (median actual/estimate theo assignee, đọc từ bus) đi vào đầu vào của
   delivery-lead mỗi lần lập kế hoạch; `sprint_report` có `rework_rate`, `review_catch_rate`, `prs_unverified`;

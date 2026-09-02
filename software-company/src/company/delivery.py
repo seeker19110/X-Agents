@@ -25,6 +25,10 @@ class DeliveryLead:
         # ticket một release → mỗi ticket một lần staging, một gate 3, một UAT). Ticket blocked/escalated chờ người,
         # không giữ release của người khác.
         self.batch_releases = batch_releases
+        # F15: có nhánh tích hợp thì ticket phụ thuộc chỉ bắt đầu khi dependency đã MERGE vào đó (orchestrator báo qua
+        # `mark_integrated`); `approved` chưa đủ — merge có thể xung đột và ticket sau sẽ làm trên nền thiếu code.
+        self.require_integration = False
+        self.integrated: set[str] = set()
         self.tickets: dict[str, Task] = {}
         self.state: dict[str, str] = {}
         self.plan_of: dict[str, str] = {}
@@ -76,7 +80,18 @@ class DeliveryLead:
     # ---------- lập lịch và dispatch ----------
 
     def _deps_done(self, task: Task) -> bool:
-        return all(self.state.get(d) in DONE_STATES for d in task.depends_on)
+        return all(self._dep_done(d) for d in task.depends_on)
+
+    def _dep_done(self, tid: str) -> bool:
+        st = self.state.get(tid)
+        if st not in DONE_STATES: return False
+        return not self.require_integration or tid in self.integrated or st in {"merged", "released", "closed"}
+
+    def mark_integrated(self, tid: str) -> list[str]:
+        """Orchestrator gọi sau khi merge branch ticket vào nhánh tích hợp thành công: ticket phụ thuộc đang `waiting`
+        được dispatch (trả về danh sách). Khi khôi phục từ log (`replaying`) chỉ ghi nhận, không publish."""
+        self.integrated.add(tid)
+        return self._flush_waiting()
 
     def _publish_task(self, task: Task) -> None:
         self._set(task.ticket_id, "dispatched")
@@ -108,7 +123,7 @@ class DeliveryLead:
         return [t.ticket_id for t in ready]
 
     def waiting(self) -> dict[str, list[str]]:
-        return {tid: [d for d in self.tickets[tid].depends_on if self.state.get(d) not in DONE_STATES]
+        return {tid: [d for d in self.tickets[tid].depends_on if not self._dep_done(d)]
                 for tid, st in self.state.items() if st == "waiting"}
 
     # ---------- vòng review ----------

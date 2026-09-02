@@ -170,3 +170,51 @@ def test_rework_state_survives_restart_and_empty_branch_is_not_integrated(tmp_pa
     assert "after_t2.py" in o2.integration.files() and "T2" in o2.integrated
     acts = [e.payload["action"] for e in o2.bus.replay(topic="audit-log")]
     assert "integration.noop" not in acts or acts.index("integration.noop") < acts.index("integration.merged", acts.index("integration.noop"))
+
+
+def test_commit_all_never_commits_pycache_and_drops_previously_tracked_junk(tmp_path):
+    """F14: rác lint/test (`__pycache__`, .pyc, .ruff_cache) không vào commit của ticket; rác đã bị theo dõi từ trước
+    (branch cũ commit nhầm) được gỡ khỏi index — trước đây hai ticket cùng commit .pyc → xung đột nhị phân lúc merge."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "__pycache__").mkdir(); (repo / "__pycache__" / "old.cpython-311.pyc").write_bytes(b"\x00old")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True); subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "junk tracked"], check=True)
+    ws = TicketWorkspace(repo, "T1", base="main"); ws.create()
+    (ws.path / "feature.py").write_text("X = 1\n", encoding="utf-8")
+    (ws.path / "__pycache__" / "feature.cpython-311.pyc").write_bytes(b"\x00new")
+    (ws.path / ".ruff_cache").mkdir(); (ws.path / ".ruff_cache" / "x").write_text("x", encoding="utf-8")
+    assert ws.dirty()
+    ws.commit_all("feat(T1): feature")
+    files = subprocess.run(["git", "-C", str(ws.path), "ls-tree", "-r", "--name-only", "HEAD"], capture_output=True, text=True).stdout.split()
+    assert "feature.py" in files and not any("__pycache__" in f or f.endswith(".pyc") or ".ruff_cache" in f for f in files), files
+    assert (ws.path / "__pycache__" / "old.cpython-311.pyc").exists(), "gỡ khỏi index, không xoá trên đĩa"
+    ex = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+    assert "__pycache__/" in ex and "*.pyc" in ex and ".worktrees/" in ex
+    assert subprocess.run(["git", "-C", str(ws.path), "status", "--short"], capture_output=True, text=True).stdout.strip() == ""
+
+
+def test_dependents_start_only_after_dependency_is_integrated(tmp_path):
+    """F15: có nhánh tích hợp thì ticket phụ thuộc chờ tới khi dependency MERGE xong, không phải lúc approved —
+    kể cả khi review-results cuối bị hoãn vì supervisor cắt ngân sách (T1 budget 6000 < 3 lời gọi)."""
+    repo = _init_repo(tmp_path / "repo")
+    order: list[str] = []
+    def th(msgs, tools):
+        if "write_file" in {t.name for t in tools} and _first_turn(msgs):
+            tid = _inp(msgs[0]["content"])["ticket_id"]; order.append(f"start:{tid}")
+            order.append("t2_sees_t1" if tid == "T2" and (repo / ".worktrees" / "T2" / "f_t1.py").exists() else f"files:{tid}")
+        return _repo_tool_handler(msgs, tools)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=th), repo=repo, base="main", batch_releases=True)
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.require_integration
+    # review-results cuối của T1 bị hoãn (paused:T1) nhưng `_integrate_pending` vẫn merge T1 → T2 mới được dispatch
+    assert "T1" in orch.paused, "T1 bị supervisor cắt ngân sách sau lượt review cuối"
+    assert order == ["start:T1", "files:T1", "start:T2", "t2_sees_t1"], order
+    tasks_t2 = [e for e in bus.replay(topic="tasks") if e.key == "T2"]
+    merged_t1 = next(e for e in bus.replay(topic="audit-log") if e.payload["action"] == "integration.merged" and '"T1"' in e.payload["evidence"])
+    assert tasks_t2 and tasks_t2[0].ts >= merged_t1.ts, "T2 dispatch sau khi T1 merge"
+    assert orch.lead.state == {"T1": "merged", "T2": "merged"} and orch.lead.release_tickets == {"REL-001": ["T1", "T2"]}
+
+
+def test_without_repo_dependents_start_on_approve():
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert not orch.lead.require_integration and orch.lead.state["T2"] == "merged"

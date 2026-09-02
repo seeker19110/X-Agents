@@ -156,8 +156,8 @@ ngân sách mọi ticket → cần `budget_tokens` thực tế hơn (calibration
 
 | # | Mức | Vấn đề | Trạng thái |
 |---|---|---|---|
-| F14 | cao | `commit_all` dùng `git add -A` → `__pycache__/*.pyc` do subagent chạy pytest bị commit; hai ticket cùng commit `.pyc` → **xung đột merge nhị phân**, DHCB-3 phải làm lại | chưa sửa: cần loại `__pycache__`, `*.pyc`, `.ruff_cache`, `*.db` khỏi commit và ghi vào `.git/info/exclude` |
-| F15 | cao | Ticket phụ thuộc được dispatch ngay lúc dependency `approved`, trước khi merge thành công → DHCB-4 làm trên nền không có layout, tự dựng khung riêng; sau này phải hợp nhất ở DHCB-6 | chưa sửa: dispatch dependents sau `integration.merged`, hoặc `waiting` tới khi dependency `merged` |
+| F14 | cao | `commit_all` dùng `git add -A` → `__pycache__/*.pyc` do subagent chạy pytest bị commit; hai ticket cùng commit `.pyc` → **xung đột merge nhị phân**, DHCB-3 phải làm lại | **đã sửa**: `JUNK_PATTERNS` vào `.git/info/exclude`, `commit_all` gỡ rác đã bị theo dõi khỏi index |
+| F15 | cao | Ticket phụ thuộc được dispatch ngay lúc dependency `approved`, trước khi merge thành công → DHCB-4 làm trên nền không có layout, tự dựng khung riêng; sau này phải hợp nhất ở DHCB-6 | **đã sửa**: có nhánh tích hợp thì dependency phải `integrated` (`DeliveryLead.mark_integrated`), orchestrator merge ticket approved mỗi vòng `run()` (`_integrate_pending`) kể cả khi review cuối bị hoãn |
 | F16 | trung bình | Budget token của ticket tính cả reviewer/QA/security (mỗi lời gọi ~25k token blackboard); delivery-lead ước 30–55k → supervisor `budget_cut` 6/6 ticket | chưa sửa: calibration đã ghi; cân nhắc tách ngân sách review, cắt blackboard theo vai trò |
 | F17 | cao | Mở lại bus không replay `tasks` phát lại → ticket bị trả về lại thành `approved`, dependents dispatch, PR làm lại bị từ chối "approved → in_review" | **đã sửa** (`DeliveryLead._replay_task`) |
 | F18 | trung bình | Merge nhánh trống (vừa `fresh()`) được tính "đã tích hợp" → code làm lại không bao giờ vào nhánh tích hợp | **đã sửa** (`integration.noop`) |
