@@ -27,8 +27,14 @@ class SQLiteBus(InMemoryBus):
         self.path = Path(path)
         self._db = sqlite3.connect(self.path)
         self._db.executescript(_DDL)
-        self._log = [Envelope.model_validate_json(row[0])
-                     for row in self._db.execute("SELECT body FROM events ORDER BY seq")]
+        self._seq = 0
+        self._log = []
+        for seq, body in self._db.execute("SELECT seq, body FROM events ORDER BY seq"):
+            self._log.append(Envelope.model_validate_json(body)); self._seq = seq
+
+    def _notify(self, subs, env: Envelope) -> None:
+        for fn in list(subs.get(env.topic, [])) + list(subs.get("*", [])):
+            fn(env)
 
     def publish(self, env: Envelope) -> Envelope:
         # Lớp cha validate + kiểm quyền. Tạm tháo subscriber để ghi đĩa TRƯỚC khi báo, tránh mất event khi handler ném lỗi.
@@ -38,11 +44,21 @@ class SQLiteBus(InMemoryBus):
         finally:
             self._subs = subs
         with self._db:
-            self._db.execute("INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
-                             (env.event_id, env.topic, env.key, env.actor, env.ts.isoformat(), env.model_dump_json()))
-        for fn in list(subs.get(env.topic, [])) + list(subs.get("*", [])):
-            fn(env)
+            cur = self._db.execute("INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
+                                   (env.event_id, env.topic, env.key, env.actor, env.ts.isoformat(), env.model_dump_json()))
+            self._seq = cur.lastrowid or self._seq
+        self._notify(subs, env)
         return env
+
+    def poll(self) -> list[Envelope]:
+        """Nạp event do tiến trình KHÁC ghi vào cùng file (gate CLI, human publish) và báo subscriber như event mới."""
+        rows = self._db.execute("SELECT seq, body FROM events WHERE seq > ? ORDER BY seq", (self._seq,)).fetchall()
+        new: list[Envelope] = []
+        for seq, body in rows:
+            env = Envelope.model_validate_json(body)
+            self._seq = seq; self._log.append(env); new.append(env)
+            self._notify(self._subs, env)
+        return new
 
     def replay(self, topic: str | None = None, key: str | None = None) -> Iterable[Envelope]:
         q, args, conds = "SELECT body FROM events", [], []

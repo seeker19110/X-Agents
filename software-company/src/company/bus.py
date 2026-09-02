@@ -24,18 +24,22 @@ class InMemoryBus:
         self.enforce_owners = enforce_owners
         self._schemas = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in SCHEMA_DIR.glob("*.json")}
 
-    def publish(self, env: Envelope) -> Envelope:
-        model = PAYLOAD_MODELS.get(env.topic)
+    def validate(self, topic: str, payload: dict) -> None:
+        """Kiểm payload theo pydantic model (nếu có) và trường bắt buộc trong JSON Schema; ném BusError."""
+        model = PAYLOAD_MODELS.get(topic)
         if model is not None:
             try:
-                model.model_validate(env.payload)
+                model.model_validate(payload)
             except ValidationError as e:
-                raise BusError(f"payload không hợp lệ cho {env.topic}: {e}") from e
-        schema = self._schemas.get(env.topic)
+                raise BusError(f"payload không hợp lệ cho {topic}: {e}") from e
+        schema = self._schemas.get(topic)
         if schema is not None:
-            missing = [k for k in schema["properties"]["payload"].get("required", []) if k not in env.payload]
+            missing = [k for k in schema["properties"]["payload"].get("required", []) if k not in payload]
             if missing:
-                raise BusError(f"{env.topic} thiếu trường bắt buộc: {missing}")
+                raise BusError(f"{topic} thiếu trường bắt buộc: {missing}")
+
+    def publish(self, env: Envelope) -> Envelope:
+        self.validate(env.topic, env.payload)
         if env.topic == "shared-context" and self.enforce_owners:
             ns = env.payload["namespace"]
             if env.actor not in NAMESPACE_OWNERS.get(ns, set()):

@@ -1,4 +1,4 @@
-.PHONY: test demo lint fix golden gate eval
+.PHONY: test demo lint fix golden gate eval run watch status
 test:
 	uv run pytest -q
 demo:
@@ -13,3 +13,9 @@ gate:
 	PYTHONPATH=src uv run python -m company.gate_cli list
 eval:
 	PYTHONPATH=src uv run python -m company.evals $(AGENT)
+run:
+	PYTHONPATH=src uv run python -m company.orchestrator run
+watch:
+	PYTHONPATH=src uv run python -m company.orchestrator run --watch 5
+status:
+	PYTHONPATH=src uv run python -m company.orchestrator status

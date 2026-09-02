@@ -29,15 +29,22 @@ class PersistentGate(HumanGate):
         super().__init__(**kw)
         self.bus = bus
         for env in bus.replay(topic="audit-log"):
-            a = AuditLog.model_validate(env.payload)
-            if a.action not in {"gate.request", "gate.decide"}:
-                continue
-            d = json.loads(a.evidence or "{}")
-            if a.action == "gate.request":
-                super().request(GateRequest(kind=d["kind"], subject_id=d["subject_id"], checklist=d.get("checklist", []),
+            self.apply(env)
+        bus.subscribe("audit-log", self.apply)  # quyết định từ tiến trình khác (gate CLI) đến qua bus.poll()
+
+    def apply(self, env: Envelope) -> None:
+        """Áp một bản ghi gate.request/gate.decide vào trạng thái; idempotent (bỏ qua nếu đã áp)."""
+        if env.topic != "audit-log": return
+        a = AuditLog.model_validate(env.payload)
+        if a.action not in {"gate.request", "gate.decide"}:
+            return
+        d = json.loads(a.evidence or "{}"); sid = d["subject_id"]
+        if a.action == "gate.request":
+            if sid not in self.pending and not any(r.subject_id == sid and r.created_at == env.ts for r in self.history):
+                super().request(GateRequest(kind=d["kind"], subject_id=sid, checklist=d.get("checklist", []),
                                             created_by=d.get("created_by"), created_at=env.ts))
-            elif d["subject_id"] in self.pending:
-                super().decide(d["subject_id"], d["decision"], by=d["by"], reason=d.get("reason", ""))
+        elif sid in self.pending:
+            super().decide(sid, d["decision"], by=d["by"], reason=d.get("reason", ""))
 
     def _log(self, actor: str, action: str, data: dict) -> None:
         a = AuditLog(actor=actor, action=action, evidence=json.dumps(data, ensure_ascii=False))

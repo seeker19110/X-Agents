@@ -31,16 +31,16 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0006)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0007)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        35 skill: rule + checklist + ví dụ, theo tiêu chuẩn ngành
 gates/         checklist human gate
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
 topics/        18 JSON Schema topic + bảng owner namespace
 src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard,
-               llm (ModelClient + adapter), runner, workspace, evals, graph
+               llm (ModelClient + adapter), runner, orchestrator (vòng lặp tự động), workspace, evals, graph
 evals/         ca eval prompt theo agent (YAML)
-tests/         pytest (bus, registry↔events nhất quán, delivery+gates, supervisor, golden 22 agent)
+tests/         pytest (bus, registry↔events nhất quán, delivery+gates, supervisor, orchestrator, golden 20 agent)
 ```
 
 ## Chạy
@@ -56,6 +56,13 @@ uv run ruff check src tests               # hoặc: make lint
 #   COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://localhost:11434/v1 COMPANY_MODEL_STRONG=qwen2.5-coder:32b
 #   COMPANY_LLM_PROVIDER=anthropic COMPANY_MODEL_STRONG=claude-opus-5   (uv sync --extra anthropic)
 PYTHONPATH=src uv run python -m company.runner reviewer review-results input.json --db company.sqlite
+
+# Chạy tự động cả công ty (ADR-0007): orchestrator nối topic → agent → topic, dừng ở human gate / supervisor / khách
+PYTHONPATH=src uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
+PYTHONPATH=src uv run python -m company.orchestrator run --watch 5     # hoặc: make run  (một lượt: bỏ --watch)
+PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release
+PYTHONPATH=src uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
+PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, trạng thái ticket, gate chờ
 PYTHONPATH=src uv run python -m company.gate_cli list          # hoặc: make gate
 PYTHONPATH=src uv run python -m company.evals reviewer         # hoặc: make eval AGENT=reviewer
 UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golden — sau khi cố ý sửa agents/ hoặc skills/
@@ -83,24 +90,28 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Human gate CLI** (`gate_cli.py`): request/approve/reject..., quyết định ghi vào `audit-log`, four-eyes.
 - **Workspace theo ticket** (`workspace.py`): git worktree `ticket/<id>`, chạy ruff/pytest thật, trả `local_checks`.
 - **Eval prompt** (`evals/*.yaml`, `evals.py`): ca đầu vào + tiêu chí chấm; chạy với provider bất kỳ.
+- **Orchestrator** (`orchestrator.py`, ADR-0007): vòng lặp tự động theo bảng ROUTES khớp front matter; delivery-lead
+  sinh nhiều ticket một lượt → kiểm bằng code → gate plan → dispatch; hoãn event chờ gate hoặc ticket bị supervisor
+  pause; đánh dấu đã xử lý trong `audit-log` nên mở lại SQLite là chạy tiếp; `--watch` nhận quyết định gate từ tiến
+  trình khác; CLI `run | publish | status`.
 - Test: pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, eval offline; ruff sạch.
 
 ### Chưa có
-- **Vòng lặp tự động**: chưa có orchestrator nối topic → agent liên tục; hiện chạy từng bước bằng `company.runner`
-  hoặc code. Bước kế tiếp là `company.orchestrator` subscribe bus và gọi runner theo `reads` của từng agent.
 - **Tool cho agent ngoài lint/test**: chưa có tool đọc/sửa file, tìm kiếm code, gọi API cho khối kỹ thuật; agent mới
   sinh JSON, chưa tự viết code vào worktree.
-- **CI/CD, deploy thật** cho release-engineer/platform; **Kafka/Redis** thay SQLite khi chạy nhiều máy.
-- **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn.
+- **Route chưa nối** (ADR-0007): threat model của security-engineer từ `approved-specs` (ghi blackboard), support-docs
+  từ `release-events`/`external-feedback`, incident `root_cause_class=requirement` → `research-requests`.
+- **CI/CD, deploy thật** cho release-engineer/platform; **Kafka/Redis** thay SQLite khi chạy nhiều máy (orchestrator
+  hiện tuần tự một tiến trình).
+- **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn (hiện chỉ ghi `audit-log` gate.remind/overdue).
 - **Eval mới phủ reviewer, qa-debugger, researcher, account-manager**; cần ca eval cho 16 agent còn lại và chạy khi `version` tăng (CI).
-- **Giao diện UAT cho khách**: nghiệm thu hiện qua account-manager ghi `acceptance-results` bằng CLI/code.
+- **Giao diện UAT cho khách**: nghiệm thu hiện qua `orchestrator publish acceptance-results`.
 
 ### Bước tiếp theo
-1. `company.orchestrator`: vòng lặp subscribe → chọn agent theo `reads` → runner → publish; dừng khi supervisor pause.
-2. Tool thực thi cho khối kỹ thuật (đọc/sửa file trong worktree, chạy lệnh có allowlist), nối vào runner qua tool-use.
-3. Eval cho các agent còn lại; chạy eval trong CI khi prompt/skill đổi version.
-4. Adapter bus Redis Streams/Kafka giữ interface hiện tại; giao diện web cho human gate.
-5. Sau vòng lõi: security-engineer khi có `risk_tags`, khối nghiên cứu, platform/release/support-docs, supervisor.
+1. Tool thực thi cho khối kỹ thuật (đọc/sửa file trong worktree, chạy lệnh có allowlist), nối vào runner qua tool-use.
+2. Eval cho các agent còn lại; chạy eval trong CI khi prompt/skill đổi version.
+3. Adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`); giao diện web cho human gate.
+4. Nối các route còn thiếu (threat model, support-docs, incident → research) và chạy nhiều orchestrator song song.
 
 ## Thứ tự triển khai khuyến nghị
 
