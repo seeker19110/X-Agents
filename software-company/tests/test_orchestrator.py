@@ -242,7 +242,7 @@ def test_orchestrator_rejects_inconsistent_routes():
 def test_agents_write_blackboard_and_threat_model_precedes_plan():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch)
-    bb = orch.blackboard.snapshot()
+    bb = orch.blackboard.snapshot("P1")  # blackboard phân vùng theo dự án
     assert {"prd", "threat-model", "architecture", "api-contract"} <= set(bb), "PRD, threat model, C4, contract lên blackboard trước gate plan"
     assert bb["threat-model"].content_ref == "docs/threat-model.md"
     tm = list(bus.replay(topic="review-results", key="SPEC-P1"))
@@ -304,7 +304,7 @@ def test_conditional_acceptance_opens_change_request_and_lessons_recorded():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:rm"); orch.run()
-    assert orch.blackboard.read("docs") is not None, "support-docs viết release notes sau production"
+    assert orch.blackboard.read("docs", "P1") is not None, "support-docs viết release notes sau production"
     _pub(bus, "acceptance-results", "REL-001", "account-manager",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "conditional", "signed_by": "customer:po"})
     orch.run()

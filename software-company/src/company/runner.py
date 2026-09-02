@@ -33,6 +33,13 @@ INJECTION_NEEDLES = ("ignore previous instructions", "ignore all prior", "you ar
 class RunnerError(Exception): ...
 
 
+def project_of(env: Envelope) -> str | None:
+    """Dự án của một envelope: payload.project_id, hoặc key khi topic dùng project_id làm key.
+    Artifact trên blackboard được phân vùng theo giá trị này (ADR-0012)."""
+    pid = env.payload.get("project_id")
+    return str(pid) if pid else None
+
+
 def payload_schema(topic: str) -> dict[str, Any]:
     p = SCHEMA_DIR / f"{topic}.json"
     if not p.exists():
@@ -183,7 +190,9 @@ class AgentRunner:
             raise RunnerError(f"{agent_id}: đầu vào {inp.event_id} nghi prompt injection, không chạy")
 
         schema = None if context_only else payload_schema(topic_out)
-        context = {ns: sc.model_dump() for ns, sc in self.blackboard.snapshot().items()} if self.blackboard else {}
+        project = project_of(inp)
+        context = ({ns: sc.model_dump() for ns, sc in self.blackboard.snapshot(project).items()}
+                   if self.blackboard else {})
         user = build_user_message(spec, inp, topic_out, context, many=many)
         out_schema = output_schema(schema, spec.namespaces_write, many)
         if tools is None:
@@ -251,7 +260,8 @@ class AgentRunner:
             if ns not in spec.namespaces_write or self.blackboard is None:
                 self._audit(spec, "context_rejected", inp, evidence=f"namespace {ns} không thuộc {agent_id} hoặc không có blackboard")
                 continue
-            self.blackboard.write(spec.id, ns, str(w["content_ref"]), str(w.get("summary", "")))
+            self.blackboard.write(spec.id, ns, str(w["content_ref"]), str(w.get("summary", "")),
+                                  project_id=project_of(inp))
             done.append(ns)
         if done:
             self._audit(spec, "context_written", inp, evidence=",".join(done))

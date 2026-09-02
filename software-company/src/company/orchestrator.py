@@ -326,9 +326,22 @@ class Orchestrator:
         self._mark(env, res)
         return res
 
+    def project_of(self, env: Envelope) -> str | None:
+        """Dự án của một event, kể cả khi payload không mang `project_id` (release-events, review-results...):
+        tra ngược qua ticket hoặc release. Blackboard phân vùng theo giá trị này (ADR-0012)."""
+        if env.payload.get("project_id"): return str(env.payload["project_id"])
+        tid = env.payload.get("ticket_id") or (env.key if env.topic in {"tasks", "pull-requests"} else None)
+        if tid and tid in self.lead.tickets: return self.lead.tickets[tid].project_id
+        rid = env.payload.get("release_id") or (env.key if env.topic in {"release-events", "release-candidates"} else None)
+        for t in self.lead.release_tickets.get(str(rid), []):
+            if t in self.lead.tickets: return self.lead.tickets[t].project_id
+        return None
+
     def _call(self, agent: str, env: Envelope, r: Route, res: StepResult) -> None:
         try:
-            inp = env.model_copy(update={"payload": {**env.payload, **r.enrich(env, self)}}) if r.enrich else env
+            extra = {**(r.enrich(env, self) if r.enrich else {})}
+            if not env.payload.get("project_id") and (pid := self.project_of(env)): extra["project_id"] = pid
+            inp = env.model_copy(update={"payload": {**env.payload, **extra}}) if extra else env
             if r.target_env:
                 out = self._release(agent, env, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             elif r.tools == "rw":
@@ -606,7 +619,8 @@ class Orchestrator:
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,
                 "gates_pending": {sid: g.kind for sid, g in self.gate.pending.items()}, "plans": list(self.plans),
-                "blackboard": {ns: sc.content_ref for ns, sc in self.blackboard.snapshot().items()},
+                "blackboard": {f"{sc.project_id}/{ns}" if sc.project_id else ns: sc.content_ref
+                               for ns, sc in self.blackboard._latest.items() for ns in [ns[1]]},
                 "integration": {"branch": self.integration.branch, "sha": self.integration.sha()} if self.integration and
                 (self.repo / ".worktrees" / "_integration").exists() else None, "void_releases": sorted(self.void_releases),
                 "stats": dict(self.stats), "events": len(self.bus)}

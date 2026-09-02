@@ -50,3 +50,20 @@ def test_replay_by_key():
     for k in ("A", "B", "A"):
         bus.publish(Envelope(topic="audit-log", key=k, actor=k, payload={"actor": k, "action": "x"}))
     assert len(list(bus.replay(key="A"))) == 2
+
+
+def test_blackboard_isolates_projects_but_shares_knowledge():
+    """Hai dự án trên cùng bus không ghi đè artifact của nhau; `knowledge` là namespace chung (ADR-0012)."""
+    from company.blackboard import Blackboard
+
+    bus = InMemoryBus(); bb = Blackboard(bus)
+    bb.write("spec-writer", "prd", "A/prd.md", "PRD A", project_id="PA")
+    bb.write("spec-writer", "prd", "B/prd.md", "PRD B", project_id="PB")
+    assert bb.read("prd", "PA").content_ref == "A/prd.md"
+    assert bb.read("prd", "PB").content_ref == "B/prd.md"
+    assert bb.read("prd", "PA").version == 1 and bb.read("prd", "PB").version == 1
+    assert set(bb.snapshot("PA")) == {"prd"} and bb.snapshot("PA")["prd"].content_ref == "A/prd.md"
+
+    bb.write("supervisor", "knowledge", "lesson:1", "{}", project_id="PA")
+    assert bb.read("knowledge", "PB") is not None, "bài học dùng chung mọi dự án"
+    assert "knowledge" in bb.snapshot("PB")
