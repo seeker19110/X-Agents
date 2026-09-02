@@ -37,14 +37,19 @@ class Blackboard:
               project_id: str | None = None) -> SharedContext:
         scope = (None if namespace in GLOBAL_NAMESPACES else project_id, namespace)
         v = (self._latest[scope].version + 1) if scope in self._latest else 1
-        sc = SharedContext(namespace=namespace, version=v, content_ref=content_ref, summary=summary,
-                           project_id=None if namespace in GLOBAL_NAMESPACES else project_id)
+        sc = SharedContext(namespace=namespace, version=v, content_ref=content_ref,  # type: ignore[arg-type]
+                           summary=summary, project_id=None if namespace in GLOBAL_NAMESPACES else project_id)
         self.bus.publish(Envelope(topic="shared-context", key=context_key(namespace, project_id), actor=actor,
                                   payload=sc.model_dump()))
         return sc
 
     def read(self, namespace: str, project_id: str | None = None) -> SharedContext | None:
         return self._latest.get((None if namespace in GLOBAL_NAMESPACES else project_id, namespace))
+
+    def overview(self) -> dict[str, str]:
+        """Toàn bộ blackboard cho lệnh `status`: khoá là `<project>/<namespace>` (hoặc namespace trần nếu toàn công ty)."""
+        return {f"{pid}/{ns}" if pid else ns: sc.content_ref for (pid, ns), sc in sorted(self._latest.items(),
+                                                                                         key=lambda kv: (kv[0][0] or "", kv[0][1]))}
 
     def snapshot(self, project_id: str | None = None) -> dict[str, SharedContext]:
         """Bản mới nhất mỗi namespace TRONG phạm vi một dự án, cộng các namespace toàn công ty.

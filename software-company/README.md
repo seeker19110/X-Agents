@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0013)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0017)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -88,7 +88,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0016; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0017; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -131,18 +131,26 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   không kiểm được thay vì báo pass giả.
 - **Cổng eval có răng**: CI chạy `--replay --strict`; agent trong `evals/recordings/REQUIRED.txt` thiếu bản ghi
   hoặc bản ghi ở phiên bản prompt cũ thì đỏ.
-- Test: pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
-  vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả); ruff sạch.
+- **Bốn human gate là gate thật**: spec, plan, release và nghiệm thu của khách (`acceptance`, ADR-0017) — cùng hạn 24h,
+  nhắc ở 12h, four-eyes, và quá hạn thì supervisor escalate chứ không im lặng.
+- **Hạn mức theo dự án** (`--project-budget`) bên cạnh hạn mức ticket: nhiều ticket đều trong ngân sách vẫn có thể
+  đốt hết tiền của khách. Phiên bản release suy ra từ nội dung (SemVer), không còn hằng số.
+- **Lỗi tạm thời của provider** (429, 5xx, đứt mạng) được thử lại có backoff; `Refused` và 4xx thì không. Anthropic
+  có timeout nên một request treo không giữ luôn cả orchestrator.
+- Test: 242 ca gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite (kể cả hai tiến trình), gate,
+  worktree, tool boundary, vòng tool, orchestrator với repo git thật, eval ghi/phát lại, đường lỗi adapter qua server
+  HTTP giả; ruff và mypy sạch, coverage 94% với sàn 90.
 
 ### Chưa có
 - **Bản ghi eval bằng model thật**: cơ chế và cổng `--strict` đã có (`evals/recordings/REQUIRED.txt`), nhưng
   `evals/recordings/` còn trống nên danh sách bắt buộc chưa có tên nào. Chạy `make eval-record` rồi thêm id vào file.
 - **Deploy thật**: release-engineer vẫn mô phỏng; chưa đẩy `company/integration` lên `main`/tag phiên bản; xung đột
-  giải quyết bằng làm lại trên nền mới, chưa rebase tự động. **CI/CD**; **Kafka/Redis** thay SQLite khi chạy nhiều máy
-  (orchestrator hiện tuần tự một tiến trình).
+  giải quyết bằng làm lại trên nền mới, chưa rebase tự động. Chưa dựng **CI/CD cho sản phẩm của khách** (CI của chính
+  repo này thì có). **Kafka/Redis** thay SQLite khi chạy nhiều máy (orchestrator hiện tuần tự một tiến trình).
 - **Tool cho khối nghiên cứu** đọc codebase khách (dùng lại `WorkspaceTools` chỉ đọc, chưa nối route); blackboard
   vẫn chỉ tham chiếu (`content_ref`), artifact PRD/C4/OpenAPI chưa được viết ra file.
-- **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env.
+- **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env. Phát hiện
+  prompt injection là lưới chắn thô theo mẫu, không phải hàng rào — xem `SECURITY.md`.
 - **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn; **giao diện UAT cho khách**.
 
 ### Bước tiếp theo

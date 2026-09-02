@@ -41,7 +41,7 @@ from .bus import InMemoryBus
 from .delivery import DONE_STATES, DeliveryLead
 from .events import BUDGET_FACTOR, AuditLog, Envelope, Task
 from .gate_cli import PersistentGate
-from .gates import GateRequest
+from .gates import Decision, GateRequest
 from .llm import LLMError, ModelClient
 from .registry import AgentSpec, load_agents
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
@@ -614,7 +614,7 @@ class Orchestrator:
         rid = env.payload.get("release_id"); sid = f"UAT-{rid}"
         if sid not in self.gate.pending: return
         verdict = env.payload.get("verdict")
-        decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")
+        decision: Decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")  # type: ignore[assignment]
         by = str(env.payload.get("signed_by") or env.actor)
         try:
             self.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}")
@@ -666,15 +666,18 @@ class Orchestrator:
                      evidence=json.dumps(data, ensure_ascii=False))
         self.bus.publish(Envelope(topic="audit-log", key=actor, actor=actor, payload=a.model_dump()))
 
+    def _integration_status(self) -> dict[str, str] | None:
+        if self.integration is None or self.repo is None: return None
+        if not (self.repo / ".worktrees" / "_integration").exists(): return None
+        return {"branch": self.integration.branch, "sha": self.integration.sha()}
+
     def status(self) -> dict[str, Any]:
         return {"queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,
                 "gates_pending": {sid: g.kind for sid, g in self.gate.pending.items()}, "plans": list(self.plans),
-                "blackboard": {f"{sc.project_id}/{ns}" if sc.project_id else ns: sc.content_ref
-                               for ns, sc in self.blackboard._latest.items() for ns in [ns[1]]},
-                "integration": {"branch": self.integration.branch, "sha": self.integration.sha()} if self.integration and
-                (self.repo / ".worktrees" / "_integration").exists() else None, "void_releases": sorted(self.void_releases),
+                "blackboard": self.blackboard.overview(),
+                "integration": self._integration_status(), "void_releases": sorted(self.void_releases),
                 "stats": dict(self.stats), "events": len(self.bus)}
 
 

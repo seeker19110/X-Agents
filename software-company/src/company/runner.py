@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,8 +27,32 @@ from .registry import AgentSpec, load_agents
 from .tools import ToolBox, ToolError, WorkspaceTools, dump_calls, tools_prompt
 from .workspace import TicketWorkspace, WorkspaceError
 
-INJECTION_NEEDLES = ("ignore previous instructions", "ignore all prior", "you are now", "system prompt:",
-                     "bỏ qua hướng dẫn trước")
+# Mẫu prompt injection. Danh sách này KHÔNG đầy đủ theo thiết kế — nó là lưới chắn thô, không phải hàng rào.
+# Hàng rào thật là: đầu vào luôn được bọc rõ là DỮ LIỆU, tool có allowlist, và đầu ra bị ép theo JSON Schema.
+INJECTION_PATTERNS = (
+    r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?)",
+    r"disregard\s+(all\s+)?(previous|prior|above)",
+    r"forget\s+(everything|all)\s+(you|above)",
+    r"you\s+are\s+now\s+(a|an|the)\b",
+    r"(new|updated)\s+(system\s+)?(prompt|instructions?)\s*:",
+    r"system\s*prompt\s*:",
+    r"</?(system|instructions?)>",                      # thẻ giả dạng ranh giới prompt
+    r"\bBEGIN\s+(SYSTEM|INSTRUCTIONS)\b",
+    r"reveal|print|repeat\s+(your|the)\s+(system\s+)?(prompt|instructions?)",
+    r"(bỏ qua|phớt lờ)\s+(mọi\s+)?(hướng dẫn|chỉ dẫn|quy tắc)\s+(trước|ở trên)",
+    r"(từ giờ|kể từ giờ)\s+bạn\s+là\b",
+    r"(in|tiết lộ)\s+(ra\s+)?(system\s+prompt|prompt hệ thống)",
+)
+_INJECTION_RX = re.compile("|".join(INJECTION_PATTERNS), re.IGNORECASE)
+_ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u202a-\u202e\ufeff]")
+
+
+def looks_like_injection(text: str) -> str | None:
+    """Trả về mẫu khớp, hoặc None. Chuẩn hoá trước khi so: ký tự vô hình và khoảng trắng lặp là cách né rẻ tiền nhất."""
+    norm = _ZERO_WIDTH.sub("", text)
+    norm = re.sub(r"\s+", " ", norm)
+    m = _INJECTION_RX.search(norm)
+    return m.group(0)[:120] if m else None
 
 
 class RunnerError(Exception): ...
@@ -184,9 +209,9 @@ class AgentRunner:
             raise RunnerError(f"{agent_id} không được ghi topic {topic_out} (writes={spec.writes})")
         if inp.topic not in spec.reads and "*" not in spec.reads:
             raise RunnerError(f"{agent_id} không đọc topic {inp.topic} (reads={spec.reads})")
-        raw = json.dumps(inp.payload, ensure_ascii=False).lower()
-        if any(n in raw for n in INJECTION_NEEDLES):
-            self._audit(spec, "injection_detected", inp, evidence="đầu vào chứa mẫu prompt injection")
+        hit = looks_like_injection(json.dumps(inp.payload, ensure_ascii=False))
+        if hit:
+            self._audit(spec, "injection_detected", inp, evidence=f"đầu vào chứa mẫu prompt injection: {hit!r}")
             raise RunnerError(f"{agent_id}: đầu vào {inp.event_id} nghi prompt injection, không chạy")
 
         schema = None if context_only else payload_schema(topic_out)
@@ -274,7 +299,8 @@ class AgentRunner:
         (nếu có context_writes) và ghi audit có token."""
         spec = self.agents[agent_id]
         try:
-            out = self.bus.publish(Envelope(topic=topic_out, key=key or inp.key, actor=spec.id, payload=payload))
+            out = self.bus.publish(inp.child(topic=topic_out, key=key or inp.key, actor=spec.id,  # type: ignore[arg-type]
+                                             payload=payload))
         except BusError as e:
             self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=tokens)
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
@@ -309,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
     bus = SQLiteBus(ns.db); bb = Blackboard(bus)
     for env in bus.replay(topic="shared-context"): bb._on(env)
     inp = Envelope.model_validate(json.loads(ns.input_json.read_text(encoding="utf-8")))
-    r = AgentRunner(bus, make_client(), blackboard=bb).run(ns.agent, inp, ns.topic_out)
+    r = AgentRunner(bus, make_client(), blackboard=bb).run(ns.agent, inp, ns.topic_out)  # type: ignore[arg-type]
     print(json.dumps({"event_id": r.output.event_id, "topic": r.output.topic, "tokens": r.tokens, "model": r.model,
                       "payload": r.output.payload}, ensure_ascii=False, indent=2))
     return 0

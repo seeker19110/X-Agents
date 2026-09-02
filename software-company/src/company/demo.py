@@ -7,6 +7,7 @@ Release: candidate → staging → QA hồi quy → gate 3 → production → kh
 from __future__ import annotations
 
 import sys
+from typing import Any
 
 from .blackboard import Blackboard
 from .bus import InMemoryBus
@@ -22,7 +23,7 @@ def _pr(bus: InMemoryBus, tid: str, actor: str) -> None:
         local_checks={"lint": True, "tests": True, "coverage": 0.86}).model_dump()))
 
 
-def _review(bus: InMemoryBus, tid: str, source: str, actor: str, **kw) -> None:
+def _review(bus: InMemoryBus, tid: Any, source: Any, actor: str, **kw) -> None:
     bus.publish(Envelope(topic="review-results", key=tid, actor=actor,
                          payload=ReviewResult(ticket_id=tid, source=source, verdict="pass", **kw).model_dump()))
 

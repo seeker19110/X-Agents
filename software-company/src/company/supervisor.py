@@ -5,6 +5,7 @@ import statistics
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from .bus import InMemoryBus
 from .events import NAMESPACE_OWNERS, AuditLog, Envelope, SupervisorAction, Task
@@ -38,7 +39,7 @@ class Supervisor:
         bus.subscribe("*", self._on)
 
     def _act(self, target: str, action: str, reason: str, evidence: str | None = None) -> None:
-        a = SupervisorAction(target=target, action=action, reason=reason, evidence=evidence)
+        a = SupervisorAction(target=target, action=action, reason=reason, evidence=evidence)  # type: ignore[arg-type]
         self.actions.append(a)
         if not self.replaying:
             self.bus.publish(Envelope(topic="supervisor-actions", key=target, actor="supervisor", payload=a.model_dump()))
@@ -106,8 +107,9 @@ class Supervisor:
         return stuck
 
     def detect_injection(self, text: str) -> bool:
-        needles = ("ignore previous instructions", "ignore all prior", "you are now", "system prompt:", "bỏ qua hướng dẫn trước")
-        return any(n in text.lower() for n in needles)
+        """Dùng chung bộ mẫu với runner — hai danh sách rời nhau thì sớm muộn cũng lệch."""
+        from .runner import looks_like_injection
+        return looks_like_injection(text) is not None
 
     def record_lesson(self, context: str, problem: str, solution: str, evidence: str) -> None:
         self.knowledge.append({"context": context, "problem": problem, "solution": solution, "evidence": evidence})
@@ -132,7 +134,7 @@ class Supervisor:
 
     def sprint_report(self) -> dict:
         """Estimate vs actual token mỗi ticket, tỷ lệ làm lại, tỷ lệ review bắt lỗi, tổng hành động — cho retrospective."""
-        tickets = {}
+        tickets: dict[str, dict[str, Any]] = {}
         for env in self.bus.replay(topic="tasks"):
             t = Task.model_validate(env.payload)
             tickets[t.ticket_id] = {"estimate_tokens": t.estimate_tokens, "budget_tokens": t.budget_tokens,
@@ -140,7 +142,7 @@ class Supervisor:
         for row in tickets.values():
             est = row["estimate_tokens"]
             row["ratio"] = round(row["actual_tokens"] / est, 2) if est else None
-        actions = defaultdict(int)
+        actions: defaultdict[str, int] = defaultdict(int)
         for a in self.actions: actions[a.action] += 1
         reviews = [e.payload for e in self.bus.replay(topic="review-results")]
         caught = sum(1 for r in reviews if r.get("verdict") != "pass")

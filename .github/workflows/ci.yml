@@ -25,6 +25,8 @@ jobs:
         working-directory: software-company
       - run: uv run ruff check src tests
         working-directory: software-company
+      - run: uv run mypy src/company --ignore-missing-imports
+        working-directory: software-company
 
   unit:
     name: unit

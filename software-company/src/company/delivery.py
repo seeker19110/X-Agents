@@ -25,6 +25,7 @@ class DeliveryLead:
         self.reviews: dict[str, dict[str, ReviewResult]] = defaultdict(dict)
         self.review_since: dict[str, datetime] = {}
         self.releases: list[str] = []
+        self.versions: dict[str, tuple[int, int, int]] = {}  # project_id → SemVer đã phát hành gần nhất
         self.release_tickets: dict[str, list[str]] = {}
         self.release_qa: dict[str, ReviewResult] = {}
         self.release_reviews: dict[str, dict[str, ReviewResult]] = defaultdict(dict)
@@ -148,10 +149,23 @@ class DeliveryLead:
 
     # ---------- release: RC → staging → QA hồi quy → gate 3 → production → nghiệm thu ----------
 
+    def next_version(self, project_id: str, tids: list[str]) -> str:
+        """SemVer suy ra từ nội dung release, không phải hằng số. Ticket chạm auth/payment/crypto hoặc đổi
+        `api-contract` là thay đổi có thể phá vỡ tương thích → tăng MINOR ở 0.x (chưa GA thì MINOR mang vai trò MAJOR);
+        còn lại là PATCH. Người phát hành vẫn có quyền đặt lại, đây chỉ là giá trị mặc định có căn cứ."""
+        cur = self.versions.get(project_id, (0, 1, 0))
+        breaking = any(set(self.tickets[t].risk_tags) & {"auth", "payment", "crypto"} for t in tids if t in self.tickets)
+        major, minor, patch = cur
+        nxt = (major, minor + 1, 0) if breaking else (major, minor, patch + 1)
+        self.versions[project_id] = nxt
+        return ".".join(str(x) for x in nxt)
+
     def _create_release_candidate(self, tids: list[str]) -> str:
         rid = f"REL-{len(self.releases)+1:03d}"; self.releases.append(rid); self.release_tickets[rid] = tids
+        project = self.tickets[tids[0]].project_id
         self._emit(Envelope(topic="release-candidates", key=rid, actor="delivery-lead",
-            payload={"release_id": rid, "project_id": self.tickets[tids[0]].project_id, "tickets": tids, "version": "0.0.0"}))
+            payload={"release_id": rid, "project_id": project, "tickets": tids,
+                     "version": self.next_version(project, tids)}))
         return rid
 
     def _on_release_event(self, env: Envelope) -> None:

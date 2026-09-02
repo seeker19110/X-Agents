@@ -284,10 +284,10 @@ class OpenAICompatClient:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", "replace")[:500]
+            detail = e.read().decode("utf-8", "replace")[:500]
             if e.code == 429 or e.code >= 500:
-                raise Transient(f"HTTP {e.code}: {body}") from e
-            raise LLMError(f"HTTP {e.code}: {body}") from e
+                raise Transient(f"HTTP {e.code}: {detail}") from e
+            raise LLMError(f"HTTP {e.code}: {detail}") from e
         except (urllib.error.URLError, TimeoutError) as e:
             raise Transient(f"lỗi mạng: {getattr(e, 'reason', e)}") from e
 
@@ -354,7 +354,7 @@ class OpenAICompatClient:
         finish = choice.get("finish_reason") or "stop"
         if finish == "content_filter":
             raise Refused("model từ chối (content_filter)")
-        calls = []
+        calls: list[ToolCall] = []
         for tc in (choice.get("message") or {}).get("tool_calls") or []:
             fn = tc.get("function") or {}
             try: args = json.loads(fn.get("arguments") or "{}")

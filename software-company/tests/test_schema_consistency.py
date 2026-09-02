@@ -83,3 +83,19 @@ def test_child_keeps_correlation_and_sets_causation():
     assert c.correlation_id == root.event_id and c.causation_id == root.event_id
     g = c.child(topic="audit-log", key="intake", actor="intake", payload={"actor": "intake", "action": "x"})
     assert g.correlation_id == root.event_id and g.causation_id == c.event_id
+
+
+def test_causation_chains_through_a_real_agent_run():
+    """Envelope có trường thôi chưa đủ: đầu ra của agent phải thật sự nối vào chuỗi của đầu vào."""
+    from company.llm import FakeClient
+    from company.runner import AgentRunner
+
+    bus = InMemoryBus()
+    root = bus.publish(Envelope(topic="pull-requests", key="T1", actor="backend",
+                                payload={"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "abc1234",
+                                         "local_checks": {"lint": True, "tests": True}}))
+    client = FakeClient(handler=lambda s, u: {"ticket_id": "T1", "source": "reviewer", "verdict": "pass"})
+    out = AgentRunner(bus, client).run("reviewer", root, "review-results").output
+    assert out.correlation_id == root.correlation_id, "cùng một chuỗi"
+    assert out.causation_id == root.event_id, "biết chính xác event nào sinh ra nó"
+    assert out.event_id != root.event_id

@@ -83,9 +83,10 @@ class ReplayClient:
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
-        self.data = load_recording(agent_id)
-        if self.data is None:
+        data = load_recording(agent_id)
+        if data is None:
             raise LLMError(f"chưa có bản ghi eval cho {agent_id}: chạy `make eval-record AGENT={agent_id}` với model thật")
+        self.data: dict[str, Any] = data
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
