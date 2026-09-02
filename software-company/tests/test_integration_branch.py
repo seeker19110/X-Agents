@@ -136,3 +136,37 @@ def test_approved_ticket_is_merged_before_dependents_start(tmp_path):
     merged = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "integration.merged"]
     assert [m["ticket_id"] for m in merged] == ["T1", "T2"] and merged[0]["release_id"] is None, "merge lúc approved, không đợi RC"
     assert orch.integration.files().count("f_t1.py") == 1
+
+
+def test_rework_state_survives_restart_and_empty_branch_is_not_integrated(tmp_path):
+    """F17: task phát lại (retry/hint) phải được replay khi mở lại bus — nếu không ticket bị trả về lại thành approved.
+    F18: branch vừa `fresh()` (không có gì mới) merge no-op không được tính là đã tích hợp."""
+    repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c.sqlite"
+    def lead_independent(system, user):
+        if _agent_of(system) == "delivery-lead" and "P1" in user and "decision" not in _inp(user):
+            return {"items": [{**T1, "budget_tokens": 40_000}, {**T2, "depends_on": [], "risk_tags": [], "budget_tokens": 40_000, "priority": 3}]}
+        return handler(system, user)
+    calls = {"n": 0}
+    def th(msgs, tools):
+        if "write_file" in {t.name for t in tools} and _first_turn(msgs):
+            p = _inp(msgs[0]["content"]); tid = p["ticket_id"]
+            if p.get("retry"):
+                calls["n"] += 1
+                return [_tc("write_file", path=f"after_{tid.lower()}.py", content="Y = 1\n")]
+            return [_tc("write_file", path="shared.py", content=f"X = '{tid}'\n")]
+        return _repo_tool_handler(msgs, tools)
+    bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=lead_independent, tool_handler=th), repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm")
+    # chạy tới đúng lúc T2 bị trả về vì xung đột (task retry=1 đã publish) rồi "tắt máy"
+    while orch.queue and not any(e.topic == "tasks" and e.payload.get("retry") == 1 for e in bus.replay()):
+        orch.run(max_steps=1)
+    assert orch.lead.state["T2"] == "dispatched" and orch.lead.tickets["T2"].retry == 1
+    bus.close()
+    o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=lead_independent, tool_handler=th), repo=repo, base="main")
+    assert o2.lead.state["T2"] == "dispatched" and o2.lead.tickets["T2"].retry == 1, "F17: trạng thái làm lại sống sót qua restart"
+    assert "T2" not in o2.integrated
+    o2.run()
+    assert o2.lead.state == {"T1": "merged", "T2": "merged"} and calls["n"] == 1
+    assert "after_t2.py" in o2.integration.files() and "T2" in o2.integrated
+    acts = [e.payload["action"] for e in o2.bus.replay(topic="audit-log")]
+    assert "integration.noop" not in acts or acts.index("integration.noop") < acts.index("integration.merged", acts.index("integration.noop"))

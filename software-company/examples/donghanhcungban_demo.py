@@ -576,11 +576,13 @@ class Sim:
                     self.gate.decide(tid, "approve", by="human:lead", reason=reason)
                 self.orch.run()
         st = self.orch.status()
-        stuck = st["stalled"] or [g for g, k in st["gates_pending"].items() if k == "escalation"] or st["paused"]
+        # paused chỉ là kẹt khi có event đang bị hoãn vì nó (ticket approved bị cắt ngân sách không giữ ai lại)
+        paused_blocking = sorted({r.split(":", 1)[1] for r in st["deferred"].values() if r.startswith("paused:")})
+        stuck = st["stalled"] or [g for g, k in st["gates_pending"].items() if k == "escalation"] or paused_blocking
         if not stuck and (self.gate.pending or self.orch.lead.releases or not self.real): return True
         if not stuck: return True
         self.say(f"\n!! Dự án kẹt ({what}): stalled={st['stalled']} escalation={[g for g, k in st['gates_pending'].items() if k == 'escalation']} "
-                 f"paused={st['paused']} cost_usd={st['cost_usd']}")
+                 f"paused_blocking={paused_blocking} cost_usd={st['cost_usd']}")
         self.say(f"   Quyết định bằng: PYTHONPATH=src uv run python -m company.gate_cli approve|reject <subject> --by human:lead --db {self.db}")
         (self.out / "transcript.md").write_text("\n".join(self.log), encoding="utf-8")
         return False

@@ -574,7 +574,13 @@ class Orchestrator:
             self._audit("integration.skipped", {"release_id": release_id, "ticket_id": tid, "reason": "không có worktree"}, ticket_id=tid)
             return True
         t = self.lead.tickets.get(tid)
+        before = self.integration.sha()
         m = self.integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}" + (f"\n\nrelease: {release_id}" if release_id else ""))
+        if m.ok and m.sha == before:
+            # Branch không có gì mới so với nhánh tích hợp (vd. vừa `fresh()` sau xung đột, chưa có PR mới): không phải
+            # "đã tích hợp" — đánh dấu thế là mất code của lần làm lại về sau.
+            self._audit("integration.noop", {"release_id": release_id, "ticket_id": tid, "sha": before}, ticket_id=tid)
+            res.actions.append(f"integration_noop:{tid}"); return True
         if m.ok:
             with self._lock: self.integrated.add(tid)
             self._audit("integration.merged", {"release_id": release_id, "ticket_id": tid, "sha": m.sha, "branch": self.integration.branch}, ticket_id=tid)

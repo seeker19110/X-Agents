@@ -50,7 +50,7 @@ class DeliveryLead:
     def replay(self, env: Envelope) -> None:
         """Áp một event cũ vào trạng thái (dùng khi orchestrator mở lại bus bền vững). Lỗi chuyển trạng thái bị bỏ qua
         vì event đã xảy ra rồi; mục tiêu là khôi phục, không phải kiểm tra."""
-        fn = self.handlers.get(env.topic)
+        fn = self._replay_task if env.topic == "tasks" else self.handlers.get(env.topic)
         if fn is None: return
         prev, self.replaying = self.replaying, True
         try:
@@ -134,6 +134,17 @@ class DeliveryLead:
         elif st != "changes_requested": self.state[tid] = "changes_requested"  # dispatched/in_progress: agent chưa nộp gì
         self.review_since.pop(tid, None)
         self._publish_task(nt); return nt
+
+    def _replay_task(self, env: Envelope) -> None:
+        """Task phát lại (retry/rework/hint/reopen) không đi qua handler nào khi chạy thật — delivery-lead tự publish —
+        nên trước đây khôi phục từ log không biết ticket đã bị trả về: ticket có đủ review pass cũ lại thành `approved`,
+        ticket phụ thuộc được dispatch, nhánh trống sau `fresh()` được "tích hợp". Ở đây: task mới hơn (retry tăng hoặc
+        hint đổi) của ticket đã biết → ticket về `dispatched` với task đó, review cũ bỏ."""
+        t = Task.model_validate(env.payload)
+        old = self.tickets.get(t.ticket_id)
+        if old is None or (t.retry <= old.retry and t.hint == old.hint): return
+        self.tickets[t.ticket_id] = t; self.state[t.ticket_id] = "dispatched"
+        self.reviews[t.ticket_id] = {}; self.review_since.pop(t.ticket_id, None)
 
     def rework(self, tid: str, hint: str) -> None:
         """PR bị code từ chối trước review (lint/test thật fail): ticket về `changes_requested` rồi retry+1 kèm hint là
