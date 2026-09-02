@@ -54,3 +54,6 @@ Studio-creators/media.yaml
 # gateway: token OAuth và cấu hình cá nhân — không bao giờ commit
 gateway/.venv/
 gateway/llm.yaml
+
+# Studio-creators: OAuth client secret tải từ Google Cloud Console (chỉ dùng cho `studio.youtube login`) — không commit
+Studio-creators/client_secret*.json
