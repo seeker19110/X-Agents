@@ -1,4 +1,4 @@
-<!-- golden agent=release-engineer version=6 -->
+<!-- golden agent=release-engineer version=7 -->
 # release-engineer
 
 ## Vai trò

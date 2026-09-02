@@ -1,4 +1,4 @@
-<!-- golden agent=intake version=7 -->
+<!-- golden agent=intake version=8 -->
 # intake
 
 ## Vai trò

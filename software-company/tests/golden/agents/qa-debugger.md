@@ -1,4 +1,4 @@
-<!-- golden agent=qa-debugger version=7 -->
+<!-- golden agent=qa-debugger version=8 -->
 # qa-debugger
 
 ## Vai trò

@@ -5,12 +5,14 @@ model_tier: strong
 reads: [pull-requests]
 writes: [review-results]
 context_namespace_write: null
+context_namespace_read: [prd, api-contract, architecture]
+max_input_chars: 60000
 skills: [code-review, code-ownership]
 skills_core: [security, license-compliance, testing, api-contract, observability]
 budget_tokens_per_task: 60000
 max_retries: 1
 timeout_minutes: 60
-version: 7
+version: 8
 ---
 # reviewer
 

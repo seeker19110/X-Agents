@@ -5,12 +5,14 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: infra
+context_namespace_read: [prd, architecture, threat-model]
+max_input_chars: 100000
 skills: [engineering-common, iac-platform, devops, observability, disaster-recovery, resilience-testing, secrets-management]
 skills_core: [finops, security, incident-management]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 6
+version: 7
 ---
 # platform
 

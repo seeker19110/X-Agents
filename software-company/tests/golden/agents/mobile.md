@@ -1,4 +1,4 @@
-<!-- golden agent=mobile version=8 -->
+<!-- golden agent=mobile version=9 -->
 # mobile
 
 ## Vai trò

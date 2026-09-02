@@ -5,12 +5,14 @@ model_tier: standard
 reads: [release-events, external-feedback, incidents]
 writes: [incidents, research-requests]
 context_namespace_write: docs
+context_namespace_read: [prd, api-contract, architecture]
+max_input_chars: 60000
 skills: [technical-writing, incident-management]
 skills_core: [observability, requirements-engineering]
 budget_tokens_per_task: 40000
 max_retries: 2
 timeout_minutes: 60
-version: 8
+version: 9
 ---
 # support-docs
 

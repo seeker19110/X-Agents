@@ -1,4 +1,4 @@
-<!-- golden agent=clarifier version=6 -->
+<!-- golden agent=clarifier version=7 -->
 # clarifier
 
 ## Vai trò

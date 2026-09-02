@@ -5,12 +5,14 @@ model_tier: light
 reads: [requirements-draft, clarification-answers]
 writes: [clarification-questions]
 context_namespace_write: null
+context_namespace_read: [glossary, design, knowledge]
+max_input_chars: 40000
 skills: [requirements-engineering]
 skills_core: [technical-writing]
 budget_tokens_per_task: 20000
 max_retries: 2
 timeout_minutes: 30
-version: 6
+version: 7
 ---
 # clarifier
 

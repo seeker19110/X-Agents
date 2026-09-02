@@ -5,12 +5,14 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: null
+context_namespace_read: [prd, architecture, api-contract, design]
+max_input_chars: 100000
 skills: [engineering-common, mobile, accessibility]
 skills_core: [ui-ux-design, observability, i18n, testing, performance-testing, security]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 8
+version: 9
 ---
 # mobile
 

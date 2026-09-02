@@ -5,12 +5,14 @@ model_tier: light
 reads: [research-requests, clarification-answers, change-requests]
 writes: [research-findings]
 context_namespace_write: null
+context_namespace_read: [glossary, design, knowledge]
+max_input_chars: 40000
 skills: [requirements-engineering, domain-research]
 skills_core: [customer-acceptance]
 budget_tokens_per_task: 20000
 max_retries: 1
 timeout_minutes: 30
-version: 7
+version: 8
 ---
 # intake
 

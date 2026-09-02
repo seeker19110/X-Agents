@@ -1,4 +1,4 @@
-<!-- golden agent=frontend version=9 -->
+<!-- golden agent=frontend version=10 -->
 # frontend
 
 ## Vai trò

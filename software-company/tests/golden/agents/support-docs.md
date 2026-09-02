@@ -1,4 +1,4 @@
-<!-- golden agent=support-docs version=8 -->
+<!-- golden agent=support-docs version=9 -->
 # support-docs
 
 ## Vai trò

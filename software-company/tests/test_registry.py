@@ -73,3 +73,14 @@ def test_load_agents_rejects_ownerless_skill(tmp_path, monkeypatch):
         "---\nname: khong-ai-so-huu\nversion: 1\n---\n# Skill\n\n## Quy trình\nx\n\n## Checklist\n- x\n", encoding="utf-8")
     with pytest.raises(ValueError, match="chủ quản"):
         reg.load_agents()
+
+
+def test_context_namespace_read_names_real_namespaces():
+    """ADR-0020: mọi namespace trong context_namespace_read phải tồn tại; review/QA/ops có trần prompt riêng thấp hơn."""
+    from company.events import NAMESPACE_OWNERS
+    agents = load_agents()
+    for spec in agents.values():
+        assert spec.context_namespace_read is not None, f"{spec.id}: thiếu context_namespace_read"
+        assert set(spec.context_namespace_read) <= set(NAMESPACE_OWNERS), spec.id
+    for aid in ("reviewer", "qa-debugger", "security-engineer", "release-engineer", "support-docs", "supervisor"):
+        assert agents[aid].max_input_chars and agents[aid].max_input_chars <= 70_000, aid

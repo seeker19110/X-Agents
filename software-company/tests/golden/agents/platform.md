@@ -1,4 +1,4 @@
-<!-- golden agent=platform version=6 -->
+<!-- golden agent=platform version=7 -->
 # platform
 
 ## Vai trò

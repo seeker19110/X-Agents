@@ -5,12 +5,14 @@ model_tier: strong
 reads: [requirements-draft]
 writes: [requirements-draft]
 context_namespace_write: null
+context_namespace_read: [glossary, design, knowledge, contract]
+max_input_chars: 50000
 skills: [risk-analysis]
 skills_core: [threat-modeling, privacy-compliance, ai-governance, license-compliance]
 budget_tokens_per_task: 40000
 max_retries: 1
 timeout_minutes: 45
-version: 6
+version: 7
 ---
 # risk
 

@@ -5,12 +5,14 @@ model_tier: standard
 reads: [release-candidates]
 writes: [release-events]
 context_namespace_write: null
+context_namespace_read: [architecture, infra, api-contract]
+max_input_chars: 50000
 skills: [release, devops]
 skills_core: [observability, incident-management, license-compliance, security]
 budget_tokens_per_task: 80000
 max_retries: 2
 timeout_minutes: 120
-version: 6
+version: 7
 ---
 # release-engineer
 
