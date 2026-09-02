@@ -39,10 +39,10 @@ cd ../Studio-creators && uv sync && make test && make demo
 
 Chạy model thật: sao chép `llm.example.yaml` → `llm.yaml` trong công ty tương ứng (bị gitignore), hoặc đặt biến môi trường
 `COMPANY_LLM_*` / `STUDIO_LLM_*`. Provider hỗ trợ: `anthropic`, `openai` (mọi server OpenAI-compatible: OpenAI, OpenRouter,
-Ollama, Groq, vLLM, Gemini OpenAI-compat…), `claude-code` (CLI `claude -p` đã đăng nhập gói Claude trên máy, không cần key), `fake`.
+Ollama, Groq, vLLM, Gemini OpenAI-compat…), `claude-code` (CLI `claude -p` đã đăng nhập gói Claude trên máy, không cần key), `codex` (CLI `codex exec`, gói ChatGPT Plus/Pro), `fake`.
 
 **Chạy bằng gói tài khoản, không mua token**: khai nhiều `backends:` trong `llm.yaml` (Claude Pro/Max qua `claude-code`,
-Google Antigravity qua gateway, model local). Mỗi agent có tier `strong` / `standard` / `light`; `routing.prefer` chọn gói
+ChatGPT qua `codex`, Google Antigravity qua gateway, model local; nhiều tài khoản cùng gói bằng `config_dir` riêng). Mỗi agent có tier `strong` / `standard` / `light`; `routing.prefer` chọn gói
 theo tier (việc nặng đi gói mạnh, việc nhẹ đi gói miễn phí); gói nào hết hạn mức thì tự nghỉ và lượt đó đi gói kế.
 Bảng agent → tier, lý do và chiến lược ưu tiên: [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md).
 
