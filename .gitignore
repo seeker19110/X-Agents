@@ -35,3 +35,13 @@ data/project_kernel.sqlite
 software-company/company.sqlite*
 software-company/.worktrees/
 software-company/llm.yaml
+
+# Studio-creators: dữ liệu chạy, asset sinh ra và cấu hình cá nhân
+Studio-creators/studio.sqlite*
+Studio-creators/output/
+Studio-creators/llm.yaml
+Studio-creators/media.yaml
+
+# gateway: token OAuth và cấu hình cá nhân — không bao giờ commit
+gateway/.venv/
+gateway/llm.yaml
