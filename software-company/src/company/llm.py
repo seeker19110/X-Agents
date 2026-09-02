@@ -256,14 +256,15 @@ def anthropic_input_tokens(usage: Any) -> tuple[int, int, int]:
 class AnthropicClient:
     """Claude qua SDK chính thức: streaming, adaptive thinking, structured output theo JSON Schema."""
 
-    def __init__(self, cfg: LLMConfig | None = None):
+    def __init__(self, cfg: LLMConfig | None = None, timeout: float = 600.0):
         try:
             import anthropic
         except ImportError as e:  # pragma: no cover
             raise RuntimeError("cài SDK: uv sync --extra anthropic") from e
         self.cfg = cfg or load_config()
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic()
+        # Không có timeout thì một request treo giữ luôn cả orchestrator (vòng lặp tuần tự, một tiến trình).
+        self._client = anthropic.Anthropic(timeout=timeout)
 
     @staticmethod
     def _messages(msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -407,7 +408,7 @@ class OpenAICompatClient:
         finish = choice.get("finish_reason") or "stop"
         if finish == "content_filter":
             raise Refused("model từ chối (content_filter)")
-        calls = []
+        calls: list[ToolCall] = []
         for tc in (choice.get("message") or {}).get("tool_calls") or []:
             fn = tc.get("function") or {}
             try: args = json.loads(fn.get("arguments") or "{}")

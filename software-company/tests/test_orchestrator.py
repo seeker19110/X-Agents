@@ -35,9 +35,9 @@ def handler(system: str, user: str) -> dict:
     if a == "intake": return {"project_id": pid, "kind": "intake", "data": {"goals": ["G1"]}}
     if a == "researcher": return {"project_id": pid, "kind": "researcher", "data": {"domain": {}}}
     if a == "synthesizer": return {"project_id": pid, "kind": "draft", "requirements": []}
-    if a == "risk": return {"project_id": pid, "kind": "risk", "risks": ["R1"]}
+    if a == "risk": return {"project_id": pid, "kind": "risk", "risks": [{"id": "R1", "text": "rủi ro"}]}
     if a == "clarifier": return {"project_id": pid, "round": 1, "questions": [{"id": "Q1", "text": "?", "options": ["a"], "default": "a"}]}
-    if a == "spec-writer": return {"payload": {"project_id": pid, "status": "pending_human", "artifacts": ["docs/prd.md"]},
+    if a == "spec-writer": return {"payload": {"project_id": pid, "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}},
                                    "context_writes": [{"namespace": "prd", "content_ref": "docs/prd.md", "summary": "PRD v1"}]}
     if a == "delivery-lead":
         if p.get("decision") == "pending":  # ước lượng impact cho change request
@@ -190,7 +190,7 @@ def test_plan_rejected_when_budget_rule_violated():
         if _agent_of(system) == "delivery-lead": return {"items": [{**T1, "budget_tokens": 4_000}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=bad))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "plan_rejected" in acts and not orch.plans and not orch.gate.pending and not orch.lead.tickets
@@ -242,7 +242,7 @@ def test_orchestrator_rejects_inconsistent_routes():
 def test_agents_write_blackboard_and_threat_model_precedes_plan():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch)
-    bb = orch.blackboard.snapshot()
+    bb = orch.blackboard.snapshot("P1")  # blackboard phân vùng theo dự án
     assert {"prd", "threat-model", "architecture", "api-contract"} <= set(bb), "PRD, threat model, C4, contract lên blackboard trước gate plan"
     assert bb["threat-model"].content_ref == "docs/threat-model.md"
     tm = list(bus.replay(topic="review-results", key="SPEC-P1"))
@@ -257,7 +257,7 @@ def test_security_block_on_spec_stops_planning():
             return {"ticket_id": "SPEC-P1", "source": "security", "verdict": "block", "findings": [{"level": "block", "text": "PII không mã hoá"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=blocker))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": ["prd"]})
+    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     assert not orch.plans and not orch.gate.pending
     assert any(e.payload["action"] == "spec_blocked_by_security" for e in bus.replay(topic="audit-log"))
@@ -304,7 +304,7 @@ def test_conditional_acceptance_opens_change_request_and_lessons_recorded():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     orch.gate.decide("REL-001", "approve", by="human:rm"); orch.run()
-    assert orch.blackboard.read("docs") is not None, "support-docs viết release notes sau production"
+    assert orch.blackboard.read("docs", "P1") is not None, "support-docs viết release notes sau production"
     _pub(bus, "acceptance-results", "REL-001", "account-manager",
          {"release_id": "REL-001", "project_id": "P1", "verdict": "conditional", "signed_by": "customer:po"})
     orch.run()
@@ -351,3 +351,18 @@ def test_overdue_review_is_reassigned_once():
     orch.tick(now=later)
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert orch.lead.state["T1"] == "merged" and acts.count("review.reassign") == 1 and acts.count("llm_error") == 1
+
+
+def test_incomplete_answers_go_back_to_clarifier_then_spec_writer():
+    """Người trả lời thiếu → clarifier hỏi lại đúng phần thiếu (vòng 2); trả đủ → spec-writer đi tiếp."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
+    orch.run()
+    assert _topics(bus)[-1] == "clarification-questions"
+    _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": []})
+    orch.run()
+    assert _topics(bus)[-1] == "clarification-questions", "chưa trả lời câu nào thì hỏi lại, chưa viết spec"
+    _pub(bus, "clarification-answers", "P1", "human:po",
+         {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
+    orch.run()
+    assert "approved-specs" in _topics(bus), "trả lời đủ thì spec-writer chạy"

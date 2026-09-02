@@ -51,7 +51,10 @@
           }
         },
         "estimate_tokens": {
-          "type": "integer",
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 0
         },
         "title": {
@@ -83,7 +86,10 @@
           "minimum": 0
         },
         "hint": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "budget_tokens": {
           "type": "integer"
@@ -95,7 +101,10 @@
           "description": "1 cao nhất; delivery-lead dispatch theo priority"
         },
         "budget_usd": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "description": "trần chi phí USD của ticket; supervisor cắt khi chạm (tuỳ chọn, ngoài budget_tokens)"
         }
       },
@@ -105,10 +114,25 @@
         "requirement_id",
         "assignee",
         "title",
-        "acceptance",
-        "retry"
+        "acceptance"
       ],
       "additionalProperties": true
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (project/ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
     }
   },
   "required": [

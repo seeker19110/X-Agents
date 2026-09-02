@@ -2,7 +2,7 @@
 
 Mô phỏng một công ty gia công phần mềm bằng hệ đa agent event-driven: 7 khối, 20 agent,
 mọi trao đổi đi qua topic có key, tri thức chung nằm trên blackboard, con người duyệt ở
-3 điểm cố định. Nguyên tắc: tính toán xác định, guardrail có hạn mức, đo token thật,
+4 điểm cố định. Nguyên tắc: tính toán xác định, guardrail có hạn mức, đo token thật,
 cô lập workspace theo ticket, prompt là code. Đây là "công ty AI" đầu tiên trong hub X-Agents.
 
 ## Các khối
@@ -25,15 +25,15 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
       → release-events(staging) → review-results(QA hồi quy) → gate 3 → release-events(production)
       → acceptance-results (khách ký) → closed
       → incidents (root_cause_class) → tasks | research-requests;  change-requests → intake/delivery-lead
-+ shared-context (blackboard 11 namespace)   + audit-log (mọi hành động)
++ shared-context (blackboard 12 namespace, phân vùng theo dự án)   + audit-log (mọi hành động)
 ```
 
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0011)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0018)
 agents/        system prompt từng agent (có version), nhóm theo khối
-skills/        38 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
+skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
 gates/         checklist human gate
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
@@ -97,7 +97,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0012; 20 system prompt có version; 38 skill có version; 8 template; checklist 4 gate.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0018; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -156,15 +156,27 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   worktree, code chạy lint/test, PR dưới tên người thay PR của agent, review làm lại).
 - Test: pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
+- **Schema là nguồn sự thật**: bus validate đủ JSON Schema (enum, type, ràng buộc) cho cả payload và envelope;
+  envelope có `schema_version`, `correlation_id`, `causation_id`. `tests/test_schema_consistency.py` khoá schema ↔ model.
+- **Blackboard phân vùng theo dự án** (ADR-0018): artifact thuộc một `project_id`, chỉ `knowledge` là chung.
+- **Lint/test theo stack** (ADR-0013): Python, Node, Go, Rust, Gradle, Maven; stack lạ thì `local_checks` nói rõ
+  không kiểm được thay vì báo pass giả.
+- **Cổng eval có răng**: CI chạy `--replay --strict`; agent trong `evals/recordings/REQUIRED.txt` thiếu bản ghi
+  hoặc bản ghi ở phiên bản prompt cũ thì đỏ.
+- **Bốn human gate là gate thật**: spec, plan, release và nghiệm thu của khách (`acceptance`, ADR-0017) — cùng hạn 24h,
+  nhắc ở 12h, four-eyes, và quá hạn thì supervisor escalate chứ không im lặng.
+- **Lỗi tạm thời của provider** (429, 5xx, đứt mạng) được thử lại có backoff; `Refused` và 4xx thì không. Anthropic
+  có timeout nên một request treo không giữ luôn cả orchestrator.
   artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover; ruff sạch.
 
 ### Chưa có
+- **Bản ghi eval bằng model thật**: cơ chế và cổng `--strict` đã có (`evals/recordings/REQUIRED.txt`), nhưng
+  `evals/recordings/` còn trống nên danh sách bắt buộc chưa có tên nào. Chạy `make eval-record` rồi thêm id vào file.
 - **Deploy thật**: release-engineer vẫn mô phỏng; chưa đẩy `company/integration` lên `main`/tag phiên bản; xung đột
-  giải quyết bằng làm lại trên nền mới, chưa rebase tự động. **CI/CD**; **Kafka/Redis** thay SQLite khi chạy nhiều máy
-  (song song mới ở mức thread trong một tiến trình).
-- **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env.
-- **Bản ghi eval**: cơ chế có, nhưng `evals/recordings/` còn trống cho tới khi ai đó có model thật chạy `make eval-record`
-  (repo này không có khoá provider; CI vẫn SKIP).
+  giải quyết bằng làm lại trên nền mới, chưa rebase tự động. Chưa dựng **CI/CD cho sản phẩm của khách** (CI của chính
+  repo này thì có). **Kafka/Redis** thay SQLite khi chạy nhiều máy (song song mới ở mức thread trong một tiến trình).
+- **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env. Guard
+  injection là lưới chắn theo mẫu, không phải hàng rào — xem `SECURITY.md`.
 - **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn; **giao diện UAT cho khách**.
 
 ### Bước tiếp theo

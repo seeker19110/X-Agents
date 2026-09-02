@@ -13,7 +13,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -103,10 +102,8 @@ class WorkspaceTools:
     """Tool đọc/ghi/tìm/chạy kiểm tra trong một thư mục gốc: worktree của ticket (khối kỹ thuật, `allow_write=True`),
     hoặc bất kỳ thư mục nào chỉ đọc (reviewer/QA trên worktree, researcher trên repo khách với `allow_run=False`)."""
 
-    # Lệnh chạy được: tên → argv. Model chỉ chọn tên và đưa đường dẫn (đã kiểm) — không có shell.
-    COMMANDS: ClassVar[dict[str, list[str]]] = {
-        "lint": [sys.executable, "-m", "ruff", "check"],
-        "test": [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+    # Lệnh luôn có, không phụ thuộc stack. Model chỉ chọn tên và đưa đường dẫn (đã kiểm) — không có shell.
+    GIT_COMMANDS: ClassVar[dict[str, list[str]]] = {
         "git_status": ["git", "status", "--short"],
         "git_diff": ["git", "diff"],
     }
@@ -115,6 +112,10 @@ class WorkspaceTools:
         self.ws = ws if isinstance(ws, TicketWorkspace) else None
         self.allow_write, self.allow_run, self.timeout = allow_write, allow_run, timeout
         self.root = (ws.path if isinstance(ws, TicketWorkspace) else Path(ws)).resolve()
+        # lint/test lấy theo stack của repo khách (ADR-0013): argv vẫn do code ghép, model chỉ chọn tên lệnh.
+        # Thư mục chỉ đọc (researcher trên repo khách) không có TicketWorkspace nên chỉ còn lệnh git.
+        stack_cmds = self.ws.stack().commands() if self.ws is not None else {}
+        self.COMMANDS: dict[str, list[str]] = {**stack_cmds, **self.GIT_COMMANDS}
 
     # ---------- ranh giới đường dẫn ----------
 

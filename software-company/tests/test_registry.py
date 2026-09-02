@@ -1,3 +1,5 @@
+import pytest
+
 from company.events import NAMESPACE_OWNERS
 from company.registry import SKILLS_DIR, _split, load_agents
 
@@ -52,3 +54,22 @@ def test_no_orphan_skill():
     used = {s for a in load_agents().values() for s in a.all_skills}
     on_disk = {p.stem for p in SKILLS_DIR.glob("*.md")}
     assert on_disk == used, {"unused": on_disk - used, "missing": used - on_disk}
+
+
+def test_every_skill_has_an_owning_agent():
+    """ADR-0008: skill chỉ xuất hiện ở `skills_core` thì phần Quy tắc/Ví dụ không tới tay model nào."""
+    owned = {s for a in load_agents().values() for s in a.skills}
+    on_disk = {p.stem for p in SKILLS_DIR.glob("*.md")}
+    assert on_disk <= owned, sorted(on_disk - owned)
+
+
+def test_load_agents_rejects_ownerless_skill(tmp_path, monkeypatch):
+    import company.registry as reg
+
+    monkeypatch.setattr(reg, "SKILLS_DIR", tmp_path)
+    for p in SKILLS_DIR.glob("*.md"):
+        (tmp_path / p.name).write_text(p.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "khong-ai-so-huu.md").write_text(
+        "---\nname: khong-ai-so-huu\nversion: 1\n---\n# Skill\n\n## Quy trình\nx\n\n## Checklist\n- x\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="chủ quản"):
+        reg.load_agents()

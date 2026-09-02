@@ -44,6 +44,13 @@ DEFAULT_MAX_INPUT_CHARS = 120_000
 class RunnerError(Exception): ...
 
 
+def project_of(env: Envelope) -> str | None:
+    """Dự án của một envelope: payload.project_id, hoặc key khi topic dùng project_id làm key.
+    Artifact trên blackboard được phân vùng theo giá trị này (ADR-0012)."""
+    pid = env.payload.get("project_id")
+    return str(pid) if pid else None
+
+
 def payload_schema(topic: str) -> dict[str, Any]:
     p = SCHEMA_DIR / f"{topic}.json"
     if not p.exists():
@@ -205,10 +212,13 @@ class AgentRunner:
                                                                  ensure_ascii=False))
         return c, total, turn, usd
 
-    def _context(self) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    def _context(self, project_id: str | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+        """Ngữ cảnh trong phạm vi một dự án, cộng namespace toàn công ty — agent của dự án B không đọc PRD của A."""
         if not self.blackboard: return {}, {}
-        ctx = {ns: sc.model_dump(exclude_none=True) for ns, sc in self.blackboard.snapshot().items()}
-        paths = {ns: str(p) for ns in ctx if (p := self.blackboard.path(ns)) is not None and p.exists()}
+        snap = self.blackboard.snapshot(project_id)
+        ctx = {ns: sc.model_dump(exclude_none=True) for ns, sc in snap.items()}
+        paths = {ns: str(p) for ns, sc in snap.items()
+                 if (p := self.blackboard.path(ns, project_id=sc.project_id)) is not None and p.exists()}
         return ctx, paths
 
     def generate(self, agent_id: str, inp: Envelope, topic_out: str, many: bool = False, tools: ToolBox | None = None,
@@ -235,7 +245,7 @@ class AgentRunner:
             inp = inp.model_copy(update={"payload": payload})
 
         schema = None if context_only else payload_schema(topic_out)
-        raw_ctx, paths = self._context()
+        raw_ctx, paths = self._context(project_of(inp))
         payload, context, budget_ = fit(spec.system_prompt(), inp.payload, raw_ctx, self.max_input_chars, paths=paths)
         if budget_.trimmed:
             self._audit(spec, "context_trimmed", inp, evidence=json.dumps(budget_.report(), ensure_ascii=False))
@@ -315,7 +325,8 @@ class AgentRunner:
             content = w.get("content")
             content = str(content) if content is not None and str(content).strip() else None
             if content is None: empty.append(ns)
-            self.blackboard.write(spec.id, ns, str(w["content_ref"]), str(w.get("summary", "")), content=content)
+            self.blackboard.write(spec.id, ns, str(w["content_ref"]), str(w.get("summary", "")), content=content,
+                                  project_id=project_of(inp))
             done.append(ns)
         if done:
             self._audit(spec, "context_written", inp, evidence=",".join(done))
@@ -330,7 +341,8 @@ class AgentRunner:
         (nếu có context_writes) và ghi audit có token + tiền + thời gian (evidence JSON cho metrics)."""
         spec = self.agents[agent_id]
         try:
-            out = self.bus.publish(Envelope(topic=topic_out, key=key or inp.key, actor=spec.id, payload=payload))
+            out = self.bus.publish(inp.child(topic=topic_out, key=key or inp.key, actor=spec.id,  # type: ignore[arg-type]
+                                             payload=payload))
         except BusError as e:
             self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=tokens)
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
@@ -365,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
     from .sqlite_bus import SQLiteBus
     bus = SQLiteBus(ns.db); bb = Blackboard(bus, store=ns.artifacts or artifact_store(ns.db)); bb.rehydrate()
     inp = Envelope.model_validate(json.loads(ns.input_json.read_text(encoding="utf-8")))
-    r = AgentRunner(bus, make_client(), blackboard=bb).run(ns.agent, inp, ns.topic_out)
+    r = AgentRunner(bus, make_client(), blackboard=bb).run(ns.agent, inp, ns.topic_out)  # type: ignore[arg-type]
     print(json.dumps({"event_id": r.output.event_id, "topic": r.output.topic, "tokens": r.tokens, "cost_usd": r.cost_usd,
                       "model": r.model, "payload": r.output.payload}, ensure_ascii=False, indent=2))
     return 0

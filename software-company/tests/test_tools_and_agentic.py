@@ -28,6 +28,8 @@ def _init_repo(path: Path) -> Path:
     path.mkdir()
     def git(*a): subprocess.run(["git", "-C", str(path), *a], check=True, capture_output=True)
     git("init", "-q", "-b", "main"); git("config", "user.email", "t@t"); git("config", "user.name", "t")
+    # dấu hiệu stack python: run_checks chọn ruff+pytest theo đây (ADR-0013)
+    (path / "pyproject.toml").write_text('[project]\nname = "khach"\nversion = "0.1.0"\n', encoding="utf-8")
     (path / "mod.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
     (path / "test_mod.py").write_text("from mod import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n", encoding="utf-8")
     (path / ".env").write_text("API_KEY=sk_live_secret\n", encoding="utf-8")
@@ -180,7 +182,7 @@ def test_generate_in_workspace_overrides_model_claims_with_git_evidence(tmp_path
     g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(title="thêm f"), ws, budget=50_000)
     p = g.payloads[0]
     assert p["branch"] == "ticket/T1" and p["pr_ref"] != "#999" and len(p["pr_ref"]) >= 7
-    assert p["local_checks"] == {"lint": True, "tests": True, "verified_by": "workspace",
+    assert p["local_checks"] == {"lint": True, "tests": True, "verified_by": "workspace", "stack": "python",
                                  "lint_output": p["local_checks"]["lint_output"], "test_output": p["local_checks"]["test_output"]}
     assert "coverage" not in p["local_checks"], "model khai coverage nhưng không đo được → bỏ, không bịa"
     assert p["impact"]["files"] == ["feature.py", "test_feature.py"] and p["summary"] == "đã làm"
@@ -282,7 +284,7 @@ def test_plan_with_dependency_cycle_is_rejected_before_gate():
             return {"items": [{**T1, "depends_on": ["T2"]}, {**T2, "depends_on": ["T1"]}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=cyc))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     rej = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan_rejected"]
     assert rej and any("vòng" in p for p in rej[0]["problems"]) and not orch.plans
@@ -299,7 +301,7 @@ def test_lessons_calibrate_next_plan():
     cal = orch.supervisor.calibration()
     assert cal == {"backend": {"ratio_median": cal["backend"]["ratio_median"], "samples": 1}} and cal["backend"]["ratio_median"] > 0
     # dự án tiếp theo: delivery-lead nhận bảng hiệu chỉnh trong đầu vào
-    _pub(bus, "approved-specs", "P2", "spec-writer", {"project_id": "P2", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P2", "spec-writer", {"project_id": "P2", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P2", "approve", by="human:po"); orch.run()
     lead_calls = [c for c in client.calls if _agent_of(c["system"]) == "delivery-lead" and "P2" in c["user"]]
     assert lead_calls and _inp(lead_calls[-1]["user"])["estimate_calibration"] == cal
@@ -335,9 +337,13 @@ def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     assert list(stale_recordings(["reviewer"])) == ["reviewer"] and len(stale_recordings(["reviewer"])["reviewer"]) == 2
     bad = run_eval("reviewer", ReplayClient("reviewer"))
     assert not bad[0].passed and "lệch prompt" in bad[0].failures[0]
-    # CLI: --replay bỏ qua agent chưa ghi (exit 0), --strict thì fail
+    # CLI: --replay bỏ qua agent chưa ghi (exit 0); --strict chỉ đỏ với agent có tên trong REQUIRED.txt
     assert evals_main(["backend", "--replay"]) == 0 and "SKIP backend" in capsys.readouterr().out
+    assert evals_main(["backend", "--replay", "--strict"]) == 0, "chưa bắt buộc thì vẫn chỉ là SKIP"
+    capsys.readouterr()
+    (tmp_path / "REQUIRED.txt").write_text("# bắt buộc\nbackend\n", encoding="utf-8")
     assert evals_main(["backend", "--replay", "--strict"]) == 1
+    assert "FAIL backend" in capsys.readouterr().out
     assert evals_main(["reviewer", "--replay"]) == 1
 
 
@@ -398,3 +404,42 @@ def test_anthropic_message_conversion_groups_tool_results():
     assert out[0] == {"role": "user", "content": "u"}
     assert [b["type"] for b in out[1]["content"]] == ["text", "tool_use", "tool_use"] and out[1]["content"][1]["input"] == {"path": "x"}
     assert out[2]["role"] == "user" and [b["tool_use_id"] for b in out[2]["content"]] == ["a", "b"], "hai tool_result gộp một lượt user"
+
+
+def test_required_recordings_exist_and_match_prompt_version():
+    """Agent có tên trong evals/recordings/REQUIRED.txt phải có bản ghi tươi (ADR-0010)."""
+    from company.evals import load_recording, outdated_versions, required_agents
+
+    missing = [a for a in required_agents() if load_recording(a) is None]
+    assert not missing, f"thiếu bản ghi eval: {missing} — chạy make eval-record cho từng agent"
+    assert outdated_versions(required_agents()) == {}
+
+
+def test_checks_follow_repo_stack_and_never_fake_pass(tmp_path):
+    """ADR-0013: lệnh lint/test theo stack của repo khách; không nhận ra stack thì nói thẳng, không báo pass."""
+    from company.stacks import detect
+
+    (tmp_path / "node").mkdir()
+    (tmp_path / "node" / "package.json").write_text('{"scripts": {"lint": "eslint .", "test": "vitest"}}', encoding="utf-8")
+    assert detect(tmp_path / "node").name == "node"
+    assert detect(tmp_path / "node").lint[:2] == ["npm", "run"]
+
+    (tmp_path / "node-bare").mkdir()
+    (tmp_path / "node-bare" / "package.json").write_text('{"name": "x"}', encoding="utf-8")
+    bare = detect(tmp_path / "node-bare")
+    assert bare.name == "node" and bare.lint is None and bare.test is None, "không có script thì không giả vờ chạy được"
+
+    for marker, name in (("go.mod", "go"), ("Cargo.toml", "rust"), ("pom.xml", "maven"), ("build.gradle", "gradle")):
+        d = tmp_path / name; d.mkdir(); (d / marker).write_text("x", encoding="utf-8")
+        assert detect(d).name == name
+
+    (tmp_path / "tron").mkdir()
+    assert detect(tmp_path / "tron").name == "unknown"
+
+    repo = _init_repo(tmp_path / "khach")  # repo python: tool `run` có lint/test; stack lạ thì chỉ còn lệnh git
+    ws = TicketWorkspace(repo, "T-STACK", base="main"); ws.create()
+    assert set(WorkspaceTools(ws).COMMANDS) == {"lint", "test", "git_status", "git_diff"}
+    (ws.path / "pyproject.toml").unlink()
+    assert set(WorkspaceTools(ws).COMMANDS) == {"git_status", "git_diff"}
+    checks = ws.run_checks()
+    assert checks["stack"] == "unknown" and checks["lint"] is False and checks["tests"] is False

@@ -50,6 +50,12 @@
         },
         "runbook_ref": {
           "type": "string"
+        },
+        "integration_branch": {
+          "type": "string"
+        },
+        "integration_sha": {
+          "type": "string"
         }
       },
       "required": [
@@ -59,6 +65,22 @@
         "status"
       ],
       "additionalProperties": true
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (project/ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
     }
   },
   "required": [

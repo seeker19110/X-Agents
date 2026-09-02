@@ -50,6 +50,17 @@
             },
             "coverage": {
               "type": "number"
+            },
+            "verified_by": {
+              "enum": [
+                "workspace"
+              ]
+            },
+            "unverified": {
+              "type": "boolean"
+            },
+            "stack": {
+              "type": "string"
             }
           }
         }
@@ -61,6 +72,22 @@
         "local_checks"
       ],
       "additionalProperties": true
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (project/ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
     }
   },
   "required": [

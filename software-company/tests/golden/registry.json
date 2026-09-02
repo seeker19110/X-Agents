@@ -13,7 +13,8 @@
     ],
     "skills": [
       "customer-acceptance",
-      "requirements-engineering"
+      "requirements-engineering",
+      "handover"
     ],
     "skills_core": [
       "project-management",
@@ -22,7 +23,7 @@
       "risk-analysis"
     ],
     "timeout_minutes": 120,
-    "version": 4,
+    "version": 6,
     "writes": [
       "change-requests",
       "acceptance-results",
@@ -41,19 +42,19 @@
     "skills": [
       "engineering-common",
       "backend",
-      "api-contract"
+      "api-contract",
+      "ai-feature-engineering",
+      "event-driven-architecture"
     ],
     "skills_core": [
       "observability",
-      "event-driven-architecture",
       "i18n",
-      "ai-feature-engineering",
       "testing",
       "security",
       "database"
     ],
     "timeout_minutes": 180,
-    "version": 5,
+    "version": 7,
     "writes": [
       "pull-requests"
     ]
@@ -65,7 +66,8 @@
     "max_retries": 2,
     "model_tier": "standard",
     "reads": [
-      "requirements-draft"
+      "requirements-draft",
+      "clarification-answers"
     ],
     "skills": [
       "requirements-engineering"
@@ -74,7 +76,7 @@
       "technical-writing"
     ],
     "timeout_minutes": 30,
-    "version": 4,
+    "version": 6,
     "writes": [
       "clarification-questions"
     ]
@@ -99,7 +101,7 @@
       "event-driven-architecture"
     ],
     "timeout_minutes": 180,
-    "version": 4,
+    "version": 5,
     "writes": [
       "pull-requests"
     ]
@@ -123,7 +125,7 @@
       "performance-testing"
     ],
     "timeout_minutes": 120,
-    "version": 5,
+    "version": 6,
     "writes": [
       "pull-requests"
     ]
@@ -158,7 +160,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 120,
-    "version": 6,
+    "version": 8,
     "writes": [
       "tasks",
       "release-candidates",
@@ -177,18 +179,18 @@
     "skills": [
       "engineering-common",
       "frontend",
-      "accessibility"
+      "accessibility",
+      "i18n"
     ],
     "skills_core": [
       "ui-ux-design",
       "observability",
-      "i18n",
       "testing",
       "performance-testing",
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 7,
+    "version": 9,
     "writes": [
       "pull-requests"
     ]
@@ -212,7 +214,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 30,
-    "version": 5,
+    "version": 7,
     "writes": [
       "research-findings"
     ]
@@ -240,7 +242,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 7,
+    "version": 8,
     "writes": [
       "pull-requests"
     ]
@@ -257,16 +259,19 @@
     "skills": [
       "engineering-common",
       "iac-platform",
-      "devops"
+      "devops",
+      "observability",
+      "disaster-recovery",
+      "resilience-testing",
+      "secrets-management"
     ],
     "skills_core": [
-      "observability",
       "finops",
       "security",
       "incident-management"
     ],
     "timeout_minutes": 180,
-    "version": 4,
+    "version": 6,
     "writes": [
       "pull-requests"
     ]
@@ -283,14 +288,14 @@
     ],
     "skills": [
       "testing",
-      "debugging"
+      "debugging",
+      "performance-testing"
     ],
     "skills_core": [
-      "performance-testing",
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 5,
+    "version": 7,
     "writes": [
       "review-results"
     ]
@@ -315,7 +320,7 @@
       "security"
     ],
     "timeout_minutes": 120,
-    "version": 5,
+    "version": 6,
     "writes": [
       "release-events"
     ]
@@ -336,10 +341,11 @@
     "skills": [
       "domain-research",
       "tech-evaluation",
-      "codebase-analysis"
+      "codebase-analysis",
+      "ui-ux-design",
+      "legacy-modernization"
     ],
     "skills_core": [
-      "ui-ux-design",
       "accessibility",
       "license-compliance",
       "cost-estimation",
@@ -347,7 +353,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 120,
-    "version": 6,
+    "version": 8,
     "writes": [
       "research-findings"
     ]
@@ -362,7 +368,8 @@
       "pull-requests"
     ],
     "skills": [
-      "code-review"
+      "code-review",
+      "code-ownership"
     ],
     "skills_core": [
       "security",
@@ -372,7 +379,7 @@
       "observability"
     ],
     "timeout_minutes": 60,
-    "version": 6,
+    "version": 7,
     "writes": [
       "review-results"
     ]
@@ -396,7 +403,7 @@
       "license-compliance"
     ],
     "timeout_minutes": 45,
-    "version": 5,
+    "version": 6,
     "writes": [
       "requirements-draft"
     ]
@@ -414,16 +421,17 @@
     ],
     "skills": [
       "threat-modeling",
-      "security"
+      "security",
+      "license-compliance",
+      "privacy-compliance",
+      "dependency-management"
     ],
     "skills_core": [
-      "privacy-compliance",
-      "license-compliance",
       "ai-governance",
       "devops"
     ],
     "timeout_minutes": 90,
-    "version": 4,
+    "version": 6,
     "writes": [
       "review-results"
     ]
@@ -448,7 +456,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 6,
+    "version": 7,
     "writes": [
       "approved-specs"
     ]
@@ -465,15 +473,15 @@
     ],
     "skills": [
       "ai-governance",
-      "prompt-engineering"
+      "prompt-engineering",
+      "finops"
     ],
     "skills_core": [
-      "finops",
       "cost-estimation",
       "observability"
     ],
     "timeout_minutes": 15,
-    "version": 6,
+    "version": 8,
     "writes": [
       "supervisor-actions",
       "knowledge-base"
@@ -491,15 +499,15 @@
       "incidents"
     ],
     "skills": [
-      "technical-writing"
+      "technical-writing",
+      "incident-management"
     ],
     "skills_core": [
-      "incident-management",
       "observability",
       "requirements-engineering"
     ],
     "timeout_minutes": 60,
-    "version": 5,
+    "version": 8,
     "writes": [
       "incidents",
       "research-requests"
@@ -522,7 +530,7 @@
       "risk-analysis"
     ],
     "timeout_minutes": 60,
-    "version": 5,
+    "version": 7,
     "writes": [
       "requirements-draft"
     ]

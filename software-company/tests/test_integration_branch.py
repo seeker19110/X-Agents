@@ -95,6 +95,6 @@ def test_conflict_voids_release_and_ticket_redoes_on_fresh_base(tmp_path):
 
 def test_without_repo_no_integration():
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run()
     assert orch.integration is None and orch.status()["integration"] is None

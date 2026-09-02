@@ -53,7 +53,7 @@ from .bus import InMemoryBus
 from .delivery import DONE_STATES, DeliveryLead
 from .events import BUDGET_FACTOR, AuditLog, Envelope, Task
 from .gate_cli import PersistentGate
-from .gates import GateRequest
+from .gates import Decision, GateRequest
 from .llm import LLMError, ModelClient, TransientError
 from .registry import AgentSpec, load_agents
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError, artifact_store
@@ -63,6 +63,7 @@ from .web import WebTools, research_toolbox
 from .workspace import Integration, TicketWorkspace, WorkspaceError, _git
 
 ACTOR = "orchestrator"
+MAX_CLARIFY_ROUNDS = 2  # khớp `clarification-questions.round` (maximum 2) và prompt clarifier
 ENGINEERING = ("backend", "frontend", "mobile", "database", "platform", "data")
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
@@ -116,6 +117,20 @@ def _deployed(env_name: str) -> When:
     return lambda e, _o: e.payload.get("env") == env_name and e.payload.get("status") == "deployed"
 
 
+def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
+    """Người đã trả lời hết câu hỏi của vòng gần nhất (hoặc clarifier đã hết vòng) → đi thẳng spec-writer.
+    Thiếu câu trả lời mà vẫn viết spec thì spec dựa trên giả định người chưa xác nhận."""
+    q = o.latest("clarification-questions", e.payload.get("project_id") or e.key)
+    if q is None: return True
+    asked = {str(x.get("id")) for x in q.payload.get("questions", [])}
+    answered = {str(a.get("question_id")) for a in e.payload.get("answers", [])}
+    return not (asked - answered) or int(q.payload.get("round", 1)) >= MAX_CLARIFY_ROUNDS
+
+
+def _answers_incomplete(e: Envelope, o: Orchestrator) -> bool:
+    return not _answers_complete(e, o)
+
+
 def _cr_accepted_needs_research(e: Envelope, _o: Orchestrator) -> bool:
     return e.payload.get("decision") == "accepted" and bool(e.payload.get("affects_requirements"))
 
@@ -144,7 +159,8 @@ ROUTES: tuple[Route, ...] = (
     Route("research-findings", "synthesizer", "requirements-draft", _from("researcher")),
     Route("requirements-draft", "risk", "requirements-draft", _from("synthesizer")),
     Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
-    Route("clarification-answers", "spec-writer", "approved-specs", enrich=_with_draft),
+    Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
+    Route("clarification-answers", "spec-writer", "approved-specs", _answers_complete, enrich=_with_draft),
     # kỹ thuật + chất lượng
     Route("tasks", "$assignee", "pull-requests", tools="rw"),
     Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),
@@ -216,6 +232,7 @@ class Orchestrator:
             raise ValueError(f"repo không phải git repository: {self.repo}")
         self.integration = Integration(self.repo, integration, base) if self.repo is not None else None
         self.void_releases: set[str] = set()
+        self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
@@ -245,6 +262,7 @@ class Orchestrator:
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self.void_releases.add(d["release_id"])
+                elif a["action"] == "threat_model.missing": self.missing_threat_model.add(d["subject_id"])
                 elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d["subject_id"] in self.plans:
                     self._dispatch_plan(d["subject_id"], replaying=True)
             elif env.topic == "supervisor-actions": self._track_pause(env)
@@ -329,6 +347,8 @@ class Orchestrator:
         remind, overdue = self.gate.due(now)
         for sid in [*remind, *overdue]:
             self._audit(f"gate.{'overdue' if sid in overdue else 'remind'}", {"subject_id": sid}, once=f"gate:{sid}")
+        for sid in overdue:  # quá hạn không tự đi tiếp, nhưng cũng không im lặng: supervisor nhận việc
+            self.supervisor.escalate_gate(sid, f"gate quá hạn {self.gate.timeout}", once_key=f"gate.escalate:{sid}")
         for tid, missing in self.lead.overdue_reviews(now).items():
             pr = self.latest("pull-requests", tid)
             for src in sorted(missing):
@@ -375,20 +395,34 @@ class Orchestrator:
             agent = env.payload["assignee"] if r.agent == "$assignee" else r.agent
             self._call(agent, env, r, res)
         if env.topic == "release-events" and _deployed("production")(env, self):
-            self._audit("uat.pending", {"release_id": env.key, "note": "account-manager tổ chức UAT; khách ký acceptance-results"},
-                        once=f"uat:{env.key}")
+            self._open_acceptance_gate(env.key, res)
         if env.topic == "acceptance-results":
+            self._close_acceptance_gate(env, res)
             self._record_lessons(env.payload["release_id"])
         if res.transient:  # một agent chưa chạy được vì transport: giữ event lại, nhịp sau thử tiếp (agent xong rồi không chạy lại)
             return self._defer(env, res, f"transient:{res.actions[-1].split(':')[1] if res.actions else '?'}")
         self._mark(env, res)
         return res
 
+    def project_for(self, env: Envelope) -> str | None:
+        """Dự án của một event, kể cả khi payload không nói: release và ticket đều truy ngược được về dự án.
+        Cần cho blackboard phân vùng (ADR-0018) — không có nó thì release notes của khách A ghi vào phạm vi chung."""
+        if pid := env.payload.get("project_id"): return str(pid)
+        tid = env.payload.get("ticket_id") or (env.key if env.topic in {"tasks", "pull-requests"} else None)
+        rid = env.payload.get("release_id") or (env.key if env.topic in {"release-events", "release-candidates",
+                                                                        "acceptance-results"} else None)
+        if rid and not tid:
+            tid = next(iter(self.lead.release_tickets.get(str(rid), [])), None)
+        t = self.lead.tickets.get(str(tid)) if tid else None
+        return t.project_id if t else None
+
     def _call(self, agent: str, env: Envelope, r: Route, res: StepResult) -> None:
         with self._lock:
             if agent in self.partial.get(env.event_id, set()): return  # đã chạy xong ở lần xử lý trước (event bị hoãn transient)
         try:
-            inp = env.model_copy(update={"payload": {**env.payload, **r.enrich(env, self)}}) if r.enrich else env
+            extra = dict(r.enrich(env, self)) if r.enrich else {}
+            if (pid := self.project_for(env)) and not env.payload.get("project_id"): extra["project_id"] = pid
+            inp = env.model_copy(update={"payload": {**env.payload, **extra}}) if extra else env
             if r.target_env:
                 out = self._release(agent, env, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             elif r.tools == "rw":
@@ -521,7 +555,8 @@ class Orchestrator:
         n = 1 + sum(1 for p in self.plans.values() if p["project_id"] == project)
         plan_id = f"PLAN-{project}-{n}"
         plan = {"plan_id": plan_id, "project_id": project, "source_event": env.event_id, "source_topic": env.topic,
-                "tickets": [t.model_dump() for t in tickets], "problems": problems}
+                "tickets": [t.model_dump() for t in tickets], "problems": problems,
+                "threat_model": "missing" if f"SPEC-{project}" in self.missing_threat_model else "ok"}
         if problems:
             self._audit("plan_rejected", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
             res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}"); self.stats["errors"] += 1
@@ -551,8 +586,13 @@ class Orchestrator:
             res.actions.append(f"transient:security-engineer:{str(e)[:120]}"); self.stats["transient"] += 1
             return True  # threat model không chặn plan; lần lập kế hoạch sau (nếu có) sẽ thử lại
         except (RunnerError, LLMError) as e:
+            # Không chặn kế hoạch (người duyệt gate plan vẫn quyết được), nhưng phải hiện ra: audit riêng + đánh dấu
+            # vào plan để mục `threat-model` trong checklist gate không bị tick nhầm là đã có.
+            self._audit("threat_model.missing", {"subject_id": sid, "error": str(e)[:300]},
+                        project_id=env.payload.get("project_id"))
+            with self._lock: self.missing_threat_model.add(sid)
             res.actions.append(f"error:security-engineer:{str(e)[:120]}"); self.stats["errors"] += 1
-            return True  # không có threat model không chặn plan; gate plan có mục threat-model để người thấy thiếu
+            return True
         if p["verdict"] == "block":
             self._audit("spec_blocked_by_security", {"subject_id": sid, "findings": p.get("findings", [])}, project_id=env.payload.get("project_id"))
             res.actions.append(f"spec_blocked:{sid}"); return False
@@ -637,6 +677,30 @@ class Orchestrator:
 
     # ---------- vòng học ----------
 
+    def _open_acceptance_gate(self, rid: str, res: StepResult) -> None:
+        """Sau production: mở gate `acceptance` cho khách ký (ADR-0017). Là gate thật nên có hạn 24h, có nhắc ở 12h
+        và được escalate khi quá hạn — trước đây chỉ là một dòng audit `uat.pending` không ai theo dõi."""
+        sid = f"UAT-{rid}"
+        if sid in self.gate.pending or self.gate.is_approved(sid) or f"uat:{rid}" in self.once: return
+        self._remember(f"uat:{rid}")
+        self.gate.request(GateRequest(kind="acceptance", subject_id=sid, created_by="account-manager",
+                                      checklist=["uat-script", "acceptance-criteria", "known-issues", "signed_by"]))
+        res.actions.append(f"gate:acceptance:{sid}")
+
+    def _close_acceptance_gate(self, env: Envelope, res: StepResult) -> None:
+        """Khách ký `acceptance-results` → đóng gate nghiệm thu bằng chính chữ ký đó. Four-eyes bảo đảm người ký của
+        khách khác account-manager. Conditional đóng ở dạng request_changes; phần còn lại đi qua change request."""
+        rid = env.payload.get("release_id"); sid = f"UAT-{rid}"
+        if sid not in self.gate.pending: return
+        verdict = env.payload.get("verdict")
+        decision: Decision = {"accepted": "approve", "rejected": "reject"}.get(str(verdict), "request_changes")  # type: ignore[assignment]
+        by = str(env.payload.get("signed_by") or env.actor)
+        try:
+            self.gate.decide(sid, decision, by=by, reason=f"acceptance-results: {verdict}")
+            res.actions.append(f"gate:acceptance:{sid}:{decision}")
+        except (KeyError, PermissionError) as e:
+            self._audit("handler_error", {"agent": "account-manager", "error": str(e)[:300]})
+
     def _record_lessons(self, rid: str) -> None:
         """Sau nghiệm thu: estimate vs actual mỗi ticket đã closed → supervisor.knowledge + blackboard `knowledge`."""
         for tid in self.lead.release_tickets.get(rid, []):
@@ -678,9 +742,10 @@ class Orchestrator:
         checks = ws.run_checks()
         sha = ws.commit_all(message or f"feat({ticket_id}): {by} tiếp quản — {t.title}"[:72]) if _git(ws.path, "status", "--porcelain") \
             else _git(ws.path, "rev-parse", "--short", "HEAD")
+        files = ws.changed_files()
         p = {"ticket_id": ticket_id, "branch": ws.branch, "pr_ref": sha, "summary": message or f"{by} tiếp quản ticket",
-             "impact": {"files": ws.changed_files()}, "local_checks": {**checks, "verified_by": "workspace"}}
-        self._audit("human.takeover", {"ticket_id": ticket_id, "by": by, "commit": sha, "files": p["impact"]["files"],
+             "impact": {"files": files}, "local_checks": {**checks, "verified_by": "workspace"}}
+        self._audit("human.takeover", {"ticket_id": ticket_id, "by": by, "commit": sha, "files": files,
                                        "lint": checks["lint"], "tests": checks["tests"]}, actor=by, ticket_id=ticket_id, project_id=t.project_id)
         return self.bus.publish(Envelope(topic="pull-requests", key=ticket_id, actor=by, payload=p))
 
@@ -721,18 +786,23 @@ class Orchestrator:
                      evidence=json.dumps(data, ensure_ascii=False), cost_usd=cost)
         self.bus.publish(Envelope(topic="audit-log", key=actor, actor=actor, payload=a.model_dump()))
 
+    def _integration_status(self) -> dict[str, str] | None:
+        if self.integration is None or self.repo is None: return None
+        if not (self.repo / ".worktrees" / "_integration").exists(): return None
+        return {"branch": self.integration.branch, "sha": self.integration.sha()}
+
     def status(self) -> dict[str, Any]:
         return {"queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,
                 "gates_pending": {sid: g.kind for sid, g in self.gate.pending.items()}, "plans": list(self.plans),
-                "blackboard": {ns: {"v": sc.version, "ref": sc.content_ref, "chars": len(sc.content or ""),
-                                    "file": str(p) if (p := self.blackboard.path(ns)) else None}
-                               for ns, sc in self.blackboard.snapshot().items()},
+                "blackboard": {key: {"v": sc.version, "ref": sc.content_ref, "chars": len(sc.content or ""),
+                                     "file": str(p) if (p := self.blackboard.path(sc.namespace,
+                                                                                  project_id=sc.project_id)) else None}
+                               for key, sc in self.blackboard.all().items()},
                 "workers": self.workers, "web": self.web is not None,
                 "cost_usd": self.supervisor.sprint_report()["cost_usd_total"],
-                "integration": {"branch": self.integration.branch, "sha": self.integration.sha()} if self.integration and
-                (self.repo / ".worktrees" / "_integration").exists() else None, "void_releases": sorted(self.void_releases),
+                "integration": self._integration_status(), "void_releases": sorted(self.void_releases),
                 "stats": dict(self.stats), "events": len(self.bus)}
 
 
@@ -794,6 +864,7 @@ def main(argv: list[str] | None = None) -> int:
     mt = sub.add_parser("metrics", help="metrics từ audit-log: gọi/token/USD/thời gian theo agent, model, ticket; gate chờ")
     mt.add_argument("--prometheus", action="store_true", help="xuất text exposition format cho Prometheus")
     sh = sub.add_parser("show", help="in toàn văn artifact mới nhất của một namespace blackboard"); sh.add_argument("namespace")
+    sh.add_argument("--project", help="dự án của artifact (ADR-0018); bỏ qua nếu chỉ có một dự án dùng namespace đó")
     ns = ap.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):  # Windows console cp1252
         if hasattr(stream, "reconfigure"): stream.reconfigure(encoding="utf-8")
@@ -826,9 +897,17 @@ def main(argv: list[str] | None = None) -> int:
     if ns.cmd == "report":
         print(json.dumps(orch.supervisor.sprint_report(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "show":
-        sc = orch.blackboard.read(ns.namespace)
+        sc = orch.blackboard.read(ns.namespace, ns.project)
+        if sc is None and ns.project is None:
+            # Blackboard phân vùng theo dự án: không nêu --project thì chỉ đoán được khi đúng một dự án có namespace này.
+            found = [c for (pid, nsp), c in orch.blackboard._latest.items() if nsp == ns.namespace]
+            if len(found) == 1: sc = found[0]
+            elif len(found) > 1:
+                projects = ", ".join(sorted(str(c.project_id) for c in found))
+                print(f"{ns.namespace} có ở nhiều dự án ({projects}); nêu --project", file=sys.stderr); return 2
         if sc is None: print(f"chưa có namespace {ns.namespace}", file=sys.stderr); return 2
-        print(f"# {ns.namespace} v{sc.version} — {sc.content_ref}\n# {sc.summary}\n")
+        scope = f" [{sc.project_id}]" if sc.project_id else ""
+        print(f"# {ns.namespace} v{sc.version}{scope} — {sc.content_ref}\n# {sc.summary}\n")
         print(sc.content if sc.content is not None else "(chỉ có con trỏ, không có toàn văn)"); return 0
     if ns.cmd in {"comment", "takeover"}:
         try:

@@ -23,6 +23,9 @@ Ba agent còn lại của ADR-0003 — `security-engineer`, `platform`, `data` �
 
 ## Hệ quả
 - Quân số đúng: nghiên cứu 6, quản lý 1, kỹ thuật 6, chất lượng 3, vận hành 3, giám sát 1 = 20, cộng human gate.
-- Không ai sở hữu namespace `design` như ADR-0003 dự kiến; trách nhiệm thiết kế nằm ở frontend và mobile,
-  ràng buộc bằng skill `ui-ux-design` (mức rút gọn) và `accessibility` (mức đầy đủ, theo ADR-0008).
+- Namespace `design` do `researcher` sở hữu (`context_namespace_write: [glossary, design]`, và `NAMESPACE_OWNERS`
+  trong `src/company/events.py`) — không phải "không ai sở hữu" như bản đầu của ADR này ghi.
+- Researcher nạp skill `ui-ux-design` ở mức đầy đủ với tư cách chủ quản (ADR-0016: mỗi skill phải có ít nhất một
+  agent nạp đầy đủ). Frontend và mobile hiện thực thiết kế, nạp `ui-ux-design` mức rút gọn và `accessibility`
+  mức đầy đủ (ADR-0008).
 - `test_registry.py` khoá con số 20; ADR-0003 phải đọc kèm ADR này.

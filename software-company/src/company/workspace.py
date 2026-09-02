@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .stacks import Stack, detect
 
 
 class WorkspaceError(Exception): ...
@@ -63,16 +64,28 @@ class TicketWorkspace:
         r = subprocess.run(cmd, cwd=self.path, capture_output=True, text=True, encoding="utf-8", timeout=timeout, env=env)
         return CheckResult(ok=r.returncode == 0, output=(r.stdout + r.stderr)[-4000:])
 
+    def stack(self) -> Stack:
+        """Stack của repo khách (ADR-0013); quyết định lệnh lint/test thật sự chạy được."""
+        return detect(self.path)
+
     def lint(self, *paths: str) -> CheckResult:
-        return self._run(sys.executable, "-m", "ruff", "check", *(paths or (".",)))
+        argv = self.stack().lint
+        if argv is None: return CheckResult(ok=False, output="không có lệnh lint cho stack này")
+        return self._run(*argv, *paths)
 
     def test(self, *args: str) -> CheckResult:
-        return self._run(sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *args)
+        argv = self.stack().test
+        if argv is None: return CheckResult(ok=False, output="không có lệnh test cho stack này")
+        return self._run(*argv, *args)
 
     def run_checks(self) -> dict[str, Any]:
-        """Đúng định dạng `pull-requests.local_checks`. Không có coverage thì bỏ trống chứ không bịa."""
+        """Đúng định dạng `pull-requests.local_checks`. Không có coverage thì bỏ trống chứ không bịa.
+        Stack không nhận ra (hoặc không có lệnh) → `lint`/`tests` là False và `stack` nói rõ lý do:
+        thà nói không kiểm được còn hơn báo pass bằng một lệnh không liên quan đến code vừa sửa."""
+        st = self.stack()
         lint, test = self.lint(), self.test()
-        return {"lint": lint.ok, "tests": test.ok, "lint_output": lint.output, "test_output": test.output}
+        return {"lint": lint.ok, "tests": test.ok, "lint_output": lint.output, "test_output": test.output,
+                "stack": st.name}
 
     def commit_all(self, message: str) -> str:
         _git(self.path, "add", "-A")

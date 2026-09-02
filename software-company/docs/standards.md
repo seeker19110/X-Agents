@@ -47,3 +47,21 @@ Theo dõi version prompt gây lỗi lặp; ghi estimate vs actual vào `knowledg
 
 ## Khối 7 – Human gate
 Separation of duties, four-eyes cho production, quyền ký cam kết (rủi ro chấp nhận, license ngoại lệ, chuyển dữ liệu xuyên biên giới) chỉ ở người.
+
+## Công ty tự áp dụng gì
+Các chuẩn ở trên đặt ra cho sản phẩm của khách. Phần dưới là hiện trạng của chính hệ thống này, để không
+đòi khách thứ mình không làm.
+
+- Đã áp dụng: event schema versioning — `Envelope` có `schema_version`, `correlation_id`, `causation_id`
+  (`src/company/events.py`); bus validate đủ JSON Schema Draft 2020-12 cho payload và envelope, schema là
+  nguồn sự thật (ADR-0014).
+- Đã áp dụng: prompt là code (ADR-0004), traceability requirement → ticket → PR → release trong blackboard,
+  ngân sách token và cảnh báo/cắt của supervisor.
+- Chưa có: outbox. Bus hiện chạy trong tiến trình, không có ranh giới giao dịch giữa DB và bus để mất event,
+  nên outbox chưa giải quyết vấn đề nào có thật. Khi bus ra ngoài tiến trình thì đây là việc đầu tiên.
+- Chưa có: idempotency key ở mức consumer. Orchestrator lọc lặp bằng tập `event_id` đã `orchestrated`
+  (khôi phục từ audit-log), nhưng đó là dedupe của một consumer, không phải khoá idempotent do người gửi
+  đặt và mọi consumer tôn trọng; tác dụng phụ ra ngoài hệ thống khi replay chưa được bảo vệ.
+- Chưa có: bản ghi eval tạo bằng model thật (ADR-0015), nên cổng eval hiện chưa chặn được ai.
+
+Không hứa mốc thời gian cho các mục "chưa có"; sửa mục nào thì sửa luôn dòng đó.

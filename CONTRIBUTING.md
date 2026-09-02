@@ -20,8 +20,8 @@ Chi tiết, tiêu chí vào/ra và ma trận kiểm thử: [`docs/QUY-TRINH-GIT.
 ```bash
 cd software-company
 uv sync
-make lint
-make test
+make lint      # ruff + mypy
+make test      # hoặc `make cov` để kèm ngưỡng coverage như CI
 ```
 
 Với thay đổi tài liệu thuần, đọc lại diff và `git diff --check` là đủ.

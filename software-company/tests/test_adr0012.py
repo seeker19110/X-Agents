@@ -128,18 +128,19 @@ def test_blackboard_content_mirrors_to_store_and_reaches_prompt(tmp_path):
 
 def test_context_writes_carry_full_content_and_flag_missing():
     bus = InMemoryBus(); bb = Blackboard(bus)
-    spec = {"project_id": "P1", "status": "pending_human", "artifacts": ["docs/prd.md"]}
+    spec = {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}}
     env = Envelope(topic="clarification-answers", key="P1", actor="human:po", payload={"project_id": "P1", "answers": []})
     client = FakeClient(responses=[{"payload": spec, "context_writes": [
         {"namespace": "prd", "content_ref": "docs/prd.md", "summary": "PRD v1", "content": "# PRD\n\nREQ-1"}]}])
     AgentRunner(bus, client, blackboard=bb).run("spec-writer", env, "approved-specs")
-    assert bb.content("prd") == "# PRD\n\nREQ-1"
+    assert bb.content("prd", "P1") == "# PRD\n\nREQ-1", "artifact nằm trong phạm vi dự án của event (ADR-0018)"
+    assert bb.content("prd") is None, "không có dự án nào khác đọc nhầm được"
     schema = client.calls[0]["schema"]
     assert "content" in schema["properties"]["context_writes"]["items"]["required"], "schema ép model trả toàn văn"
     assert "TOÀN VĂN" in client.calls[0]["user"]
     client2 = FakeClient(responses=[{"payload": spec, "context_writes": [{"namespace": "prd", "content_ref": "docs/prd.md", "summary": "v2"}]}])
     AgentRunner(bus, client2, blackboard=bb).run("spec-writer", env, "approved-specs")
-    assert "context_no_content" in _acts(bus) and bb.read("prd").version == 2 and bb.content("prd") is None
+    assert "context_no_content" in _acts(bus) and bb.read("prd", "P1").version == 2 and bb.content("prd", "P1") is None
 
 
 # ---------- retry lỗi transport ----------
@@ -372,8 +373,9 @@ def test_parallel_workers_overlap_independent_tickets_and_keep_lifecycle_correct
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     assert orch.lead.state["T1"] == "merged" and orch.lead.state["T3"] == "merged" and orch.stats["errors"] == 0
     assert active["max"] >= 2, "hai ticket độc lập chạy chồng lên nhau"
-    assert (tmp_path / "art" / "architecture" / "latest.md").read_text(encoding="utf-8") == "# C4"
-    assert orch.status()["workers"] == 4 and orch.status()["blackboard"]["architecture"]["chars"] == 4
+    # File mirror nằm dưới tầng dự án vì blackboard phân vùng theo project_id (ADR-0018).
+    assert (tmp_path / "art" / "P1" / "architecture" / "latest.md").read_text(encoding="utf-8") == "# C4"
+    assert orch.status()["workers"] == 4 and orch.status()["blackboard"]["P1/architecture"]["chars"] == 4
     bus.close()
     o2 = Orchestrator(SQLiteBus(db), FakeClient(handler=h), artifacts=tmp_path / "art")
     assert o2.lead.state == orch.lead.state and not o2.queue, "khôi phục sau chạy song song vẫn nhất quán"

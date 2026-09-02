@@ -36,6 +36,15 @@ PATTERNS: tuple[tuple[str, str], ...] = (
 )
 _COMPILED = [(name, re.compile(rx, re.IGNORECASE)) for name, rx in PATTERNS]
 
+# Né mẫu bằng ký tự vô hình ("igno\u200bre") hoặc khoảng trắng lạ là cách rẻ nhất và hay gặp nhất, nên chuẩn hoá
+# TRƯỚC khi so. Chỉ dùng cho việc dò: bản trả về cho agent vẫn là chuỗi gốc (đã lọc), không phải bản chuẩn hoá.
+_ZERO_WIDTH = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]")
+_ODD_SPACE = re.compile(r"[\u00a0\u2000-\u200a\u3000]")
+
+
+def normalize(text: str) -> str:
+    return _ODD_SPACE.sub(" ", _ZERO_WIDTH.sub("", text))
+
 # Topic mà payload đến từ ngoài công ty (khách, người dùng, hệ thống ngoài): lọc thay vì từ chối.
 EXTERNAL_TOPICS = frozenset({"external-feedback", "research-requests", "clarification-answers", "acceptance-results",
                              "incidents", "change-requests"})
@@ -53,14 +62,18 @@ class ScanResult:
 
 def scan(text: str) -> ScanResult:
     r = ScanResult()
+    norm = normalize(text)
     for name, rx in _COMPILED:
-        m = rx.search(text)
+        m = rx.search(norm)
         if m: r.hits.append(f"{name}:{m.group(0)[:60]!r}")
     return r
 
 
 def sanitize_text(text: str) -> tuple[str, list[str]]:
     hits: list[str] = []
+    if _ZERO_WIDTH.search(text) or _ODD_SPACE.search(text):
+        # Chuỗi có ký tự vô hình thì lọc trên bản đã chuẩn hoá, nếu không mẫu sẽ trượt và nhãn không bao giờ được đặt.
+        text = normalize(text)
     for name, rx in _COMPILED:
         def _sub(m: re.Match[str], _n: str = name) -> str:
             hits.append(f"{_n}:{m.group(0)[:60]!r}"); return LABEL

@@ -5,6 +5,7 @@ import statistics
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from .bus import InMemoryBus
 from .events import NAMESPACE_OWNERS, AuditLog, Envelope, SupervisorAction, Task
@@ -43,11 +44,12 @@ class Supervisor:
         self.error_signatures: dict[str, list[str]] = defaultdict(list)
         self.actions: list[SupervisorAction] = []
         self.knowledge: list[dict] = []
+        self._escalated_once: set[str] = set()
         self.replaying = False  # dựng lại từ log: cộng dồn ngân sách/chữ ký lỗi nhưng không phát lại supervisor-actions
         bus.subscribe("*", self._on)
 
     def _act(self, target: str, action: str, reason: str, evidence: str | None = None) -> None:
-        a = SupervisorAction(target=target, action=action, reason=reason, evidence=evidence)
+        a = SupervisorAction(target=target, action=action, reason=reason, evidence=evidence)  # type: ignore[arg-type]
         self.actions.append(a)
         if not self.replaying:
             self.bus.publish(Envelope(topic="supervisor-actions", key=target, actor="supervisor", payload=a.model_dump()))
@@ -102,6 +104,13 @@ class Supervisor:
             self.project_warned.add(pid)
             self._act(pid, "warn", f"dự án đã dùng {ratio:.0%} ngân sách tiền ({cost:.2f} USD)")
 
+    def escalate_gate(self, subject_id: str, reason: str, once_key: str | None = None) -> None:
+        """Gate quá hạn: người duyệt im lặng cũng là một dạng bế tắc, phải hiện ra như mọi bế tắc khác."""
+        key = once_key or f"gate:{subject_id}"
+        if key in self._escalated_once: return
+        self._escalated_once.add(key)
+        self._act(subject_id, "escalate", reason)
+
     def check_timeouts(self, now: datetime | None = None, active: set[str] | None = None) -> list[str]:
         """Escalate key im lặng quá ticket_timeout. `active` (ticket đang chạy, từ delivery-lead) giới hạn phạm vi
         để không escalate ticket đã đóng; mỗi key chỉ escalate một lần cho tới khi có event mới."""
@@ -140,7 +149,7 @@ class Supervisor:
     def sprint_report(self) -> dict:
         """Estimate vs actual token/tiền mỗi ticket, tỷ lệ làm lại, tỷ lệ review bắt lỗi, chi phí theo agent/model,
         tổng hành động — cho retrospective."""
-        tickets = {}
+        tickets: dict[str, dict[str, Any]] = {}
         for env in self.bus.replay(topic="tasks"):
             t = Task.model_validate(env.payload); b = self.budgets.get(t.ticket_id)
             tickets[t.ticket_id] = {"estimate_tokens": t.estimate_tokens, "budget_tokens": t.budget_tokens,
@@ -149,16 +158,16 @@ class Supervisor:
         for row in tickets.values():
             est = row["estimate_tokens"]
             row["ratio"] = round(row["actual_tokens"] / est, 2) if est else None
-        actions = defaultdict(int)
-        for a in self.actions: actions[a.action] += 1
+        actions: defaultdict[str, int] = defaultdict(int)
+        for act in self.actions: actions[act.action] += 1
         cost_by_agent: dict[str, float] = defaultdict(float); cost_by_model: dict[str, float] = defaultdict(float)
         for e in self.bus.replay(topic="audit-log"):
-            a = e.payload
-            if not str(a.get("action", "")).startswith("produced:"): continue
-            cost_by_agent[a["actor"]] += float(a.get("cost_usd") or 0.0)
-            try: model = json.loads(a.get("evidence") or "{}").get("model") or "?"
+            log = e.payload
+            if not str(log.get("action", "")).startswith("produced:"): continue
+            cost_by_agent[log["actor"]] += float(log.get("cost_usd") or 0.0)
+            try: model = json.loads(log.get("evidence") or "{}").get("model") or "?"
             except (json.JSONDecodeError, AttributeError): model = "?"
-            cost_by_model[model] += float(a.get("cost_usd") or 0.0)
+            cost_by_model[model] += float(log.get("cost_usd") or 0.0)
         reviews = [e.payload for e in self.bus.replay(topic="review-results")]
         caught = sum(1 for r in reviews if r.get("verdict") != "pass")
         prs = sum(1 for _ in self.bus.replay(topic="pull-requests"))
