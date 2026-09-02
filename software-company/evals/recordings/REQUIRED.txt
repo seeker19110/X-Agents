@@ -1,0 +1,8 @@
+# Agent BẮT BUỘC có bản ghi eval tươi (ADR-0010). CI chạy `evals all --replay --strict`:
+# agent có tên ở đây mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ, thì CI đỏ.
+#
+# Cách dùng: chạy `make eval-record AGENT=<id>` bằng model thật, commit
+# `evals/recordings/<id>.json`, rồi thêm <id> vào danh sách dưới đây. Từ lúc đó mọi
+# thay đổi prompt/skill của agent ấy buộc phải chạy lại eval mới merge được.
+#
+# Danh sách còn trống vì chưa bản ghi nào được tạo bằng model thật.

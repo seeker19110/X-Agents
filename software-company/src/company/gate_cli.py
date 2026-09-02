@@ -84,8 +84,13 @@ def main(argv: list[str] | None = None) -> int:
         if not gate.pending: print("(không có gate chờ)")
         return 0
     if ns.cmd == "request":
-        gate.request(GateRequest(kind=ns.kind, subject_id=ns.subject_id, created_by=ns.by,
-                                 checklist=[c for c in ns.checklist.split(",") if c]))
+        items = [c.strip() for c in ns.checklist.split(",") if c.strip()]
+        if not ns.subject_id.strip():
+            print("subject_id không được rỗng", file=sys.stderr); return 2
+        if not items:  # gate không có gì để kiểm thì việc duyệt chỉ là bấm nút
+            print("cần --checklist (danh sách mục người duyệt phải kiểm, ngăn cách bằng dấu phẩy)", file=sys.stderr)
+            return 2
+        gate.request(GateRequest(kind=ns.kind, subject_id=ns.subject_id, created_by=ns.by, checklist=items))
         print(f"requested {ns.kind} {ns.subject_id}"); return 0
     try:
         r = gate.decide(ns.subject_id, ns.cmd, by=ns.by, reason=ns.reason)

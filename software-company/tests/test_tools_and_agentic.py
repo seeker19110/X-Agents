@@ -28,6 +28,8 @@ def _init_repo(path: Path) -> Path:
     path.mkdir()
     def git(*a): subprocess.run(["git", "-C", str(path), *a], check=True, capture_output=True)
     git("init", "-q", "-b", "main"); git("config", "user.email", "t@t"); git("config", "user.name", "t")
+    # dấu hiệu stack python: run_checks chọn ruff+pytest theo đây (ADR-0013)
+    (path / "pyproject.toml").write_text('[project]\nname = "khach"\nversion = "0.1.0"\n', encoding="utf-8")
     (path / "mod.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
     (path / "test_mod.py").write_text("from mod import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n", encoding="utf-8")
     (path / ".env").write_text("API_KEY=sk_live_secret\n", encoding="utf-8")
@@ -180,7 +182,7 @@ def test_generate_in_workspace_overrides_model_claims_with_git_evidence(tmp_path
     g = AgentRunner(bus, client).generate_in_workspace("backend", _task_env(title="thêm f"), ws, budget=50_000)
     p = g.payloads[0]
     assert p["branch"] == "ticket/T1" and p["pr_ref"] != "#999" and len(p["pr_ref"]) >= 7
-    assert p["local_checks"] == {"lint": True, "tests": True, "verified_by": "workspace",
+    assert p["local_checks"] == {"lint": True, "tests": True, "verified_by": "workspace", "stack": "python",
                                  "lint_output": p["local_checks"]["lint_output"], "test_output": p["local_checks"]["test_output"]}
     assert "coverage" not in p["local_checks"], "model khai coverage nhưng không đo được → bỏ, không bịa"
     assert p["impact"]["files"] == ["feature.py", "test_feature.py"] and p["summary"] == "đã làm"
@@ -264,9 +266,12 @@ def test_engineering_failure_in_workspace_is_audited_and_loop_continues(tmp_path
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=lambda m, t: []), repo=repo, base="main")
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
-    assert not list(bus.replay(topic="pull-requests")) and orch.lead.state["T1"] == "dispatched"
-    assert any(a.startswith("error:backend") for r in [] for a in r) or orch.stats["errors"] >= 1
+    # Agent không sửa file → invalid_output → ticket KHÔNG treo dispatched: retry kèm hint tới khi blocked → gate escalation
+    assert not list(bus.replay(topic="pull-requests")) and orch.lead.state["T1"] == "blocked" and orch.stats["errors"] >= 3
     assert any(e.payload["action"] == "invalid_output" and "không có thay đổi" in e.payload["evidence"] for e in bus.replay(topic="audit-log"))
+    tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T1"]
+    assert [t["retry"] for t in tasks] == [0, 1, 2] and all("lần trước lỗi" in t["hint"] for t in tasks[1:])
+    assert orch.gate.pending["T1"].kind == "escalation"
 
 
 # ---------- lập kế hoạch: chu trình, hiệu chỉnh ước lượng ----------
@@ -282,7 +287,7 @@ def test_plan_with_dependency_cycle_is_rejected_before_gate():
             return {"items": [{**T1, "depends_on": ["T2"]}, {**T2, "depends_on": ["T1"]}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=cyc))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     rej = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan_rejected"]
     assert rej and any("vòng" in p for p in rej[0]["problems"]) and not orch.plans
@@ -299,7 +304,7 @@ def test_lessons_calibrate_next_plan():
     cal = orch.supervisor.calibration()
     assert cal == {"backend": {"ratio_median": cal["backend"]["ratio_median"], "samples": 1}} and cal["backend"]["ratio_median"] > 0
     # dự án tiếp theo: delivery-lead nhận bảng hiệu chỉnh trong đầu vào
-    _pub(bus, "approved-specs", "P2", "spec-writer", {"project_id": "P2", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P2", "spec-writer", {"project_id": "P2", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P2", "approve", by="human:po"); orch.run()
     lead_calls = [c for c in client.calls if _agent_of(c["system"]) == "delivery-lead" and "P2" in c["user"]]
     assert lead_calls and _inp(lead_calls[-1]["user"])["estimate_calibration"] == cal
@@ -335,9 +340,13 @@ def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     assert list(stale_recordings(["reviewer"])) == ["reviewer"] and len(stale_recordings(["reviewer"])["reviewer"]) == 2
     bad = run_eval("reviewer", ReplayClient("reviewer"))
     assert not bad[0].passed and "lệch prompt" in bad[0].failures[0]
-    # CLI: --replay bỏ qua agent chưa ghi (exit 0), --strict thì fail
+    # CLI: --replay bỏ qua agent chưa ghi (exit 0); --strict chỉ đỏ với agent có tên trong REQUIRED.txt
     assert evals_main(["backend", "--replay"]) == 0 and "SKIP backend" in capsys.readouterr().out
+    assert evals_main(["backend", "--replay", "--strict"]) == 0, "chưa bắt buộc thì vẫn chỉ là SKIP"
+    capsys.readouterr()
+    (tmp_path / "REQUIRED.txt").write_text("# bắt buộc\nbackend\n", encoding="utf-8")
     assert evals_main(["backend", "--replay", "--strict"]) == 1
+    assert "FAIL backend" in capsys.readouterr().out
     assert evals_main(["reviewer", "--replay"]) == 1
 
 
@@ -398,3 +407,105 @@ def test_anthropic_message_conversion_groups_tool_results():
     assert out[0] == {"role": "user", "content": "u"}
     assert [b["type"] for b in out[1]["content"]] == ["text", "tool_use", "tool_use"] and out[1]["content"][1]["input"] == {"path": "x"}
     assert out[2]["role"] == "user" and [b["tool_use_id"] for b in out[2]["content"]] == ["a", "b"], "hai tool_result gộp một lượt user"
+
+
+def test_required_recordings_exist_and_match_prompt_version():
+    """Agent có tên trong evals/recordings/REQUIRED.txt phải có bản ghi tươi (ADR-0010)."""
+    from company.evals import load_recording, outdated_versions, required_agents
+
+    missing = [a for a in required_agents() if load_recording(a) is None]
+    assert not missing, f"thiếu bản ghi eval: {missing} — chạy make eval-record cho từng agent"
+    assert outdated_versions(required_agents()) == {}
+
+
+def test_checks_follow_repo_stack_and_never_fake_pass(tmp_path):
+    """ADR-0013: lệnh lint/test theo stack của repo khách; không nhận ra stack thì nói thẳng, không báo pass."""
+    from company.stacks import detect
+
+    (tmp_path / "node").mkdir()
+    (tmp_path / "node" / "package.json").write_text('{"scripts": {"lint": "eslint .", "test": "vitest"}}', encoding="utf-8")
+    assert detect(tmp_path / "node").name == "node"
+    assert detect(tmp_path / "node").lint[:2] == ["npm", "run"]
+
+    (tmp_path / "node-bare").mkdir()
+    (tmp_path / "node-bare" / "package.json").write_text('{"name": "x"}', encoding="utf-8")
+    bare = detect(tmp_path / "node-bare")
+    assert bare.name == "node" and bare.lint is None and bare.test is None, "không có script thì không giả vờ chạy được"
+
+    for marker, name in (("go.mod", "go"), ("Cargo.toml", "rust"), ("pom.xml", "maven"), ("build.gradle", "gradle")):
+        d = tmp_path / name; d.mkdir(); (d / marker).write_text("x", encoding="utf-8")
+        assert detect(d).name == name
+
+    (tmp_path / "tron").mkdir()
+    assert detect(tmp_path / "tron").name == "unknown"
+
+    repo = _init_repo(tmp_path / "khach")  # repo python: tool `run` có lint/test; stack lạ thì chỉ còn lệnh git
+    ws = TicketWorkspace(repo, "T-STACK", base="main"); ws.create()
+    assert set(WorkspaceTools(ws).COMMANDS) == {"lint", "test", "git_status", "git_diff"}
+    (ws.path / "pyproject.toml").unlink()
+    assert set(WorkspaceTools(ws).COMMANDS) == {"git_status", "git_diff"}
+    checks = ws.run_checks()
+    assert checks["stack"] == "unknown" and checks["lint"] is False and checks["tests"] is False
+
+
+# ---------- F3/F6 (báo cáo mô phỏng donghanhcungban 2026-09-02) ----------
+
+def test_staging_qa_gets_read_only_tools_on_integration_worktree(tmp_path):
+    """F3: QA hồi quy sau deploy staging trước đây không có tool, verdict chỉ là lời khai."""
+    repo = _init_repo(tmp_path / "repo")
+    bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.releases == ["REL-001", "REL-002"] and orch.stats["errors"] == 0
+    staging_qa = [c for c in client.calls if _agent_of(c["system"]) == "qa-debugger" and _inp(c["user"]).get("release_id")]
+    assert staging_qa and all(c["tools"] == ["read_file", "list_files", "search", "run"] for c in staging_qa)
+    ran = [m["content"] for c in staging_qa for m in c["messages"] if m["role"] == "tool"]
+    assert ran and all(x.startswith("exit=0") for x in ran), "QA tự chạy test trên worktree tích hợp"
+    assert not any(e.payload["action"] == "review.no_tool_evidence" for e in bus.replay(topic="audit-log"))
+
+
+def test_reviewer_with_tools_but_no_calls_is_audited(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    lazy = lambda msgs, tools: _repo_tool_handler(msgs, tools) if "write_file" in {t.name for t in tools} else []  # noqa: E731
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=lazy), repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    lazy_qa = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "review.no_tool_evidence"]
+    assert lazy_qa and all(a["agent"] == "qa-debugger" for a in lazy_qa)
+    assert {a["topic"] for a in lazy_qa} == {"pull-requests", "release-events"}
+
+
+def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path):
+    """F6: test thật đỏ → không publish PR, không tốn reviewer/QA/security; ticket retry+1 với hint là đầu ra test."""
+    repo = _init_repo(tmp_path / "repo")
+    def th(msgs, tools):
+        if "write_file" not in {t.name for t in tools} or not _first_turn(msgs): return _repo_tool_handler(msgs, tools)
+        p = _inp(msgs[0]["content"]); tid = p["ticket_id"]
+        body = "    return 1\n" if p.get("retry", 0) >= 1 or tid != "T1" else "    return 2\n"  # T1 lần đầu sai
+        return [_tc("write_file", path=f"f_{tid.lower()}.py", content=f"def {tid.lower()}():\n{body}"),
+                _tc("write_file", path=f"test_{tid.lower()}.py", content=f"from f_{tid.lower()} import {tid.lower()}\n\n\ndef test_x():\n    assert {tid.lower()}() == 1\n")]
+    bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=th)
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.state["T1"] == "merged" and orch.stats["errors"] == 0
+    prs = [e.payload for e in bus.replay(topic="pull-requests") if e.key == "T1"]
+    assert len(prs) == 1 and prs[0]["local_checks"]["tests"] is True, "PR đỏ không được publish"
+    tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T1"]
+    assert [t["retry"] for t in tasks] == [0, 1] and "tests local fail" in tasks[1]["hint"] and "assert" in tasks[1]["hint"]
+    rej = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "pr.rejected_local_checks"]
+    assert rej == [{"ticket_id": "T1", "agent": "backend", "failed": ["tests"], "commit": rej[0]["commit"], "files": ["f_t1.py", "test_t1.py"]}]
+    reviews_t1 = [e for e in bus.replay(topic="review-results") if e.key == "T1"]
+    assert {e.payload["source"] for e in reviews_t1} == {"reviewer", "qa"} and len(reviews_t1) == 2, "chỉ review PR xanh"
+    assert orch.supervisor.sprint_report()["tickets"]["T1"]["retry"] == 1
+    assert orch.supervisor.budgets["T1"].used >= 2 * 1300, "token của lần đỏ vẫn được tính vào ticket"
+
+
+def test_retry_that_rewrites_identical_files_is_no_change_not_commit_error(tmp_path):
+    """F12: sau PR bị từ chối (commit đã nằm trên branch), lần làm lại ghi y hệt → 'không sửa file', không phải lỗi git."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main")
+    same = [_tc("write_file", path="mod.py", content="def add(a, b):\n    return a - b\n")]
+    client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: same if _first_turn(m) else [])
+    bus = InMemoryBus(); runner = AgentRunner(bus, client)
+    assert runner.generate_in_workspace("backend", _task_env(), ws).payloads[0]["local_checks"]["tests"] is False
+    with pytest.raises(RunnerError, match="không sửa file"):
+        runner.generate_in_workspace("backend", _task_env(retry=1, hint="test đỏ"), ws)
+    assert ws.has_changes() and not ws.dirty()

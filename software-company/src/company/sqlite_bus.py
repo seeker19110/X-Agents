@@ -25,7 +25,8 @@ class SQLiteBus(InMemoryBus):
     def __init__(self, path: str | Path = "company.sqlite", enforce_owners: bool = True):
         super().__init__(enforce_owners=enforce_owners)
         self.path = Path(path)
-        self._db = sqlite3.connect(self.path)
+        # check_same_thread=False + RLock của lớp cha: nhiều thread của orchestrator dùng chung một kết nối, tuần tự hoá
+        self._db = sqlite3.connect(self.path, check_same_thread=False)
         self._db.executescript(_DDL)
         self._seq = 0
         self._log = []
@@ -38,26 +39,28 @@ class SQLiteBus(InMemoryBus):
 
     def publish(self, env: Envelope) -> Envelope:
         # Lớp cha validate + kiểm quyền. Tạm tháo subscriber để ghi đĩa TRƯỚC khi báo, tránh mất event khi handler ném lỗi.
-        subs, self._subs = self._subs, defaultdict(list)
-        try:
-            super().publish(env)
-        finally:
-            self._subs = subs
-        with self._db:
-            cur = self._db.execute("INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
-                                   (env.event_id, env.topic, env.key, env.actor, env.ts.isoformat(), env.model_dump_json()))
-            self._seq = cur.lastrowid or self._seq
-        self._notify(subs, env)
+        with self._lock:
+            subs, self._subs = self._subs, defaultdict(list)
+            try:
+                super().publish(env)
+            finally:
+                self._subs = subs
+            with self._db:
+                cur = self._db.execute("INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
+                                       (env.event_id, env.topic, env.key, env.actor, env.ts.isoformat(), env.model_dump_json()))
+                self._seq = cur.lastrowid or self._seq
+            self._notify(subs, env)
         return env
 
     def poll(self) -> list[Envelope]:
         """Nạp event do tiến trình KHÁC ghi vào cùng file (gate CLI, human publish) và báo subscriber như event mới."""
-        rows = self._db.execute("SELECT seq, body FROM events WHERE seq > ? ORDER BY seq", (self._seq,)).fetchall()
-        new: list[Envelope] = []
-        for seq, body in rows:
-            env = Envelope.model_validate_json(body)
-            self._seq = seq; self._log.append(env); new.append(env)
-            self._notify(self._subs, env)
+        with self._lock:
+            rows = self._db.execute("SELECT seq, body FROM events WHERE seq > ? ORDER BY seq", (self._seq,)).fetchall()
+            new: list[Envelope] = []
+            for seq, body in rows:
+                env = Envelope.model_validate_json(body)
+                self._seq = seq; self._log.append(env); new.append(env)
+                self._notify(self._subs, env)
         return new
 
     def replay(self, topic: str | None = None, key: str | None = None) -> Iterable[Envelope]:
@@ -65,8 +68,17 @@ class SQLiteBus(InMemoryBus):
         if topic: conds.append("topic = ?"); args.append(topic)
         if key: conds.append("key = ?"); args.append(key)
         if conds: q += " WHERE " + " AND ".join(conds)
-        for (body,) in self._db.execute(q + " ORDER BY seq", args):
+        with self._lock:
+            rows = self._db.execute(q + " ORDER BY seq", args).fetchall()
+        for (body,) in rows:
             yield Envelope.model_validate_json(body)
+
+    def latest(self, topic: str, key: str) -> Envelope | None:
+        """Như lớp cha nhưng để SQLite tìm: `ORDER BY seq DESC LIMIT 1` trên index (topic, key), không quét log."""
+        with self._lock:
+            row = self._db.execute("SELECT body FROM events WHERE topic = ? AND key = ? ORDER BY seq DESC LIMIT 1",
+                                   (topic, key)).fetchone()
+        return Envelope.model_validate_json(row[0]) if row else None
 
     def close(self) -> None:
         self._db.close()

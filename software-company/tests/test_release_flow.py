@@ -168,3 +168,79 @@ def test_transitions_include_merged_and_waiting():
     assert can_transition("draft", "waiting") and can_transition("waiting", "dispatched")
     assert not can_transition("approved", "released"), "phải qua merged (staging)"
     assert datetime.now(UTC) is not None
+
+
+# ---------- F4/F7/F9 (báo cáo mô phỏng donghanhcungban 2026-09-02) ----------
+
+def _lifecycle_to_production(handler_fn, **kw):
+    from company.bus import InMemoryBus
+    from company.llm import FakeClient
+    from company.orchestrator import Orchestrator
+    from test_orchestrator import _drive_to_plan
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler_fn), **kw)
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    for rid in list(orch.gate.pending):
+        if rid.startswith("REL"): orch.gate.decide(rid, "approve", by="human:release-manager")
+    orch.run()
+    return bus, orch
+
+
+def test_conditional_acceptance_closes_tickets_once_change_request_is_decided():
+    """F4: nghiệm thu conditional → CR; khách quyết CR (kể cả deferred) → ticket của release đó đóng, không `released` mãi."""
+    from company.events import Envelope
+    from test_orchestrator import handler
+    bus, orch = _lifecycle_to_production(handler)
+    assert orch.lead.state["T1"] == "released"
+    bus.publish(Envelope(topic="acceptance-results", key="REL-001", actor="account-manager", payload={
+        "release_id": "REL-001", "project_id": "P1", "verdict": "conditional", "signed_by": "customer:po",
+        "findings": [{"level": "nit", "text": "thiếu trang tin"}]}))
+    orch.run()
+    cr = bus.latest("change-requests", "CR-UAT-1")
+    assert cr is not None and cr.payload["release_id"] == "REL-001" and orch.lead.state["T1"] == "released"
+    bus.publish(Envelope(topic="change-requests", key="CR-UAT-1", actor="human:po", payload={**cr.payload, "decision": "deferred"}))
+    orch.run()
+    assert orch.lead.state["T1"] == "closed"
+    assert any(e.payload["action"] == "ticket.closed" for e in bus.replay(topic="audit-log"))
+
+
+def test_batch_releases_groups_approved_tickets_into_one_rc():
+    """F7: --batch-release: T1 approved nhưng T2 (phụ thuộc T1) còn chạy → chưa RC; T2 approved → một RC cho cả hai."""
+    from test_orchestrator import handler
+    bus, orch = _lifecycle_to_production(handler, batch_releases=True)
+    assert orch.lead.releases == ["REL-001"] and orch.lead.release_tickets["REL-001"] == ["T1", "T2"]
+    rcs = [e.payload for e in bus.replay(topic="release-candidates")]
+    assert len(rcs) == 1 and rcs[0]["tickets"] == ["T1", "T2"]
+    assert [e.payload["env"] for e in bus.replay(topic="release-events")] == ["staging", "production"], "một lần staging, một lần production"
+    assert orch.lead.state == {"T1": "released", "T2": "released"}
+
+
+def test_batch_releases_do_not_wait_for_blocked_ticket():
+    from company.bus import InMemoryBus
+    from company.llm import FakeClient
+    from company.orchestrator import Orchestrator
+    from test_orchestrator import _agent_of, _drive_to_plan, _inp, handler
+    def failing(system, user):
+        if _agent_of(system) == "reviewer" and _inp(user)["ticket_id"] == "T2":
+            return {"ticket_id": "T2", "source": "reviewer", "verdict": "block", "findings": [{"level": "block", "text": "sai"}]}
+        return handler(system, user)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=failing), batch_releases=True)
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    # T2 bị supervisor cắt ngân sách (review block lặp) → paused + gate escalation; T1 approved chưa release vì T2 còn in_review
+    assert orch.lead.state["T1"] == "approved" and not orch.lead.releases and orch.gate.pending["T2"].kind == "escalation"
+    orch.gate.decide("T2", "reject", by="human:pm", reason="bỏ T2"); orch.run()
+    assert orch.lead.state["T2"] == "closed" and orch.lead.release_tickets == {"REL-001": ["T1"]}
+
+
+def test_release_engineer_cannot_override_rc_version():
+    """F9: version của release-events lấy từ RC; model khai khác thì bị ghi đè + audit."""
+    from test_orchestrator import _agent_of, handler
+    def liar(system, user):
+        out = handler(system, user)
+        if _agent_of(system) == "release-engineer": out["version"] = "9.9.9"
+        return out
+    bus, _ = _lifecycle_to_production(liar)
+    evs = [e.payload for e in bus.replay(topic="release-events")]
+    rc = {e.key: e.payload["version"] for e in bus.replay(topic="release-candidates")}
+    assert evs and all(e["version"] == rc[e["release_id"]] for e in evs) and "9.9.9" not in {e["version"] for e in evs}
+    n = sum(1 for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.version_overridden")
+    assert n == len(evs)

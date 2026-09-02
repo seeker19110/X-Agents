@@ -13,52 +13,96 @@ jobs:
   static:
     name: static
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --locked
         working-directory: software-company
       - run: uv run ruff check src tests
+        working-directory: software-company
+      - run: uv run mypy src/company --ignore-missing-imports
         working-directory: software-company
 
   unit:
     name: unit
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked
         working-directory: software-company
-      - run: uv run pytest -q
+      # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
+      - run: uv run pytest -q --cov --cov-report=term
         working-directory: software-company
 
   eval-replay:
     name: eval-replay
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --locked
         working-directory: software-company
-      # Eval từ bản ghi (ADR-0010): không gọi model. Agent chưa có bản ghi → SKIP; bản ghi lệch prompt → đỏ.
-      - run: PYTHONPATH=src uv run python -m company.evals all --replay
+      # Eval từ bản ghi (ADR-0010): không gọi model. `--strict` đỏ khi agent có tên trong
+      # evals/recordings/REQUIRED.txt mà thiếu bản ghi, hoặc bản ghi ghi ở phiên bản prompt cũ.
+      - run: PYTHONPATH=src uv run python -m company.evals all --replay --strict
         working-directory: software-company
 
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # gitleaks quét cả lịch sử, không chỉ commit cuối
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Phụ thuộc có CVE đã biết
+        run: uvx pip-audit --strict -r <(uv export --no-hashes --no-dev)
+        shell: bash
+        working-directory: software-company
+      - name: Bí mật lọt vào lịch sử git
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Studio-creators (phòng ban video): cùng cổng lint / unit / eval-replay, package `studio`.
   studio-static:
     name: studio-static
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --locked
         working-directory: Studio-creators
       - run: uv run ruff check src tests
         working-directory: Studio-creators
@@ -66,13 +110,16 @@ jobs:
   studio-unit:
     name: studio-unit
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: uv sync
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg   # test ghép video thật; thiếu thì test tự bỏ qua
+      - run: uv sync --locked
         working-directory: Studio-creators
       - run: uv run pytest -q
         working-directory: Studio-creators
@@ -80,48 +127,29 @@ jobs:
   studio-eval-replay:
     name: studio-eval-replay
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --locked
         working-directory: Studio-creators
+      # Eval từ bản ghi, không gọi model; agent chưa có bản ghi → SKIP, bản ghi lệch prompt → đỏ.
       - run: PYTHONPATH=src uv run python -m studio.evals all --replay
         working-directory: Studio-creators
-
-  gateway-static:
-    name: gateway-static
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv sync
-        working-directory: gateway
-      - run: uv run ruff check src tests
-        working-directory: gateway
-
-  gateway-unit:
-    name: gateway-unit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-      - run: uv sync
-        working-directory: gateway
-      - run: uv run pytest -q
-        working-directory: gateway
 
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
   quality:
     name: quality
     runs-on: ubuntu-latest
-    needs: [static, unit, eval-replay, studio-static, studio-unit, studio-eval-replay, gateway-static, gateway-unit]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success

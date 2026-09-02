@@ -36,12 +36,17 @@ software-company/company.sqlite*
 software-company/.worktrees/
 software-company/llm.yaml
 
+# Báo cáo coverage do pytest-cov sinh (nhị phân, đổi mỗi lần chạy) — không thuộc lịch sử git
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# đầu ra mô phỏng examples/donghanhcungban_demo.py
+software-company/sim-out/
+
 # Studio-creators: dữ liệu chạy, asset sinh ra và cấu hình cá nhân
 Studio-creators/studio.sqlite*
 Studio-creators/output/
 Studio-creators/llm.yaml
 Studio-creators/media.yaml
-
-# gateway: token OAuth và cấu hình cá nhân — không bao giờ commit
-gateway/.venv/
-gateway/llm.yaml

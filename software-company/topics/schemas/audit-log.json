@@ -31,16 +31,29 @@
           "type": "string"
         },
         "ticket_id": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "project_id": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "evidence": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "tokens": {
           "type": "integer"
+        },
+        "cost_usd": {
+          "type": "number",
+          "description": "chi phí USD tính từ bảng giá trong llm.yaml (0 nếu model không có giá)"
         }
       },
       "required": [
@@ -48,6 +61,22 @@
         "action"
       ],
       "additionalProperties": true
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (project/ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
     }
   },
   "required": [

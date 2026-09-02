@@ -4,6 +4,7 @@ version = "0.5.0"
 description = "Multi-agent công ty gia công phần mềm, event-driven (7 khối, 20 agent)"
 requires-python = ">=3.11"
 dependencies = [
+    "jsonschema>=4.26.0",
     "pydantic>=2.6",
     "pyyaml>=6",
 ]
@@ -14,7 +15,9 @@ graph = ["langgraph>=0.2"]
 
 [dependency-groups]
 dev = [
+    "mypy>=2.3.1",
     "pytest>=8",
+    "pytest-cov>=7.1.0",
     "ruff>=0.5",
 ]
 
@@ -24,6 +27,16 @@ package = false
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/company"]
+omit = ["src/company/graph.py"]   # cần langgraph, không cài trong CI
+
+[tool.coverage.report]
+# Ngưỡng đặt ở mức đang đạt được: nó chặn tụt lùi, không phải mục tiêu để phấn đấu tới.
+fail_under = 90
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 line-length = 120

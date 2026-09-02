@@ -27,9 +27,15 @@ NAMESPACE_OWNERS: dict[str, set[str]] = {
     "analytics": {"data"}, "docs": {"support-docs"}, "knowledge": {"supervisor"}, "contract": {"account-manager"},
 }
 
+# Namespace phạm vi toàn công ty (không thuộc dự án nào): bài học dùng chung cho mọi dự án.
+GLOBAL_NAMESPACES = frozenset({"knowledge"})
+
 # Ticket có bất kỳ tag nào dưới đây bắt buộc thêm review của security-engineer (ADR-0003).
 RISK_TAGS = frozenset({"auth", "payment", "pii", "crypto", "upload", "admin", "external-api"})
 BUDGET_FACTOR = 1.5  # budget_tokens ≥ estimate_tokens × BUDGET_FACTOR (skill cost-estimation)
+
+SCHEMA_VERSION = 1  # tăng khi envelope hoặc payload của topic đổi không tương thích ngược
+
 
 class Envelope(BaseModel):
     event_id: str = Field(default_factory=lambda: uuid4().hex)
@@ -38,6 +44,17 @@ class Envelope(BaseModel):
     actor: str
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
     payload: dict[str, Any]
+    schema_version: int = SCHEMA_VERSION
+    correlation_id: str | None = None  # event gốc của chuỗi nhân quả (mặc định = chính event_id khi không có cha)
+    causation_id: str | None = None    # event trực tiếp sinh ra event này
+
+    def model_post_init(self, _ctx: Any) -> None:
+        if self.correlation_id is None:
+            self.correlation_id = self.event_id
+
+    def child(self, **kw: Any) -> Envelope:
+        """Envelope mới trong cùng chuỗi nhân quả: kế thừa correlation_id, causation_id = event này."""
+        return Envelope(correlation_id=self.correlation_id, causation_id=self.event_id, **kw)
 
 class Task(BaseModel):
     ticket_id: str
@@ -54,6 +71,7 @@ class Task(BaseModel):
     estimate_tokens: int | None = None
     budget_tokens: int = 120_000
     risk_tags: list[str] = []
+    budget_usd: float | None = None  # trần chi phí tiền của ticket (tuỳ chọn); supervisor cắt khi chạm, ngoài budget_tokens
     priority: int = 3  # 1 = cao nhất (WSJF/MoSCoW quy về 1..5); delivery-lead dispatch theo priority rồi thứ tự tạo
 
 class PullRequest(BaseModel):
@@ -83,6 +101,8 @@ class SharedContext(BaseModel):
     version: int
     content_ref: str
     summary: str = ""
+    project_id: str | None = None  # None = phạm vi toàn công ty (vd. knowledge); dự án khác nhau không ghi đè nhau
+    content: str | None = None  # toàn văn artifact; bus là nguồn sự thật, artifact store chỉ mirror ra file cho người đọc
 
 class AuditLog(BaseModel):
     actor: str
@@ -91,6 +111,7 @@ class AuditLog(BaseModel):
     project_id: str | None = None
     evidence: str | None = None
     tokens: int = 0
+    cost_usd: float = 0.0  # từ bảng giá `prices` trong llm.yaml; 0 khi model không có giá (supervisor đếm `unpriced`)
 
 class ChangeRequest(BaseModel):
     """Khách yêu cầu đổi phạm vi sau khi spec đã duyệt (account-manager tạo). Không sửa spec trực tiếp."""

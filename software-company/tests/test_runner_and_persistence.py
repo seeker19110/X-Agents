@@ -225,6 +225,8 @@ def _init_repo(path: Path) -> Path:
     path.mkdir()
     def git(*a): subprocess.run(["git", "-C", str(path), *a], check=True, capture_output=True)
     git("init", "-q", "-b", "main"); git("config", "user.email", "t@t"); git("config", "user.name", "t")
+    # dấu hiệu stack python: run_checks chọn ruff+pytest theo đây (ADR-0013)
+    (path / "pyproject.toml").write_text('[project]\nname = "khach"\nversion = "0.1.0"\n', encoding="utf-8")
     (path / "mod.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
     (path / "test_mod.py").write_text("from mod import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n", encoding="utf-8")
     git("add", "-A"); git("commit", "-q", "-m", "init")

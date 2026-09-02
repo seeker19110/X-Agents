@@ -36,7 +36,8 @@
             "infra",
             "analytics",
             "docs",
-            "knowledge"
+            "knowledge",
+            "contract"
           ]
         },
         "version": {
@@ -47,6 +48,20 @@
         },
         "summary": {
           "type": "string"
+        },
+        "project_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "null = toàn công ty (knowledge)"
+        },
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "toàn văn artifact (markdown/yaml); bus là nguồn sự thật, artifact store chỉ là bản mirror ra file"
         }
       },
       "required": [
@@ -55,6 +70,22 @@
         "content_ref"
       ],
       "additionalProperties": true
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (project/ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
     }
   },
   "required": [
