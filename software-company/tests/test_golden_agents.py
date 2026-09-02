@@ -1,4 +1,4 @@
-"""Golden tests cho 22 agent (ADR-0004: prompt là code).
+"""Golden tests cho 20 agent (ADR-0004: prompt là code; quân số theo ADR-0009).
 
 Mỗi agent có một file golden `tests/golden/agents/<id>.md` chứa system prompt đã biên dịch
 (front matter tóm tắt + prompt + skill). `tests/golden/registry.json` là "hợp đồng" của cả

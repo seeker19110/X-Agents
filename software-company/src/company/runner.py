@@ -96,6 +96,7 @@ class Generated:
     tokens: int
     model: str
     context_writes: list[dict[str, Any]] = field(default_factory=list)
+    cache_hit_ratio: float = 0.0  # phần input lấy từ prompt cache, để đo hiệu quả cache trong audit-log
 
 
 class AgentRunner:
@@ -134,7 +135,8 @@ class AgentRunner:
         user = build_user_message(spec, inp, topic_out, context, many=many)
         try:
             c = self.client.complete(system=spec.system_prompt(), user=user,
-                                     schema=output_schema(schema, spec.namespaces_write, many), model_tier=spec.model_tier)
+                                     schema=output_schema(schema, spec.namespaces_write, many),
+                                     model_tier=spec.model_tier, cache_key=spec.id)
         except LLMError as e:
             self._audit(spec, "llm_error", inp, evidence=str(e)[:500])
             raise
@@ -157,7 +159,8 @@ class AgentRunner:
         except (LLMError, BusError, KeyError, TypeError) as e:
             self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=c.tokens)
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
-        return Generated(payloads=payloads, tokens=c.tokens, model=c.model, context_writes=writes)
+        return Generated(payloads=payloads, tokens=c.tokens, model=c.model, context_writes=writes,
+                         cache_hit_ratio=c.cache_hit_ratio)
 
     def write_context(self, agent_id: str, inp: Envelope, writes: list[dict[str, Any]]) -> list[str]:
         """Ghi các artifact lên blackboard dưới danh nghĩa agent; namespace không thuộc agent bị bỏ và ghi audit.
@@ -175,7 +178,8 @@ class AgentRunner:
         return done
 
     def publish(self, agent_id: str, inp: Envelope, topic_out: str, payload: dict[str, Any], key: str | None = None,
-                tokens: int = 0, model: str = "", context_writes: list[dict[str, Any]] | None = None) -> Envelope:
+                tokens: int = 0, model: str = "", context_writes: list[dict[str, Any]] | None = None,
+                cache_hit_ratio: float = 0.0) -> Envelope:
         """Publish một payload đã sinh dưới danh nghĩa agent (bus validate + kiểm quyền lần nữa), ghi blackboard
         (nếu có context_writes) và ghi audit có token."""
         spec = self.agents[agent_id]
@@ -185,13 +189,14 @@ class AgentRunner:
             self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=tokens)
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
         if context_writes: self.write_context(agent_id, inp, context_writes)
-        self._audit(spec, f"produced:{topic_out}", inp, evidence=f"{model} event={out.event_id}", tokens=tokens)
+        self._audit(spec, f"produced:{topic_out}", inp,
+                    evidence=f"{model} event={out.event_id} cache_hit={cache_hit_ratio:.0%}", tokens=tokens)
         return out
 
     def run(self, agent_id: str, inp: Envelope, topic_out: str, key: str | None = None) -> RunResult:
         g = self.generate(agent_id, inp, topic_out)
         out = self.publish(agent_id, inp, topic_out, g.payloads[0], key=key, tokens=g.tokens, model=g.model,
-                           context_writes=g.context_writes)
+                           context_writes=g.context_writes, cache_hit_ratio=g.cache_hit_ratio)
         return RunResult(output=out, tokens=g.tokens, model=g.model)
 
     def run_context(self, agent_id: str, inp: Envelope) -> Generated:
