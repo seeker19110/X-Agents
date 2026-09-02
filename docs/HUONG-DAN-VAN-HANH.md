@@ -7,7 +7,7 @@ Kiến trúc và lý do thiết kế nằm ở README của từng thư mục v�
 Mục lục
 1. [Yêu cầu hệ thống](#1-yêu-cầu-hệ-thống)
 2. [Cài đặt](#2-cài-đặt)
-3. [Cấu hình model theo gói tài khoản](#3-cấu-hình-model-theo-gói-tài-khoản)
+3. [Cấu hình model theo gói tài khoản](#3-cấu-hình-model-theo-gói-tài-khoản) — 3.5 nhiều tài khoản cùng gói
 4. [Chạy thử offline](#4-chạy-thử-offline-không-tốn-hạn-mức)
 5. [Vận hành software-company](#5-vận-hành-software-company)
 6. [Vận hành Studio-creators](#6-vận-hành-studio-creators)
@@ -64,33 +64,24 @@ thư mục của mình (bị gitignore, không bao giờ commit). Bảng agent �
 
 ### 3.1 Đăng nhập các gói
 
-```bash
-# Gói Claude Pro/Max: CLI dùng đăng nhập sẵn có
-claude auth status        # "loggedIn": true là đủ
+Mỗi gói đăng nhập một lần, sau đó token tự làm mới:
 
-# Gói Google Antigravity: thêm tài khoản vào pool của gateway (mở trình duyệt; chạy lại để thêm tài khoản 2, 3...)
+```bash
+# Claude Pro/Max — CLI `claude` dùng đăng nhập sẵn có của máy
+claude auth status                                # "loggedIn": true là đủ; chưa thì: claude login
+
+# ChatGPT Plus/Pro — Codex CLI (app Codex trên Windows đi kèm CLI; adapter tự tìm trong %LOCALAPPDATA%/OpenAI/Codex/bin
+# khi không có `codex` trên PATH, hoặc đặt `binary:` cho backend)
+codex login status                                # "Logged in using ChatGPT"; chưa thì: codex login
+
+# Google Antigravity — thêm tài khoản vào pool của gateway rồi bật daemon
 cd gateway
-PYTHONPATH=src uv run python -m gateway login
+PYTHONPATH=src uv run python -m gateway login     # mở trình duyệt; chạy lại để thêm tài khoản 2, 3...
 PYTHONPATH=src uv run python -m gateway start     # daemon tại http://127.0.0.1:8100/v1
 PYTHONPATH=src uv run python -m gateway status    # từng tài khoản: sẵn sàng / cooldown / hạn token
 ```
 
-Nhiều tài khoản Claude trên cùng máy: mỗi tài khoản một thư mục cấu hình riêng, đăng nhập từng cái rồi khai mỗi cái là một
-backend `claude-code` với `config_dir` (xem 3.2). Hạn mức của các gói cộng dồn; router tự chuyển khi một gói cạn.
-
-```bash
-CLAUDE_CONFIG_DIR=~/.claude-acc2 claude login        # trình duyệt mở, đăng nhập tài khoản thứ hai
-CLAUDE_CONFIG_DIR=~/.claude-acc2 claude auth status  # loggedIn: true
-CLAUDE_CONFIG_DIR=~/.claude-acc3 claude login        # ... tài khoản thứ ba
-```
-
-Gói ChatGPT Plus/Pro qua Codex CLI (provider `codex`): app Codex trên Windows đi kèm CLI và đã đăng nhập; không có `codex`
-trên PATH thì adapter tự tìm trong `%LOCALAPPDATA%/OpenAI/Codex/bin`, hoặc đặt `binary:` cho backend. Nhiều tài khoản ChatGPT:
-
-```bash
-CODEX_HOME=~/.codex-acc2 codex login          # tài khoản thứ hai
-CODEX_HOME=~/.codex-acc2 codex login status
-```
+Nhiều tài khoản cho cùng một gói: xem 3.5.
 
 ### 3.2 Viết `llm.yaml`
 
@@ -168,6 +159,90 @@ for tier in ('light','standard','strong'):
 ```
 
 Mỗi tier in ra model thật đã trả lời; dòng "backend ... nghỉ Ns" cho biết gói nào đang hết quota hoặc chưa đăng nhập.
+
+### 3.5 Nhiều tài khoản cùng một gói (Claude, ChatGPT, Google)
+
+Router coi **mỗi tài khoản là một backend**. Muốn cộng dồn hạn mức của 5, 10 hay 20 tài khoản thì đăng nhập từng tài
+khoản vào một "chỗ" riêng, rồi khai mỗi chỗ là một backend. Tài khoản nào báo hết hạn mức thì nghỉ, lượt đó đi tài
+khoản kế; không cần can thiệp tay.
+
+| Gói | Chỗ đăng nhập riêng cho từng tài khoản | Lệnh đăng nhập (trình duyệt mở, bạn tự đăng nhập) | Khoá trong backend |
+|---|---|---|---|
+| Claude Pro/Max | thư mục cấu hình `CLAUDE_CONFIG_DIR` | `CLAUDE_CONFIG_DIR=~/.claude-acc2 claude login` | `provider: claude-code`, `config_dir: ~/.claude-acc2` |
+| ChatGPT Plus/Pro | thư mục `CODEX_HOME` | `CODEX_HOME=~/.codex-acc2 codex login` | `provider: codex`, `config_dir: ~/.codex-acc2` |
+| Google Antigravity | pool của gateway (một file token chung) | `cd gateway && PYTHONPATH=src uv run python -m gateway login` (lặp lại N lần) | một backend `antigravity` duy nhất; gateway tự xoay tài khoản bên trong |
+
+Tài khoản mặc định (đã đăng nhập sẵn, không đặt biến) vẫn dùng được: backend không có `config_dir`.
+
+Kiểm tra từng chỗ đã đăng nhập chưa:
+
+```bash
+CLAUDE_CONFIG_DIR=~/.claude-acc2 claude auth status     # "loggedIn": true
+CODEX_HOME=~/.codex-acc2 codex login status             # "Logged in using ChatGPT"
+curl http://127.0.0.1:8100/auth/status                  # pool Google: total / available
+```
+
+Ví dụ `llm.yaml` đầy đủ với 3 tài khoản Claude, 2 tài khoản ChatGPT và pool Google (Studio-creators; software-company
+thêm `prices:` giá 0 như 3.2):
+
+```yaml
+provider: claude-code
+max_tokens: 16000
+backends:
+  - name: claude-1                       # tài khoản Claude mặc định của máy
+    provider: claude-code
+    models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+  - name: claude-2
+    provider: claude-code
+    config_dir: ~/.claude-acc2
+    models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+  - name: claude-3
+    provider: claude-code
+    config_dir: ~/.claude-acc3
+    models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+  - name: chatgpt-1                      # tài khoản ChatGPT mặc định (app Codex đã đăng nhập)
+    provider: codex
+    models: {strong: gpt-5.6-terra, standard: gpt-5.6-terra, light: gpt-5.6-terra}
+    effort: {strong: high, standard: medium, light: low}   # → model_reasoning_effort của Codex
+  - name: chatgpt-2
+    provider: codex
+    config_dir: ~/.codex-acc2
+    models: {strong: gpt-5.6-terra, standard: gpt-5.6-terra, light: gpt-5.6-terra}
+  - name: antigravity                    # N tài khoản Google nằm trong gateway
+    provider: openai
+    base_url: http://127.0.0.1:8100/v1
+    api_key: gateway-local
+    models: {strong: claude-sonnet-4-6, standard: gemini-3.7-flash, light: gemini-3.7-flash-low}
+routing:
+  cooldown_s: 3600
+  transient_cooldown_s: 60
+  prefer: {strong: claude-1, standard: antigravity, light: antigravity}
+```
+
+Cách router chọn với cấu hình trên:
+
+- Tier `strong` đi `claude-1`; khi `claude-1` cạn thì theo thứ tự khai báo: `claude-2` → `claude-3` → `chatgpt-1` → ...
+  Tức là **thứ tự trong `backends:` là thứ tự dự phòng**; xếp các tài khoản cùng gói cạnh nhau.
+- Tier `standard` và `light` đi Antigravity trước (miễn phí); gateway cạn cả pool thì mới chạm tới Claude/ChatGPT.
+- Khối kỹ thuật của software-company (cần tool-use) bỏ qua mọi backend `claude-code` và `codex`, chỉ dùng `antigravity`
+  (hoặc provider `anthropic`/`openai` có key nếu bạn thêm).
+- Muốn ChatGPT gánh việc tầm trung thay vì Google: `prefer: {standard: chatgpt-1}`.
+
+Kiểm tra sau khi cấu hình: chạy đoạn ở 3.4. Muốn thử riêng một tài khoản, lọc bằng biến môi trường:
+
+```bash
+STUDIO_LLM_BACKENDS=claude-2 PYTHONPATH=src uv run python -c "..."     # software-company: COMPANY_LLM_BACKENDS
+```
+
+Lưu ý:
+
+- Đăng nhập là thao tác trình duyệt, mỗi tài khoản một lần; sau đó token tự làm mới, không phải đăng nhập lại.
+- Trạng thái "đang nghỉ" của backend nằm trong bộ nhớ tiến trình orchestrator; khởi động lại thì mọi backend được thử
+  lại từ đầu. Tài khoản còn cạn sẽ báo lại ngay và nghỉ tiếp.
+- Ghi chú `llm_retry` trong audit-log cho biết lượt nào đã đổi tài khoản và vì sao; `report` cho thấy tài khoản nào
+  đang gánh việc.
+- Điều khoản gói cá nhân của Anthropic và OpenAI không cho dùng nhiều tài khoản để vượt hạn mức; Google có thể hạn chế
+  nhiều tài khoản cùng máy/IP. Kỹ thuật chạy được, rủi ro khoá tài khoản là của người vận hành.
 
 ## 4. Chạy thử offline (không tốn hạn mức)
 
