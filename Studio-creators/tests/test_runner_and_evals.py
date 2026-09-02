@@ -103,13 +103,15 @@ def test_replay_exit_code_ignores_grading_but_not_stale_recordings(tmp_path, mon
     """CI phát lại: ca chấm không đạt không làm đỏ; bản ghi lệch prompt (LLMError) thì đỏ; --strict đòi mọi ca đạt."""
     from studio import evals as ev
     monkeypatch.setattr(ev, "RECORDINGS_DIR", tmp_path)
-    case = ev.load_cases("publisher")[0]
-    # bản ghi khớp prompt nhưng payload không đạt tiêu chí chấm
-    probe = ev._Probe(); bus = ev.InMemoryBus(); bb = ev.Blackboard(bus)
-    try: ev._run_case("publisher", case, probe, None, bb, bus)
-    except (ev.RunnerError, ev.LLMError): pass
-    bad = {"video_id": case["input"]["payload"].get("video_id", "V1"), "kind": "video", "status": "failed", "evidence": "x"}
-    (tmp_path / "publisher.json").write_text(json.dumps({"agent": "publisher", "cases": {probe.key: {"text": json.dumps(bad), "model": "m"}}}), encoding="utf-8")
+    # bản ghi khớp prompt cho MỌI ca, nhưng payload không đạt tiêu chí chấm của ca đầu (đòi scheduled)
+    cases = {}
+    for case in ev.load_cases("publisher"):
+        probe = ev._Probe(); bus = ev.InMemoryBus(); bb = ev.Blackboard(bus)
+        try: ev._run_case("publisher", case, probe, None, bb, bus)
+        except (ev.RunnerError, ev.LLMError): pass
+        bad = {"video_id": case["input"]["payload"].get("video_id", "V1"), "kind": "video", "status": "failed", "evidence": "x"}
+        cases[probe.key] = {"text": json.dumps(bad), "model": "m"}
+    (tmp_path / "publisher.json").write_text(json.dumps({"agent": "publisher", "cases": cases}), encoding="utf-8")
     assert ev.main(["publisher", "--replay"]) == 0
     assert ev.main(["publisher", "--replay", "--strict"]) == 1
     # bản ghi lệch: khoá không khớp → LLMError → đỏ kể cả không --strict
