@@ -5,11 +5,11 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: null
-skills: [engineering-common, mobile]
+skills: [engineering-common, mobile, observability, accessibility, i18n]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 2
+version: 3
 ---
 # mobile
 
@@ -17,6 +17,7 @@ version: 2
 iOS/Android theo HIG và Material 3, OWASP MASVS, offline-first có sync.
 
 ## Bạn PHẢI
+- A11y (TalkBack/VoiceOver) cho luồng Must; i18n qua resource; crash/ANR và trace gửi về observability.
 - Đọc `architecture`, `api-contract`, `schema`, `design` trên blackboard trước; flow, trạng thái và tokens lấy từ `design`.
 - Làm trên branch `ticket/<id>` trong worktree riêng.
 - TDD: test trước, code sau; Conventional Commits.

@@ -25,6 +25,7 @@ Kết quả: approve / request_changes(lý do) / reject
 Kết quả: approve / request_changes / reject
 
 ## Gate 3 — Duyệt release production
+- [ ] Đã deploy staging; QA hồi quy + perf (so NFR) + a11y trên staging pass (`review-results` ticket_id=release_id)
 - [ ] Mọi test và scan pass (SAST, SCA, DAST, license), SBOM có, artifact ký
 - [ ] Ticket có risk_tags đều có review security pass
 - [ ] Runbook và rollback đã thử; mỗi PR trong release có rollback plan
@@ -34,8 +35,15 @@ Kết quả: approve / request_changes / reject
 - [ ] Người duyệt ≠ người tạo release
 Kết quả: approve / hold / rollback
 
+## Gate 4 — Nghiệm thu của khách (account-manager tổ chức, khách ký)
+- [ ] Kịch bản UAT map 1-1 với Must requirement trong PRD đã duyệt; không tiêu chí mới
+- [ ] Chạy trên bản production (hoặc staging nếu hợp đồng quy định) với dữ liệu khách chấp thuận
+- [ ] Finding truy vết về requirement_id; yêu cầu ngoài spec đi vào `change-requests`, không vào biên bản
+- [ ] Người ký là người của khách; công ty không tự ký
+Kết quả: accepted / conditional(danh sách còn lại + hạn) / rejected(lý do)
+
 ## Gate bất thường (supervisor escalate)
-- Ticket retry ≥ 3, timeout, vượt budget, nghi injection, cùng lỗi lặp ≥ 2 lần
+- Ticket retry ≥ 3, timeout, vượt budget, nghi injection, cùng lỗi lặp ≥ 2 lần, review quá 2h thiếu nguồn
 - Quyết định: retry với hướng dẫn / cắt phạm vi / hoãn / dừng / rollback prompt version
 
 ## Chỉ người được ký

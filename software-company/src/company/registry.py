@@ -17,7 +17,7 @@ class AgentSpec:
     model_tier: str
     reads: list[str]
     writes: list[str]
-    context_namespace_write: str | None
+    context_namespace_write: str | list[str] | None  # một hoặc nhiều namespace (ADR-0006)
     skills: list[str]
     budget_tokens_per_task: int
     max_retries: int
@@ -25,6 +25,11 @@ class AgentSpec:
     prompt: str
     version: int = 1  # ADR-0004: tăng mỗi khi nội dung prompt đổi
     skill_text: str = field(default="")
+
+    @property
+    def namespaces_write(self) -> list[str]:
+        ns = self.context_namespace_write
+        return [] if ns is None else ([ns] if isinstance(ns, str) else list(ns))
 
     def system_prompt(self) -> str:
         return f"{self.prompt}\n\n# Skills\n{self.skill_text}"

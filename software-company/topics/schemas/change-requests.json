@@ -1,18 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "software-company/topics/incidents",
-  "title": "incidents",
+  "$id": "software-company/topics/change-requests",
+  "title": "change-requests",
   "type": "object",
   "properties": {
     "event_id": {
       "type": "string"
     },
     "topic": {
-      "const": "incidents"
+      "const": "change-requests"
     },
     "key": {
       "type": "string",
-      "description": "= incident_id"
+      "description": "= change_id"
     },
     "actor": {
       "type": "string"
@@ -24,41 +24,42 @@
     "payload": {
       "type": "object",
       "properties": {
-        "incident_id": {
+        "change_id": {
           "type": "string"
         },
-        "severity": {
+        "project_id": {
+          "type": "string"
+        },
+        "requested_by": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "affects_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "impact": {
+          "type": "object",
+          "description": "estimate_days, estimate_tokens, cost, schedule"
+        },
+        "decision": {
           "enum": [
-            "SEV1",
-            "SEV2",
-            "SEV3",
-            "SEV4"
+            "pending",
+            "accepted",
+            "rejected",
+            "deferred"
           ]
-        },
-        "summary": {
-          "type": "string"
-        },
-        "release_id": {
-          "type": "string"
-        },
-        "ticket_id": {
-          "type": "string"
-        },
-        "root_cause_class": {
-          "enum": [
-            "requirement",
-            "design",
-            "code",
-            "ops",
-            "external"
-          ],
-          "description": "requirement → research-requests; design → threat-model/architecture; code/ops → tasks"
         }
       },
       "required": [
-        "incident_id",
-        "severity",
-        "summary"
+        "change_id",
+        "project_id",
+        "requested_by",
+        "description"
       ],
       "additionalProperties": true
     }

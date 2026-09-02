@@ -141,28 +141,24 @@ def test_prompt_mentions_its_topics_and_namespace(agent_id: str):
     for t in a.writes:
         if t in TOPICS and t != "audit-log":
             assert t in a.prompt, f"{agent_id}: prompt không nhắc topic ghi `{t}`"
-    if a.context_namespace_write:
-        assert a.context_namespace_write in a.prompt, f"{agent_id}: prompt không nhắc namespace `{a.context_namespace_write}`"
+    for ns in a.namespaces_write:
+        assert ns in a.prompt, f"{agent_id}: prompt không nhắc namespace `{ns}`"
 
 
 def test_every_namespace_has_exactly_the_declared_owners():
-    """Chiều ngược của test_registry: namespace một chủ thì chủ đó phải khai báo trong front matter.
-    Namespace nhiều chủ (vd. api-contract: delivery-lead + backend) chỉ cần ít nhất một chủ khai báo,
-    vì front matter chỉ có một `context_namespace_write`."""
-    declared = {a.id: a.context_namespace_write for a in AGENTS.values() if a.context_namespace_write}
+    """Chiều ngược của test_registry: mọi owner trong events.py phải khai báo namespace đó trong front matter
+    (front matter nhận danh sách từ ADR-0006)."""
+    declared = {a.id: set(a.namespaces_write) for a in AGENTS.values()}
     for ns, owners in NAMESPACE_OWNERS.items():
-        claimed = {o for o in owners if declared.get(o) == ns}
-        if len(owners) == 1:
-            assert claimed == owners, f"{owners} là owner duy nhất của `{ns}` nhưng front matter không khai báo"
-        else:
-            assert claimed, f"`{ns}` có owner {owners} nhưng không ai khai báo trong front matter"
+        for o in owners:
+            assert ns in declared.get(o, set()), f"{o} là owner của `{ns}` trong events.py nhưng front matter không khai báo"
 
 
 def test_every_topic_has_a_writer_and_a_reader():
     """Không có topic mồ côi: mỗi topic (trừ topic human/ngoài) có ít nhất một agent ghi và một agent đọc."""
     readers = {t for a in AGENTS.values() for t in a.reads} | {"*"}
     writers = {t for a in AGENTS.values() for t in a.writes}
-    human_written = {"clarification-answers", "research-requests", "approved-specs", "shared-context"}
+    human_written = {"clarification-answers", "research-requests", "approved-specs", "shared-context"}  # account-manager ghi change-requests/acceptance-results
     human_read = {"clarification-questions", "release-events", "supervisor-actions", "shared-context", "audit-log"}
     for t in TOPICS:
         assert t in writers or t in human_written, f"không ai ghi `{t}`"

@@ -5,11 +5,11 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: analytics
-skills: [engineering-common, data-engineering, database, privacy-compliance, observability]
+skills: [engineering-common, data-engineering, database, privacy-compliance, observability, event-driven-architecture]
 budget_tokens_per_task: 100000
 max_retries: 3
 timeout_minutes: 180
-version: 1
+version: 2
 ---
 # data
 
@@ -19,6 +19,7 @@ A/B test, chất lượng dữ liệu, PII trong analytics. Sở hữu namespace
 Khác database: database sở hữu schema giao dịch (OLTP); data sở hữu event + kho phân tích.
 
 ## Bạn PHẢI
+- Event schema versioned (AsyncAPI), consumer idempotent, outbox cho nguồn OLTP.
 - Data contract (schema event + owner + SLA + version) TRƯỚC khi backend/frontend gửi event.
 - Mỗi metric có đúng một định nghĩa (SQL/dbt) trong `analytics`; không metric trùng tên khác nghĩa.
 - Test chất lượng dữ liệu trong pipeline: freshness, null, unique, referential; pipeline fail thì không publish.

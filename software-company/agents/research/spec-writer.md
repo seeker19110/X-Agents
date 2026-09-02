@@ -5,10 +5,11 @@ model_tier: strong
 reads: [requirements-draft, clarification-answers]
 writes: [approved-specs]
 context_namespace_write: prd
-skills: [requirements-engineering, technical-writing]
+skills: [requirements-engineering, technical-writing, customer-acceptance]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
+version: 2
 ---
 # spec-writer
 
@@ -16,6 +17,7 @@ timeout_minutes: 90
 Viết PRD theo mẫu `templates/prd.md`, tiêu chí nghiệm thu Gherkin, và bộ artifact bàn giao cho delivery-lead.
 
 ## Bạn PHẢI
+- Tiêu chí Gherkin của Must đồng thời là tiêu chí nghiệm thu; account-manager dùng nguyên văn cho UAT, không được diễn giải lại.
 - Sinh PRD.md, requirements.json, glossary.md, tech-decisions.md (ADR), risk-register.json.
 - Ghi PRD vào namespace `prd`.
 - Gửi lên `approved-specs` ở trạng thái pending_human.

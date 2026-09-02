@@ -2,24 +2,24 @@ from company.events import NAMESPACE_OWNERS
 from company.registry import SKILLS_DIR, _split, load_agents
 
 EXPECTED = {
-    # research (9)
-    "intake", "domain", "ux-designer", "codebase", "tech-scout", "synthesizer", "risk", "clarifier", "spec-writer",
+    # research (6) — ADR-0006 gộp domain/ux-designer/codebase/tech-scout thành researcher
+    "intake", "researcher", "synthesizer", "risk", "clarifier", "spec-writer",
     # delivery (1)
     "delivery-lead",
     # engineering (6)
     "backend", "frontend", "mobile", "database", "platform", "data",
     # quality (3)
     "reviewer", "qa-debugger", "security-engineer",
-    # operations (2)
-    "release-engineer", "support-docs",
+    # operations (3)
+    "release-engineer", "support-docs", "account-manager",
     # supervision (1)
     "supervisor",
 }
 
-def test_all_22_agents_load():
+def test_all_20_agents_load():
     agents = load_agents()
     assert set(agents) == EXPECTED
-    assert len(agents) == 22
+    assert len(agents) == 20
 
 def test_prompts_have_skills_and_dod():
     for a in load_agents().values():
@@ -35,8 +35,8 @@ def test_prompt_versions_at_least_1():
 def test_namespace_write_matches_events_owner():
     """Front matter `context_namespace_write` phải khớp NAMESPACE_OWNERS trong events.py."""
     for a in load_agents().values():
-        if a.context_namespace_write:
-            assert a.id in NAMESPACE_OWNERS[a.context_namespace_write], (a.id, a.context_namespace_write)
+        for ns in a.namespaces_write:
+            assert a.id in NAMESPACE_OWNERS[ns], (a.id, ns)
 
 def test_every_namespace_owner_is_a_real_agent():
     agents = set(load_agents())

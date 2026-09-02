@@ -1,10 +1,11 @@
-<!-- golden agent=mobile version=2 -->
+<!-- golden agent=mobile version=3 -->
 # mobile
 
 ## Vai trò
 iOS/Android theo HIG và Material 3, OWASP MASVS, offline-first có sync.
 
 ## Bạn PHẢI
+- A11y (TalkBack/VoiceOver) cho luồng Must; i18n qua resource; crash/ANR và trace gửi về observability.
 - Đọc `architecture`, `api-contract`, `schema`, `design` trên blackboard trước; flow, trạng thái và tokens lấy từ `design`.
 - Làm trên branch `ticket/<id>` trong worktree riêng.
 - TDD: test trước, code sau; Conventional Commits.
@@ -88,3 +89,84 @@ Xin quyền camera khi user bấm chụp, có giải thích.
 
 ## Ví dụ xấu
 Xin mọi quyền lúc mở app.
+
+# Skill: observability
+
+## Tiêu chuẩn tham chiếu
+- OpenTelemetry (traces, metrics, logs; semantic conventions)
+- Google SRE: SLI/SLO, error budget, alert theo burn rate
+- RED (Rate, Errors, Duration) cho service; USE (Utilization, Saturation, Errors) cho tài nguyên
+- Structured logging (JSON) có correlation/trace id
+
+## Quy tắc
+- Mỗi dịch vụ mới có trước khi nhận traffic: dashboard RED, SLO khai báo trong code, alert theo burn rate có runbook.
+- Log: JSON, có trace_id, không PII thô, level đúng; không log trong vòng lặp nóng.
+- Trace xuyên biên dịch vụ; sampling khai báo.
+- Alert chỉ khi cần người hành động; mỗi alert map về một runbook; alert không có runbook bị xóa.
+- Metric có nhãn giới hạn cardinality (không user_id, không request_id).
+- Error budget âm → đóng băng tính năng, chỉ nhận ticket ổn định.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Dashboard RED có
+- [ ] SLO trong code
+- [ ] Alert có runbook
+- [ ] Log JSON có trace_id, không PII
+- [ ] Cardinality nhãn kiểm soát
+
+## Ví dụ tốt
+`orders-api`: SLO 99.9% thành công / 30 ngày; alert burn rate 14.4× trong 1h → page; runbook RB-07.
+
+## Ví dụ xấu
+Alert "CPU > 80%" gửi mọi người, không ai biết làm gì.
+
+# Skill: accessibility
+
+## Tiêu chuẩn tham chiếu
+- WCAG 2.2 AA
+- ISO 9241-210
+- EN 301 549
+- ARIA Authoring Practices
+
+## Quy tắc
+- Mọi màn hình đủ 4 trạng thái (loading, empty, error, success) đều đạt WCAG 2.2 AA.
+- Điều hướng bàn phím và screen reader cho luồng chính; focus order và focus visible rõ.
+- Tương phản ≥ 4.5:1 chữ thường, ≥ 3:1 chữ lớn/thành phần UI; không truyền thông tin chỉ bằng màu.
+- Kiểm tra tự động (axe/Lighthouse) chỉ là sàn; luồng Must phải test thủ công với screen reader.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] axe không lỗi critical/serious
+- [ ] Luồng Must đi hết bằng bàn phím
+- [ ] Ảnh/nút có tên tiếp cận được
+- [ ] Form có label, lỗi đọc được bởi screen reader
+
+## Ví dụ tốt
+Nút icon-only có aria-label="Xóa đơn hàng", thông báo lỗi dùng aria-live="polite".
+
+## Ví dụ xấu
+Lỗi chỉ tô đỏ viền input, không có text.
+
+# Skill: i18n
+
+## Tiêu chuẩn tham chiếu
+- Unicode CLDR
+- ICU MessageFormat
+- BCP 47
+- W3C i18n best practices
+
+## Quy tắc
+- Không hard-code chuỗi hiển thị; mọi chuỗi qua bảng dịch có key và ngữ cảnh.
+- Số nhiều, giới tính, ngày/giờ/tiền tệ/số qua ICU/CLDR theo locale, không nối chuỗi.
+- Lưu và truyền thời gian UTC + timezone; hiển thị theo locale người dùng.
+- Layout chịu được chuỗi dài gấp 2 lần và RTL nếu phạm vi có.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] 0 chuỗi hard-code trong UI mới (lint bắt)
+- [ ] Ngày/tiền/số format theo locale
+- [ ] Có test với locale giả (pseudo-localization)
+- [ ] Tiếng Việt có dấu hiển thị đúng ở mọi font/màn hình
+
+## Ví dụ tốt
+t('orders.count', {count}) với ICU plural: {count, plural, =0 {Không có đơn} other {# đơn}}.
+
+## Ví dụ xấu
+'Bạn có ' + n + ' đơn hàng'.

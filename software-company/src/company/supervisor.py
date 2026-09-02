@@ -70,3 +70,17 @@ class Supervisor:
 
     def record_lesson(self, context: str, problem: str, solution: str, evidence: str) -> None:
         self.knowledge.append({"context": context, "problem": problem, "solution": solution, "evidence": evidence})
+
+    def sprint_report(self) -> dict:
+        """Estimate vs actual token mỗi ticket + tổng hành động, cho retrospective cuối sprint (đầu vào cho `knowledge`)."""
+        tickets = {}
+        for env in self.bus.replay(topic="tasks"):
+            t = Task.model_validate(env.payload)
+            tickets[t.ticket_id] = {"estimate_tokens": t.estimate_tokens, "budget_tokens": t.budget_tokens,
+                                    "retry": t.retry, "actual_tokens": self.budgets[t.ticket_id].used if t.ticket_id in self.budgets else 0}
+        for row in tickets.values():
+            est = row["estimate_tokens"]
+            row["ratio"] = round(row["actual_tokens"] / est, 2) if est else None
+        actions = defaultdict(int)
+        for a in self.actions: actions[a.action] += 1
+        return {"tickets": tickets, "actions": dict(actions), "lessons": len(self.knowledge)}
