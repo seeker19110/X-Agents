@@ -14,6 +14,7 @@ Key của event là `namespace` hoặc `project_id/namespace`, nên replay theo 
 """
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from .bus import InMemoryBus
@@ -41,6 +42,10 @@ class Blackboard:
         self.bus = bus
         self.store = Path(store) if store else None
         self._latest: dict[Scope, SharedContext] = {}
+        # Đánh số version là đọc-sửa-ghi: hai agent cùng sở hữu một namespace (vd. `api-contract` của delivery-lead và
+        # backend) chạy song song (--workers > 1) mà không khoá thì cả hai cùng ra v1, bản sau bị `_on` bỏ vì không
+        # lớn hơn — mất hẳn một artifact. Khoá giữ suốt đọc version → publish; `_on` chạy trong publish, không lấy khoá.
+        self._wlock = threading.RLock()
         bus.subscribe("shared-context", self._on)
 
     @staticmethod
@@ -72,11 +77,12 @@ class Blackboard:
     def write(self, actor: str, namespace: str, content_ref: str, summary: str = "", content: str | None = None,
               project_id: str | None = None) -> SharedContext:
         scope = scope_of(namespace, project_id)
-        v = (self._latest[scope].version + 1) if scope in self._latest else 1
-        sc = SharedContext(namespace=namespace, version=v, content_ref=content_ref,  # type: ignore[arg-type]
-                           summary=summary, content=content, project_id=scope[0])
-        self.bus.publish(Envelope(topic="shared-context", key=context_key(namespace, project_id), actor=actor,
-                                  payload=sc.model_dump()))
+        with self._wlock:
+            v = (self._latest[scope].version + 1) if scope in self._latest else 1
+            sc = SharedContext(namespace=namespace, version=v, content_ref=content_ref,  # type: ignore[arg-type]
+                               summary=summary, content=content, project_id=scope[0])
+            self.bus.publish(Envelope(topic="shared-context", key=context_key(namespace, project_id), actor=actor,
+                                      payload=sc.model_dump()))
         return sc
 
     def read(self, namespace: str, project_id: str | None = None) -> SharedContext | None:

@@ -107,9 +107,10 @@ class DeliveryLead:
     # ---------- vòng review ----------
 
     def _on_pr(self, env: Envelope) -> None:
+        """PR mới cho ticket. Ticket đã ở `in_review` (người tiếp quản theo ADR-0012, hoặc agent nộp lại vì event được
+        xử lý lại) thì PR này THAY PR cũ và vòng review làm lại từ đầu — không phải lỗi chuyển trạng thái."""
         tid = env.key
-        if self.state.get(tid) == "in_review" and env.actor.split(":", 1)[0] == "human":
-            # người tiếp quản (ADR-0012): PR mới thay PR của agent, vòng review làm lại từ đầu
+        if self.state.get(tid) == "in_review":
             self.reviews[tid] = {}; self.review_since[tid] = env.ts; return
         if self.state.get(tid) == "dispatched": self._set(tid, "in_progress")
         self._set(tid, "in_review"); self.reviews[tid] = {}; self.review_since[tid] = env.ts
@@ -149,6 +150,10 @@ class DeliveryLead:
             self._on_release_qa(r); return
         tid = r.ticket_id
         if tid not in self.tickets: return  # review cho spec (threat model SPEC-*) hoặc ticket lạ: không phải vòng ticket
+        if self.state.get(tid) != "in_review":
+            # Review đến trễ (người review chậm, hoặc bị giao lại) khi ticket đã rời vòng review — đã approved, đã
+            # changes_requested vì một nguồn khác, hoặc đã đóng. Bỏ qua: gộp vào sẽ ép một chuyển trạng thái không hợp lệ.
+            return
         self.reviews[tid][r.source] = r
         if not self.required_reviews(tid) <= set(self.reviews[tid]):
             return

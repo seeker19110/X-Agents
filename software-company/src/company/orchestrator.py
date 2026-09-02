@@ -255,7 +255,10 @@ class Orchestrator:
     # ---------- khôi phục từ log ----------
 
     def _rehydrate(self) -> None:
-        for env in self.bus.replay():
+        # Một lần duyệt log, không hai: `replay()` trên bus bền vững parse lại từng envelope, nên quét đôi là nhân đôi
+        # thời gian mở lại một dự án đã chạy lâu.
+        log = list(self.bus.replay())
+        for env in log:
             if env.topic == "audit-log":
                 a = env.payload; d = _evidence(a)
                 if a["actor"] == ACTOR and a["action"] == "orchestrated": self.processed.add(d["event_id"])
@@ -269,7 +272,7 @@ class Orchestrator:
             elif env.topic == "shared-context": self.blackboard._on(env)
             else: self.lead.replay(env)
             self.supervisor.replay(env)
-        self.queue = [e for e in self.bus.replay() if self._actionable(e) and e.event_id not in self.processed]
+        self.queue = [e for e in log if self._actionable(e) and e.event_id not in self.processed]
 
     def _actionable(self, env: Envelope) -> bool:
         if env.topic == "audit-log": return env.payload.get("action") == "gate.decide"
@@ -288,7 +291,7 @@ class Orchestrator:
             with self._qlock: self.queue.append(env)
 
     def latest(self, topic: str, key: str) -> Envelope | None:
-        return next(reversed(list(self.bus.replay(topic=topic, key=key))), None)
+        return self.bus.latest(topic, key)
 
     def workspace(self, ticket_id: str) -> TicketWorkspace | None:
         """Worktree của ticket, rẽ từ nhánh tích hợp (tạo nhánh tích hợp nếu chưa có)."""
@@ -351,8 +354,9 @@ class Orchestrator:
             self.supervisor.escalate_gate(sid, f"gate quá hạn {self.gate.timeout}", once_key=f"gate.escalate:{sid}")
         for tid, missing in self.lead.overdue_reviews(now).items():
             pr = self.latest("pull-requests", tid)
+            since = self.lead.review_since[tid].isoformat()  # đọc trước: _call bên dưới có thể đóng vòng review và xoá nó
             for src in sorted(missing):
-                key = f"review:{tid}:{src}:{self.lead.review_since[tid].isoformat()}"
+                key = f"review:{tid}:{src}:{since}"
                 if pr is None or key in self.once: continue
                 self._remember(key); self._audit("review.reassign", {"ticket_id": tid, "source": src}, ticket_id=tid)
                 res = StepResult(pr.event_id, pr.topic, pr.key)
@@ -399,10 +403,21 @@ class Orchestrator:
         if env.topic == "acceptance-results":
             self._close_acceptance_gate(env, res)
             self._record_lessons(env.payload["release_id"])
+        self._note_closed()
         if res.transient:  # một agent chưa chạy được vì transport: giữ event lại, nhịp sau thử tiếp (agent xong rồi không chạy lại)
-            return self._defer(env, res, f"transient:{res.actions[-1].split(':')[1] if res.actions else '?'}")
+            stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
+            return self._defer(env, res, ":".join(stuck.split(":")[:2]))
         self._mark(env, res)
         return res
+
+    def _note_closed(self) -> None:
+        """Ghi `ticket.closed` cho ticket vừa vào trạng thái cuối. `metrics.collect` tính lead time (tasks đầu → closed)
+        từ chính action này; không ai phát thì `ticket_lead_seconds` luôn rỗng và gauge Prometheus không bao giờ hiện."""
+        for tid, st in list(self.lead.state.items()):
+            if st != "closed": continue
+            t = self.lead.tickets.get(tid)
+            self._audit("ticket.closed", {"ticket_id": tid, "retry": t.retry if t else 0}, once=f"closed:{tid}",
+                        ticket_id=tid, project_id=t.project_id if t else None)
 
     def project_for(self, env: Envelope) -> str | None:
         """Dự án của một event, kể cả khi payload không nói: release và ticket đều truy ngược được về dự án.
@@ -543,10 +558,12 @@ class Orchestrator:
         try:
             g = self.runner.generate("delivery-lead", inp, "tasks", many=True)
         except TransientError as e:
-            res.actions.append(f"transient:delivery-lead:{str(e)[:120]}"); self.stats["transient"] += 1
+            res.actions.append(f"transient:delivery-lead:{str(e)[:120]}")
+            with self._lock: self.stats["transient"] += 1
             return self._defer(env, res, "transient:delivery-lead")
         except (RunnerError, LLMError) as e:
-            res.actions.append(f"error:delivery-lead:{str(e)[:120]}"); self.stats["errors"] += 1
+            res.actions.append(f"error:delivery-lead:{str(e)[:120]}")
+            with self._lock: self.stats["errors"] += 1
             self._mark(env, res); return res
         if g.context_writes:  # C4, API contract lên blackboard TRƯỚC khi xin gate plan để người duyệt đọc được
             self.runner.write_context("delivery-lead", env, g.context_writes)
@@ -559,14 +576,16 @@ class Orchestrator:
                 "threat_model": "missing" if f"SPEC-{project}" in self.missing_threat_model else "ok"}
         if problems:
             self._audit("plan_rejected", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
-            res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}"); self.stats["errors"] += 1
+            res.actions.append(f"plan_rejected:{'; '.join(problems)[:120]}")
+            with self._lock: self.stats["errors"] += 1
         else:
             self.plans[plan_id] = plan
             self._audit("plan.proposed", plan, actor="delivery-lead", tokens=g.tokens, cost=g.cost_usd, project_id=project)
             self.gate.request(GateRequest(kind="plan", subject_id=plan_id, created_by="delivery-lead",
                                           checklist=["tickets", "estimate_tokens", "risk_tags", "depends_on", "threat-model",
                                                      "architecture", "api-contract"]))
-            res.actions.append(f"plan:{plan_id}:{len(tickets)} ticket"); self.stats["plans"] += 1
+            res.actions.append(f"plan:{plan_id}:{len(tickets)} ticket")
+            with self._lock: self.stats["plans"] += 1
         self._mark(env, res)
         return res
 
@@ -581,9 +600,10 @@ class Orchestrator:
             p = {**g.payloads[0], "ticket_id": sid, "source": "security"}
             self.runner.publish("security-engineer", env, "review-results", p, key=sid, tokens=g.tokens, model=g.model,
                                 context_writes=g.context_writes, generated=g)
-            self.stats["runs"] += 1
+            with self._lock: self.stats["runs"] += 1
         except TransientError as e:
-            res.actions.append(f"transient:security-engineer:{str(e)[:120]}"); self.stats["transient"] += 1
+            res.actions.append(f"transient:security-engineer:{str(e)[:120]}")
+            with self._lock: self.stats["transient"] += 1
             return True  # threat model không chặn plan; lần lập kế hoạch sau (nếu có) sẽ thử lại
         except (RunnerError, LLMError) as e:
             # Không chặn kế hoạch (người duyệt gate plan vẫn quyết được), nhưng phải hiện ra: audit riêng + đánh dấu
@@ -591,7 +611,8 @@ class Orchestrator:
             self._audit("threat_model.missing", {"subject_id": sid, "error": str(e)[:300]},
                         project_id=env.payload.get("project_id"))
             with self._lock: self.missing_threat_model.add(sid)
-            res.actions.append(f"error:security-engineer:{str(e)[:120]}"); self.stats["errors"] += 1
+            res.actions.append(f"error:security-engineer:{str(e)[:120]}")
+            with self._lock: self.stats["errors"] += 1
             return True
         if p["verdict"] == "block":
             self._audit("spec_blocked_by_security", {"subject_id": sid, "findings": p.get("findings", [])}, project_id=env.payload.get("project_id"))
@@ -645,6 +666,7 @@ class Orchestrator:
             elif sid in self.lead.release_tickets:
                 rc = self.latest("release-candidates", sid)
                 if rc is not None: self._call("release-engineer", rc, PROD_ROUTE, res)
+        self._note_closed()
         self._mark(env, res)
         self._retry_deferred()
         return res
