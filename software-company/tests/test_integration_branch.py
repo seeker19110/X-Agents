@@ -98,3 +98,21 @@ def test_without_repo_no_integration():
     _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run()
     assert orch.integration is None and orch.status()["integration"] is None
+
+
+def test_worktrees_dir_is_excluded_from_customer_git_status(tmp_path):
+    """F8: `.worktrees/` không hiện untracked trong repo khách; ghi `.git/info/exclude`, không chạm `.gitignore`."""
+    import subprocess
+
+    from company.workspace import Integration, TicketWorkspace
+    from test_tools_and_agentic import _init_repo
+    repo = _init_repo(tmp_path / "repo")
+    Integration(repo, "company/integration", "main").ensure()
+    TicketWorkspace(repo, "T1", base="company/integration").create()
+    st = subprocess.run(["git", "-C", str(repo), "status", "--short"], capture_output=True, text=True, encoding="utf-8").stdout
+    assert ".worktrees" not in st and st.strip() == ""
+    assert not (repo / ".gitignore").exists()
+    ex = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+    assert ex.count(".worktrees/") == 1
+    TicketWorkspace(repo, "T2", base="company/integration").create()  # không ghi trùng
+    assert (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8").count(".worktrees/") == 1

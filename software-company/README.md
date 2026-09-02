@@ -73,6 +73,7 @@ PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po  
 PYTHONPATH=src uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 PYTHONPATH=src uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
 PYTHONPATH=src uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
+PYTHONPATH=src uv run python -m company.orchestrator run --batch-release   # gom ticket approved của dự án vào một RC (một staging, một gate 3, một UAT)
 PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard, chi phí
 PYTHONPATH=src uv run python -m company.orchestrator report              # estimate vs actual, chi phí USD theo agent/model, hành động supervisor
 PYTHONPATH=src uv run python -m company.orchestrator metrics [--prometheus]   # hoặc: make metrics [PROM=1] — gọi/token/USD/thời gian

@@ -429,7 +429,8 @@ class Sim:
         self.repo = init_customer_repo(out / "donghanhcungban")
         self.bus = SQLiteBus(self.db)
         self.client = FakeClient(handler=handler, tool_handler=tool_handler)
-        self.orch = Orchestrator(self.bus, self.client, repo=self.repo, base="main", artifacts=artifact_store(self.db))
+        self.orch = Orchestrator(self.bus, self.client, repo=self.repo, base="main", artifacts=artifact_store(self.db),
+                                 batch_releases=True)  # F7: một release cho cả bản demo
         self.gate: PersistentGate = self.orch.gate
         self.log: list[str] = []
 
@@ -439,9 +440,9 @@ class Sim:
     def pub(self, topic: str, key: str, actor: str, payload: dict[str, Any]) -> None:
         self.bus.publish(Envelope(topic=topic, key=key, actor=actor, payload=payload))
 
-    def run(self, title: str) -> None:
+    def run(self, title: str, tick: bool = False) -> None:
         before = len(self.bus)
-        self.orch.run()
+        self.orch.tick() if tick else self.orch.run()  # tick = như --watch: nạp event do tiến trình khác (CLI) publish
         new = list(self.bus.replay())[before:]
         self.say(f"\n== {title} == ({len(new)} event mới, lỗi={self.orch.stats['errors']})")
         for e in new:
@@ -513,7 +514,7 @@ def main(argv: list[str] | None = None) -> int:
     from company.orchestrator import main as orch_main
     for cr in {e.key for e in s.bus.replay(topic="change-requests")}:
         orch_main(["--db", str(s.db), "decide-change", cr, "deferred", "--by", "human:po", "--reason", "để bản đầy đủ"])
-    s.run("Change request deferred → không lập plan mới")
+    s.run("Change request deferred → không lập plan mới, ticket của release đó đóng", tick=True)
 
     # 8. Tổng kết
     s.say("\n== Tổng kết ==")

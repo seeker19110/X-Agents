@@ -233,6 +233,7 @@ class StepResult:
 class Orchestrator:
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
                  max_retries: int = 3, repo: Path | None = None, base: str = "HEAD", max_turns: int = 25,
+                 batch_releases: bool = False,
                  integration: str = "company/integration", workers: int = 1, web: WebTools | bool = False,
                  artifacts: Path | None = None, project_budget_usd: float | None = None):
         self.bus = bus
@@ -255,7 +256,7 @@ class Orchestrator:
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
         self.blackboard = Blackboard(bus, store=artifacts)
         self.gate = PersistentGate(bus)
-        self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries)
+        self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries, batch_releases=batch_releases)
         budget_usd = project_budget_usd if project_budget_usd is not None else getattr(client, "budget_usd", None)
         self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_usd=budget_usd)
         self.runner = AgentRunner(bus, client, self.agents, self.blackboard)
@@ -359,6 +360,7 @@ class Orchestrator:
                     results = list(ex.map(self.process, batch))
             out += [r for r in results if r is not None]
             self._check_escalations()
+        self._check_escalations()  # supervisor escalate ở event cuối hàng đợi: gate vẫn phải mở, không chờ event kế tiếp
         return out
 
     def tick(self, now: datetime | None = None) -> list[StepResult]:
@@ -469,6 +471,8 @@ class Orchestrator:
             elif r.many:
                 g = self.runner.generate(agent, inp, r.topic_out, many=True)
                 if g.context_writes: self.runner.write_context(agent, env, g.context_writes)
+                if env.topic == "acceptance-results":  # CR từ nghiệm thu conditional phải truy được release (đóng ticket khi quyết)
+                    g.payloads = [{**p, "release_id": env.key} for p in g.payloads]
                 for i, p in enumerate(g.payloads):  # token/tiền tính một lần cho cả lượt, không nhân theo số payload
                     self.runner.publish(agent, env, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
                                         tokens=g.tokens if i == 0 else 0, model=g.model, generated=g if i == 0 else None)
@@ -613,6 +617,10 @@ class Orchestrator:
             self._audit("invalid_output", {"agent": agent, "expected_env": r.target_env, "got": p.get("env")},
                         actor=agent, tokens=g.tokens)
             raise RunnerError(f"{agent}: đầu ra env={p.get('env')} release_id={p.get('release_id')}, cần {r.target_env}/{rid}")
+        if (want := rc.payload.get("version")) and p.get("version") != want:
+            # Phiên bản là của RC (delivery-lead suy từ nội dung release), không phải lời khai của model.
+            self._audit("release.version_overridden", {"release_id": rid, "claimed": p.get("version"), "version": want}, actor=agent)
+            p = {**p, "version": want}
         return self.runner.publish(agent, rc, r.topic_out, p, key=rid, tokens=g.tokens, model=g.model, generated=g)
 
     # ---------- kế hoạch: gate spec → threat model → delivery-lead sinh ticket → gate plan → dispatch ----------
@@ -753,8 +761,9 @@ class Orchestrator:
         """Ticket blocked (retry hết) hoặc bị supervisor escalate → gate `escalation` cho người quyết (checklist gate 'bất thường')."""
         for tid in {*self.lead.blocked(), *(t for t in self.paused if t in self.lead.tickets)}:
             if self.lead.state.get(tid) in DONE_STATES: continue  # đã đóng/đã xong: không mở gate nữa
-            n = sum(1 for a in self.supervisor.actions if a.target == tid and a.action == "escalate")
-            key = f"escalation:{tid}:{n}:{self.lead.state.get(tid)}"  # mỗi lần escalate mới / blocked mới → một gate mới
+            # budget_cut cũng là "dừng chờ người" (approve = cấp thêm ngân sách): không có gate thì ticket treo im lặng.
+            n = sum(1 for a in self.supervisor.actions if a.target == tid and a.action in {"escalate", "budget_cut"})
+            key = f"escalation:{tid}:{n}:{self.lead.state.get(tid)}"  # mỗi lần escalate/cắt mới / blocked mới → một gate mới
             if tid in self.gate.pending or key in self.once: continue
             if self.lead.state.get(tid) == "blocked" or n:
                 self._remember(key)
@@ -784,6 +793,8 @@ class Orchestrator:
             res.actions.append(f"reopen:{tid}")
         elif decision in {"reject", "rollback"} and tid in self.lead.tickets:
             self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
+            if self.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
+                self.lead.flush_releases(self.lead.tickets[tid].project_id)
 
     # ---------- vòng học ----------
 
@@ -959,6 +970,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--artifacts", type=Path, help="artifact store của blackboard (mặc định <db>.artifacts/)")
     ap.add_argument("--workers", type=int, default=1, help="số event khác key chạy song song (mặc định 1)")
     ap.add_argument("--web", action="store_true", help="cho researcher tool web_search/fetch_url (mạng ra ngoài)")
+    ap.add_argument("--batch-release", action="store_true",
+                    help="gom mọi ticket approved của dự án vào một RC khi không còn ticket đang chạy (mặc định: mỗi ticket một RC)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--watch", type=float,
         help="chạy liên tục, mỗi N giây nạp event mới (gate CLI, publish) rồi xử lý")
@@ -1003,7 +1016,7 @@ def main(argv: list[str] | None = None) -> int:
     from .llm import FakeClient, make_client
     # Chỉ `run` gọi model; status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
     orch = Orchestrator(bus, make_client() if ns.cmd == "run" else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
-                        web=ns.web, artifacts=ns.artifacts or artifact_store(ns.db))
+                        web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db))
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "report":

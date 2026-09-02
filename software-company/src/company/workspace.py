@@ -25,6 +25,22 @@ def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
     return r.stdout.strip()
 
 
+def exclude_worktrees(repo: Path) -> None:
+    """`.worktrees/` là của công ty, không phải của khách: ghi vào `.git/info/exclude` (áp cho mọi worktree của repo)
+    để `git status` của khách không thấy untracked và không ai lỡ commit nó. Không chạm `.gitignore` (file của khách)."""
+    git_dir = Path(_git(repo, "rev-parse", "--git-common-dir"))
+    if not git_dir.is_absolute(): git_dir = repo / git_dir
+    f = git_dir / "info" / "exclude"
+    line = ".worktrees/"
+    try:
+        current = f.read_text(encoding="utf-8") if f.exists() else ""
+    except OSError:
+        return
+    if line in current.splitlines(): return
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(current + ("" if not current or current.endswith("\n") else "\n") + line + "\n", encoding="utf-8")
+
+
 @dataclass
 class CheckResult:
     ok: bool
@@ -46,6 +62,7 @@ class TicketWorkspace:
         if self.path.exists():
             return self.path
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        exclude_worktrees(self.repo)
         if _git(self.repo, "branch", "--list", self.branch):
             _git(self.repo, "worktree", "add", str(self.path), self.branch)
         else:
@@ -138,6 +155,7 @@ class Integration:
             _git(self.repo, "branch", self.branch, self.base)
         if not self.path.exists():
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            exclude_worktrees(self.repo)
             _git(self.repo, "worktree", "add", str(self.path), self.branch)
         return self.sha()
 
