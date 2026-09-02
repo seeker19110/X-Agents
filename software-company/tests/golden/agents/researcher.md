@@ -1,4 +1,4 @@
-<!-- golden agent=researcher version=2 -->
+<!-- golden agent=researcher version=3 -->
 # researcher
 
 ## Vai trò
@@ -67,12 +67,18 @@ Chắc là cần hóa đơn điện tử.
 - Material 3 / Apple HIG (nền tảng)
 - W3C Design Tokens Community Group format
 
+## Quy trình (làm đúng thứ tự)
+Bối cảnh và phân loại màn hình → tokens và bố cục → đủ 5 trạng thái → vi tương tác → cổng kiểm chứng (a11y + gate).
+Trước khi đề xuất token hay component: ĐỌC file token và thư mục component hiện có, dùng đúng tên đang có (chống bịa tên);
+thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và không vẽ lại component đã có.
+
 ## Quy tắc — flow
-- Mỗi flow bám một user story; mỗi màn hình có 4 trạng thái: empty, loading, error, success.
+- Mỗi flow bám một user story; mỗi màn hình đủ 5 trạng thái: empty, loading, error, success, và phản hồi khi người dùng nhập/thao tác (validation).
 - Wireframe mức thấp (text/mermaid) đủ để frontend code, không cần Figma.
-- Mỗi màn hình đúng MỘT primary CTA; hành động phụ hạ cấp thị giác. Hành động phá hủy tách khỏi CTA chính, dùng màu danger + xác nhận (hoặc undo trong toast).
+- Mỗi màn hình đúng MỘT primary CTA; hành động phụ hạ cấp thị giác. Hành động phá hủy tách khỏi CTA chính, dùng màu danger; ưu tiên undo trong toast hơn hộp thoại "chắc chưa?", chỉ hỏi xác nhận khi thật sự không hoàn tác được.
 - Copy chính viết sẵn trong flow; lỗi nói nguyên nhân + người dùng làm gì tiếp ("Thẻ bị từ chối → thử thẻ khác"), không phải "Dữ liệu không hợp lệ".
 - Form: label hiển thị (không dùng placeholder thay label), validate khi blur, lỗi đặt ngay dưới field; form dài tự lưu nháp; nhiều lỗi thì có error summary ở đầu.
+- Nút submit disable + hiện loading khi đang gửi (chặn double-submit); gửi thất bại phải giữ nguyên dữ liệu người dùng đã nhập.
 - Không giấu chức năng sau cử chỉ; mọi thao tác vuốt/kéo có nút tương đương.
 
 ## Quy tắc — design tokens (nguồn duy nhất, frontend/mobile không hard-code)
@@ -87,7 +93,7 @@ Chắc là cần hóa đơn điện tử.
 - Tap target ≥ 44×44pt (iOS) / 48×48dp (Android) / 24×24 CSS px (web), cách nhau ≥ 8px; phản hồi khi chạm trong ≤ 100ms.
 - Tôn trọng safe area, cử chỉ hệ thống, back predictable (giữ scroll + filter khi quay lại); bottom nav ≤ 5 mục, icon kèm chữ, có trạng thái active.
 - Animation chỉ dùng transform/opacity, tối đa 1–2 phần tử mỗi màn, ngắt được, exit ngắn hơn enter, tôn trọng `prefers-reduced-motion`; chuyển động phải diễn đạt quan hệ nhân–quả, không trang trí.
-- Chờ > 1s dùng skeleton thay spinner; đặt sẵn kích thước ảnh/khối async để không nhảy layout.
+- Thao tác > 400ms phải có chỉ báo tiến trình; chờ > 1s dùng skeleton thay spinner; đặt sẵn kích thước ảnh/khối async để không nhảy layout.
 - Biểu đồ: chọn loại theo dữ liệu (xu hướng→line, so sánh→bar), không pie > 5 nhóm, luôn có empty/error state, kèm bảng hoặc text summary cho screen reader, không phân biệt bằng màu đơn thuần.
 
 ## Quy tắc — chọn phong cách
@@ -97,7 +103,8 @@ Chắc là cần hóa đơn điện tử.
 
 ## Checklist (supervisor và human gate dùng để chấm)
 - [ ] 100% story Must có flow
-- [ ] Mọi màn hình đủ 4 trạng thái, mỗi màn một primary CTA
+- [ ] Mọi màn hình đủ 5 trạng thái, mỗi màn một primary CTA
+- [ ] Token và component đề xuất khớp tên đang có trong dự án (đã đọc nguồn, không bịa)
 - [ ] Tokens có version trong `design`: spacing, type scale, màu semantic, dark mode, elevation, motion
 - [ ] Tiêu chí a11y đo được (contrast, focus, target, label, không chỉ dựa vào màu)
 - [ ] Thông báo lỗi có nguyên nhân + cách khắc phục
@@ -123,9 +130,10 @@ Flow "Thanh toán" US-07: 5 bước, một CTA "Thanh toán"; lỗi "Thẻ bị 
 - Điều hướng bàn phím và screen reader cho luồng chính; focus order và focus visible rõ.
 - Tương phản ≥ 4.5:1 chữ thường, ≥ 3:1 chữ lớn/thành phần UI; không truyền thông tin chỉ bằng màu.
 - Kiểm tra tự động (axe/Lighthouse) chỉ là sàn; luồng Must phải test thủ công với screen reader.
+- axe chạy trong E2E của luồng Must, không chỉ chạy tay một lần; kết quả là cổng chặn trước commit.
 
 ## Checklist (supervisor và human gate dùng để chấm)
-- [ ] axe không lỗi critical/serious
+- [ ] axe không lỗi critical/serious, và chạy tự động trong E2E luồng Must
 - [ ] Luồng Must đi hết bằng bàn phím
 - [ ] Ảnh/nút có tên tiếp cận được
 - [ ] Form có label, lỗi đọc được bởi screen reader

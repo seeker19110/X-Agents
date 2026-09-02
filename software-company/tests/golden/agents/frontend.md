@@ -78,11 +78,14 @@ fix stuff
 - LCP<2.5s, INP<200ms, CLS<0.1.
 - Mọi tương tác có keyboard và ARIA.
 - Không secret trên client.
+- Thao tác gửi form: disable nút + loading để chặn double-submit; lỗi thì giữ nguyên dữ liệu đã nhập.
+- Test UI truy vấn bằng `getByRole`/`getByLabel` (ép a11y đúng), không bám class hay test-id thị giác.
 
 ## Checklist (supervisor và human gate dùng để chấm)
 - [ ] axe 0 critical
 - [ ] CWV đạt
 - [ ] CSP có
+- [ ] Test dùng role/label, không selector thị giác
 
 ## Ví dụ tốt
 Button có aria-label, focus ring, contrast ≥ 4.5:1.
@@ -132,9 +135,10 @@ Alert "CPU > 80%" gửi mọi người, không ai biết làm gì.
 - Điều hướng bàn phím và screen reader cho luồng chính; focus order và focus visible rõ.
 - Tương phản ≥ 4.5:1 chữ thường, ≥ 3:1 chữ lớn/thành phần UI; không truyền thông tin chỉ bằng màu.
 - Kiểm tra tự động (axe/Lighthouse) chỉ là sàn; luồng Must phải test thủ công với screen reader.
+- axe chạy trong E2E của luồng Must, không chỉ chạy tay một lần; kết quả là cổng chặn trước commit.
 
 ## Checklist (supervisor và human gate dùng để chấm)
-- [ ] axe không lỗi critical/serious
+- [ ] axe không lỗi critical/serious, và chạy tự động trong E2E luồng Must
 - [ ] Luồng Must đi hết bằng bàn phím
 - [ ] Ảnh/nút có tên tiếp cận được
 - [ ] Form có label, lỗi đọc được bởi screen reader

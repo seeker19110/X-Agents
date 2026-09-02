@@ -263,7 +263,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 2,
+    "version": 3,
     "writes": [
       "review-results"
     ]
@@ -316,7 +316,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 120,
-    "version": 2,
+    "version": 3,
     "writes": [
       "research-findings"
     ]
