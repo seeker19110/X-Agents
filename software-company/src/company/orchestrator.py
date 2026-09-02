@@ -416,7 +416,11 @@ class Orchestrator:
     def watch(self, interval: float = 5.0, max_ticks: int | None = None) -> None:
         n = 0
         while max_ticks is None or n < max_ticks:
-            for r in self.tick(): print(_fmt(r))
+            try:
+                for r in self.tick(): print(_fmt(r))
+            except Exception as e:  # một nhịp lỗi (bus/git/handler) không được giết vòng watch
+                self._audit("tick_error", {"error": f"{type(e).__name__}: {str(e)[:300]}"})
+                print(f"tick_error: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
             n += 1
             if max_ticks is None or n < max_ticks: time.sleep(interval)
 
@@ -537,6 +541,7 @@ class Orchestrator:
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
             self._stall(env, agent, e, res)
+            self._rework_after_error(env, r, e)  # WorkspaceError (git/commit) cũng không được để ticket treo `dispatched`
 
     def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> None:
         """Agent kỹ thuật lỗi (không sửa file, JSON hỏng, hết ngân sách lượt...) → ticket không được treo `dispatched`
@@ -654,6 +659,9 @@ class Orchestrator:
         `local_checks` của model bị thay bằng `{"unverified": true}` và ghi audit — không có bằng chứng giả."""
         tid = task.payload.get("ticket_id") or task.key
         budget = self.lead.tickets[tid].budget_tokens if tid in self.lead.tickets else task.payload.get("budget_tokens")
+        if (b := self.supervisor.budgets.get(tid)) is not None:
+            # Lần làm lại chỉ còn phần ngân sách chưa đốt (supervisor cộng dồn theo audit, kể cả phần đã cấp thêm)
+            budget = max(b.limit - b.used, 0)
         ws = self.workspace(tid)
         if ws is not None:
             g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns)

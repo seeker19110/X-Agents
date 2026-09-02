@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -19,14 +18,13 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from .stacks import detect
-from .workspace import TicketWorkspace
+from .workspace import TicketWorkspace, clean_env
 
 MAX_OUTPUT = 6_000          # ký tự trả về cho model mỗi lần gọi tool
 MAX_WRITE = 200_000         # byte một lần ghi
 MAX_READ = 60_000           # ký tự một lần đọc
 MAX_SEARCH_HITS = 60
 SECRET_FILES = ("*.pem", "*.key", ".env", ".env.*", "*secret*", "*credential*", "llm.yaml", "id_rsa*")
-SECRET_ENV = re.compile(r"(API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", re.IGNORECASE)
 SKIP_DIRS = {".git", ".worktrees", ".venv", "__pycache__", "node_modules"}
 BINARY_EXT = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".sqlite", ".pyc", ".so", ".dll", ".exe"}
 
@@ -90,9 +88,7 @@ class ToolBox:
         return c
 
 
-def _clean_env() -> dict[str, str]:
-    """Env cho lệnh con: bỏ mọi biến trông như khoá; model không thể in secret qua test/lint."""
-    return {k: v for k, v in os.environ.items() if not SECRET_ENV.search(k)} | {"PYTHONDONTWRITEBYTECODE": "1"}
+_clean_env = clean_env  # env cho lệnh con dùng chung với workspace (lint/test của PR): bỏ mọi biến trông như khoá
 
 
 def _is_secret(parts: tuple[str, ...]) -> bool:
@@ -139,7 +135,8 @@ class WorkspaceTools:
     def _walk(self, base: Path, glob: str):
         for p in sorted(base.glob(glob)):
             rel = p.relative_to(self.root)
-            if not p.is_file() or set(rel.parts) & SKIP_DIRS or _is_secret(rel.parts): continue
+            # symlink có thể trỏ ra ngoài worktree (hoặc vào .git/): không liệt kê, không đọc
+            if p.is_symlink() or not p.is_file() or set(rel.parts) & SKIP_DIRS or _is_secret(rel.parts): continue
             yield p, rel
 
     # ---------- tool ----------
@@ -188,10 +185,13 @@ class WorkspaceTools:
     def run(self, command: str, paths: list[str] | None = None) -> str:
         argv = self.COMMANDS.get(command)
         if argv is None: raise ToolError(f"lệnh không trong allowlist: {command} (có: {sorted(self.COMMANDS)})")
+        for x in paths or []:  # "-x"/"--flag" là cờ, không phải đường dẫn: model không được thêm tuỳ chọn cho lệnh
+            if not isinstance(x, str) or x.startswith("-"):
+                raise ToolError(f"paths chỉ nhận đường dẫn, không nhận tuỳ chọn: {x!r}")
         args = [self._path(x).relative_to(self.root).as_posix() for x in (paths or [])]
-        try:
-            r = subprocess.run([*argv, *args], cwd=self.root, capture_output=True, text=True, encoding="utf-8",
-                               timeout=self.timeout, env=_clean_env())
+        try:  # `--` chốt hết tuỳ chọn trước danh sách đường dẫn
+            r = subprocess.run([*argv, *(["--", *args] if args else [])], cwd=self.root, capture_output=True, text=True,
+                               encoding="utf-8", timeout=self.timeout, env=clean_env())
         except subprocess.TimeoutExpired:
             return f"lỗi: {command} quá {self.timeout}s"
         return f"exit={r.returncode}\n{(r.stdout + r.stderr)[-MAX_OUTPUT:]}"

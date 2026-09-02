@@ -44,6 +44,7 @@ class Supervisor:
         self.budgets: dict[str, Budget] = {}
         self.project_cost: dict[str, float] = defaultdict(float)
         self.project_warned: set[str] = set(); self.project_paused: set[str] = set()
+        self.ticket_warned: set[str] = set(); self.ticket_cut: set[str] = set()  # mỗi ticket một lần, tới khi cấp thêm
         self.unpriced = 0
         self.last_seen: dict[str, datetime] = {}
         self.error_signatures: dict[str, list[str]] = defaultdict(list)
@@ -79,16 +80,13 @@ class Supervisor:
             a = AuditLog.model_validate(env.payload)
             if a.action.startswith("produced:") and '"unpriced": true' in (a.evidence or ""):
                 self.unpriced += 1
+            if a.ticket_id and a.action == "budget.extended":  # người cấp thêm ngân sách: ngưỡng được báo lại từ đầu
+                self.ticket_warned.discard(a.ticket_id); self.ticket_cut.discard(a.ticket_id)
             if a.ticket_id and a.ticket_id in self.budgets:
                 b = self.budgets[a.ticket_id]; b.cost_usd += a.cost_usd
                 if a.actor in REVIEW_ACTORS: b.review_used += a.tokens
                 else: b.used += a.tokens
-                if b.ratio >= self.CUT_AT: self._act(a.ticket_id, "budget_cut", f"dùng {b.used}/{b.limit} token")
-                elif b.limit_usd and b.ratio_usd >= self.CUT_AT:
-                    self._act(a.ticket_id, "budget_cut", f"dùng {b.cost_usd:.2f}/{b.limit_usd:.2f} USD")
-                elif b.ratio >= self.WARN_AT: self._act(a.ticket_id, "warn", f"đã dùng {b.ratio:.0%} ngân sách token")
-                elif b.limit_usd and b.ratio_usd >= self.WARN_AT:
-                    self._act(a.ticket_id, "warn", f"đã dùng {b.ratio_usd:.0%} ngân sách tiền ({b.cost_usd:.2f} USD)")
+                self._check_ticket(a.ticket_id, b)
             if a.project_id and a.cost_usd:
                 self.project_cost[a.project_id] += a.cost_usd
                 self._check_project(a.project_id)
@@ -100,6 +98,18 @@ class Supervisor:
         elif env.topic == "shared-context":
             if env.actor not in NAMESPACE_OWNERS.get(env.payload["namespace"], set()):
                 self._act(env.actor, "pause", "ghi sai namespace")
+
+    def _check_ticket(self, tid: str, b: Budget) -> None:
+        """Chạm 100% → budget_cut, 80% → warn; mỗi ngưỡng chỉ báo một lần cho tới khi `budget.extended` (như dự án):
+        sau ngưỡng mọi audit của ticket (kể cả 0 token) đều lặp lại hành động thì gate escalation mở đi mở lại."""
+        if tid not in self.ticket_cut and b.ratio >= self.CUT_AT:
+            self.ticket_cut.add(tid); self._act(tid, "budget_cut", f"dùng {b.used}/{b.limit} token")
+        elif tid not in self.ticket_cut and b.limit_usd and b.ratio_usd >= self.CUT_AT:
+            self.ticket_cut.add(tid); self._act(tid, "budget_cut", f"dùng {b.cost_usd:.2f}/{b.limit_usd:.2f} USD")
+        elif tid not in self.ticket_warned and b.ratio >= self.WARN_AT:
+            self.ticket_warned.add(tid); self._act(tid, "warn", f"đã dùng {b.ratio:.0%} ngân sách token")
+        elif tid not in self.ticket_warned and b.limit_usd and b.ratio_usd >= self.WARN_AT:
+            self.ticket_warned.add(tid); self._act(tid, "warn", f"đã dùng {b.ratio_usd:.0%} ngân sách tiền ({b.cost_usd:.2f} USD)")
 
     def _check_project(self, pid: str) -> None:
         if not self.project_budget_usd: return

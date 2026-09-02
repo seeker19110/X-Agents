@@ -144,7 +144,7 @@ class _Srv(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         _Srv.seen.append(body)
         if body.get("response_format", {}).get("type") == "json_schema":
-            self.send_response(400); self.end_headers(); self.wfile.write(b'{"error":"unsupported"}'); return
+            self.send_response(400); self.end_headers(); self.wfile.write(b'{"error":"unsupported parameter: response_format"}'); return
         out = {"id": "x", "model": body["model"], "choices": [{"finish_reason": "stop", "message": {
             "role": "assistant", "content": json.dumps({"ticket_id": "T", "source": "reviewer", "verdict": "pass"})}}],
                "usage": {"prompt_tokens": 42, "completion_tokens": 7}}
@@ -393,7 +393,7 @@ class _CacheSrv(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         _CacheSrv.seen.append(body)
         if _CacheSrv.reject_cache_key and "prompt_cache_key" in body:
-            self.send_response(400); self.end_headers(); self.wfile.write(b'{"error":"unknown param"}'); return
+            self.send_response(400); self.end_headers(); self.wfile.write(b'{"error":"unknown param: prompt_cache_key"}'); return
         out = {"id": "x", "model": body["model"], "choices": [{"finish_reason": "stop", "message": {
             "role": "assistant", "content": json.dumps({"ticket_id": "T", "source": "reviewer", "verdict": "pass"})}}],
                "usage": {"prompt_tokens": 10_000, "completion_tokens": 300,

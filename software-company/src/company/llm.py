@@ -412,13 +412,20 @@ class OpenAICompatClient:
         except (urllib.error.URLError, TimeoutError) as e:
             raise TransientError(f"lỗi mạng: {getattr(e, 'reason', e)}") from e
 
+    @staticmethod
+    def _rejects(e: LLMError, *features: str) -> bool:
+        """HTTP 400 mà thân lỗi nhắc tới tính năng đang dò (`response_format`, `prompt_cache_key`...). 400 vì lý do
+        khác (prompt quá dài, tham số khác sai) không được quy cho tính năng này rồi tắt nó vĩnh viễn."""
+        msg = str(e)
+        return msg.startswith("HTTP 400") and any(f in msg for f in features)
+
     def _post_cacheable(self, body: dict[str, Any]) -> dict[str, Any]:
         """Như `_post`, nhưng nếu server từ chối vì không biết `prompt_cache_key` thì gỡ ra và thôi gửi từ lần sau.
         Tách riêng khỏi dò `json_schema` để một lỗi 400 không bị quy sai cho tính năng kia."""
         try:
             data = self._post(body)
         except LLMError as e:
-            if "prompt_cache_key" not in body or not str(e).startswith("HTTP 400"):
+            if "prompt_cache_key" not in body or not self._rejects(e, "prompt_cache_key"):
                 raise
             self._cache_key_ok = False
             data = self._post({k: v for k, v in body.items() if k != "prompt_cache_key"})
@@ -463,7 +470,7 @@ class OpenAICompatClient:
                     "name": "payload", "strict": True, "schema": strict_schema(schema)}}})
                 self._json_schema_ok = True
             except LLMError as e:
-                if not str(e).startswith("HTTP 400"): raise
+                if not self._rejects(e, "response_format", "json_schema"): raise
                 self._json_schema_ok = False
         if data is None:
             hint = "\n\n# JSON Schema bắt buộc\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
