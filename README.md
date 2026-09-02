@@ -20,7 +20,8 @@ Nguyên tắc chung cho mọi công ty:
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
 | [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
 | [`docs/QUY-TRINH-GIT.md`](docs/QUY-TRINH-GIT.md) | Quy trình Git chung: nhánh, commit, PR, CI, merge squash | |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) | Đóng góp và báo lỗi bảo mật (hiện là file trống, chờ nội dung) | |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Cài đặt từng package, cổng chất lượng, checklist bắt buộc khi sửa agent/skill, quy tắc ADR | |
+| [`SECURITY.md`](SECURITY.md) | Cách báo lỗi bảo mật, phạm vi, mô hình bí mật, các lớp phòng thủ đang có | |
 
 Mỗi công ty tự chứa: `pyproject.toml` + `uv.lock`, `Makefile`, `agents/`, `skills/`, `topics/`, `gates/`, `templates/`,
 `evals/`, `tests/`, `docs/` (kiến trúc + ADR), `llm.example.yaml`; software-company thêm `examples/` (mô phỏng cả công ty,
@@ -79,11 +80,13 @@ topic (JSON Schema, có key) ──► registry: agent nào nhận topic nào
 
 ## Phát triển
 
-- CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): software-company chạy ruff + mypy, pytest với ngưỡng coverage 90%
-  và `evals all --replay --strict`; Studio-creators và gateway chạy ruff + pytest (Studio thêm eval phát lại, chỉ đỏ khi bản
-  ghi lệch prompt); job `audit` chạy `pip-audit --strict` + gitleaks trên cả lịch sử; job `quality` gom kết quả.
-  `pr-policy.yml` kiểm tra quy ước PR.
+- CI (`.github/workflows/ci.yml`, Python 3.11 và 3.13): software-company và Studio-creators chạy cùng bộ cổng — ruff + mypy,
+  pytest có ngưỡng coverage (`fail_under` 90 và 84, đặt ở mức đang đạt để chặn tụt lùi), và `evals all --replay --strict`;
+  gateway chạy ruff + pytest; job `golden-check` chạy `make golden` rồi so `git diff --exit-code`; job `audit` chạy
+  `pip-audit --strict` + gitleaks trên cả lịch sử; job `quality` gom kết quả. `pr-policy.yml` kiểm tra quy ước PR.
 - Sửa `agents/` hoặc `skills/` → tăng `version`, `make golden`, `make eval-record AGENT=<id>` bằng model thật, commit bản ghi.
+  Agent có tên trong `evals/recordings/REQUIRED.txt` mà thiếu bản ghi hoặc bản ghi lệch phiên bản prompt thì CI đỏ.
+  Checklist đầy đủ: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - Thay đổi lớn (kiến trúc, agent mới, schema topic) → viết ADR trong `<công ty>/docs/adr/` trước.
 - Không commit secret, `llm.yaml`, dữ liệu thật; không gọi provider trả phí trong test; mọi thay đổi vào `main` qua PR.
 

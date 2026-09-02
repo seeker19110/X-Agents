@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 import threading
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -15,10 +16,16 @@ from company.registry import load_agents
 from company.sqlite_bus import SQLiteBus
 
 
+@contextmanager
 def _server(handler_cls):
+    """Server giả cho một test. `server_close()` bắt buộc: `shutdown()` chỉ dừng vòng lặp,
+    socket lắng nghe vẫn mở và rò qua các test sau."""
     srv = HTTPServer(("127.0.0.1", 0), handler_cls)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return srv, f"http://127.0.0.1:{srv.server_port}"
+    t = threading.Thread(target=srv.serve_forever, daemon=True); t.start()
+    try:
+        yield f"http://127.0.0.1:{srv.server_port}"
+    finally:
+        srv.shutdown(); t.join(timeout=5); srv.server_close()
 
 
 def _client(url, retries=3):
@@ -31,57 +38,53 @@ def _complete(c):
     return c.complete(system="s", user="u", schema={"type": "object"}, model_tier="standard")
 
 
-class _Flaky(BaseHTTPRequestHandler):
-    hits = 0
-    def do_POST(self):
-        type(self).hits += 1
-        if type(self).hits < 3:
-            self.send_response(429); self.end_headers(); self.wfile.write(b'{"error":"rate"}'); return
-        body = json.dumps({"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}],
-                           "usage": {"prompt_tokens": 5, "completion_tokens": 1}}).encode()
-        self.send_response(200); self.send_header("Content-Type", "application/json")
+class _Handler(BaseHTTPRequestHandler):
+    def _reply(self, code, body: bytes):
+        """Đọc hết request body TRƯỚC khi trả lời, và luôn gửi Content-Length. Bỏ bước đọc thì
+        lúc đóng socket còn dữ liệu chưa nhận, Windows gửi RST thay vì FIN và client đang đọc
+        response bị ConnectionAbortedError — đỏ ngẫu nhiên khi máy đang tải."""
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self.send_response(code); self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     def log_message(self, *a): pass
 
 
-class _AlwaysDown(_Flaky):
+class _Flaky(_Handler):
+    hits = 0
     def do_POST(self):
-        self.send_response(503); self.end_headers(); self.wfile.write(b'{"error":"down"}')
+        type(self).hits += 1
+        if type(self).hits < 3:
+            return self._reply(429, b'{"error":"rate"}')
+        self._reply(200, json.dumps({"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}],
+                                     "usage": {"prompt_tokens": 5, "completion_tokens": 1}}).encode())
 
 
-class _BadRequest(_Flaky):
-    def do_POST(self):
-        self.send_response(400); self.end_headers(); self.wfile.write(b'{"error":"schema"}')
+class _AlwaysDown(_Handler):
+    def do_POST(self): self._reply(503, b'{"error":"down"}')
+
+
+class _BadRequest(_Handler):
+    def do_POST(self): self._reply(400, b'{"error":"schema"}')
 
 
 def test_rate_limit_is_retried_then_succeeds():
     _Flaky.hits = 0
-    srv, url = _server(_Flaky)
-    try:
+    with _server(_Flaky) as url:
         assert _complete(_client(url)).input_tokens == 5
         assert _Flaky.hits == 3, "429 phải được thử lại chứ không hỏng ngay"
-    finally:
-        srv.shutdown()
 
 
 def test_server_error_gives_up_after_attempts_as_transient():
-    srv, url = _server(_AlwaysDown)
-    try:
-        with pytest.raises(TransientError):
-            _complete(_client(url, retries=1))
-    finally:
-        srv.shutdown()
+    with _server(_AlwaysDown) as url, pytest.raises(TransientError):
+        _complete(_client(url, retries=1))
 
 
 def test_client_error_is_not_retried():
     """400 là lỗi của request, gọi lại cũng vậy — chỉ tốn token."""
-    srv, url = _server(_BadRequest)
-    try:
+    with _server(_BadRequest) as url:
         with pytest.raises(LLMError) as e:
             _complete(_client(url))
         assert not isinstance(e.value, TransientError)
-    finally:
-        srv.shutdown()
 
 
 class _Raising:
