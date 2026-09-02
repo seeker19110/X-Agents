@@ -54,6 +54,8 @@ cd software-company
 uv sync                                   # tạo .venv từ pyproject.toml
 uv run pytest -q                          # hoặc: make test
 PYTHONPATH=src uv run python -m company.demo   # hoặc: make demo
+PYTHONPATH=src uv run python examples/donghanhcungban_demo.py --out sim-out   # mô phỏng cả công ty làm web demo
+                                          # donghanhcungban.com trên repo khách tạo tạm (báo cáo: docs/reports/)
 uv run ruff check src tests               # hoặc: make lint
 
 # Chạy model thật (provider bất kỳ). Cấu hình: cp llm.example.yaml llm.yaml rồi sửa, hoặc biến môi trường:

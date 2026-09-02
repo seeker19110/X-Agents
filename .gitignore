@@ -41,3 +41,6 @@ software-company/llm.yaml
 .coverage.*
 coverage.xml
 htmlcov/
+
+# đầu ra mô phỏng examples/donghanhcungban_demo.py
+software-company/sim-out/
