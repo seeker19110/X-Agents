@@ -173,7 +173,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 5,
+    "version": 6,
     "writes": [
       "pull-requests"
     ]
@@ -219,7 +219,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 5,
+    "version": 6,
     "writes": [
       "pull-requests"
     ]
@@ -265,7 +265,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 3,
+    "version": 4,
     "writes": [
       "review-results"
     ]
@@ -318,7 +318,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 120,
-    "version": 4,
+    "version": 5,
     "writes": [
       "research-findings"
     ]
@@ -411,7 +411,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 4,
+    "version": 5,
     "writes": [
       "approved-specs"
     ]
