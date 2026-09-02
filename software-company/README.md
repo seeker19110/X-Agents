@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0018)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0019)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -39,7 +39,8 @@ gates/         checklist human gate
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
 topics/        18 JSON Schema topic + bảng owner namespace
 src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard (artifact store),
-               llm (ModelClient + adapter, tool-use, retry, bảng giá), runner (vòng lặp tool, guard, cắt ngữ cảnh),
+               llm (ModelClient + adapter anthropic/openai/claude-code, tool-use, retry, bảng giá), routing (nhiều gói tài
+               khoản, chọn theo tier, xoay khi hết quota — ADR-0019), runner (vòng lặp tool, guard, cắt ngữ cảnh),
                orchestrator (vòng lặp tự động, song song, người can thiệp), workspace (worktree), tools (tool có ranh
                giới tin cậy), web (tool web cho researcher), guard (chống injection), context (hạn mức ngữ cảnh),
                metrics (từ audit-log), evals (ghi/phát lại), graph
@@ -63,6 +64,9 @@ uv run ruff check src tests               # hoặc: make lint
 #   COMPANY_LLM_PROVIDER=anthropic COMPANY_MODEL_STRONG=claude-opus-5   (uv sync --extra anthropic)
 #   Qua gateway xoay vòng tài khoản Google Antigravity (../gateway: `make login && make start && make setup`
 #   ghi sẵn llm.yaml): COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://127.0.0.1:8100/v1 COMPANY_LLM_API_KEY=gateway-local
+#   Gói Claude Pro/Max trên máy (không key, không tool-use): COMPANY_LLM_PROVIDER=claude-code COMPANY_MODEL_STRONG=claude-opus-5
+#   NHIỀU gói cùng lúc (ADR-0019): `backends:` + `routing.prefer` trong llm.yaml — mẫu ở llm.example.yaml; agent có tier
+#   strong/standard/light, gói hết quota tự nghỉ. Bảng agent → tier: ../docs/DIEU-PHOI-MODEL.md
 PYTHONPATH=src uv run python -m company.runner reviewer review-results input.json --db company.sqlite
 
 # Chạy tự động cả công ty (ADR-0007): orchestrator nối topic → agent → topic, dừng ở human gate / supervisor / khách

@@ -30,7 +30,7 @@ TOPICS = set(get_args(Topic))
 # Giá trị reads/writes hợp lệ nhưng không phải topic trên bus: subscribe mọi topic, nguồn ngoài, kho tri thức.
 NON_TOPIC_CHANNELS = {"*", "knowledge-base"}
 BLOCKS = {"research", "delivery", "engineering", "quality", "operations", "supervision"}
-MODEL_TIERS = {"standard", "strong"}
+MODEL_TIERS = {"standard", "strong", "light"}
 REQUIRED_SECTIONS = ["## Vai trò", "## Bạn PHẢI", "## Bạn KHÔNG ĐƯỢC", "## Đầu vào", "## Đầu ra", "## Definition of done"]
 
 _HEADER = re.compile(r"^<!-- golden agent=(?P<id>[\w-]+) version=(?P<version>\d+) -->\n", re.MULTILINE)

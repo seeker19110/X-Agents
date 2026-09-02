@@ -1,13 +1,15 @@
 # Cấu hình model cho runner/eval. Sao chép thành `llm.yaml` (bị gitignore) hoặc dùng biến môi trường COMPANY_*.
 # Framework trung lập provider: đổi model/provider ở đây, không đổi code hay prompt.
 
-# anthropic | openai (mọi server OpenAI-compatible) | fake
+# anthropic | openai (mọi server OpenAI-compatible) | claude-code (CLI `claude -p` đã đăng nhập gói Claude, không key) | fake
 provider: openai
 
 # model theo tier trong front matter agent
+# strong = suy luận sâu/code; standard = việc có cấu trúc; light = việc cơ học, ngắn (thiếu light → dùng standard)
 models:
   strong: qwen2.5-coder:32b     # ví dụ Ollama local; hoặc gpt-5, llama-3.3-70b, claude-opus-5...
   standard: qwen2.5-coder:7b
+  light: qwen2.5-coder:7b
 
 # chỉ provider openai: base URL của server. OpenAI thật: https://api.openai.com/v1
 # Gateway xoay vòng tài khoản Antigravity (../gateway, `make setup` ghi sẵn): http://127.0.0.1:8100/v1
@@ -20,6 +22,7 @@ max_tokens: 16000
 effort:
   strong: high
   standard: medium
+  light: low
 
 # tham số provider-specific truyền thẳng vào request (vd. temperature cho openai)
 extra: {}
@@ -49,3 +52,29 @@ prices:
 
 # Tool web cho researcher bật bằng `orchestrator --web`; máy tìm kiếm qua biến môi trường COMPANY_SEARCH_URL
 # (vd. SearXNG: http://searx.local/search?q={q}&format=json). Không đặt → DuckDuckGo HTML.
+
+# --- ADR-0019: nhiều gói tài khoản subscription thay vì API trả theo token ---
+# Khai `backends:` thì các khoá provider/models/base_url ở trên KHÔNG dùng nữa (chỉ retries/prices/max_input_chars/budget
+# là dùng chung). Mỗi backend = một gói đang đăng nhập trên máy, có model riêng theo tier; thiếu tier nào thì backend đó
+# dùng standard → strong. Thứ tự khai báo = thứ tự ưu tiên; `routing.prefer` ghi đè theo tier để tối ưu chi phí
+# (việc nhẹ đi gói miễn phí, việc nặng đi gói mạnh). Hết quota → backend nghỉ `cooldown_s` (hoặc đúng Retry-After),
+# lượt đó đi backend kế; lỗi mạng/5xx → nghỉ `transient_cooldown_s`. COMPANY_LLM_BACKENDS=a,b lọc/sắp lại khi chạy.
+# Bảng agent → tier và lý do: ../docs/DIEU-PHOI-MODEL.md
+#
+# backends:
+#   - name: claude-sub                 # Claude Pro/Max qua CLI `claude -p` (không tool-use → khối kỹ thuật tự đi backend khác)
+#     provider: claude-code
+#     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+#   - name: antigravity                # ../gateway xoay vòng tài khoản Google (make login && make start)
+#     provider: openai
+#     base_url: http://127.0.0.1:8100/v1
+#     api_key: gateway-local           # chuỗi bất kỳ; hoặc api_key_env: TEN_BIEN
+#     models: {strong: claude-sonnet-4-6, standard: gemini-3.7-flash, light: gemini-3.7-flash-low}
+#   - name: local                      # Ollama: không bao giờ hết quota, làm lưới đỡ cuối
+#     provider: openai
+#     base_url: http://localhost:11434/v1
+#     models: {strong: qwen3:32b, standard: qwen3:8b}
+# routing:
+#   cooldown_s: 3600
+#   transient_cooldown_s: 60
+#   prefer: {light: antigravity, standard: antigravity, strong: claude-sub}

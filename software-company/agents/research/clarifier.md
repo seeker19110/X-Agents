@@ -1,7 +1,7 @@
 ---
 id: clarifier
 block: research
-model_tier: standard
+model_tier: light
 reads: [requirements-draft, clarification-answers]
 writes: [clarification-questions]
 context_namespace_write: null

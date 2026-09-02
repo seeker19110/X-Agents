@@ -1,7 +1,7 @@
 ---
 id: researcher
 block: research
-model_tier: strong
+model_tier: standard
 reads: [research-findings, requirements-draft]
 writes: [research-findings]
 context_namespace_write: [glossary, design]
