@@ -37,11 +37,13 @@ class RelayClient:
     max_input_chars: int | None = None
 
     def __init__(self, dir: Path, repo: Path | None = None, timeout: float = 3600.0, poll: float = 1.0,
-                 prices: dict[str, dict[str, float]] | None = None):
+                 prices: dict[str, dict[str, float]] | None = None, clear: bool = True):
         self.dir, self.repo, self.timeout, self.poll = Path(dir), repo, timeout, poll
         self.dir.mkdir(parents=True, exist_ok=True)
-        for f in self.dir.glob("*.json"): f.unlink()
-        self.n = 0; self.pricing = Pricing(prices if prices is not None else DEFAULT_PRICES)
+        if clear:
+            for f in self.dir.glob("*.json"): f.unlink()
+        ids = [int(f.name.split(".")[0]) for f in self.dir.glob("*.req.json") if f.name.split(".")[0].isdigit()]
+        self.n = max(ids, default=0); self.pricing = Pricing(prices if prices is not None else DEFAULT_PRICES)
         self.calls: list[dict[str, Any]] = []
 
     def _workspace(self, user: str, tools: list[ToolSpec]) -> tuple[str | None, bool]:

@@ -531,30 +531,50 @@ def tool_handler(msgs: list[dict[str, Any]], tools: list[Any]) -> list[ToolCall]
 # ---------------------------------------------------------------- điều khiển mô phỏng
 
 class Sim:
-    def __init__(self, out: Path, real: bool = False, relay: Path | None = None):
+    def __init__(self, out: Path, real: bool = False, relay: Path | None = None, resume: bool = False,
+                 auto_escalate: bool = False):
         self.out = out; out.mkdir(parents=True, exist_ok=True); self.real = real or relay is not None; self.relay = relay
+        self.resume, self.auto_escalate = resume, auto_escalate
         self.db = out / "company.sqlite"
-        for f in (self.db, out / "company.artifacts"):
-            if f.is_dir(): shutil.rmtree(f)
-            elif f.exists(): f.unlink()
-        self.repo = init_customer_repo(out / "donghanhcungban")
+        if resume:
+            self.repo = out / "donghanhcungban"
+        else:
+            for f in (self.db, out / "company.artifacts"):
+                if f.is_dir(): shutil.rmtree(f)
+                elif f.exists(): f.unlink()
+            self.repo = init_customer_repo(out / "donghanhcungban")
         self.bus = SQLiteBus(self.db)
         if relay is not None:  # model = người điều phối bên ngoài (vd. Claude Code giao subagent theo tier) qua file
             from relay_client import RelayClient
-            self.client: Any = RelayClient(relay, repo=self.repo)
+            self.client: Any = RelayClient(relay, repo=self.repo, clear=not resume)
         else:
             self.client = make_client() if real else FakeClient(handler=handler, tool_handler=tool_handler)
         self.orch = Orchestrator(self.bus, self.client, repo=self.repo, base="main", artifacts=artifact_store(self.db),
                                  batch_releases=True)  # F7: một release cho cả bản demo
         self.gate: PersistentGate = self.orch.gate
-        self.log: list[str] = []
+        self.log: list[str] = []; self.escalated: dict[str, int] = {}
 
     def say(self, s: str = "") -> None:
         print(s); self.log.append(s)
 
     def stop_if_stuck(self, what: str) -> bool:
         """Với model thật, dự án có thể kẹt (agent lỗi → gate escalation, hết ngân sách → pause). Kịch bản không tự
-        approve escalation: in trạng thái để người quyết, ghi transcript, và dừng. Trả về False nếu kẹt."""
+        approve escalation: in trạng thái để người quyết, ghi transcript, và dừng. Trả về False nếu kẹt.
+        `--auto-escalate`: người lead trong kịch bản duyệt escalation CỦA TICKET (cấp thêm ngân sách, mở lại với hint),
+        tối đa 3 lần mỗi ticket; escalation cấp dự án vẫn dừng."""
+        if self.auto_escalate:
+            for _ in range(10):
+                st = self.orch.status()
+                esc = [g for g, k in st["gates_pending"].items() if k == "escalation" and g in self.orch.lead.tickets]
+                if not esc: break
+                for tid in esc:
+                    n = self.escalated.get(tid, 0)
+                    if n >= 3: continue
+                    self.escalated[tid] = n + 1
+                    reason = f"lead duyệt lần {n + 1}: cấp thêm ngân sách (ước lượng thấp hơn thực tế), làm tiếp theo hint"
+                    self.say(f"  lead: approve escalation {tid} — {reason}")
+                    self.gate.decide(tid, "approve", by="human:lead", reason=reason)
+                self.orch.run()
         st = self.orch.status()
         stuck = st["stalled"] or [g for g, k in st["gates_pending"].items() if k == "escalation"] or st["paused"]
         if not stuck and (self.gate.pending or self.orch.lead.releases or not self.real): return True
@@ -627,8 +647,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(); ap.add_argument("--out", type=Path, default=Path("sim-out"))
     ap.add_argument("--real", action="store_true", help="gọi model thật theo cấu hình llm.yaml / COMPANY_* (mặc định: client giả)")
     ap.add_argument("--relay", type=Path, help="thư mục relay: mỗi lời gọi model ghi <n>.req.json, chờ <n>.res.json (examples/relay_client.py)")
+    ap.add_argument("--resume", action="store_true", help="tiếp tục từ company.sqlite + repo trong --out (sau khi người quyết gate)")
+    ap.add_argument("--auto-escalate", action="store_true", help="lead trong kịch bản duyệt escalation của ticket (≤3 lần/ticket)")
     ns = ap.parse_args(argv)
-    s = Sim(ns.out.resolve(), real=ns.real, relay=ns.relay.resolve() if ns.relay else None)
+    s = Sim(ns.out.resolve(), real=ns.real, relay=ns.relay.resolve() if ns.relay else None, resume=ns.resume,
+            auto_escalate=ns.auto_escalate)
     s.say(f"# Mô phỏng giao dự án donghanhcungban.com (demo) — out={s.out}")
     if ns.relay: s.say(f"model qua relay: {ns.relay.resolve()} (strong/standard do người điều phối chọn)")
     if ns.real and not ns.relay:
@@ -636,6 +659,9 @@ def main(argv: list[str] | None = None) -> int:
         s.say(f"model thật: provider={cfg.provider} strong={cfg.models.get('strong') or '?'} standard={cfg.models.get('standard') or '?'} "
               f"effort={cfg.effort} budget_usd={cfg.budget_usd} prices={sorted(cfg.prices) or 'CHƯA ĐIỀN (unpriced)'}")
 
+    if ns.resume:
+        s.say(f"tiếp tục: {json.dumps({k: s.orch.status()[k] for k in ('tickets', 'gates_pending', 'paused', 'stalled')}, ensure_ascii=False)}")
+        return run_delivery(s)
     # 1. Sales đưa yêu cầu thô
     s.pub("research-requests", PID, "human:sales", {"project_id": PID, "description":
           "Khách hàng: tổ chức Đồng Hành Cùng Bạn. Cần website donghanhcungban.com bản demo: trang chủ, giới thiệu, "
@@ -660,12 +686,19 @@ def main(argv: list[str] | None = None) -> int:
     s.run("Gate spec duyệt → threat model → delivery-lead lập plan → gate plan")
     if not s.stop_if_stuck("chưa có plan"): return 1
 
+    return run_delivery(s)
+
+
+def run_delivery(s: Sim) -> int:
+    """Từ gate plan tới nghiệm thu: dùng cho cả chạy mới lẫn --resume."""
     # 4. Gate 2: duyệt plan
     for plan in [g for g in list(s.gate.pending) if g.startswith("PLAN")]:
         s.say("  plan: " + ", ".join(f"{t['ticket_id']}({t['assignee']},{t.get('estimate_tokens')}tok)" for t in s.orch.plans[plan]["tickets"]))
         s.gate.decide(plan, "approve", by="human:pm")
     s.run("Gate plan duyệt → dispatch ticket → code thật → review → RC → staging → QA hồi quy → gate release")
     if not s.stop_if_stuck("chưa có release chờ gate"): return 1
+    if not any(g.startswith("REL") for g in s.gate.pending):
+        s.say("!! Không có release chờ gate và không kẹt: xem trạng thái ở trên"); return 1
 
     # 5. Gate 3: release production
     for rid in [g for g in list(s.gate.pending) if g.startswith("REL")]:
