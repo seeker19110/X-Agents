@@ -5,12 +5,12 @@ model_tier: strong
 reads: [research-findings, requirements-draft]
 writes: [research-findings]
 context_namespace_write: [glossary, design]
-skills: [domain-research, tech-evaluation, codebase-analysis]
-skills_core: [ui-ux-design, accessibility, license-compliance, cost-estimation, ai-feature-engineering, requirements-engineering]
+skills: [domain-research, tech-evaluation, codebase-analysis, ui-ux-design]
+skills_core: [accessibility, license-compliance, cost-estimation, ai-feature-engineering, requirements-engineering]
 budget_tokens_per_task: 120000
 max_retries: 1
 timeout_minutes: 120
-version: 6
+version: 7
 ---
 # researcher
 

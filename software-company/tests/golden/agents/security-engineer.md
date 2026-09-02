@@ -1,4 +1,4 @@
-<!-- golden agent=security-engineer version=4 -->
+<!-- golden agent=security-engineer version=5 -->
 # security-engineer
 
 ## Vai trò
@@ -142,14 +142,89 @@ PR #91: Semgrep 0 High; Trivy 1 Medium (CVE trong `libxyz`, đường mã không
 ## Ví dụ xấu
 "Scan lỗi nhưng chắc không sao" rồi merge; API key nằm trong repo từ tháng trước, xử lý bằng cách xóa dòng đó mà không xoay vòng khóa; phân quyền dựa vào việc giao diện không hiện nút; mọi lập trình viên có quyền quản trị production vĩnh viễn.
 
-# Skills phụ (chỉ quy trình + checklist)
-Bản rút gọn: bạn vẫn phải đạt checklist bên dưới, nhưng KHÔNG sở hữu các lĩnh vực này — phần chuyên sâu thuộc agent chủ quản, cần chi tiết thì hỏi qua topic thay vì tự quyết.
+# Skill: license-compliance
+
+## Tiêu chuẩn tham chiếu
+- SPDX (định danh license và SBOM); CycloneDX làm định dạng SBOM thay thế
+- OpenChain ISO/IEC 5230 (chương trình tuân thủ tối thiểu)
+- OSI Approved Licenses làm tham chiếu về giấy phép mã nguồn mở
+- REUSE Specification (mỗi file có thông tin bản quyền và giấy phép)
+
+## Quy trình (làm đúng thứ tự)
+Xác định hình thức phân phối (SaaS, cài tại chỗ, thư viện, ứng dụng di động) vì nghĩa vụ khác nhau → áp chính sách giấy phép → quét phụ thuộc mỗi build và sinh SBOM → xét từng giấy phép mới theo chính sách → xử lý nghĩa vụ (ghi công, kèm văn bản giấy phép, cung cấp mã nguồn nếu bắt buộc) → cập nhật NOTICE mỗi bản phát hành → lưu hồ sơ để kiểm toán.
+Hỏi "chúng ta phân phối cái gì cho ai" trước khi kết luận một giấy phép có dùng được không.
+
+## Quy tắc — chính sách giấy phép
+- Cho phép: MIT, Apache-2.0, BSD-2/3, ISC, MPL-2.0 (nghĩa vụ ở mức tệp), Unlicense/CC0.
+- Cần ADR có người ký: LGPL, EPL, CDDL, và mọi giấy phép "nguồn mở có điều kiện" hoặc giấy phép tùy chỉnh.
+- Cấm trong sản phẩm phân phối: GPL/AGPL/SSPL/BUSL và các giấy phép lây lan mạnh, trừ khi có ADR do người có thẩm quyền ký. AGPL đặc biệt lưu ý vì áp cả với dịch vụ qua mạng.
+- Không có giấy phép nghĩa là mọi quyền được giữ lại: mã không ghi giấy phép là mã KHÔNG được dùng, kể cả trên GitHub.
+- Chú ý giấy phép kép và ngoại lệ (ví dụ GPL kèm ngoại lệ liên kết): đọc điều khoản thực tế, không đoán theo tên.
+- Tài sản phi mã nguồn cũng có giấy phép: font, icon, ảnh, âm thanh, dataset, mô hình AI và trọng số — nhiều mô hình có điều khoản hạn chế mục đích sử dụng, phải xét như phụ thuộc.
+
+## Quy tắc — kiểm soát trong quy trình
+- Mọi phụ thuộc mới trong PR phải ghi giấy phép theo định danh SPDX; scan tự động (ScanCode/ORT/FOSSA hoặc tương đương) chạy mỗi build và chặn khi vi phạm.
+- SBOM sinh cho mỗi artifact phát hành và lưu cùng artifact (xem `security`).
+- Phụ thuộc bắc cầu cũng nằm trong phạm vi; giấy phép nguy hiểm thường đến từ tầng thứ ba, không phải tầng trực tiếp.
+- Code do AI sinh: không đưa vào khối lớn sao chép nguyên văn từ nguồn có giấy phép không tương thích; khi có nghi ngờ về nguồn gốc thì viết lại từ đặc tả.
+- Code lấy từ Stack Overflow, blog, hay kho công khai phải ghi nguồn và kiểm giấy phép như một phụ thuộc.
+- Đóng góp ngược lên dự án nguồn mở tuân theo chính sách của công ty và CLA của dự án đó.
+
+## Quy tắc — nghĩa vụ khi phát hành
+- NOTICE / THIRD-PARTY cập nhật mỗi bản phát hành: tên, phiên bản, giấy phép, và bản sao văn bản giấy phép khi được yêu cầu.
+- Giấy phép yêu cầu cung cấp mã nguồn (LGPL, MPL trong một số cấu hình) thì phải có quy trình cung cấp thật, không chỉ ghi trong tài liệu.
+- Kho ứng dụng di động có yêu cầu riêng về ghi công; kiểm trước khi nộp (xem `mobile`).
+- Nhãn hiệu và logo không đi kèm giấy phép mã nguồn; dùng tên hoặc logo của bên khác cần quyền riêng.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Mọi phụ thuộc (kể cả bắc cầu) có định danh SPDX
+- [ ] Không có giấy phép thuộc nhóm cấm, hoặc có ADR được ký
+- [ ] Scan giấy phép pass trong CI và chặn được vi phạm
+- [ ] SBOM sinh cho mỗi artifact phát hành
+- [ ] NOTICE/THIRD-PARTY cập nhật đúng bản phát hành
+- [ ] Font, icon, ảnh, dataset, mô hình AI đã được xét giấy phép
+- [ ] Đoạn mã sao chép từ ngoài có ghi nguồn và giấy phép tương thích
+- [ ] Nghĩa vụ cung cấp mã nguồn (nếu có) có quy trình thật
+
+## Ví dụ tốt
+PR thêm `pdf-lib` (MIT): SPDX ghi trong PR, scan pass, NOTICE cập nhật ở bản 1.4.0, SBOM CycloneDX đính kèm artifact. Một mô hình nhận dạng có điều khoản cấm dùng thương mại → từ chối, chọn mô hình Apache-2.0 thay thế, ghi trong ADR-0012.
+
+## Ví dụ xấu
+Thêm thư viện AGPL vào backend SaaS "vì nó tốt nhất"; copy 200 dòng từ một kho không ghi giấy phép; NOTICE viết một lần từ năm ngoái và đã thiếu 30 phụ thuộc; dùng font thương mại tải trên mạng cho ứng dụng bán ra.
 
 # Skill: privacy-compliance
+
+## Tiêu chuẩn tham chiếu
+- GDPR: Art. 5 (nguyên tắc), Art. 6 (cơ sở pháp lý), Art. 25 (privacy by design), Art. 32 (an toàn), Art. 33–34 (thông báo vi phạm), Art. 35 (DPIA)
+- Nghị định 13/2023/NĐ-CP về bảo vệ dữ liệu cá nhân (Việt Nam): hồ sơ đánh giá tác động, chuyển dữ liệu ra nước ngoài, quyền của chủ thể
+- ISO/IEC 27701 (hệ thống quản lý thông tin riêng tư)
+- Privacy by Design: mặc định là ít dữ liệu nhất, không phải nhiều nhất
 
 ## Quy trình (làm đúng thứ tự)
 Kiểm kê dữ liệu định thu thập → xác định cơ sở pháp lý và mục đích cho từng trường → tối thiểu hóa (bỏ trường không có mục đích rõ) → phân loại và ghi vào schema/data contract → đặt retention và job xóa → thiết kế quyền chủ thể trước khi thu thập → DPIA nếu thuộc diện bắt buộc → kiểm soát bên xử lý và chuyển dữ liệu xuyên biên giới → giám sát và diễn tập xử lý vi phạm.
 Câu hỏi đầu tiên luôn là "có cần trường này không", không phải "lưu ở đâu".
+
+## Quy tắc — dữ liệu và mục đích
+- Phân loại: công khai / nội bộ / cá nhân / cá nhân nhạy cảm (sức khỏe, sinh trắc, chính trị, tôn giáo, tình trạng pháp lý, trẻ em). Phân loại ghi trong schema và data contract, không chỉ trong tài liệu.
+- Mỗi trường dữ liệu cá nhân có: cơ sở pháp lý, mục đích cụ thể, thời hạn lưu, và ai được truy cập. Không đủ bốn thông tin này thì không được thu thập.
+- Không thu thập "để sau này có thể cần"; mở rộng mục đích sử dụng sau này cần cơ sở mới, không mặc nhiên kế thừa.
+- Đồng ý phải là hành động chủ động, tách bạch từng mục đích, rút lại dễ như khi cho, và được ghi nhận (thời điểm, phiên bản văn bản). Ô đánh dấu sẵn không phải là đồng ý.
+- Dữ liệu nhạy cảm và dữ liệu trẻ em có yêu cầu chặt hơn: hạn chế truy cập, mã hóa, và thường cần DPIA.
+
+## Quy tắc — kỹ thuật
+- Giảm thiểu ở biên: mask khi log, cắt bớt khi truyền, giả danh hóa khi đưa vào kho phân tích (khóa nối là hash có muối, muối quản lý như secret).
+- Mã hóa khi lưu và khi truyền; khóa quản lý riêng, có xoay vòng; quyền truy cập theo vai trò và ghi nhật ký truy cập dữ liệu nhạy cảm.
+- Retention có job xóa thật, chạy định kỳ, có kiểm chứng; xóa phải lan tới backup theo chính sách khai báo, tới log, và tới hệ thống hạ nguồn.
+- Quyền chủ thể (truy cập, sửa, xóa, hạn chế, phản đối, mang dữ liệu đi) phải có quy trình hoặc API trước khi thu thập, đáp ứng trong thời hạn luật định.
+- Môi trường thử nghiệm không dùng dữ liệu thật; nếu buộc phải dùng thì che dữ liệu và có văn bản cho phép.
+- Không gửi dữ liệu cá nhân cho nhà cung cấp AI/bên thứ ba nếu chưa có hợp đồng xử lý dữ liệu và đánh giá phù hợp (xem `ai-feature-engineering`).
+
+## Quy tắc — hồ sơ và sự cố
+- DPIA bắt buộc khi: xử lý dữ liệu nhạy cảm quy mô lớn, theo dõi hành vi có hệ thống, chấm điểm hoặc quyết định tự động ảnh hưởng tới người, dữ liệu trẻ em, hoặc kết hợp nhiều nguồn dữ liệu.
+- Chuyển dữ liệu ra nước ngoài: lập hồ sơ đánh giá tác động theo NĐ13 và cơ chế hợp pháp theo GDPR trước khi bật tính năng, không làm sau.
+- Bên xử lý (nhà cung cấp) phải có hợp đồng, danh sách bên xử lý phụ, và cam kết an toàn; danh sách này được rà soát định kỳ.
+- Nghi ngờ lộ dữ liệu cá nhân là sự cố có đồng hồ đếm ngược: xử lý theo `incident-management`, đánh giá nghĩa vụ thông báo cơ quan và chủ thể trong thời hạn luật định, và giữ nguyên bằng chứng.
+- Hồ sơ hoạt động xử lý dữ liệu được cập nhật khi thêm trường, thêm mục đích, hoặc thêm nhà cung cấp — không phải mỗi năm một lần.
 
 ## Checklist (supervisor và human gate dùng để chấm)
 - [ ] Mọi trường PII có phân loại trong schema và data contract
@@ -161,21 +236,14 @@ Câu hỏi đầu tiên luôn là "có cần trường này không", không ph�
 - [ ] Nhà cung cấp xử lý dữ liệu có hợp đồng và được rà soát
 - [ ] Có quy trình và diễn tập xử lý vi phạm dữ liệu
 
-# Skill: license-compliance
+## Ví dụ tốt
+Trường `phone`: loại cá nhân, cơ sở là thực hiện hợp đồng, mục đích gửi OTP, lưu 90 ngày sau khi đóng tài khoản, chỉ đội hỗ trợ đọc được; job xóa chạy hằng đêm và có báo cáo số bản ghi đã xóa; log hiển thị `+84***123`; kho phân tích chỉ nhận `phone_hash`. DPIA hoàn thành trước khi bật tính năng chấm điểm rủi ro khách hàng.
 
-## Quy trình (làm đúng thứ tự)
-Xác định hình thức phân phối (SaaS, cài tại chỗ, thư viện, ứng dụng di động) vì nghĩa vụ khác nhau → áp chính sách giấy phép → quét phụ thuộc mỗi build và sinh SBOM → xét từng giấy phép mới theo chính sách → xử lý nghĩa vụ (ghi công, kèm văn bản giấy phép, cung cấp mã nguồn nếu bắt buộc) → cập nhật NOTICE mỗi bản phát hành → lưu hồ sơ để kiểm toán.
-Hỏi "chúng ta phân phối cái gì cho ai" trước khi kết luận một giấy phép có dùng được không.
+## Ví dụ xấu
+Lưu số CCCD trong bảng `users` "để sau này cần"; đồng ý gộp một ô cho cả marketing lẫn dịch vụ; log ghi nguyên payload đăng ký gồm họ tên và số điện thoại; dữ liệu production copy sang môi trường dev cho tiện; yêu cầu xóa tài khoản chỉ đánh dấu `is_deleted = true` và dữ liệu vẫn còn nguyên ở kho phân tích.
 
-## Checklist (supervisor và human gate dùng để chấm)
-- [ ] Mọi phụ thuộc (kể cả bắc cầu) có định danh SPDX
-- [ ] Không có giấy phép thuộc nhóm cấm, hoặc có ADR được ký
-- [ ] Scan giấy phép pass trong CI và chặn được vi phạm
-- [ ] SBOM sinh cho mỗi artifact phát hành
-- [ ] NOTICE/THIRD-PARTY cập nhật đúng bản phát hành
-- [ ] Font, icon, ảnh, dataset, mô hình AI đã được xét giấy phép
-- [ ] Đoạn mã sao chép từ ngoài có ghi nguồn và giấy phép tương thích
-- [ ] Nghĩa vụ cung cấp mã nguồn (nếu có) có quy trình thật
+# Skills phụ (chỉ quy trình + checklist)
+Bản rút gọn: bạn vẫn phải đạt checklist bên dưới, nhưng KHÔNG sở hữu các lĩnh vực này — phần chuyên sâu thuộc agent chủ quản, cần chi tiết thì hỏi qua topic thay vì tự quyết.
 
 # Skill: ai-governance
 

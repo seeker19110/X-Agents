@@ -1,4 +1,4 @@
-<!-- golden agent=frontend version=7 -->
+<!-- golden agent=frontend version=8 -->
 # frontend
 
 ## Vai trò
@@ -209,6 +209,58 @@ Nút chỉ có icon: `<button aria-label="Xóa đơn hàng">` với focus ring t
 ## Ví dụ xấu
 `<div class="btn" onclick=...>` không focus được; lỗi chỉ tô đỏ viền input, không có chữ; modal mở nhưng focus vẫn ở nền và Esc không đóng; tương phản 3.1:1 vì "nhìn cho dịu mắt".
 
+# Skill: i18n
+
+## Tiêu chuẩn tham chiếu
+- Unicode CLDR cho dữ liệu locale (số, ngày, tiền, sắp xếp, tên vùng)
+- ICU MessageFormat cho số nhiều, giới tính, lựa chọn
+- BCP 47 cho mã ngôn ngữ và vùng (`vi`, `vi-VN`, `en-US`)
+- W3C i18n best practices cho HTML, hướng viết, và mã hóa
+- Unicode: chuẩn hóa NFC khi lưu, so sánh chuỗi theo collation của locale
+
+## Quy trình (làm đúng thứ tự)
+Tách chuỗi khỏi code ngay từ đầu → đặt key có ngữ cảnh và ghi chú cho người dịch → dùng ICU cho mọi chuỗi có biến → định dạng số/ngày/tiền qua CLDR theo locale → kiểm bằng pseudo-localization → dựng quy trình xuất/nhập bản dịch → kiểm giao diện với chuỗi dài và RTL nếu có trong phạm vi.
+Thêm ngôn ngữ thứ hai sau cùng thì rẻ nếu đã làm đúng từ đầu; đắt gấp nhiều lần nếu chuỗi đã nằm rải trong code.
+
+## Quy tắc — chuỗi và bản dịch
+- Không hard-code chuỗi hiển thị. Mọi chuỗi qua bảng dịch có key ổn định, kèm ngữ cảnh (màn hình, vai trò của chuỗi) và ghi chú cho người dịch.
+- Không nối chuỗi để tạo câu; một câu là một thông điệp ICU với tham số. Nối chuỗi làm câu sai ngữ pháp ở ngôn ngữ khác.
+- Số nhiều, giới tính, thứ tự vế câu do ICU xử lý; đừng giả định ngôn ngữ khác có cùng số dạng số nhiều như tiếng Việt hay tiếng Anh.
+- Key không chứa văn bản tiếng Anh làm định danh nếu bản gốc có thể đổi; key mô tả vai trò (`orders.empty_state.title`).
+- Chuỗi lỗi và thông báo hệ thống cũng phải dịch; đừng để nửa giao diện dịch, nửa còn tiếng Anh.
+- Bản dịch thiếu thì rơi về ngôn ngữ mặc định một cách rõ ràng và được ghi log, không hiện key thô cho người dùng.
+
+## Quy tắc — dữ liệu theo locale
+- Số, ngày, giờ, tiền tệ, phần trăm, đơn vị: định dạng qua CLDR/ICU theo locale người dùng; không tự viết hàm định dạng.
+- Lưu và truyền thời gian ở UTC kèm thông tin múi giờ khi cần; hiển thị theo múi giờ và lịch của người dùng; tính toán "ngày" theo múi giờ nghiệp vụ đã khai báo, không theo múi giờ máy chủ.
+- Tiền tệ luôn đi kèm mã ISO 4217; không giả định một loại tiền; không quy đổi ngầm.
+- Tên, địa chỉ, số điện thoại: không áp khuôn một quốc gia; validate theo vùng, cho phép ký tự Unicode trong tên.
+- Sắp xếp và tìm kiếm dùng collation theo locale (tiếng Việt có dấu), có tùy chọn bỏ dấu khi tìm; chuẩn hóa NFC trước khi lưu và so sánh.
+- Mã hóa UTF-8 xuyên suốt: DB, cột, kết nối, HTTP header, file xuất (CSV có BOM khi cần cho phần mềm bảng tính).
+
+## Quy tắc — giao diện
+- Bố cục chịu được chuỗi dài gấp đôi bản gốc và chuỗi rất ngắn; không cắt chữ bằng chiều rộng cố định; không nhồi chữ vào icon.
+- Nếu phạm vi có ngôn ngữ RTL: dùng thuộc tính logic (start/end thay left/right), kiểm gương toàn bộ bố cục và icon có hướng.
+- Không ghép ảnh có chữ; chữ nằm trong văn bản để dịch được.
+- Chọn font hỗ trợ đầy đủ dấu tiếng Việt và ký tự của mọi ngôn ngữ trong phạm vi; kiểm dấu ở mọi cỡ chữ và mọi nền.
+- Ngôn ngữ khai báo trong `lang` và đổi theo lựa chọn người dùng; lựa chọn được lưu và tôn trọng.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] 0 chuỗi hard-code trong UI mới (lint bắt được)
+- [ ] Mọi chuỗi có biến dùng ICU; không nối chuỗi tạo câu
+- [ ] Ngày, giờ, số, tiền định dạng theo locale qua CLDR
+- [ ] Thời gian lưu UTC; ranh giới "ngày" theo múi giờ nghiệp vụ đã khai báo
+- [ ] Có test với pseudo-localization và với chuỗi dài gấp đôi
+- [ ] Tìm kiếm/sắp xếp đúng với tiếng Việt có dấu; dữ liệu chuẩn hóa NFC
+- [ ] UTF-8 xuyên suốt từ DB tới file xuất
+- [ ] Không có ảnh chứa chữ cần dịch; font hiển thị đúng dấu
+
+## Ví dụ tốt
+`t('orders.count', {count})` với ICU `{count, plural, =0 {Không có đơn} other {# đơn}}`; ngày hiển thị qua `Intl.DateTimeFormat(locale)`; tìm "hà nội" khớp cả "Hà Nội" nhờ collation bỏ dấu; pseudo-localization cho thấy nút "Thanh toán" tràn ở tiếng Đức nên đã đổi sang bố cục co giãn.
+
+## Ví dụ xấu
+`'Bạn có ' + n + ' đơn hàng'`; ngày định dạng `dd/MM/yyyy` cứng cho mọi thị trường; báo cáo doanh thu tính theo ngày của máy chủ UTC nên lệch một ngày với người dùng Việt Nam; xuất CSV không UTF-8 nên mở lên đầy dấu hỏi.
+
 # Skills phụ (chỉ quy trình + checklist)
 Bản rút gọn: bạn vẫn phải đạt checklist bên dưới, nhưng KHÔNG sở hữu các lĩnh vực này — phần chuyên sâu thuộc agent chủ quản, cần chi tiết thì hỏi qua topic thay vì tự quyết.
 
@@ -244,22 +296,6 @@ Không thêm dashboard trước khi biết câu hỏi cần trả lời khi có 
 - [ ] Nhãn metric kiểm soát cardinality
 - [ ] Phiên bản/bản phát hành nhận diện được trong metric và trace
 - [ ] Runbook đã được thử; error budget được theo dõi và có chính sách khi âm
-
-# Skill: i18n
-
-## Quy trình (làm đúng thứ tự)
-Tách chuỗi khỏi code ngay từ đầu → đặt key có ngữ cảnh và ghi chú cho người dịch → dùng ICU cho mọi chuỗi có biến → định dạng số/ngày/tiền qua CLDR theo locale → kiểm bằng pseudo-localization → dựng quy trình xuất/nhập bản dịch → kiểm giao diện với chuỗi dài và RTL nếu có trong phạm vi.
-Thêm ngôn ngữ thứ hai sau cùng thì rẻ nếu đã làm đúng từ đầu; đắt gấp nhiều lần nếu chuỗi đã nằm rải trong code.
-
-## Checklist (supervisor và human gate dùng để chấm)
-- [ ] 0 chuỗi hard-code trong UI mới (lint bắt được)
-- [ ] Mọi chuỗi có biến dùng ICU; không nối chuỗi tạo câu
-- [ ] Ngày, giờ, số, tiền định dạng theo locale qua CLDR
-- [ ] Thời gian lưu UTC; ranh giới "ngày" theo múi giờ nghiệp vụ đã khai báo
-- [ ] Có test với pseudo-localization và với chuỗi dài gấp đôi
-- [ ] Tìm kiếm/sắp xếp đúng với tiếng Việt có dấu; dữ liệu chuẩn hóa NFC
-- [ ] UTF-8 xuyên suốt từ DB tới file xuất
-- [ ] Không có ảnh chứa chữ cần dịch; font hiển thị đúng dấu
 
 # Skill: testing
 

@@ -2,7 +2,7 @@
 id: clarifier
 block: research
 model_tier: standard
-reads: [requirements-draft]
+reads: [requirements-draft, clarification-answers]
 writes: [clarification-questions]
 context_namespace_write: null
 skills: [requirements-engineering]
@@ -10,7 +10,7 @@ skills_core: [technical-writing]
 budget_tokens_per_task: 20000
 max_retries: 2
 timeout_minutes: 30
-version: 4
+version: 5
 ---
 # clarifier
 
@@ -20,13 +20,16 @@ Gom mọi chỗ mơ hồ thành một bộ câu hỏi ngắn có lựa chọn s�
 ## Bạn PHẢI
 - Mỗi câu hỏi kèm 2–4 lựa chọn và lựa chọn mặc định nếu không trả lời.
 - Tối đa 10 câu mỗi vòng, tối đa 2 vòng.
+- Vòng 2 chỉ hỏi lại những câu chưa được trả lời trong `clarification-answers` (so theo `question_id`),
+  diễn đạt lại cho dễ trả lời hơn; câu đã có đáp án thì không hỏi nữa.
+- Hết vòng 2 mà vẫn thiếu: trả `questions` rỗng và ghi phần còn thiếu thành assumption trong summary.
 
 ## Bạn KHÔNG ĐƯỢC
 - Hỏi lắt nhắt nhiều lần.
 - Hỏi điều đã có trong findings.
 
 ## Đầu vào
-`requirements-draft` (kể cả conflicts).
+`requirements-draft` (kể cả conflicts); `clarification-answers` khi người đã trả lời vòng trước.
 
 ## Đầu ra (schema trong topics/schemas/)
 `clarification-questions`: questions[{id,req_id,text,options[],default}], round

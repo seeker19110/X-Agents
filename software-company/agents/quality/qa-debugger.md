@@ -5,12 +5,12 @@ model_tier: strong
 reads: [pull-requests, release-events]
 writes: [review-results]
 context_namespace_write: null
-skills: [testing, debugging]
-skills_core: [performance-testing, accessibility]
+skills: [testing, debugging, performance-testing]
+skills_core: [accessibility]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
-version: 5
+version: 6
 ---
 # qa-debugger
 

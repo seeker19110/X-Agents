@@ -351,3 +351,18 @@ def test_overdue_review_is_reassigned_once():
     orch.tick(now=later)
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert orch.lead.state["T1"] == "merged" and acts.count("review.reassign") == 1 and acts.count("llm_error") == 1
+
+
+def test_incomplete_answers_go_back_to_clarifier_then_spec_writer():
+    """Người trả lời thiếu → clarifier hỏi lại đúng phần thiếu (vòng 2); trả đủ → spec-writer đi tiếp."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
+    orch.run()
+    assert _topics(bus)[-1] == "clarification-questions"
+    _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": []})
+    orch.run()
+    assert _topics(bus)[-1] == "clarification-questions", "chưa trả lời câu nào thì hỏi lại, chưa viết spec"
+    _pub(bus, "clarification-answers", "P1", "human:po",
+         {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
+    orch.run()
+    assert "approved-specs" in _topics(bus), "trả lời đủ thì spec-writer chạy"

@@ -53,6 +53,7 @@ ACTOR = "orchestrator"
 ENGINEERING = ("backend", "frontend", "mobile", "database", "platform", "data")
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
+MAX_CLARIFY_ROUNDS = 2  # khớp `clarification-questions.round` (maximum 2) và prompt clarifier
 REVIEW_AGENT = {"reviewer": "reviewer", "qa": "qa-debugger", "security": "security-engineer"}
 KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
              "change-requests": "change_id", "release-candidates": "release_id", "release-events": "release_id",
@@ -103,6 +104,19 @@ def _deployed(env_name: str) -> When:
     return lambda e, _o: e.payload.get("env") == env_name and e.payload.get("status") == "deployed"
 
 
+def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
+    """Người đã trả lời hết câu hỏi của vòng gần nhất (hoặc clarifier đã hết vòng) → đi thẳng spec-writer."""
+    q = o.latest("clarification-questions", e.payload.get("project_id") or e.key)
+    if q is None: return True
+    asked = {str(x.get("id")) for x in q.payload.get("questions", [])}
+    answered = {str(a.get("question_id")) for a in e.payload.get("answers", [])}
+    return not (asked - answered) or int(q.payload.get("round", 1)) >= MAX_CLARIFY_ROUNDS
+
+
+def _answers_incomplete(e: Envelope, o: Orchestrator) -> bool:
+    return not _answers_complete(e, o)
+
+
 def _cr_accepted_needs_research(e: Envelope, _o: Orchestrator) -> bool:
     return e.payload.get("decision") == "accepted" and bool(e.payload.get("affects_requirements"))
 
@@ -131,7 +145,9 @@ ROUTES: tuple[Route, ...] = (
     Route("research-findings", "synthesizer", "requirements-draft", _from("researcher")),
     Route("requirements-draft", "risk", "requirements-draft", _from("synthesizer")),
     Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
-    Route("clarification-answers", "spec-writer", "approved-specs", enrich=_with_draft),
+    # người trả lời thiếu và chưa hết vòng → clarifier hỏi lại đúng phần thiếu; đủ (hoặc hết vòng) → spec-writer
+    Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
+    Route("clarification-answers", "spec-writer", "approved-specs", _answers_complete, enrich=_with_draft),
     # kỹ thuật + chất lượng
     Route("tasks", "$assignee", "pull-requests", tools="rw"),
     Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),

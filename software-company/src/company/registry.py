@@ -72,7 +72,9 @@ def load_skill(name: str, core_only: bool = False) -> str:
         raise ValueError(f"skill {name}: không tìm thấy mục lõi {CORE_SECTIONS}")
     return "\n\n".join(keep)
 
-def load_agents() -> dict[str, AgentSpec]:
+def load_agents(check_owners: bool = True) -> dict[str, AgentSpec]:
+    """Nạp mọi agent. `check_owners`: mỗi skill trên đĩa phải có ít nhất một agent chủ quản (nạp đầy đủ) — ADR-0008.
+    Skill chỉ xuất hiện ở `skills_core` khắp nơi thì phần Quy tắc/Ví dụ của nó không bao giờ đến tay model nào."""
     out: dict[str, AgentSpec] = {}
     for p in sorted(AGENTS_DIR.rglob("*.md")):
         fm, body = _split(p.read_text(encoding="utf-8"))
@@ -83,4 +85,10 @@ def load_agents() -> dict[str, AgentSpec]:
         spec.skill_text = "\n\n".join(load_skill(s) for s in spec.skills)
         spec.skill_core_text = "\n\n".join(load_skill(s, core_only=True) for s in spec.skills_core)
         out[spec.id] = spec
+    if check_owners:
+        owned = {sk for spec in out.values() for sk in spec.skills}
+        orphan = sorted({p.stem for p in SKILLS_DIR.glob("*.md")} - owned)
+        if orphan:
+            raise ValueError("skill không có agent chủ quản (chỉ được nạp rút gọn nên phần chuyên sâu bị bỏ): "
+                             + ", ".join(orphan))
     return out
