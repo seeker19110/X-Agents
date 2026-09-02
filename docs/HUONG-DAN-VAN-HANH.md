@@ -74,6 +74,18 @@ PYTHONPATH=src uv run python -m gateway start     # daemon tại http://127.0.0.
 PYTHONPATH=src uv run python -m gateway status    # từng tài khoản: sẵn sàng / cooldown / hạn token
 ```
 
+Nhiều tài khoản Claude trên cùng máy: mỗi tài khoản một thư mục cấu hình riêng, đăng nhập từng cái rồi khai mỗi cái là một
+backend `claude-code` với `config_dir` (xem 3.2). Hạn mức của các gói cộng dồn; router tự chuyển khi một gói cạn.
+
+```bash
+CLAUDE_CONFIG_DIR=~/.claude-acc2 claude login        # trình duyệt mở, đăng nhập tài khoản thứ hai
+CLAUDE_CONFIG_DIR=~/.claude-acc2 claude auth status  # loggedIn: true
+CLAUDE_CONFIG_DIR=~/.claude-acc3 claude login        # ... tài khoản thứ ba
+```
+
+Gói ChatGPT (Codex CLI) chưa có adapter; khi cần thì cài `codex`, đăng nhập từng tài khoản với `CODEX_HOME` riêng, và thêm
+provider `codex` theo cùng khuôn `claude-code` (xem mục 9).
+
 ### 3.2 Viết `llm.yaml`
 
 Mẫu đầy đủ có chú thích: `software-company/llm.example.yaml`, `Studio-creators/llm.example.yaml`. Cấu hình khuyến nghị
@@ -85,6 +97,10 @@ max_tokens: 16000
 backends:
   - name: claude-sub           # Claude Pro/Max qua CLI `claude -p`; KHÔNG hỗ trợ tool-use
     provider: claude-code
+    models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+  - name: claude-sub-2         # tài khoản Claude thứ hai, đăng nhập bằng CLAUDE_CONFIG_DIR=~/.claude-acc2 claude login
+    provider: claude-code
+    config_dir: ~/.claude-acc2
     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
   - name: antigravity          # gateway xoay vòng tài khoản Google; có tool-use
     provider: openai

@@ -9,7 +9,8 @@ Quyết định kiến trúc: `software-company/docs/adr/0019-subscription-routi
 
 | Backend | Cách nối | Model có | Đặc điểm |
 |---|---|---|---|
-| **Claude Pro/Max** | provider `claude-code`: CLI `claude -p` đã `claude login` trên máy | Opus / Sonnet / Haiku theo gói | Suy luận và code tốt nhất; hạn mức theo cửa sổ 5 giờ + tuần; **không tool-use** cho lớp ngoài (khối kỹ thuật cần tool phải đi backend khác) |
+| **Claude Pro/Max** | provider `claude-code`: CLI `claude -p` đã `claude login` trên máy | Opus / Sonnet / Haiku theo gói | Suy luận và code tốt nhất; hạn mức theo cửa sổ 5 giờ + tuần; **không tool-use** cho lớp ngoài (khối kỹ thuật cần tool phải đi backend khác). Nhiều tài khoản Claude trên một máy: mỗi tài khoản một backend với `config_dir` riêng (`CLAUDE_CONFIG_DIR`) |
+| **ChatGPT Plus/Pro** | *(chưa có adapter)* Codex CLI `codex exec` đã `codex login`; mỗi tài khoản một `CODEX_HOME` | GPT theo gói | Cần cài Codex CLI rồi viết provider `codex` theo cùng khuôn `claude-code` |
 | **Google Antigravity** | provider `openai` → `../gateway` (`http://127.0.0.1:8100/v1`), xoay vòng nhiều tài khoản Google | `gemini-3.7-flash` (+`-medium`/`-low`), `gemini-3.1-pro`, `claude-sonnet-4-6` | Miễn phí theo quota từng tài khoản; gateway tự đổi tài khoản, hết cả pool thì trả 429 kèm "thử lại sau Ns"; có tool-use |
 | **Model local** | provider `openai` → Ollama / vLLM / LM Studio | qwen3, llama, gemma... | Không bao giờ hết quota; chất lượng thấp hơn — lưới đỡ cuối cho việc nhẹ |
 | (API trả phí) | provider `anthropic` / `openai` với key | tuỳ | Vẫn hỗ trợ, nhưng không phải mặc định của hub |
