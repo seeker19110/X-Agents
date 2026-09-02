@@ -50,3 +50,7 @@ Studio-creators/studio.sqlite*
 Studio-creators/output/
 Studio-creators/llm.yaml
 Studio-creators/media.yaml
+
+# gateway: token OAuth và cấu hình cá nhân — không bao giờ commit
+gateway/.venv/
+gateway/llm.yaml

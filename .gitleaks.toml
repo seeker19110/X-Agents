@@ -1,0 +1,12 @@
+# Cấu hình gitleaks cho job `audit` trong CI. Kế thừa toàn bộ rule mặc định.
+[extend]
+useDefault = true
+
+[allowlist]
+description = """gateway/src/gateway/auth.py chứa OAuth client id/secret CÔNG KHAI của Google Antigravity IDE
+(client desktop: giá trị nằm sẵn trong IDE và trong repo gốc donghanhcungban/Plugin-For-Hermes, không thể giữ bí mật).
+Chỉ bỏ qua đúng hằng số đó; token người dùng vẫn nằm ngoài git (~/.x-agents/auth/)."""
+regexTarget = "line"
+regexes = [
+  '''_PUBLIC_CLIENT_SECRET_SUFFIX = "[A-Za-z0-9_-]{28}"''',
+]
