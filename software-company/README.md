@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0009)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0010)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        38 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -39,8 +39,9 @@ gates/         checklist human gate
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
 topics/        18 JSON Schema topic + bảng owner namespace
 src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard,
-               llm (ModelClient + adapter), runner, orchestrator (vòng lặp tự động), workspace, evals, graph
-evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca
+               llm (ModelClient + adapter, tool-use), runner (vòng lặp tool), orchestrator (vòng lặp tự động),
+               workspace (worktree), tools (tool có ranh giới tin cậy), evals (ghi/phát lại), graph
+evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
 tests/         pytest (bus, registry↔events nhất quán, delivery+gates, supervisor, orchestrator, golden 20 agent)
 ```
 
@@ -61,13 +62,17 @@ PYTHONPATH=src uv run python -m company.runner reviewer review-results input.jso
 # Chạy tự động cả công ty (ADR-0007): orchestrator nối topic → agent → topic, dừng ở human gate / supervisor / khách
 PYTHONPATH=src uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
 PYTHONPATH=src uv run python -m company.orchestrator run --watch 5     # hoặc: make run  (một lượt: bỏ --watch)
+PYTHONPATH=src uv run python -m company.orchestrator run --repo ../khach --base main   # làm THẬT: khối kỹ thuật sửa code
+                                                                        # trong worktree ticket/<id>, PR mang lint/test thật
 PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release
 PYTHONPATH=src uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 PYTHONPATH=src uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
 PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard
 PYTHONPATH=src uv run python -m company.orchestrator report              # estimate vs actual, hành động supervisor
 PYTHONPATH=src uv run python -m company.gate_cli list          # hoặc: make gate
-PYTHONPATH=src uv run python -m company.evals reviewer         # hoặc: make eval AGENT=reviewer
+PYTHONPATH=src uv run python -m company.evals reviewer         # hoặc: make eval AGENT=reviewer (model thật)
+PYTHONPATH=src uv run python -m company.evals reviewer --record   # make eval-record AGENT=reviewer — sau khi đổi prompt/skill
+PYTHONPATH=src uv run python -m company.evals all --replay        # make eval-replay — như CI, không gọi model
 UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golden — sau khi cố ý sửa agents/ hoặc skills/
 ```
 
@@ -75,6 +80,8 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - Ticket phải có `estimate_tokens` trước dispatch; `budget_tokens ≥ estimate × 1.5` (code từ chối nếu không).
 - Ticket chạm auth/payment/pii/crypto/upload/admin/external-api gắn `risk_tags` → cần thêm review của security-engineer.
 - Sửa prompt/skill → tăng `version`, đi qua PR, có eval (ADR-0004). Golden test (`tests/golden/`) đỏ nếu prompt đổi mà version không tăng; cập nhật bằng `make golden`.
+  Rồi `make eval-record AGENT=<id>` bằng model thật và commit `evals/recordings/<id>.json`; CI phát lại và đỏ nếu bản ghi lệch prompt (ADR-0010).
+- PR của khối kỹ thuật chỉ có bằng chứng khi chạy với `--repo`: `local_checks.verified_by=workspace` do code điền từ lint/test thật; không có repo thì `{"unverified": true}`.
 - Mỗi PR có rollback plan, observability, license của dependency mới (`templates/pull_request.md`).
 
 ## Hiện trạng (2026-09-02)
@@ -101,23 +108,35 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   ticket blocked/escalate → gate `escalation` (approve = mở lại với hint, reject = đóng); review quá hạn giao lại một lần;
   sau nghiệm thu ghi estimate vs actual vào `knowledge`; đánh dấu đã xử lý trong `audit-log` nên mở lại SQLite là chạy tiếp;
   `--watch` nhận quyết định gate từ tiến trình khác; CLI `run | publish | decide-change | status | report`.
-- Test: pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, eval offline; ruff sạch.
+- **Tool có ranh giới tin cậy + vòng lặp tool-use** (`tools.py`, ADR-0010): khối kỹ thuật sửa code thật trong worktree
+  `ticket/<id>` (`--repo`); bảng tool tên cố định, không shell, allowlist lệnh, đường dẫn khoá trong worktree, lọc secret;
+  tool-use trung lập provider (Anthropic, OpenAI-compatible, Fake). Vòng lặp dừng khi hết lượt hoặc vượt ngân sách token.
+- **Bằng chứng PR do code điền**: sau vòng tool, runner chạy lint/test thật, commit, ghi đè `branch`/`pr_ref`/
+  `local_checks` (`verified_by: workspace`)/`impact.files`; worktree không đổi → PR bị từ chối. Reviewer/security đọc
+  `diff` thật; QA có tool chỉ đọc để tự chạy test. Không có `--repo` → `local_checks = {"unverified": true}` + audit.
+- **Eval ghi / phát lại** (`--record` / `--replay`): CI job `eval-replay` chạy từ `evals/recordings/`, đỏ khi bản ghi
+  lệch prompt — cổng "đổi prompt phải chạy eval" của ADR-0004 được máy cưỡng chế.
+- **Vòng học đóng**: `Supervisor.calibration()` (median actual/estimate theo assignee, đọc từ bus) đi vào đầu vào của
+  delivery-lead mỗi lần lập kế hoạch; `sprint_report` có `rework_rate`, `review_catch_rate`, `prs_unverified`;
+  kế hoạch có `depends_on` vòng bị từ chối trước gate.
+- Test: pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+  vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả); ruff sạch.
 
 ### Chưa có
-- **Tool cho agent ngoài lint/test**: chưa có tool đọc/sửa file, tìm kiếm code, gọi API cho khối kỹ thuật; agent mới
-  sinh JSON, chưa tự viết code vào worktree.
-- **Blackboard chỉ có tham chiếu**: `context_writes` ghi `content_ref` + `summary`; nội dung artifact (PRD, C4, OpenAPI)
-  chưa được agent viết ra file thật vì chưa có tool file.
-- **CI/CD, deploy thật** cho release-engineer/platform; **Kafka/Redis** thay SQLite khi chạy nhiều máy (orchestrator
-  hiện tuần tự một tiến trình).
-- **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn (hiện chỉ ghi `audit-log` gate.remind/overdue).
-- **Eval phủ đủ 20 agent** (≥ 2 ca mỗi agent, test khoá bất biến này); còn thiếu: chạy eval trong CI khi `version` tăng — hiện phải chạy tay và cần model thật.
-- **Giao diện UAT cho khách**: sau production orchestrator chỉ ghi `uat.pending`; nghiệm thu qua `orchestrator publish acceptance-results`.
+- **Tích hợp branch ticket**: release-engineer vẫn mô phỏng deploy; branch `ticket/<id>` chưa được merge vào nhánh
+  tích hợp nên ticket phụ thuộc rẽ từ `base`, chưa thấy code của ticket trước. **CI/CD, deploy thật**; **Kafka/Redis**
+  thay SQLite khi chạy nhiều máy (orchestrator hiện tuần tự một tiến trình).
+- **Tool cho khối nghiên cứu** đọc codebase khách (dùng lại `WorkspaceTools` chỉ đọc, chưa nối route); blackboard
+  vẫn chỉ tham chiếu (`content_ref`), artifact PRD/C4/OpenAPI chưa được viết ra file.
+- **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env.
+- **Bản ghi eval**: cơ chế có, nhưng `evals/recordings/` còn trống cho tới khi chạy `make eval-record` với model thật.
+- **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn; **giao diện UAT cho khách**.
 
 ### Bước tiếp theo
-1. Tool thực thi cho khối kỹ thuật (đọc/sửa file trong worktree, chạy lệnh có allowlist), nối vào runner qua tool-use.
-2. Chạy eval trong CI khi prompt/skill đổi version (cần model rẻ cho tier standard, hoặc bản ghi lại phản hồi).
-3. Adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`); giao diện web cho human gate.
+1. Chạy `make eval-record AGENT=<id>` cho 20 agent với model thật, commit bản ghi để CI eval có răng.
+2. Merge branch ticket vào nhánh tích hợp khi approved (release-engineer thật), ticket sau rẽ từ nhánh tích hợp.
+3. Nối `WorkspaceTools` chỉ đọc cho researcher (codebase-analysis); sandbox container cho `run`.
+4. Adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`); giao diện web cho human gate.
 4. Chạy nhiều orchestrator song song (khóa theo key) khi có bus Redis/Kafka.
 
 ## Thứ tự triển khai khuyến nghị

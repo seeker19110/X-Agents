@@ -26,6 +26,9 @@ make test
 
 Với thay đổi tài liệu thuần, đọc lại diff và `git diff --check` là đủ.
 
+Sửa `agents/` hoặc `skills/` → tăng `version`, `make golden`, rồi `make eval-record AGENT=<id>` bằng model thật và
+commit `evals/recordings/<id>.json`; CI phát lại bản ghi và đỏ nếu bản ghi lệch prompt (ADR-0010).
+
 ## Quy tắc an toàn
 
 - Không commit secret, khóa API, `llm.yaml` hay dữ liệu thật.

@@ -79,8 +79,15 @@ account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao 
 
 - **Đo token**: mỗi agent phát `audit-log.tokens`; supervisor cộng dồn theo ticket
   (`Supervisor.budgets`). Không cần thư viện usage bên ngoài.
-- **Workspace**: mỗi engineering agent làm trên branch `ticket/<id>` trong worktree riêng;
-  reviewer chỉ đọc diff của branch đó.
+- **Workspace**: mỗi engineering agent làm trên branch `ticket/<id>` trong worktree riêng
+  (`<repo>/.worktrees/<id>`); reviewer/security đọc diff thật của branch đó, QA có tool chỉ đọc để tự chạy test.
+- **Tool có ranh giới tin cậy** (ADR-0010, `tools.py`): bảng tool tên cố định (`read_file`, `write_file`,
+  `list_files`, `search`, `run`), không có shell; `run` chỉ nhận tên trong allowlist (`lint`, `test`, `git_status`,
+  `git_diff`); đường dẫn khoá trong worktree, không chạm `.git/` hay file bí mật; env lệnh con lọc mọi khoá API.
+  Vòng lặp model ↔ tool nằm trong runner (`generate(tools=…)`), dừng khi hết lượt hoặc vượt ngân sách token.
+- **Bằng chứng PR do code điền**: sau vòng tool, runner chạy lint/test thật, commit và ghi đè `branch`, `pr_ref`,
+  `local_checks` (`verified_by: workspace`), `impact.files` — model không tự khai được. Không có `--repo` thì
+  `local_checks` thành `{"unverified": true}`.
 - **Guardrail review**: `DeliveryLead.max_retries` (mặc định 3) và `Supervisor.max_retries`
   dùng cùng một giá trị.
 - **Bus**: `InMemoryBus` cho test/demo; đổi sang Redis Streams/Kafka bằng cách giữ nguyên

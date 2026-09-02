@@ -7,12 +7,20 @@ Tiêu chí (`expect`):
   min_len:  {field: n}             list/chuỗi có độ dài ≥ n
   max_len:  {field: n}             list/chuỗi có độ dài ≤ n (n=0 nghĩa là phải rỗng)
   one_of:   {field: [v1, v2]}      giá trị nằm trong tập
+
+Ghi / phát lại (ADR-0010): `--record` chạy model thật và lưu phản hồi vào `evals/recordings/<agent>.json`, khoá bằng
+hash(system prompt + user message). `--replay` chạy lại từ bản ghi, không cần model — CI dùng chế độ này. Sửa prompt
+hay skill → hash đổi → bản ghi lệch → CI đỏ cho tới khi ghi lại bằng model thật: đó chính là cổng "đổi prompt phải chạy
+eval" của ADR-0004, được máy cưỡng chế.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sys
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +29,103 @@ import yaml
 from .blackboard import Blackboard
 from .bus import InMemoryBus
 from .events import Envelope
-from .llm import LLMError, ModelClient
+from .llm import Completion, LLMError, ModelClient
+from .registry import load_agents
 from .runner import AgentRunner, RunnerError
+from .tools import ToolSpec
 
 EVALS_DIR = Path(__file__).resolve().parents[2] / "evals"
+RECORDINGS_DIR = EVALS_DIR / "recordings"
+
+
+def prompt_key(system: str, user: str) -> str:
+    return hashlib.sha256(json.dumps([system, user], ensure_ascii=False).encode("utf-8")).hexdigest()[:24]
+
+
+def recording_path(agent_id: str) -> Path:
+    return RECORDINGS_DIR / f"{agent_id}.json"
+
+
+def load_recording(agent_id: str) -> dict[str, Any] | None:
+    p = recording_path(agent_id)
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+
+
+class RecordingClient:
+    """Bọc client thật; mỗi phản hồi được lưu theo khoá prompt để phát lại sau."""
+
+    def __init__(self, inner: ModelClient, agent_id: str):
+        self.inner, self.agent_id = inner, agent_id
+        self.entries: dict[str, dict[str, Any]] = {}
+
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
+                 messages: list[dict[str, Any]] | None = None) -> Completion:
+        c = self.inner.complete(system=system, user=user, schema=schema, model_tier=model_tier, cache_key=cache_key,
+                                tools=tools, messages=messages)
+        self.entries[prompt_key(system, user)] = {"text": c.text, "model": c.model, "input_tokens": c.input_tokens,
+                                                  "output_tokens": c.output_tokens}
+        return c
+
+    def save(self) -> Path:
+        spec = load_agents()[self.agent_id]
+        data = {"agent": self.agent_id, "prompt_version": spec.version, "recorded_at": datetime.now(UTC).isoformat(),
+                "models": sorted({e["model"] for e in self.entries.values()}), "cases": self.entries}
+        RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        p = recording_path(self.agent_id)
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n")
+        return p
+
+
+class ReplayClient:
+    """Trả phản hồi đã ghi; prompt không có trong bản ghi (prompt/skill/ca eval đã đổi) → LLMError nói rõ phải ghi lại."""
+
+    def __init__(self, agent_id: str):
+        self.agent_id = agent_id
+        self.data = load_recording(agent_id)
+        if self.data is None:
+            raise LLMError(f"chưa có bản ghi eval cho {agent_id}: chạy `make eval-record AGENT={agent_id}` với model thật")
+
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
+                 messages: list[dict[str, Any]] | None = None) -> Completion:
+        e = self.data["cases"].get(prompt_key(system, user))
+        if e is None:
+            raise LLMError(f"bản ghi eval của {self.agent_id} lệch prompt hiện tại (prompt/skill/ca eval đã đổi): "
+                           f"chạy `make eval-record AGENT={self.agent_id}` với model thật rồi commit bản ghi")
+        return Completion(text=e["text"], input_tokens=int(e.get("input_tokens", 0)),
+                          output_tokens=int(e.get("output_tokens", 0)), model=f"replay:{e.get('model', '?')}")
+
+
+def stale_recordings(agent_ids: list[str] | None = None) -> dict[str, list[str]]:
+    """Bản ghi hiện có mà thiếu khoá cho ca eval hiện tại → {agent: [tên ca]} (rỗng = mọi bản ghi còn khớp).
+    Test dùng hàm này để CI đỏ ngay khi prompt đổi mà chưa chạy lại eval bằng model thật."""
+    agents = load_agents(); out: dict[str, list[str]] = {}
+    for aid in agent_ids or sorted(agents):
+        rec = load_recording(aid)
+        if rec is None: continue
+        missing = []
+        for case in load_cases(aid):
+            bus = InMemoryBus(); bb = Blackboard(bus)
+            for ctx in case.get("context", []):
+                bb.write(ctx["actor"], ctx["namespace"], ctx["content_ref"], ctx.get("summary", ""))
+            probe = _Probe(); AgentRunner(bus, probe, agents, blackboard=bb)
+            try: _run_case(aid, case, probe, agents, bb, bus)
+            except (RunnerError, LLMError): pass
+            if probe.key is not None and probe.key not in rec["cases"]: missing.append(case["name"])
+        if missing: out[aid] = missing
+    return out
+
+
+class _Probe:
+    """Client giả chỉ để lấy khoá prompt của một ca, không trả lời."""
+    key: str | None = None
+
+    def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
+                 cache_key: str | None = None, tools: list[ToolSpec] | None = None,
+                 messages: list[dict[str, Any]] | None = None) -> Completion:
+        self.key = prompt_key(system, user)
+        raise LLMError("probe")
 
 
 @dataclass
@@ -65,17 +166,21 @@ def load_cases(agent_id: str) -> list[dict[str, Any]]:
     return (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("cases", []) if p.exists() else []
 
 
-def run_eval(agent_id: str, client: ModelClient) -> list[CaseResult]:
+def _run_case(agent_id: str, case: dict[str, Any], client: ModelClient, agents: dict | None, bb: Blackboard, bus: InMemoryBus):
+    runner = AgentRunner(bus, client, agents, blackboard=bb)
+    i = case["input"]
+    inp = Envelope(topic=i["topic"], key=i["key"], actor=i.get("actor", "human"), payload=i["payload"])
+    return runner.run(agent_id, inp, case["topic_out"])
+
+
+def run_eval(agent_id: str, client: ModelClient, agents: dict | None = None) -> list[CaseResult]:
     results = []
     for case in load_cases(agent_id):
         bus = InMemoryBus(); bb = Blackboard(bus)
         for ctx in case.get("context", []):
             bb.write(ctx["actor"], ctx["namespace"], ctx["content_ref"], ctx.get("summary", ""))
-        runner = AgentRunner(bus, client, blackboard=bb)
-        i = case["input"]
-        inp = Envelope(topic=i["topic"], key=i["key"], actor=i.get("actor", "human"), payload=i["payload"])
         try:
-            r = runner.run(agent_id, inp, case["topic_out"])
+            r = _run_case(agent_id, case, client, agents, bb, bus)
         except (RunnerError, LLMError) as e:
             results.append(CaseResult(case["name"], False, [str(e)])); continue
         fails = check(r.output.payload, case.get("expect", {}))
@@ -83,17 +188,39 @@ def run_eval(agent_id: str, client: ModelClient) -> list[CaseResult]:
     return results
 
 
+def _print(agent_id: str, res: list[CaseResult]) -> bool:
+    for r in res:
+        print(f"{'PASS' if r.passed else 'FAIL'} {agent_id}/{r.name} ({r.tokens} tok)" + "".join(f"\n   - {f}" for f in r.failures))
+    print(f"{agent_id}: {sum(r.passed for r in res)}/{len(res)} pass")
+    return all(r.passed for r in res)
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Chạy eval prompt của một agent với model đã cấu hình")
-    ap.add_argument("agent")
+    ap = argparse.ArgumentParser(description="Chạy eval prompt của agent: model thật, ghi lại (--record) hoặc phát lại (--replay)")
+    ap.add_argument("agent", help="id agent, hoặc `all`")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--record", action="store_true", help="chạy model thật và lưu evals/recordings/<agent>.json")
+    mode.add_argument("--replay", action="store_true", help="chạy từ bản ghi, không gọi model (CI)")
+    ap.add_argument("--strict", action="store_true", help="với --replay: agent chưa có bản ghi cũng tính là fail")
     ns = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
-    from .llm import make_client
-    res = run_eval(ns.agent, make_client())
-    for r in res:
-        print(f"{'PASS' if r.passed else 'FAIL'} {r.name} ({r.tokens} tok)" + "".join(f"\n   - {f}" for f in r.failures))
-    print(f"{sum(r.passed for r in res)}/{len(res)} pass")
-    return 0 if all(r.passed for r in res) else 1
+    agents = load_agents()
+    ids = sorted(agents) if ns.agent == "all" else [ns.agent]
+    ok = True
+    for aid in ids:
+        if not load_cases(aid): continue
+        if ns.replay:
+            try: client: ModelClient = ReplayClient(aid)
+            except LLMError as e:
+                print(f"SKIP {aid}: {e}"); ok = ok and not ns.strict; continue
+        else:
+            from .llm import make_client
+            client = RecordingClient(make_client(), aid) if ns.record else make_client()
+        res = run_eval(aid, client, agents)
+        ok = _print(aid, res) and ok
+        if ns.record and isinstance(client, RecordingClient):
+            print(f"đã ghi {client.save()}")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":  # pragma: no cover

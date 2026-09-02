@@ -10,6 +10,11 @@ Phần xác định (DeliveryLead, Supervisor, PersistentGate) subscribe bus nh�
 - Supervisor: ticket bị pause/budget_cut/escalate thì mọi event của ticket đó bị hoãn đến khi `resume`.
 - Khách: `clarification-answers`, `acceptance-results`, quyết định `change-requests` do người publish (CLI).
 
+Khối kỹ thuật (ADR-0010): có `repo` thì mỗi ticket chạy trong worktree `ticket/<id>` với tool đọc/ghi/lint/test; PR mang
+bằng chứng do code điền (`local_checks.verified_by=workspace`, diff thật cho reviewer/QA/security; QA còn có tool chỉ đọc
+để tự chạy test). Không có `repo` thì PR vẫn đi tiếp nhưng `local_checks` bị thay bằng `{"unverified": true}` — không
+bao giờ để lời tự khai của model đóng vai bằng chứng.
+
 Agent ghi blackboard qua `context_writes` trong đầu ra (runner kiểm namespace). Mọi event đã xử lý được đánh dấu
 bằng `audit-log` (actor=orchestrator, action=orchestrated) nên mở lại bus SQLite là tiếp tục đúng chỗ; trạng thái
 delivery-lead/supervisor/gate dựng lại từ replay. Không retry lời gọi model: lỗi ghi audit rồi đi tiếp.
@@ -37,6 +42,8 @@ from .llm import LLMError, ModelClient
 from .registry import AgentSpec, load_agents
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
 from .supervisor import Supervisor
+from .tools import WorkspaceTools
+from .workspace import TicketWorkspace, WorkspaceError
 
 ACTOR = "orchestrator"
 ENGINEERING = ("backend", "frontend", "mobile", "database", "platform", "data")
@@ -65,6 +72,7 @@ class Route:
     target_env: str | None = None  # route release: đầu ra phải có env đúng như yêu cầu
     many: bool = False  # 0..n payload một lượt (agent được quyền "không có gì để phát")
     enrich: Enrich | None = None  # thêm dữ liệu vào payload đầu vào (vd. bản draft mới nhất cho spec-writer)
+    tools: str | None = None  # "rw": sửa code trong worktree (khối kỹ thuật); "ro": chỉ đọc + chạy test (QA). Cần repo.
 
     def agents(self) -> tuple[str, ...]:
         return ENGINEERING if self.agent == "$assignee" else (self.agent,)
@@ -104,6 +112,14 @@ def _with_draft(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     return {"requirements_draft": d.payload} if d else {}
 
 
+def _with_diff(e: Envelope, o: Orchestrator) -> dict[str, Any]:
+    """Reviewer/QA/security đọc diff thật của branch ticket (khi có repo) thay vì tin `summary` của PR."""
+    ws = o.workspace(e.payload.get("ticket_id") or e.key)
+    if ws is None or not ws.path.exists(): return {}
+    try: return {"diff": ws.diff(), "changed_files": ws.changed_files()}
+    except WorkspaceError as ex: return {"diff_error": str(ex)[:300]}
+
+
 ROUTES: tuple[Route, ...] = (
     # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
     Route("research-requests", "intake", "research-findings"),
@@ -113,10 +129,10 @@ ROUTES: tuple[Route, ...] = (
     Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
     Route("clarification-answers", "spec-writer", "approved-specs", enrich=_with_draft),
     # kỹ thuật + chất lượng
-    Route("tasks", "$assignee", "pull-requests"),
-    Route("pull-requests", "reviewer", "review-results"),
-    Route("pull-requests", "qa-debugger", "review-results"),
-    Route("pull-requests", "security-engineer", "review-results", _needs_security),
+    Route("tasks", "$assignee", "pull-requests", tools="rw"),
+    Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),
+    Route("pull-requests", "qa-debugger", "review-results", enrich=_with_diff, tools="ro"),
+    Route("pull-requests", "security-engineer", "review-results", _needs_security, enrich=_with_diff),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     Route("release-candidates", "release-engineer", "release-events", target_env="staging"),
     Route("release-candidates", "security-engineer", "review-results", _release_needs_security),
@@ -167,8 +183,11 @@ class StepResult:
 
 class Orchestrator:
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
-                 max_retries: int = 3):
+                 max_retries: int = 3, repo: Path | None = None, base: str = "HEAD", max_turns: int = 25):
         self.bus = bus
+        self.repo, self.base, self.max_turns = (Path(repo) if repo else None), base, max_turns
+        if self.repo is not None and not (self.repo / ".git").exists():
+            raise ValueError(f"repo không phải git repository: {self.repo}")
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
@@ -222,6 +241,9 @@ class Orchestrator:
 
     def latest(self, topic: str, key: str) -> Envelope | None:
         return next(reversed(list(self.bus.replay(topic=topic, key=key))), None)
+
+    def workspace(self, ticket_id: str) -> TicketWorkspace | None:
+        return TicketWorkspace(self.repo, ticket_id, base=self.base) if self.repo is not None else None
 
     # ---------- vòng lặp ----------
 
@@ -296,6 +318,8 @@ class Orchestrator:
             inp = env.model_copy(update={"payload": {**env.payload, **r.enrich(env, self)}}) if r.enrich else env
             if r.target_env:
                 out = self._release(agent, env, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
+            elif r.tools == "rw":
+                out = self._engineer(agent, inp, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             elif r.topic_out == CONTEXT_ONLY:
                 g = self.runner.run_context(agent, inp)
                 res.actions.append(f"{agent}→blackboard:{','.join(w['namespace'] for w in g.context_writes) or '-'}")
@@ -307,7 +331,10 @@ class Orchestrator:
                 if not g.payloads: self._audit("produced:nothing", {"agent": agent, "topic": r.topic_out}, actor=agent, tokens=g.tokens)
                 res.actions.append(f"{agent}→{r.topic_out}×{len(g.payloads)}")
             else:
-                g = self.runner.generate(agent, inp, r.topic_out)
+                tools = None
+                if r.tools == "ro" and (ws := self.workspace(inp.payload.get("ticket_id") or inp.key)) and ws.path.exists():
+                    tools = WorkspaceTools(ws, allow_write=False).toolbox()
+                g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns)
                 out = self.runner.publish(agent, env, r.topic_out, g.payloads[0], key=key_for(r.topic_out, g.payloads[0], env.key),
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
@@ -317,6 +344,23 @@ class Orchestrator:
         except Exception as e:  # handler xác định (delivery-lead) từ chối chuyển trạng thái: event đã ghi đĩa
             self._audit("handler_error", {"agent": agent, "error": str(e)[:300]}, ticket_id=env.payload.get("ticket_id"))
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}"); self.stats["errors"] += 1
+
+    def _engineer(self, agent: str, task: Envelope, r: Route) -> Envelope:
+        """Ticket → PR. Có repo: agent làm trong worktree, bằng chứng do code điền. Không repo: PR đi tiếp nhưng
+        `local_checks` của model bị thay bằng `{"unverified": true}` và ghi audit — không có bằng chứng giả."""
+        tid = task.payload.get("ticket_id") or task.key
+        budget = self.lead.tickets[tid].budget_tokens if tid in self.lead.tickets else task.payload.get("budget_tokens")
+        ws = self.workspace(tid)
+        if ws is not None:
+            g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns)
+            p = g.payloads[0]
+        else:
+            g = self.runner.generate(agent, task, r.topic_out)
+            p = {**g.payloads[0], "local_checks": {"unverified": True}}
+            self._audit("local_checks.unverified", {"ticket_id": tid, "agent": agent, "claimed": g.payloads[0].get("local_checks")},
+                        actor=agent, ticket_id=tid)
+        return self.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
+                                   tokens=g.tokens, model=g.model, context_writes=g.context_writes)
 
     def _release(self, agent: str, rc: Envelope, r: Route) -> Envelope:
         """release-engineer nhận RC kèm `target_env`; đầu ra phải đúng env và release_id, nếu không thì coi là invalid."""
@@ -347,8 +391,10 @@ class Orchestrator:
                 return self._defer(env, res, f"gate:{sid}")
             if not self._threat_model(env, sid, res):
                 self._mark(env, res); return res
+        cal = self.supervisor.calibration()  # vòng học: bài học estimate-vs-actual quay lại người ước lượng
+        inp = env.model_copy(update={"payload": {**env.payload, "estimate_calibration": cal}}) if cal else env
         try:
-            g = self.runner.generate("delivery-lead", env, "tasks", many=True)
+            g = self.runner.generate("delivery-lead", inp, "tasks", many=True)
         except (RunnerError, LLMError) as e:
             res.actions.append(f"error:delivery-lead:{str(e)[:120]}"); self.stats["errors"] += 1
             self._mark(env, res); return res
@@ -404,6 +450,8 @@ class Orchestrator:
             if not t.acceptance: problems.append(f"{t.ticket_id} thiếu acceptance")
             unknown = [d for d in t.depends_on if d not in known]
             if unknown or t.ticket_id in t.depends_on: problems.append(f"{t.ticket_id} depends_on sai {unknown or 'chính nó'}")
+        cyc = _cycle({t.ticket_id: [d for d in t.depends_on if d in ids] for t in tickets})
+        if cyc: problems.append("depends_on vòng: " + " → ".join(cyc))
         return problems
 
     def _dispatch_plan(self, plan_id: str, replaying: bool = False) -> list[str]:
@@ -521,6 +569,20 @@ class Orchestrator:
                 "stats": dict(self.stats), "events": len(self.bus)}
 
 
+def _cycle(graph: dict[str, list[str]]) -> list[str]:
+    """Một chu trình trong đồ thị phụ thuộc (rỗng nếu không có) — bắt ở bước lập kế hoạch, trước gate, không để tới dispatch."""
+    state: dict[str, int] = {}; stack: list[str] = []
+    def visit(n: str) -> list[str]:
+        state[n] = 1; stack.append(n)
+        for m in graph.get(n, []):
+            if state.get(m) == 1: return [*stack[stack.index(m):], m]
+            if m not in state and (c := visit(m)): return c
+        stack.pop(); state[n] = 2; return []
+    for n in graph:
+        if n not in state and (c := visit(n)): return c
+    return []
+
+
 def _evidence(a: dict[str, Any]) -> dict[str, Any]:
     try:
         d = json.loads(a.get("evidence") or "{}")
@@ -541,6 +603,8 @@ def main(argv: list[str] | None = None) -> int:
        python -m company.orchestrator status | report [--db]"""
     ap = argparse.ArgumentParser(description="Orchestrator: vòng lặp tự động topic → agent → topic")
     ap.add_argument("--db", type=Path, default=Path("company.sqlite"))
+    ap.add_argument("--repo", type=Path, help="git repo của khách: khối kỹ thuật sửa code thật trong worktree ticket/<id>")
+    ap.add_argument("--base", default="HEAD", help="nhánh/commit gốc cho worktree (mặc định HEAD của repo)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--watch", type=float,
         help="chạy liên tục, mỗi N giây nạp event mới (gate CLI, publish) rồi xử lý")
@@ -571,7 +635,7 @@ def main(argv: list[str] | None = None) -> int:
         env = bus.publish(Envelope(topic="change-requests", key=ns.change_id, actor=ns.by, payload=payload))
         print(f"{ns.change_id}: {ns.decision} by {ns.by} event={env.event_id}"); return 0
     from .llm import make_client
-    orch = Orchestrator(bus, make_client())
+    orch = Orchestrator(bus, make_client(), repo=ns.repo, base=ns.base)
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "report":

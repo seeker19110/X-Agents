@@ -3,6 +3,11 @@
 
 Mọi lỗi (JSON hỏng, schema sai, model từ chối) đều được ghi audit-log rồi ném ra; runner không tự retry —
 retry là việc của delivery-lead (hint) và supervisor (hạn mức).
+
+Tool-use (ADR-0010): `generate(..., tools=ToolBox)` chạy vòng lặp model ↔ tool cho tới khi model trả lời cuối, hết lượt
+hoặc vượt ngân sách token; vết gọi tool ghi audit `tools_used`. `generate_in_workspace` dành cho khối kỹ thuật: agent sửa
+code trong worktree, còn `branch`/`pr_ref`/`local_checks`/`impact.files` của PR do CODE điền từ git + lint/test thật —
+model không được tự khai.
 """
 from __future__ import annotations
 
@@ -16,8 +21,10 @@ from typing import Any
 from .blackboard import Blackboard
 from .bus import SCHEMA_DIR, BusError, InMemoryBus
 from .events import AuditLog, Envelope
-from .llm import LLMError, ModelClient
+from .llm import Completion, LLMError, ModelClient
 from .registry import AgentSpec, load_agents
+from .tools import ToolBox, ToolError, WorkspaceTools, dump_calls, tools_prompt
+from .workspace import TicketWorkspace, WorkspaceError
 
 INJECTION_NEEDLES = ("ignore previous instructions", "ignore all prior", "you are now", "system prompt:",
                      "bỏ qua hướng dẫn trước")
@@ -97,6 +104,8 @@ class Generated:
     model: str
     context_writes: list[dict[str, Any]] = field(default_factory=list)
     cache_hit_ratio: float = 0.0  # phần input lấy từ prompt cache, để đo hiệu quả cache trong audit-log
+    turns: int = 1                # số lượt gọi model (1 = không dùng tool)
+    tool_calls: dict[str, int] = field(default_factory=dict)  # tên tool → số lần gọi
 
 
 class AgentRunner:
@@ -112,10 +121,53 @@ class AgentRunner:
                      project_id=inp.payload.get("project_id"))
         self.bus.publish(Envelope(topic="audit-log", key=spec.id, actor=spec.id, payload=a.model_dump()))
 
-    def generate(self, agent_id: str, inp: Envelope, topic_out: str, many: bool = False) -> Generated:
+    def _complete(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any],
+                  messages: list[dict[str, Any]] | None = None, tools: ToolBox | None = None) -> Completion:
+        try:
+            return self.client.complete(system=spec.system_prompt(), user=user, schema=schema, model_tier=spec.model_tier,
+                                        cache_key=spec.id, tools=tools.specs() if tools else None, messages=messages)
+        except LLMError as e:
+            self._audit(spec, "llm_error", inp, evidence=str(e)[:500])
+            raise
+
+    def _tool_loop(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
+                   max_turns: int, budget: int | None) -> tuple[Completion, int, int]:
+        """model ↔ tool cho tới khi model trả lời cuối (không gọi tool). Trả về (completion cuối, tổng token, số lượt).
+        Hết lượt hoặc model trả rỗng → ép chốt một lượt không tool. Vượt ngân sách → audit rồi ném RunnerError."""
+        can_write = any(t.name == "write_file" for t in tools.specs())
+        msgs: list[dict[str, Any]] = [{"role": "user", "content": user + "\n\n" + tools_prompt(tools, can_write)}]
+        total, turn, c = 0, 0, None
+        while turn < max_turns:
+            turn += 1
+            c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools); total += c.tokens
+            if budget is not None and total > budget:
+                self._audit(spec, "budget_exhausted", inp, tokens=total,
+                            evidence=f"{total} > {budget} token sau {turn} lượt; tool={dump_calls(tools)}")
+                raise RunnerError(f"{spec.id}: vượt ngân sách {budget} token sau {turn} lượt tool")
+            if not c.tool_calls: break
+            msgs.append({"role": "assistant", "content": c.text,
+                         "tool_calls": [{"id": t.id, "name": t.name, "args": t.args} for t in c.tool_calls]})
+            for t in c.tool_calls:
+                try: out = tools.call(t)
+                except ToolError as e: out = f"lỗi: {e}"
+                msgs.append({"role": "tool", "tool_call_id": t.id, "content": out})
+        if c is None or c.tool_calls or not c.text.strip():  # hết lượt hoặc lượt cuối rỗng: chốt bằng một lượt không tool
+            if c is not None and c.tool_calls:
+                msgs.append({"role": "assistant", "content": c.text,
+                             "tool_calls": [{"id": t.id, "name": t.name, "args": t.args} for t in c.tool_calls]})
+                for t in c.tool_calls:
+                    msgs.append({"role": "tool", "tool_call_id": t.id, "content": "lỗi: hết lượt tool, không chạy"})
+            msgs.append({"role": "user", "content": "Hết lượt tool. Trả về DUY NHẤT JSON cuối cùng ngay; phần chưa xong nêu rõ trong summary."})
+            c = self._complete(spec, inp, user, schema, messages=msgs); total += c.tokens; turn += 1
+        self._audit(spec, "tools_used", inp, evidence=f"turns={turn} calls={dump_calls(tools)}")
+        return c, total, turn
+
+    def generate(self, agent_id: str, inp: Envelope, topic_out: str, many: bool = False, tools: ToolBox | None = None,
+                 max_turns: int = 25, budget: int | None = None) -> Generated:
         """Kiểm quyền reads/writes, chặn injection, gọi model, kiểm JSON theo schema topic. Không publish.
         `many=True`: yêu cầu {"items": [...]} — nhiều payload một lượt (vd. delivery-lead chia ticket).
-        Agent sở hữu namespace trả thêm `context_writes` (ghi blackboard ở bước publish)."""
+        Agent sở hữu namespace trả thêm `context_writes` (ghi blackboard ở bước publish).
+        `tools`: chạy vòng lặp tool-use (tối đa `max_turns` lượt, tổng token ≤ `budget` nếu có)."""
         spec = self.agents[agent_id]
         context_only = topic_out == CONTEXT_ONLY
         if context_only:
@@ -133,13 +185,11 @@ class AgentRunner:
         schema = None if context_only else payload_schema(topic_out)
         context = {ns: sc.model_dump() for ns, sc in self.blackboard.snapshot().items()} if self.blackboard else {}
         user = build_user_message(spec, inp, topic_out, context, many=many)
-        try:
-            c = self.client.complete(system=spec.system_prompt(), user=user,
-                                     schema=output_schema(schema, spec.namespaces_write, many),
-                                     model_tier=spec.model_tier, cache_key=spec.id)
-        except LLMError as e:
-            self._audit(spec, "llm_error", inp, evidence=str(e)[:500])
-            raise
+        out_schema = output_schema(schema, spec.namespaces_write, many)
+        if tools is None:
+            c = self._complete(spec, inp, user, out_schema); total, turns = c.tokens, 1
+        else:
+            c, total, turns = self._tool_loop(spec, inp, user, out_schema, tools, max_turns, budget)
         try:
             data = c.json()
             if not isinstance(data, dict): raise BusError("đầu ra phải là JSON object")
@@ -157,10 +207,40 @@ class AgentRunner:
             for p in payloads:
                 self.bus.validate(topic_out, p)
         except (LLMError, BusError, KeyError, TypeError) as e:
-            self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=c.tokens)
+            self._audit(spec, "invalid_output", inp, evidence=str(e)[:500], tokens=total)
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
-        return Generated(payloads=payloads, tokens=c.tokens, model=c.model, context_writes=writes,
-                         cache_hit_ratio=c.cache_hit_ratio)
+        return Generated(payloads=payloads, tokens=total, model=c.model, context_writes=writes,
+                         cache_hit_ratio=c.cache_hit_ratio, turns=turns,
+                         tool_calls=tools.summary() if tools else {})
+
+    def generate_in_workspace(self, agent_id: str, inp: Envelope, ws: TicketWorkspace, budget: int | None = None,
+                              max_turns: int = 25) -> Generated:
+        """Khối kỹ thuật: agent sửa code trong worktree của ticket bằng tool, rồi CODE điền bằng chứng vào PR.
+
+        Sau vòng tool: worktree không đổi → invalid_output (không có PR rỗng); có đổi → chạy lint/test thật, commit,
+        và ghi đè `branch`, `pr_ref` (commit), `local_checks` (kèm `verified_by: workspace`), `impact.files` —
+        model có khai gì ở các trường này cũng bị thay. Reviewer/QA đọc diff thật, không đọc lời kể."""
+        spec = self.agents[agent_id]
+        ws.create()
+        tools = WorkspaceTools(ws, allow_write=True).toolbox()
+        g = self.generate(agent_id, inp, "pull-requests", tools=tools, max_turns=max_turns, budget=budget)
+        if not ws.has_changes():
+            self._audit(spec, "invalid_output", inp, evidence="worktree không có thay đổi sau vòng tool", tokens=g.tokens)
+            raise RunnerError(f"{agent_id}: không sửa file nào trong worktree {ws.branch}")
+        checks = ws.run_checks()
+        title = str(inp.payload.get("title") or inp.key)[:72]
+        try:
+            sha = ws.commit_all(f"feat({inp.key}): {title}")
+        except WorkspaceError as e:  # đã commit hết trong vòng tool? (không có tool commit — nhưng phòng hờ)
+            raise RunnerError(f"{agent_id}: commit thất bại: {e}") from e
+        p = dict(g.payloads[0])
+        p.update(ticket_id=inp.payload.get("ticket_id") or inp.key, branch=ws.branch, pr_ref=sha,
+                 local_checks={**checks, "verified_by": "workspace"},
+                 impact={**(p.get("impact") or {}), "files": ws.changed_files()})
+        g.payloads = [p]
+        self._audit(spec, "local_checks", inp, evidence=json.dumps(
+            {"lint": checks["lint"], "tests": checks["tests"], "files": len(p["impact"]["files"]), "commit": sha}, ensure_ascii=False))
+        return g
 
     def write_context(self, agent_id: str, inp: Envelope, writes: list[dict[str, Any]]) -> list[str]:
         """Ghi các artifact lên blackboard dưới danh nghĩa agent; namespace không thuộc agent bị bỏ và ghi audit.
