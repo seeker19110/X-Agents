@@ -242,6 +242,103 @@ def test_schema_applies_and_email_unique():
         raise AssertionError("email phải unique")
 '''
 
+WEB_INTEGRATED = '''\
+"""Router tối giản: đường dẫn → (status, html). Mọi trang bọc qua layout chung; có POST cho form đăng ký."""
+from __future__ import annotations
+
+from collections.abc import Callable
+from pathlib import Path
+
+from dhcb.db import connect
+from dhcb.layout import page
+from dhcb.signup import register, validate
+
+Handler = Callable[[], str]
+_ROUTES: dict[str, Handler] = {}
+_STATIC = Path(__file__).resolve().parent.parent / "static"
+_DB = connect()  # demo: SQLite trong bộ nhớ, một tiến trình
+
+
+def route(path: str) -> Callable[[Handler], Handler]:
+    def deco(fn: Handler) -> Handler:
+        _ROUTES[path] = fn
+        return fn
+    return deco
+
+
+def handle(path: str) -> tuple[int, str]:
+    if path.startswith("/static/"):
+        f = _STATIC / path.removeprefix("/static/")
+        if f.is_file() and f.resolve().is_relative_to(_STATIC):
+            return 200, f.read_text(encoding="utf-8")
+        return 404, page("404", "<h1>Không tìm thấy tệp</h1>")
+    fn = _ROUTES.get(path)
+    if fn is None:
+        return 404, page("404", "<h1>404 - Không tìm thấy trang</h1>")
+    return 200, fn()
+
+
+def handle_post(path: str, form: dict[str, str]) -> tuple[int, str]:
+    if path != "/dang-ky":
+        return 405, page("405", "<h1>Phương thức không hỗ trợ</h1>")
+    errors = validate(form)
+    if errors:
+        items = "".join(f"<li>{e}</li>" for e in errors)
+        return 422, page("Đăng ký", f'<h1>Đăng ký chưa hợp lệ</h1><ul class="errors">{items}</ul>{_FORM}')
+    v = register(form)
+    _DB.execute("INSERT OR IGNORE INTO volunteers(name,email,phone,consent_at) VALUES (?,?,?,datetime('now'))",
+                (v.name, v.email, v.phone))
+    return 201, page("Cảm ơn", f"<h1>Cảm ơn {v.name}!</h1><p>Chúng tôi sẽ liên hệ qua email.</p>")
+
+
+_FORM = (
+    '<form method="post" action="/dang-ky">'
+    '<label>Họ tên <input name="name" required></label>'
+    '<label>Email <input name="email" type="email" required></label>'
+    '<label>Điện thoại <input name="phone" pattern="0[0-9]{9}" required></label>'
+    '<label><input type="checkbox" name="consent" value="yes" required> Tôi đồng ý cho xử lý dữ liệu cá nhân</label>'
+    '<button type="submit">Đăng ký</button></form>'
+)
+
+
+@route("/")
+def home() -> str:
+    return page("Trang chủ", "<h1>Đồng Hành Cùng Bạn</h1><p>Kết nối tình nguyện viên với người cần đồng hành.</p>")
+
+
+@route("/gioi-thieu")
+def about() -> str:
+    return page("Giới thiệu", "<h1>Giới thiệu</h1><p>Sứ mệnh: lắng nghe, đồng hành, không phán xét.</p>")
+
+
+@route("/dang-ky")
+def signup_form() -> str:
+    return page("Đăng ký tình nguyện", f"<h1>Đăng ký tình nguyện viên</h1>{_FORM}")
+'''
+TEST_INTEGRATION = '''\
+from dhcb.layout import NAV
+from dhcb.web import handle, handle_post
+
+OK = {"name": "Nguyễn An", "email": "an@example.com", "phone": "0912345678", "consent": "yes"}
+
+
+def test_every_nav_link_resolves_and_uses_layout():
+    for href, _ in NAV:
+        status, html = handle(href)
+        assert status == 200 and 'lang="vi"' in html and 'aria-label="Chính"' in html, href
+
+
+def test_static_css_served_and_no_traversal():
+    assert handle("/static/site.css")[0] == 200
+    assert handle("/static/../pyproject.toml")[0] == 404
+
+
+def test_post_signup_ok_then_rejects_missing_consent():
+    assert handle_post("/dang-ky", OK)[0] == 201
+    status, html = handle_post("/dang-ky", {**OK, "consent": "no"})
+    assert status == 422 and "consent" in html
+'''
+
 TICKETS: list[dict[str, Any]] = [
     {"ticket_id": "DHCB-1", "assignee": "backend", "requirement_id": "REQ-1", "title": "Router + trang chủ + giới thiệu",
      "acceptance": ["Given người dùng mở / Then thấy tiêu đề Đồng Hành Cùng Bạn", "Given đường dẫn lạ Then 404"],
@@ -255,6 +352,11 @@ TICKETS: list[dict[str, Any]] = [
     {"ticket_id": "DHCB-4", "assignee": "database", "requirement_id": "REQ-3", "title": "Lược đồ volunteers + migration",
      "acceptance": ["Given schema Then email unique, có consent_at"], "depends_on": ["DHCB-3"], "risk_tags": ["pii"],
      "estimate_tokens": 6_000, "budget_tokens": 15_000, "priority": 2},
+    # Ticket tích hợp — mở sau lần mô phỏng đầu (báo cáo S1–S3): nav 404, trang không dùng layout, static 404.
+    {"ticket_id": "DHCB-5", "assignee": "backend", "requirement_id": "REQ-2", "title": "Tích hợp: /dang-ky GET+POST, bọc layout mọi trang, static",
+     "acceptance": ["Given mọi link trong nav Then 200 và có lang=vi", "Given POST /dang-ky hợp lệ Then 201 và lưu DB",
+                    "Given POST thiếu consent Then 422", "Given /static/site.css Then 200"],
+     "depends_on": ["DHCB-2", "DHCB-3", "DHCB-4"], "risk_tags": ["pii"], "estimate_tokens": 10_000, "budget_tokens": 25_000, "priority": 1},
 ]
 for t in TICKETS: t.update(project_id=PID, retry=0)
 
@@ -263,6 +365,7 @@ FILES_BY_TICKET: dict[str, dict[str, str]] = {
     "DHCB-2": {"dhcb/layout.py": LAYOUT, "static/site.css": CSS, "tests/test_layout.py": TEST_LAYOUT},
     "DHCB-3": {"dhcb/signup.py": SIGNUP_BUGGY, "tests/test_signup.py": TEST_SIGNUP},
     "DHCB-4": {"dhcb/schema.sql": SCHEMA_SQL, "dhcb/db.py": DB_PY, "tests/test_db.py": TEST_DB},
+    "DHCB-5": {"dhcb/web.py": WEB_INTEGRATED, "tests/test_integration.py": TEST_INTEGRATION},
 }
 
 
@@ -367,7 +470,7 @@ def handler(system: str, user: str) -> dict[str, Any]:
         diff = p.get("diff", "")
         if a == "reviewer" and "diff" in p:
             findings = []
-            if "signup" in diff and "consent" not in diff.split("+++ b/dhcb/signup.py")[-1].split("+++")[0]:
+            if "+++ b/dhcb/signup.py" in diff and "consent" not in diff.split("+++ b/dhcb/signup.py", 1)[1].split("\ndiff --git", 1)[0]:
                 findings.append({"level": "block", "text": "REQ-3: register() không kiểm tra consent — vi phạm T-03", "location": "dhcb/signup.py"})
             if lc.get("tests") is False:
                 findings.append({"level": "block", "text": "Test local fail (local_checks.tests=false)", "location": "PR"})
@@ -471,6 +574,29 @@ class Sim:
         return json.dumps(p, ensure_ascii=False)[:100]
 
 
+def product_smoke(root: Path) -> list[str]:
+    """Bấm thử bản demo như khách: mọi link nav, static, POST form. Chạy trong tiến trình con để không dính import."""
+    code = textwrap.dedent('''
+        import json
+        from dhcb.layout import NAV
+        import dhcb.web as w
+        out = {href: w.handle(href)[0] for href, _ in NAV}
+        out["/static/site.css"] = w.handle("/static/site.css")[0]
+        out["layout@/"] = "lang=\\"vi\\"" in w.handle("/")[1]
+        post = getattr(w, "handle_post", None)
+        ok = {"name": "A", "email": "a@x.vn", "phone": "0912345678", "consent": "yes"}
+        out["POST /dang-ky ok"] = post("/dang-ky", ok)[0] if post else "không có handle_post"
+        out["POST /dang-ky no consent"] = post("/dang-ky", {**ok, "consent": "no"})[0] if post else "không có handle_post"
+        print(json.dumps(out, ensure_ascii=False))
+    ''')
+    r = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, encoding="utf-8")
+    if r.returncode != 0: return ["lỗi: " + r.stderr.strip()[-500:]]
+    res = json.loads(r.stdout)
+    want = {"/": 200, "/gioi-thieu": 200, "/dang-ky": 200, "/static/site.css": 200, "layout@/": True,
+            "POST /dang-ky ok": 201, "POST /dang-ky no consent": 422}
+    return [f"{'OK ' if res.get(k) == v else 'LỖI'} {k}: {res.get(k)} (mong {v})" for k, v in want.items()]
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(); ap.add_argument("--out", type=Path, default=Path("sim-out"))
@@ -527,6 +653,8 @@ def main(argv: list[str] | None = None) -> int:
     s.say("repo khách branches:\n" + git("branch", "--list"))
     s.say("integration log:\n" + git("log", "--oneline", "--graph", "company/integration"))
     s.say("main của khách: " + git("log", "--oneline", "main"))
+    s.say("\n== Kiểm tra sản phẩm demo trên company/integration (ngoài quy trình, như khách bấm thử) ==")
+    for line in product_smoke(s.repo / ".worktrees" / "_integration"): s.say("  " + line)
     audits = [e.payload for e in s.bus.replay(topic="audit-log")]
     odd = [a for a in audits if a["action"] in {"invalid_output", "budget_exhausted", "context_no_content", "local_checks.unverified",
                                                 "injection_sanitized", "context_trimmed", "agent_error", "error"}

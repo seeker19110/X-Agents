@@ -266,9 +266,12 @@ def test_engineering_failure_in_workspace_is_audited_and_loop_continues(tmp_path
     repo = _init_repo(tmp_path / "repo")
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=lambda m, t: []), repo=repo, base="main")
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
-    assert not list(bus.replay(topic="pull-requests")) and orch.lead.state["T1"] == "dispatched"
-    assert any(a.startswith("error:backend") for r in [] for a in r) or orch.stats["errors"] >= 1
+    # Agent không sửa file → invalid_output → ticket KHÔNG treo dispatched: retry kèm hint tới khi blocked → gate escalation
+    assert not list(bus.replay(topic="pull-requests")) and orch.lead.state["T1"] == "blocked" and orch.stats["errors"] >= 3
     assert any(e.payload["action"] == "invalid_output" and "không có thay đổi" in e.payload["evidence"] for e in bus.replay(topic="audit-log"))
+    tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T1"]
+    assert [t["retry"] for t in tasks] == [0, 1, 2] and all("lần trước lỗi" in t["hint"] for t in tasks[1:])
+    assert orch.gate.pending["T1"].kind == "escalation"
 
 
 # ---------- lập kế hoạch: chu trình, hiệu chỉnh ước lượng ----------
@@ -494,3 +497,15 @@ def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path
     assert {e.payload["source"] for e in reviews_t1} == {"reviewer", "qa"} and len(reviews_t1) == 2, "chỉ review PR xanh"
     assert orch.supervisor.sprint_report()["tickets"]["T1"]["retry"] == 1
     assert orch.supervisor.budgets["T1"].used >= 2 * 1300, "token của lần đỏ vẫn được tính vào ticket"
+
+
+def test_retry_that_rewrites_identical_files_is_no_change_not_commit_error(tmp_path):
+    """F12: sau PR bị từ chối (commit đã nằm trên branch), lần làm lại ghi y hệt → 'không sửa file', không phải lỗi git."""
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main")
+    same = [_tc("write_file", path="mod.py", content="def add(a, b):\n    return a - b\n")]
+    client = FakeClient(handler=lambda s, u: _pr(_inp(u)), tool_handler=lambda m, t: same if _first_turn(m) else [])
+    bus = InMemoryBus(); runner = AgentRunner(bus, client)
+    assert runner.generate_in_workspace("backend", _task_env(), ws).payloads[0]["local_checks"]["tests"] is False
+    with pytest.raises(RunnerError, match="không sửa file"):
+        runner.generate_in_workspace("backend", _task_env(retry=1, hint="test đỏ"), ws)
+    assert ws.has_changes() and not ws.dirty()

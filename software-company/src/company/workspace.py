@@ -126,6 +126,11 @@ class TicketWorkspace:
     def has_changes(self) -> bool:
         return bool(_git(self.path, "status", "--porcelain")) or bool(self.changed_files())
 
+    def dirty(self) -> bool:
+        """Có sửa đổi chưa commit (so với HEAD của branch ticket). Khác `has_changes` (so với điểm rẽ nhánh): lần làm lại
+        sau một PR bị từ chối vẫn thấy commit cũ trên branch, nên chỉ `dirty()` mới nói agent lần này có làm gì không."""
+        return bool(_git(self.path, "status", "--porcelain"))
+
     def diff(self, max_chars: int = 20_000) -> str:
         """Diff so với điểm rẽ nhánh (gồm cả phần chưa commit) để reviewer/QA đọc; cắt để không phá ngữ cảnh."""
         d = _git(self.path, "diff", self.base_sha())

@@ -410,6 +410,7 @@ def test_human_comment_and_takeover_with_repo(tmp_path, capsys, monkeypatch):
     repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c.sqlite"
     bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=lambda m, t: [])  # agent kỹ thuật không sửa gì → invalid
     orch = Orchestrator(bus, client, repo=repo, base="main")
+    orch._rework_after_error = lambda *a, **k: None  # type: ignore[method-assign]  # tách khỏi auto-retry: test này về người can thiệp
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     assert orch.lead.state["T1"] == "dispatched" and orch.stats["errors"] >= 1
     with pytest.raises(ValueError, match="human"): orch.comment("T1", "backend", "x")

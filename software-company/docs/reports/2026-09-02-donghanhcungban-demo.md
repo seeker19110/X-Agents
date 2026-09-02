@@ -70,4 +70,25 @@ Kết luận cho khách: bản demo "xanh" theo bằng chứng máy nhưng chưa
    `.git/info/exclude` của repo khách (F8); `version` release-events lấy từ RC, model khai khác bị ghi đè + audit (F9).
    Phát hiện thêm khi viết test: ticket bị `budget_cut` không có gate (treo im lặng) và gate escalation chỉ mở khi còn
    event kế tiếp — cả hai đã sửa cùng lượt.
-4. Với khách: mở ticket tích hợp DHCB-5 (route `/dang-ky`, bọc layout, static) rồi mới UAT bản demo.
+4. ~~Với khách: mở ticket tích hợp DHCB-5~~ — đã mở và chạy lại (mục 5).
+
+## 5. Lần chạy 2: thêm ticket tích hợp DHCB-5
+
+DHCB-5 (backend, `depends_on` DHCB-2/3/4, `pii`): route `/dang-ky` GET+POST, bọc mọi trang qua `page()`, phục vụ `/static/`,
+test tích hợp theo nav. Kịch bản bật `--batch-release` và thêm bước "khách bấm thử" trên `company/integration` ở cuối.
+
+Kết quả: 5 ticket → 1 RC (v0.1.1) → staging → production → nghiệm thu → CR deferred → **5/5 ticket closed**;
+46 lời gọi model, 0 lỗi. Kiểm tra sản phẩm **7/7 OK**: `/`, `/gioi-thieu`, `/dang-ky`, `/static/site.css` = 200,
+trang chủ có `lang="vi"`, POST hợp lệ = 201 (ghi SQLite), POST thiếu consent = 422. S1–S3 đã hết.
+
+Ba lỗi quy trình mới lộ ra khi chạy DHCB-5 (đều đã sửa, có test):
+
+| # | Mức | Vấn đề | Sửa |
+|---|---|---|---|
+| F10 | cao | **Ticket phụ thuộc không thấy code của ticket đã approved**: merge vào nhánh tích hợp chỉ xảy ra lúc RC; khi gom release (hoặc ticket sau dispatch trước khi RC kịp merge) DHCB-5 rẽ từ nền chưa có `dhcb.layout` → `ModuleNotFoundError` | ticket approved merge ngay (`_integrate_approved`, gọi trước khi xử lý `tasks`); RC chỉ merge phần chưa có; xung đột lúc approved → ticket về changes_requested với hint; RC gặp ticket đã bị trả về → void |
+| F11 | trung bình | **Agent kỹ thuật lỗi → ticket treo `dispatched` mãi** (không PR, không retry, không gate) | lỗi runner trên route `tasks` → `DeliveryLead.rework` retry+1 với hint là lỗi; hết retry → blocked → gate escalation |
+| F12 | thấp | **Làm lại mà ghi y hệt lần trước → "commit thất bại"** khó hiểu (commit cũ đã nằm trên branch nên `has_changes` vẫn True) | `TicketWorkspace.dirty()` so với HEAD branch; runner báo "không sửa file (so với lần trước)" |
+
+Ngoài ra, reviewer giả trong kịch bản chặn nhầm DHCB-5 vì heuristic khớp chữ "signup" ở dòng import — đã sửa kịch bản;
+điều này minh hoạ đúng cảnh reviewer thật báo sai: ticket retry, agent không đổi gì → `không sửa file` → blocked → gate,
+không có lỗi nào rơi vào im lặng.

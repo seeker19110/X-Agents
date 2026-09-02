@@ -248,6 +248,7 @@ class Orchestrator:
             raise ValueError(f"repo không phải git repository: {self.repo}")
         self.integration = Integration(self.repo, integration, base) if self.repo is not None else None
         self.void_releases: set[str] = set()
+        self.integrated: set[str] = set()  # ticket đã merge vào nhánh tích hợp (khi approved, không đợi RC)
         self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
         self.stalled: dict[str, dict[str, Any]] = {}  # project_id → {event_id, agent, topic, error}: dự án kẹt chờ người
         self.stall_count: Counter[str] = Counter()  # event_id → số lần kẹt (mỗi lần một gate mới, không im lặng lần hai)
@@ -283,6 +284,7 @@ class Orchestrator:
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self.void_releases.add(d["release_id"])
+                elif a["action"] == "integration.merged": self.integrated.add(d["ticket_id"])
                 elif a["action"] == "threat_model.missing": self.missing_threat_model.add(d["subject_id"])
                 elif a["action"] == "project.stalled":
                     self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
@@ -416,6 +418,10 @@ class Orchestrator:
             draft = self.latest("requirements-draft", env.key)
             if draft is not None:
                 self._call("spec-writer", draft, Route("requirements-draft", "spec-writer", "approved-specs"), res)
+        if env.topic in {"tasks", "review-results"}:
+            # Ticket approved lên nhánh tích hợp TRƯỚC khi ticket phụ thuộc (đã được delivery-lead dispatch ngay lúc
+            # approve, nên đứng trước review-results trong hàng đợi) tạo worktree.
+            self._integrate_approved(res)
         for r in ROUTES:
             if r.topic_in != env.topic or (r.when and not r.when(env, self)): continue
             agent = env.payload["assignee"] if r.agent == "$assignee" else r.agent
@@ -499,15 +505,27 @@ class Orchestrator:
         except TransientError as e:  # hết retry transport: không phải lỗi agent — hoãn event, nhịp sau thử lại
             res.actions.append(f"transient:{agent}:{str(e)[:120]}"); res.transient = True
             with self._lock: self.stats["transient"] += 1
-        except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry (ADR-0005)
+        except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry lời gọi (ADR-0005)
             res.actions.append(f"error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
             self._stall(env, agent, e, res)
+            self._rework_after_error(env, r, e)
         except Exception as e:  # handler xác định (delivery-lead) từ chối chuyển trạng thái: event đã ghi đĩa
             self._audit("handler_error", {"agent": agent, "error": str(e)[:300]}, ticket_id=env.payload.get("ticket_id"))
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
             self._stall(env, agent, e, res)
+
+    def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> None:
+        """Agent kỹ thuật lỗi (không sửa file, JSON hỏng, hết ngân sách lượt...) → ticket không được treo `dispatched`
+        mãi: delivery-lead phát lại task retry+1 với hint là lỗi, hết retry → blocked → gate escalation."""
+        if r.tools != "rw": return
+        tid = str(env.payload.get("ticket_id") or env.key)
+        if self.lead.state.get(tid) not in {"dispatched", "in_progress"}: return
+        try:
+            self.lead.rework(tid, f"lần trước lỗi: {str(error)[:500]}")
+        except ValueError as ex:
+            self._audit("handler_error", {"agent": "delivery-lead", "error": str(ex)[:300]}, ticket_id=tid)
 
     def _stall(self, env: Envelope, agent: str, error: Exception, res: StepResult) -> None:
         """Agent của chuỗi nghiên cứu lỗi → dự án không có bước kế tiếp. Ghi `project.stalled`, supervisor escalate
@@ -538,32 +556,55 @@ class Orchestrator:
         with self._qlock: self.queue.insert(0, env)
         return True
 
+    def _integrate_approved(self, res: StepResult) -> None:
+        """Ticket vừa approved → merge ngay vào nhánh tích hợp, không đợi RC. Ticket phụ thuộc rẽ nhánh từ nhánh tích hợp,
+        nên nếu chỉ merge lúc release (nhất là khi gom release) thì ticket sau không thấy code của ticket trước:
+        DHCB-5 import `dhcb.layout` của DHCB-2 và đỏ ngay dù DHCB-2 đã approved."""
+        if self.integration is None: return
+        for tid, st in list(self.lead.state.items()):
+            if st != "approved" or tid in self.integrated: continue
+            self._merge_ticket(tid, res, release_id=None)
+
+    def _merge_ticket(self, tid: str, res: StepResult, release_id: str | None) -> bool:
+        """merge --no-ff branch ticket vào nhánh tích hợp. Xung đột → ticket về changes_requested với hint là file xung
+        đột, worktree tạo lại từ nền mới; trả về False."""
+        assert self.integration is not None
+        ws = self.workspace(tid)
+        if ws is None or not ws.path.exists():
+            self._audit("integration.skipped", {"release_id": release_id, "ticket_id": tid, "reason": "không có worktree"}, ticket_id=tid)
+            return True
+        t = self.lead.tickets.get(tid)
+        m = self.integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}" + (f"\n\nrelease: {release_id}" if release_id else ""))
+        if m.ok:
+            with self._lock: self.integrated.add(tid)
+            self._audit("integration.merged", {"release_id": release_id, "ticket_id": tid, "sha": m.sha, "branch": self.integration.branch}, ticket_id=tid)
+            res.actions.append(f"integrated:{tid}@{m.sha}"); return True
+        hint = f"xung đột với nhánh tích hợp {self.integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
+        self._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
+        try:
+            ws.fresh()
+            self.lead.request_changes(tid, hint)
+        except (ValueError, WorkspaceError) as e:
+            self._audit("handler_error", {"agent": "delivery-lead", "error": str(e)[:300]}, ticket_id=tid)
+        res.actions.append(f"conflict:{tid}")
+        with self._lock: self.stats["conflicts"] += 1
+        return False
+
     def _integrate(self, rc: Envelope, res: StepResult) -> bool:
-        """Merge branch ticket của RC vào nhánh tích hợp. Trả về False nếu RC bị huỷ (xung đột hoặc branch thiếu)."""
+        """Mọi ticket của RC phải nằm trên nhánh tích hợp (thường đã merge lúc approved). Trả về False nếu RC bị huỷ."""
         if self.integration is None: return True
         rid = rc.payload["release_id"]
         if rid in self.void_releases: return False
         for tid in rc.payload.get("tickets", []):
-            ws = self.workspace(tid)
-            if ws is None or not ws.path.exists():
-                self._audit("integration.skipped", {"release_id": rid, "ticket_id": tid, "reason": "không có worktree"}, ticket_id=tid)
-                continue
-            t = self.lead.tickets.get(tid)
-            m = self.integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}\n\nrelease: {rid}")
-            if m.ok:
-                self._audit("integration.merged", {"release_id": rid, "ticket_id": tid, "sha": m.sha, "branch": self.integration.branch}, ticket_id=tid)
-                res.actions.append(f"integrated:{tid}@{m.sha}"); continue
-            hint = f"xung đột với nhánh tích hợp {self.integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
-            self._audit("release.void", {"release_id": rid, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
-            self.void_releases.add(rid)
-            try:
-                ws.fresh()
-                self.lead.request_changes(tid, hint)
-            except (ValueError, WorkspaceError) as e:
-                self._audit("handler_error", {"agent": "delivery-lead", "error": str(e)[:300]}, ticket_id=tid)
-            res.actions.append(f"conflict:{tid}")
-            with self._lock: self.stats["conflicts"] += 1
-            return False
+            if tid in self.integrated: continue
+            if self.lead.state.get(tid) not in {"approved", "merged"}:  # đã bị trả về (xung đột lúc approved): RC vô nghĩa
+                self._audit("release.void", {"release_id": rid, "ticket_id": tid, "reason": f"ticket đang {self.lead.state.get(tid)}"}, ticket_id=tid)
+                self.void_releases.add(rid); res.actions.append(f"void:{rid}")
+                return False
+            if not self._merge_ticket(tid, res, release_id=rid):
+                self._audit("release.void", {"release_id": rid, "ticket_id": tid}, ticket_id=tid)
+                self.void_releases.add(rid)
+                return False
         return True
 
     def _read_only_tools(self, inp: Envelope) -> ToolBox | None:
