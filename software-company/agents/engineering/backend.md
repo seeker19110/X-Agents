@@ -5,11 +5,12 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: api-contract
-skills: [engineering-common, backend, api-contract, observability, event-driven-architecture, i18n, ai-feature-engineering, testing, security, database]
+skills: [engineering-common, backend, api-contract]
+skills_core: [observability, event-driven-architecture, i18n, ai-feature-engineering, testing, security, database]
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 4
+version: 5
 ---
 # backend
 

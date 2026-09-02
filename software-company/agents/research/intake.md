@@ -5,11 +5,12 @@ model_tier: standard
 reads: [research-requests, clarification-answers, change-requests]
 writes: [research-findings]
 context_namespace_write: null
-skills: [requirements-engineering, domain-research, customer-acceptance]
+skills: [requirements-engineering, domain-research]
+skills_core: [customer-acceptance]
 budget_tokens_per_task: 20000
 max_retries: 1
 timeout_minutes: 30
-version: 4
+version: 5
 ---
 # intake
 

@@ -5,11 +5,12 @@ model_tier: strong
 reads: [research-findings]
 writes: [requirements-draft]
 context_namespace_write: null
-skills: [requirements-engineering, project-management, risk-analysis]
+skills: [requirements-engineering]
+skills_core: [project-management, risk-analysis]
 budget_tokens_per_task: 60000
 max_retries: 1
 timeout_minutes: 60
-version: 4
+version: 5
 ---
 # synthesizer
 
