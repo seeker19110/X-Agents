@@ -35,3 +35,9 @@ data/project_kernel.sqlite
 software-company/company.sqlite*
 software-company/.worktrees/
 software-company/llm.yaml
+
+# Báo cáo coverage do pytest-cov sinh (nhị phân, đổi mỗi lần chạy) — không thuộc lịch sử git
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
