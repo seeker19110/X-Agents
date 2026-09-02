@@ -1,0 +1,163 @@
+# Mô phỏng giao dự án donghanhcungban.com (demo) — out=/tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/sim-relay
+model qua relay: /tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/relay (strong/standard do người điều phối chọn)
+== Khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier == (17 event mới, lỗi=0)
+  research-findings        DHCB         intake             {"project_id": "DHCB", "kind": "intake", "data": {"goals": [{"id": "GOAL-01", "description": "Xây dự
+  research-findings        DHCB         researcher         {"project_id": "DHCB", "kind": "researcher", "data": {"summary": "Báo cáo nghiên cứu gộp 4 mục cho w
+  requirements-draft       DHCB         synthesizer        {"project_id": "DHCB", "kind": "draft", "summary": "Danh sách yêu cầu thống nhất cho bản demo websit
+  requirements-draft       DHCB         risk               {"project_id": "DHCB", "kind": "risk", "summary": "Sổ rủi ro cho bản demo website donghanhcungban.co
+  clarification-questions  DHCB         clarifier          5 câu hỏi
+  khách trả lời: CQ-01=Chỉ mô phỏng, không lưu dữ liệu thật (an toàn cho demo); CQ-02=SQLite cục bộ trong repo, không có bên thứ ba; CQ-03=Không lưu lâu dài (demo không lưu dữ liệu thật); CQ-04=Chưa xác nhận, để trống thông tin pháp lý trong demo; CQ-05=Python thuần, không thêm framework ngoài (đơn giản, ít phụ thuộc)
+== Khách trả lời → clarifier/spec-writer == (6 event mới, lỗi=0)
+  approved-specs           DHCB         spec-writer        status=pending_human
+  gate chờ: SPEC-DHCB
+== Gate spec duyệt → threat model → delivery-lead lập plan → gate plan == (12 event mới, lỗi=0)
+  review-results           SPEC-DHCB    security-engineer  security:pass findings=[warn] SEC-F-01 (T-01): Spec không nói địa chỉ bind của http.server; [warn] SEC-F-02 (T-04): Việc xoá tệp SQLite sau buổi demo là thao t; [warn] SEC-F-03 (T-07): ADR-001 chọn http.server nhưng không cấm tư; [warn] SEC-F-04 (T-08): M-09 chỉ nói escape ở trang xác nhận. Đường; [warn]
+  gate chờ: PLAN-DHCB-1
+  plan: DHCB-1(database,30000tok), DHCB-2(backend,35000tok), DHCB-3(frontend,30000tok), DHCB-4(frontend,50000tok), DHCB-5(backend,35000tok), DHCB-6(backend,55000tok)
+== Gate plan duyệt → dispatch ticket → code thật → review → RC → staging → QA hồi quy → gate release == (112 event mới, lỗi=0)
+  tasks                    DHCB-1       delivery-lead      database retry=0 hint=Chỉ dùng module sqlite3 của thư viện chuẩn (ADR-002, CST-01)
+  tasks                    DHCB-2       delivery-lead      backend retry=0 hint=Kiểm tra ở phía nhận, không chỉ thuộc tính required của HTML
+  tasks                    DHCB-3       delivery-lead      frontend retry=0 hint=Nội dung là nội dung mẫu (ASM-02). Sinh HTML bằng hàm Python
+  pull-requests            DHCB-1       database           branch=ticket/DHCB-1 sha=c1743e7 lint=True tests=True verified_by=workspace files=['.gitignore', 'dhcb/storage.py', 'tests/test_storage.py']
+  pull-requests            DHCB-2       backend            branch=ticket/DHCB-2 sha=96ec52a lint=True tests=True verified_by=workspace files=['dhcb/__pycache__/__init__.cpython-311.pyc', 'dhcb/__pycache__/validation.cpython-311.pyc', 'dhcb/validation.py', 'tests/__pycache__/__init__.cpython-311.pyc', 'tests/__pycache__/test_smoke.cpython-311-pytest-9.1.1.pyc', 'tests/__pycache__/test_validation.cp
+  pull-requests            DHCB-3       frontend           branch=ticket/DHCB-3 sha=65dd089 lint=True tests=True verified_by=workspace files=['dhcb/__pycache__/__init__.cpython-311.pyc', 'dhcb/__pycache__/layout.cpython-311.pyc', 'dhcb/__pycache__/pages.cpython-311.pyc', 'dhcb/layout.py', 'dhcb/pages.py', 'tests/__pycache__/__init__.cpython-311.pyc', 'tests/__pycache__/test_pages.cpython-311-pytes
+  review-results           DHCB-1       reviewer           reviewer:pass findings=[warn] Chỉ chặn *.db/*.sqlite3/*.sqlite; SQLite còn sinh tệp phụ dh; [warn] Quyền 0600 chỉ áp cho tệp DB chính; tệp -journal/-wal do SQL; [warn] Trường bắt buộc chỉ bị chặn khi is None; chuỗi rỗng hoặc chỉ; [nit] created_at nhận thẳng từ record và chỉ str() — ngườ
+  review-results           DHCB-1       qa-debugger        qa:pass findings=[nit] Mẫu *.sqlite3 không khớp tệp phụ của SQLite như dhcb.sqlite3; [nit] Trường bắt buộc chỉ kiểm None: chuỗi rỗng ('' cho full_name/; [nit] Chưa có property-based test cho bất biến idempotency/round-t
+  review-results           DHCB-1       security-engineer  security:pass findings=[warn] T-04/T-12: tệp DB đúng 0600 nhưng thư mục cha tạo bằng mkdir; [warn] T-04: SQLite còn tạo tệp phụ dhcb.sqlite3-journal/-wal/-shm ; [warn] T-10: module không log là đúng ADR-006, nhưng đường ngoại lệ; [nit] Contract api-contract v1.0 giới hạn độ dài (ho-ten ≤100, so-; [
+  review-results           DHCB-2       reviewer           reviewer:pass findings=[warn] PR commit các tệp bytecode sinh tự động (__pycache__/*.pyc).; [warn] Chỉ ràng buộc độ dài cho `ly-do` (500). Contract `api-contra; [nit] Vì có strip nên giá trị " on " cũng được coi là đã tích, tro; [nit] Điểm tốt: 20 test bám sát Gherkin M-04/M-05/M-06 (đường lỗi,
+  review-results           DHCB-2       qa-debugger        qa:pass findings=[warn] Chưa kiểm giới hạn độ dài theo api-contract v1: ho-ten ≤100,; [warn] Diff commit 5 file .pyc (bytecode biên dịch). Không ảnh hưởn; [nit] Chưa có property-based test cho bất biến 'có bất kỳ lỗi nào 
+  review-results           DHCB-2       security-engineer  security:pass findings=[warn] Chỉ `ly-do` bị giới hạn độ dài (500). `ho-ten`, `so-dien-tho; [warn] echo_values trả nguyên văn giá trị người dùng để dội lại for; [warn] PR commit các tệp .pyc — bằng chứng cho thấy .gitignore chưa; [nit] Chỉ strip khoảng trắng, không loại ký tự điều kh
+  tasks                    DHCB-5       delivery-lead      backend retry=0 hint=Không import http.server ở tầng này (phụ thuộc hướng vào tro
+  review-results           DHCB-3       reviewer           reviewer:pass findings=[warn] PR commit các file bytecode __pycache__/*.pyc. Hệ quả: rác n; [warn] Chuỗi nội dung được nội suy thẳng vào HTML không qua html.es; [nit] Câu lệnh dựng danh sách activities bị lặp nguyên văn ở rende; [nit] Chưa có test cho nhánh aria-current của layout.render_nav(cu; [nit]
+  review-results           DHCB-3       qa-debugger        qa:pass findings=[warn] PR đưa 6 tệp .pyc vào commit (bytecode biên dịch). Không ảnh; [warn] render_nav(current_path) chưa có test riêng: đánh dấu aria-c; [warn] Các mục ABOUT_ACTIVITIES được nội suy thẳng vào <li> không q; [nit] Chưa có ca biên cho render_page: body_html rỗng, title chứa ; [nit] Gherk
+  review-results           DHCB-3       security-engineer  security:pass findings=[warn] Nội suy thẳng vào HTML không qua html.escape. Hiện KHÔNG kha; [warn] body_html được chèn nguyên văn vào <main> — hợp đồng "caller; [warn] PR commit tệp biên dịch __pycache__ vào repo. Không phải lỗ ; [nit] Đúng RSK-12: CSS nội tuyến trong <style>, không <link>/<img>
+  tasks                    DHCB-4       delivery-lead      frontend retry=0 hint=Dùng html.escape cho MỌI giá trị người dùng nhập (ADR-005). 
+  tasks                    DHCB-3       delivery-lead      frontend retry=1 hint=xung đột với nhánh tích hợp company/integration ở: dhcb/__py
+  pull-requests            DHCB-5       backend            branch=ticket/DHCB-5 sha=89d4b70 lint=True tests=True verified_by=workspace files=['dhcb/__pycache__/__init__.cpython-311.pyc', 'dhcb/__pycache__/validation.cpython-311.pyc', 'dhcb/service.py', 'tests/__pycache__/__init__.cpython-311.pyc', 'tests/__pycache__/test_smoke.cpython-311-pytest-9.1.1.pyc', 'tests/__pycache__/test_validation.cpyth
+  pull-requests            DHCB-4       frontend           branch=ticket/DHCB-4 sha=ac9543f lint=True tests=True verified_by=workspace files=['dhcb/pages.py', 'tests/test_form_pages.py']
+  review-results           DHCB-5       reviewer           reviewer:pass findings=[warn] PR xoá các thư mục __pycache__ đã lỡ commit nhưng không thêm; [warn] Fitness function chỉ chặn `http*` và `sqlite3`; nên bổ sung ; [nit] Nếu `storage.insert_registration` ném lỗi, hàm để exception ; [nit] `record["created_at"]` sinh tại service; nên nêu trong docst
+  review-results           DHCB-5       qa-debugger        qa:pass findings=[nit] Chỉ kiểm log ở mức INFO. Nếu sau này có log DEBUG mang giá t; [nit] Chưa có ca đồng thời (hai lượt gửi song song cùng db_path). 
+  review-results           DHCB-5       security-engineer  security:pass findings=[warn] T-04/TCK-SEC-02 vẫn mở: đây là điểm TẠO tệp SQLite đầu tiên ; [warn] T-10 nhánh traceback chưa đóng: mọi ngoại lệ của tầng lưu tr; [warn] T-08: record trả về chứa nguyên văn giá trị khách nhập (full; [nit] Xoá artefact build đã lỡ commit là đúng, nhưng ch
+  review-results           DHCB-4       reviewer           reviewer:pass findings=[warn] PR tự dựng khung HTML riêng (doctype, lang="vi", header/main; [warn] Đặt tên tệp trùng đúng module mà DHCB-3 cũng dự kiến tạo (dh; [warn] Thiếu test cho M-12 trên hai trang này: không assert có <hea; [nit] _tag_of dùng rindex('<') từ vị trí id="..." nên phụ thuộc và; [ni
+  review-results           DHCB-4       qa-debugger        qa:pass findings=[warn] PR tự dựng khung HTML (header/main/footer, lang=vi, băng-rôn; [warn] Thiếu test cho đường lỗi của M-08: trang hiện lại form kèm l; [nit] Chưa có test cho ca biên M-04 ở tầng render: lý do 501 ký tự; [nit] Dấu * đánh dấu bắt buộc đặt trong <span aria-hidden="true">,
+  review-results           DHCB-4       security-engineer  security:pass findings=[warn] T-08 (XSS/HTML injection) được giảm nhẹ đúng: mọi giá trị kh; [warn] T-10 (rò rỉ giá trị nhập qua thông báo lỗi): module không lo; [nit] Form POST không có token CSRF. Chấp nhận được trong phạm vi ; [nit] maxlength của trình duyệt chỉ là tiện ích; đúng ADR-0
+  ticket: DHCB-1=approved, DHCB-2=approved, DHCB-3=dispatched, DHCB-4=approved, DHCB-5=approved, DHCB-6=waiting
+  gate chờ: DHCB-3
+!! Dự án kẹt (chưa có release chờ gate): stalled={} escalation=['DHCB-3'] paused=['DHCB-1', 'DHCB-2', 'DHCB-3', 'DHCB-4', 'DHCB-5'] cost_usd=12.2315
+   Quyết định bằng: PYTHONPATH=src uv run python -m company.gate_cli approve|reject <subject> --by human:lead --db /tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/sim-relay/company.sqlite
+EXIT 1
+# Mô phỏng giao dự án donghanhcungban.com (demo) — out=/tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/sim-relay
+model qua relay: /tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/relay (strong/standard do người điều phối chọn)
+tiếp tục: {"tickets": {"DHCB-1": "approved", "DHCB-2": "approved", "DHCB-3": "approved", "DHCB-4": "approved", "DHCB-5": "approved", "DHCB-6": "dispatched"}, "gates_pending": {"DHCB-3": "escalation"}, "paused": ["DHCB-1", "DHCB-2", "DHCB-3", "DHCB-4", "DHCB-5"], "stalled": {}}
+== Gate plan duyệt → dispatch ticket → code thật → review → RC → staging → QA hồi quy → gate release == (0 event mới, lỗi=0)
+  ticket: DHCB-1=approved, DHCB-2=approved, DHCB-3=approved, DHCB-4=approved, DHCB-5=approved, DHCB-6=dispatched
+  gate chờ: DHCB-3
+  lead: approve escalation DHCB-3 — lead duyệt lần 1: cấp thêm ngân sách (ước lượng thấp hơn thực tế), làm tiếp theo hint
+!! Dự án kẹt (chưa có release chờ gate): stalled={} escalation=[] paused=['DHCB-1', 'DHCB-2', 'DHCB-4', 'DHCB-5'] cost_usd=12.2315
+   Quyết định bằng: PYTHONPATH=src uv run python -m company.gate_cli approve|reject <subject> --by human:lead --db /tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/sim-relay/company.sqlite
+EXIT 1
+trạng thái: {'DHCB-1': 'approved', 'DHCB-2': 'approved', 'DHCB-3': 'in_review', 'DHCB-4': 'approved', 'DHCB-5': 'approved', 'DHCB-6': 'waiting'} | integrated: ['DHCB-1', 'DHCB-2', 'DHCB-3', 'DHCB-4', 'DHCB-5'] | queue: 13 | paused: ['DHCB-1', 'DHCB-2', 'DHCB-4', 'DHCB-5']
+PR DHCB-3: c7f6345 processed= False state= in_review
+  review-results DHCB-1 []
+  review-results DHCB-1 []
+  review-results DHCB-1 []
+  review-results DHCB-2 []
+  review-results DHCB-2 []
+  review-results DHCB-2 []
+  review-results DHCB-5 []
+  review-results DHCB-5 []
+  review-results DHCB-5 []
+  review-results DHCB-4 []
+  review-results DHCB-4 []
+  review-results DHCB-4 []
+  pull-requests DHCB-3 ['reviewer→review-results:DHCB-3', 'qa-debugger→review-results:DHCB-3', 'security-engineer→review-results:DHCB-3']
+  review-results DHCB-3 []
+  review-results DHCB-3 []
+  tasks DHCB-6 []
+  review-results DHCB-3 []
+sau run: {'DHCB-1': 'approved', 'DHCB-2': 'approved', 'DHCB-3': 'approved', 'DHCB-4': 'approved', 'DHCB-5': 'approved', 'DHCB-6': 'dispatched'} | integrated: ['DHCB-1', 'DHCB-2', 'DHCB-4', 'DHCB-5'] | gates: []
+DHCB-3 chưa tích hợp — xem trạng thái
+EXIT 1
+# Mô phỏng giao dự án donghanhcungban.com (demo) — out=/tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/sim-relay
+model qua relay: /tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/relay (strong/standard do người điều phối chọn)
+tiếp tục: {"tickets": {"DHCB-1": "approved", "DHCB-2": "approved", "DHCB-3": "approved", "DHCB-4": "approved", "DHCB-5": "approved", "DHCB-6": "dispatched"}, "gates_pending": {}, "paused": ["DHCB-1", "DHCB-2", "DHCB-3", "DHCB-4", "DHCB-5"], "stalled": {}}
+== Gate plan duyệt → dispatch ticket → code thật → review → RC → staging → QA hồi quy → gate release == (33 event mới, lỗi=0)
+  pull-requests            DHCB-6       backend            branch=ticket/DHCB-6 sha=a09777b lint=True tests=True verified_by=workspace files=['README.md', 'dhcb/__main__.py', 'dhcb/app.py', 'dhcb/pages.py', 'dhcb/server.py', 'tests/test_app_e2e.py']
+  review-results           DHCB-6       reviewer           reviewer:pass findings=[warn] POST không có Content-Length (hoặc dùng Transfer-Encoding: c; [warn] Nhánh 404 (allow-list) gọi render_not_found() NGOÀI khối try; [warn] Log truy cập ghi nguyên dòng request nên query string (nếu k; [nit] MAX_BODY_BYTES chỉ được server.py dùng nhưng khai báo trong ; [nit] Regex href
+  review-results           DHCB-6       qa-debugger        qa:pass findings=[nit] /xac-nhan không được liên kết từ trang nào nên phép bò liên ; [nit] Bộ e2e không có ca 501 ký tự và ca nhiều lỗi cùng lúc ở tầng
+  review-results           DHCB-6       security-engineer  security:pass findings=[warn] T-05: khi Content-Length vượt 64 KiB, handler trả 413 nhưng ; [warn] T-10/ADR-006: log truy cập ghi nguyên dòng request, trong đó; [warn] Biên lỗi T-10 chỉ bọc phần dựng trang bên trong handle. Ở dh; [nit] CSP "default-src 'self'; form-action 'self'" đã đủ cho T-07/; [nit] T-04/T
+  release-candidates       REL-001      delivery-lead      {"release_id": "REL-001", "project_id": "DHCB", "tickets": ["DHCB-1", "DHCB-2", "DHCB-3", "DHCB-4", 
+  release-events           REL-001      release-engineer   staging deployed v0.1.1
+  review-results           REL-001      security-engineer  security:pass findings=[warn] DAST chưa chạy: lời gọi release-check này không có tool nên ; [warn] License scan không chạy được bằng máy; kiểm tra thủ công trê; [warn] T-01 (bind loopback, Medium ~5.3): cần khẳng định bản 0.1.1 ; [warn] Rò rỉ PII sau buổi demo vẫn phụ thuộc thao tác thủ cô
+  review-results           REL-001      qa-debugger        qa:pass findings=[warn] PUT /dang-ky trả 501 'Unsupported method' thay vì 404 theo b; [nit] Khi client ngắt kết nối lúc server gửi lỗi 414 (URI quá dài); [nit] Test cho M-09 (escape dữ liệu khách nhập) có tồn tại và pass; [nit] Chưa chạy mutation testing cho module lõi (validation/servic
+  ticket: DHCB-1=merged, DHCB-2=merged, DHCB-3=merged, DHCB-4=merged, DHCB-5=merged, DHCB-6=merged
+  gate chờ: REL-001
+!! Dự án kẹt (chưa có release chờ gate): stalled={} escalation=[] paused_blocking=['DHCB-1', 'DHCB-2', 'DHCB-3', 'DHCB-4', 'DHCB-5', 'DHCB-6'] cost_usd=16.3763
+   Quyết định bằng: PYTHONPATH=src uv run python -m company.gate_cli approve|reject <subject> --by human:lead --db /tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/sim-relay/company.sqlite
+EXIT 1
+# Mô phỏng giao dự án donghanhcungban.com (demo) — out=/tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/sim-relay
+model qua relay: /tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/relay (strong/standard do người điều phối chọn)
+tiếp tục: {"tickets": {"DHCB-1": "merged", "DHCB-2": "merged", "DHCB-3": "merged", "DHCB-4": "merged", "DHCB-5": "merged", "DHCB-6": "merged"}, "gates_pending": {"REL-001": "release"}, "paused": ["DHCB-1", "DHCB-2", "DHCB-3", "DHCB-4", "DHCB-5", "DHCB-6"], "stalled": {}}
+== Gate plan duyệt → dispatch ticket → code thật → review → RC → staging → QA hồi quy → gate release == (0 event mới, lỗi=0)
+  ticket: DHCB-1=merged, DHCB-2=merged, DHCB-3=merged, DHCB-4=merged, DHCB-5=merged, DHCB-6=merged
+  gate chờ: REL-001
+== Gate release duyệt → production → support-docs viết docs == (10 event mới, lỗi=0)
+  release-events           REL-001      release-engineer   production deployed v0.1.1
+  ticket: DHCB-1=released, DHCB-2=released, DHCB-3=released, DHCB-4=released, DHCB-5=released, DHCB-6=released
+  gate chờ: UAT-REL-001
+== Khách nghiệm thu (release cuối conditional) → account-manager mở change request → delivery-lead ước lượng impact == (8 event mới, lỗi=0)
+  change-requests          CR-DHCB-1    account-manager    pending: Khách nêu tại UAT REL-001 (verdict conditional, finding mức 
+  ticket: DHCB-1=released, DHCB-2=released, DHCB-3=released, DHCB-4=released, DHCB-5=released, DHCB-6=released
+CR-DHCB-1: deferred by human:po event=07dd9ac7442d477c96ab11b152d87da5
+== Change request deferred → không lập plan mới, ticket của release đó đóng == (20 event mới, lỗi=0)
+  change-requests          CR-DHCB-1    human:po           deferred: Khách nêu tại UAT REL-001 (verdict conditional, finding mức 
+  ticket: DHCB-1=closed, DHCB-2=closed, DHCB-3=closed, DHCB-4=closed, DHCB-5=closed, DHCB-6=closed
+== Tổng kết ==
+status: {"deferred": {"fba14f9a806d46a5a27a20bdc4319cea": "paused:DHCB-1", "be2831e85da646cea88715ed9e33ad48": "paused:DHCB-1", "1d97c2b8eff8463cb030071aedf943a6": "paused:DHCB-1", "f2875f0dc79a4b75b6255210dd22b213": "paused:DHCB-2", "fdd58ff876ab42a39a11e88ad5795dc9": "paused:DHCB-2", "11e988bdbf624b22badd0fc804e3da26": "paused:DHCB-2", "a96dea7726d84033aa594ceacfdaa850": "paused:DHCB-5", "d5f9d6
+sprint_report: {"tickets": {"DHCB-1": {"estimate_tokens": 30000, "budget_tokens": 45000, "retry": 0, "actual_tokens": 95201, "budget_usd": null, "cost_usd": 1.6157, "ratio": 3.17}, "DHCB-2": {"estimate_tokens": 35000, "budget_tokens": 52500, "retry": 0, "actual_tokens": 97310, "budget_usd": null, "cost_usd": 1.5879, "ratio": 2.78}, "DHCB-3": {"estimate_tokens": 30000, "budget_tokens": 45000, "retr
+lời gọi model: 4; lỗi orchestrator: 0; event: 261; chi phí USD: 17.6972; unpriced: 0
+artifact store: company.artifacts/DHCB/api-contract/latest.yaml, company.artifacts/DHCB/architecture/latest.md, company.artifacts/DHCB/docs/latest.md, company.artifacts/DHCB/prd/latest.md, company.artifacts/DHCB/threat-model/latest.md
+repo khách branches:
++ company/integration
+* main
++ ticket/DHCB-1
++ ticket/DHCB-2
++ ticket/DHCB-3
++ ticket/DHCB-4
++ ticket/DHCB-5
++ ticket/DHCB-6
+integration log:
+*   3856f6d merge(DHCB-6): Tích hợp: định tuyến allow-list, nối form với dịch vụ, trang 404 dùng bố cục chung, test đầu-cuối theo điều hướng
+|\  
+| * a09777b feat(DHCB-6): Tích hợp: định tuyến allow-list, nối form với dịch vụ, trang 404 dùng bố
+|/  
+*   e2ccceb merge(DHCB-3): Bố cục chung (header/main/footer, lang=vi, băng-rôn demo) và hai trang nội dung chủ, giới thiệu
+|\  
+| * c7f6345 feat(DHCB-3): Bố cục chung (header/main/footer, lang=vi, băng-rôn demo) và hai trang n
+* |   80f0002 merge(DHCB-5): Dịch vụ submit_registration: nối kiểm tra và lưu trữ, log không chứa dữ liệu cá nhân
+|\ \  
+| * | 89d4b70 feat(DHCB-5): Dịch vụ submit_registration: nối kiểm tra và lưu trữ, log không chứa dữ
+| |/  
+* |   d7faa30 merge(DHCB-4): Trang form đăng ký có label liên kết, hiện lại lỗi theo ô, và trang xác nhận escape dữ liệu nhập
+|\ \  
+| |/  
+|/|   
+| * ac9543f feat(DHCB-4): Trang form đăng ký có label liên kết, hiện lại lỗi theo ô, và trang xác
+|/  
+*   d698728 merge(DHCB-2): Kiểm tra dữ liệu phía nhận: trường bắt buộc, consent, giới hạn 500 ký tự, thông báo lỗi tiếng Việt
+|\  
+| * 96ec52a feat(DHCB-2): Kiểm tra dữ liệu phía nhận: trường bắt buộc, consent, giới hạn 500 ký tự
+* |   59b272b merge(DHCB-1): Lưu trữ SQLite cục bộ: schema đăng ký, hàm ghi tham số hoá, quyền tệp 0600
+|\ \  
+| |/  
+|/|   
+| * c1743e7 feat(DHCB-1): Lưu trữ SQLite cục bộ: schema đăng ký, hàm ghi tham số hoá, quyền tệp 06
+|/  
+* 1466ebb chore: khung dự án demo
+main của khách: 1466ebb chore: khung dự án demo
+== Kiểm tra sản phẩm demo trên company/integration (ngoài quy trình, như khách bấm thử) ==
+  lỗi: Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+ImportError: cannot import name 'NAV' from 'dhcb.layout' (/tmp/claude-0/-home-user-X-Agents/ae1c5b1d-0eb8-539a-b2f7-8499cfbe335a/scratchpad/sim-relay/donghanhcungban/.worktrees/_integration/dhcb/layout.py)
+audit bất thường (0): 
+EXIT 0

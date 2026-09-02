@@ -1,0 +1,214 @@
+openapi: 3.1.0
+info:
+  title: DHCB — bản demo website Đồng Hành Cùng Bạn
+  version: "1.0"
+  summary: Contract HTTP của bản demo chạy cục bộ (chỉ 127.0.0.1)
+  description: |
+    Contract chốt TRƯỚC ticket hiện thực (DHCB-1..DHCB-6).
+    Mọi phản hồi là text/html tiếng Việt; không có endpoint JSON, không có xác thực (W-01),
+    không có kênh bên thứ ba (W-04). Tên trường form dưới đây là ràng buộc: ticket frontend
+    (DHCB-4) và ticket tích hợp (DHCB-6) phải dùng đúng các tên này, sai tên là finding block.
+    Định tuyến theo allow-list; đường dẫn không liệt kê ở đây trả 404 có bố cục chung (T-07).
+servers:
+  - url: http://127.0.0.1:8000
+    description: Máy cục bộ của người trình diễn (bind cứng, không lắng nghe 0.0.0.0 — T-01)
+tags:
+  - name: pages
+    description: Trang nội dung
+  - name: registration
+    description: Luồng đăng ký tình nguyện viên (dữ liệu mô phỏng)
+paths:
+  /:
+    get:
+      tags: [pages]
+      operationId: getHome
+      summary: Trang chủ (M-01, M-03, M-12)
+      responses:
+        "200":
+          description: |
+            HTML trang chủ: tên gọi "Đồng Hành Cùng Bạn", đoạn mô tả hoạt động,
+            liên kết tới /dang-ky, băng-rôn demo, đúng một <h1>, có header/main/footer.
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/HtmlPage"
+  /gioi-thieu:
+    get:
+      tags: [pages]
+      operationId: getAbout
+      summary: Trang giới thiệu (M-02, M-03, M-12)
+      responses:
+        "200":
+          description: HTML có phần "Giới thiệu" và phần "Hoạt động chính", mỗi phần một tiêu đề riêng.
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/HtmlPage"
+  /dang-ky:
+    get:
+      tags: [registration]
+      operationId: getRegisterForm
+      summary: Trang form đăng ký tình nguyện viên (M-04, M-11)
+      responses:
+        "200":
+          description: |
+            HTML chứa form method=post action=/dang-ky, enctype application/x-www-form-urlencoded.
+            Mỗi ô nhập có <label for> trỏ đúng id của ô.
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/HtmlPage"
+    post:
+      tags: [registration]
+      operationId: submitRegistration
+      summary: Gửi một lượt đăng ký mô phỏng (M-05..M-10)
+      description: |
+        Kiểm tra ở phía nhận, không tin thuộc tính required của trình duyệt (ADR-005).
+        Hợp lệ ⇒ tạo đúng một bản ghi trong SQLite cục bộ và dẫn tới trang xác nhận.
+        Không hợp lệ ⇒ KHÔNG tạo bản ghi nào và hiện lại form kèm lỗi theo từng ô,
+        giữ nguyên các giá trị khách đã nhập.
+        Log chỉ ghi sự kiện và tên trường lỗi, không ghi giá trị trường (ADR-006).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/RegistrationForm"
+            encoding:
+              ly-do:
+                contentType: text/plain
+      responses:
+        "303":
+          description: |
+            Đăng ký hợp lệ. Chuyển tiếp tới trang xác nhận (Post/Redirect/Get).
+            Cho phép hiện thực thay thế: trả 200 kèm thẳng HTML trang xác nhận.
+          headers:
+            Location:
+              description: Đường dẫn trang xác nhận
+              schema:
+                type: string
+                const: /xac-nhan
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/HtmlPage"
+        "200":
+          description: |
+            Trang xác nhận (M-08, M-09): chứa nguyên văn
+            "Đăng ký này chỉ để trình diễn, dữ liệu không được lưu lâu dài";
+            mọi giá trị khách nhập được escape nên xuất hiện dưới dạng văn bản.
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/HtmlPage"
+        "400":
+          description: |
+            Đăng ký bị từ chối (thiếu trường bắt buộc, chưa tích ô đồng ý, hoặc lý do > 500 ký tự).
+            Thân phản hồi là trang form kèm một thông báo tiếng Việt cho từng lỗi,
+            mỗi thông báo gắn với chính ô nhập tương ứng; không có bản ghi nào được tạo.
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/HtmlPage"
+        "413":
+          description: Thân request vượt ngưỡng Content-Length cho phép; bị từ chối trước khi đọc body (T-05).
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/HtmlPage"
+  /xac-nhan:
+    get:
+      tags: [registration]
+      operationId: getConfirmation
+      summary: Trang xác nhận sau một lượt đăng ký hợp lệ (M-08)
+      description: |
+        Chỉ đạt tới sau một lượt POST hợp lệ. Truy cập trực tiếp khi không có lượt gửi nào
+        được phép trả về trang xác nhận không kèm dữ liệu, hoặc 404 — hiện thực chọn một và ghi test.
+      responses:
+        "200":
+          description: HTML trang xác nhận có băng-rôn demo và câu nhắc dữ liệu không lưu lâu dài.
+          content:
+            text/html:
+              schema:
+                $ref: "#/components/schemas/HtmlPage"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  responses:
+    NotFound:
+      description: |
+        Đường dẫn không có trong allow-list (M-01 đường lỗi, M-03 đường lỗi).
+        Trang dùng bố cục chung, có băng-rôn demo, câu "Không tìm thấy trang" và liên kết về trang chủ;
+        không lộ traceback hay chi tiết kỹ thuật.
+      content:
+        text/html:
+          schema:
+            $ref: "#/components/schemas/HtmlPage"
+  schemas:
+    HtmlPage:
+      type: string
+      description: |
+        Tài liệu HTML đầy đủ, khai báo lang="vi", có <header>, <main>, <footer>,
+        đúng một <h1>, và băng-rôn nguyên văn "Bản demo — nội dung chưa được tổ chức duyệt".
+      contentMediaType: text/html
+    RegistrationForm:
+      type: object
+      title: Dữ liệu form đăng ký tình nguyện viên (dữ liệu mô phỏng)
+      required: [ho-ten, so-dien-thoai, khu-vuc, dong-y]
+      additionalProperties: false
+      properties:
+        ho-ten:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Họ tên; chuỗi chỉ gồm khoảng trắng bị coi là rỗng và bị từ chối.
+        so-dien-thoai:
+          type: string
+          minLength: 1
+          maxLength: 20
+          description: Số điện thoại; định dạng Việt Nam chỉ là Should (S-03), không chặn trong v1.
+        email:
+          type: string
+          maxLength: 254
+          description: Tuỳ chọn.
+        khu-vuc:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Khu vực hoạt động mong muốn.
+        ly-do:
+          type: string
+          maxLength: 500
+          description: Lý do hoặc kỹ năng; tuỳ chọn, tối đa 500 ký tự (RSK-09).
+        dong-y:
+          type: string
+          const: "on"
+          description: |
+            Ô đồng ý bắt buộc. Trình duyệt chỉ gửi trường này khi ô được tích;
+            thiếu trường ⇒ đăng ký bị từ chối và không tạo bản ghi.
+    RegistrationRecord:
+      type: object
+      description: |
+        Bản ghi lưu trong bảng registrations của SQLite cục bộ (không lộ ra HTTP;
+        mô tả ở đây để backend và database dùng chung một hình dạng dữ liệu).
+      required: [id, full_name, phone, area, consent, created_at]
+      properties:
+        id:
+          type: integer
+        full_name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: [string, "null"]
+        area:
+          type: string
+        reason:
+          type: [string, "null"]
+          maxLength: 500
+        consent:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          description: Dấu thời gian ISO 8601 lúc tạo bản ghi.

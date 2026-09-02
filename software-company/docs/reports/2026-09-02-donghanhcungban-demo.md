@@ -117,3 +117,51 @@ Lỗi quy trình phát hiện thêm khi chuẩn bị chế độ này (đã sử
 | # | Mức | Vấn đề | Sửa |
 |---|---|---|---|
 | F13 | trung bình | **Spec publish lặp → nhiều plan cho cùng dự án**: `approved-specs` xuất hiện lần hai (spec-writer chạy lại, người publish hai lần) sau khi gate spec đã duyệt → delivery-lead lập PLAN-2, PLAN-3 trùng ticket, ba gate plan cho một việc | `_plan`: đã có plan từ approved-specs của dự án đang chờ/đã duyệt → audit `plan.duplicate_spec`, bỏ qua; muốn lập lại phải reject plan cũ |
+
+## 7. Lần chạy 3: model thật qua subagent Claude Code (relay), 2026-09-02
+
+Không có API key nên dùng `examples/relay_client.py`: orchestrator ghi mỗi lời gọi ra `<n>.req.json`, Claude Code giao cho
+subagent theo tier (strong → Opus, standard → Sonnet), subagent ghi `<n>.res.json`. Khối kỹ thuật sửa thẳng trong worktree;
+framework vẫn tự chạy ruff/pytest, commit, lấy diff cho reviewer/QA/security. Người (kịch bản + tôi làm lead) chỉ: trả lời
+5 câu hỏi làm rõ theo mặc định, duyệt 3 gate, duyệt 1 escalation, ký nghiệm thu, hoãn 1 change request.
+Artifact và transcript: `docs/reports/2026-09-02-donghanhcungban-relay/`.
+
+### Kết quả sản phẩm
+
+Nhánh `company/integration` (13 commit, `main` khách không đổi): `dhcb/{storage,validation,layout,site_pages,pages,service,app,server}.py`,
+`python -m dhcb` bind 127.0.0.1 có CSP; **86 test xanh, ruff sạch**. Bấm thử tay như khách: `/`, `/gioi-thieu`, `/dang-ky`,
+`/xac-nhan` = 200 có `lang="vi"` + băng-rôn demo; đường lạ 404 có bố cục chung; POST hợp lệ = 200 + 1 bản ghi SQLite;
+thiếu consent = 400, hiện lại form kèm lỗi theo ô, 0 bản ghi; XSS bị escape. QA hồi quy trên server thật: p95 0,9 ms,
+a11y cơ bản đạt, 12/12 Must của PRD. Cả 6 ticket closed, REL-001 v0.1.1 production (= gói bàn giao chạy cục bộ),
+khách ký conditional, CR-DHCB-1 (trang tin tức) hoãn sang bản đầy đủ.
+
+So với hai lần chạy client giả: chất lượng artifact cao hơn hẳn (PRD 12 Must Gherkin, threat model 16 threat STRIDE+LINDDUN,
+OpenAPI, C4, sổ rủi ro FMEA; reviewer/QA/security bắt được `.pyc` commit nhầm, thiếu maxLength, 501 thay 404, keep-alive 413...).
+
+### Chi phí
+
+| Chỉ số | Giá trị |
+|---|---|
+| Lời gọi model qua relay | 43 (38 Opus, 3 Sonnet, 2 dùng lại cache intake/1 lặp) |
+| Token do framework ước lượng (ký tự/4, prompt = system + đầu vào + blackboard toàn văn) | 938k → **17,70 USD** theo bảng giá mẫu trong `relay_client.py` |
+| Token thật subagent Claude Code (gồm tool-use, đọc repo, chạy test) | **2,94M** cho 43 subagent; ước ~55–65 USD nếu tính giá Opus, thực tế nằm trong subscription Claude Code |
+| Thời gian | ~3 giờ đồng hồ (14:32 → 15:45), phần lớn là chờ subagent tuần tự (workers=1) |
+| Ước lượng vs thực tế | delivery-lead ước 30–55k token/ticket, thực tế 95–170k (ratio 1,9–5,7); rework_rate 0,17 (1/6 ticket làm lại) |
+
+Bài học chi phí: mỗi lời gọi mang toàn văn blackboard (~25k token) nên 1 ticket = 4 lời gọi ≈ 95k token; supervisor cắt
+ngân sách mọi ticket → cần `budget_tokens` thực tế hơn (calibration đã ghi vào `knowledge` cho lần sau) và cân nhắc
+`max_input_chars` thấp hơn cho reviewer/QA.
+
+### Lỗi quy trình phát hiện thêm (F14–F19)
+
+| # | Mức | Vấn đề | Trạng thái |
+|---|---|---|---|
+| F14 | cao | `commit_all` dùng `git add -A` → `__pycache__/*.pyc` do subagent chạy pytest bị commit; hai ticket cùng commit `.pyc` → **xung đột merge nhị phân**, DHCB-3 phải làm lại | chưa sửa: cần loại `__pycache__`, `*.pyc`, `.ruff_cache`, `*.db` khỏi commit và ghi vào `.git/info/exclude` |
+| F15 | cao | Ticket phụ thuộc được dispatch ngay lúc dependency `approved`, trước khi merge thành công → DHCB-4 làm trên nền không có layout, tự dựng khung riêng; sau này phải hợp nhất ở DHCB-6 | chưa sửa: dispatch dependents sau `integration.merged`, hoặc `waiting` tới khi dependency `merged` |
+| F16 | trung bình | Budget token của ticket tính cả reviewer/QA/security (mỗi lời gọi ~25k token blackboard); delivery-lead ước 30–55k → supervisor `budget_cut` 6/6 ticket | chưa sửa: calibration đã ghi; cân nhắc tách ngân sách review, cắt blackboard theo vai trò |
+| F17 | cao | Mở lại bus không replay `tasks` phát lại → ticket bị trả về lại thành `approved`, dependents dispatch, PR làm lại bị từ chối "approved → in_review" | **đã sửa** (`DeliveryLead._replay_task`) |
+| F18 | trung bình | Merge nhánh trống (vừa `fresh()`) được tính "đã tích hợp" → code làm lại không bao giờ vào nhánh tích hợp | **đã sửa** (`integration.noop`) |
+| F19 | trung bình | Mở lại bus ở chế độ gom release: replay tạo lại RC (REL-001..007 trong `status` sau khi đọc lại) và trạng thái ticket lệch (`approved` thay vì `closed`) dù lần chạy thật đã đúng | chưa sửa: `flush_releases` không được tạo RC khi `replaying`; replay `release-candidates` để dựng `releases` |
+
+Ngoài ra kịch bản dùng client giả có bước "khách bấm thử" gắn với API của code giả; đã đổi sang dò API (`dhcb.app.handle`
+hoặc `dhcb.web.handle`) để dùng được cho cả code do model sinh.

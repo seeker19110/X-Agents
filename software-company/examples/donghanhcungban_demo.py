@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -624,26 +625,34 @@ class Sim:
 
 
 def product_smoke(root: Path) -> list[str]:
-    """Bấm thử bản demo như khách: mọi link nav, static, POST form. Chạy trong tiến trình con để không dính import."""
+    """Bấm thử bản demo như khách: mọi link nav, static/404, POST form. Dò API vì code do model sinh có thể khác code giả:
+    `dhcb.app.handle(method, path, form, db_path)` (model thật) hoặc `dhcb.web.handle(path)` + `handle_post` (kịch bản giả)."""
     code = textwrap.dedent('''
-        import json
-        from dhcb.layout import NAV
-        import dhcb.web as w
-        out = {href: w.handle(href)[0] for href, _ in NAV}
-        out["/static/site.css"] = w.handle("/static/site.css")[0]
-        out["layout@/"] = "lang=\\"vi\\"" in w.handle("/")[1]
-        post = getattr(w, "handle_post", None)
-        ok = {"name": "A", "email": "a@x.vn", "phone": "0912345678", "consent": "yes"}
-        out["POST /dang-ky ok"] = post("/dang-ky", ok)[0] if post else "không có handle_post"
-        out["POST /dang-ky no consent"] = post("/dang-ky", {**ok, "consent": "no"})[0] if post else "không có handle_post"
+        import json, os, tempfile, importlib
+        out = {}
+        ok = {"ho-ten": "A", "so-dien-thoai": "0912345678", "email": "a@x.vn", "khu-vuc": "HN", "ly-do": "x", "dong-y": "on",
+              "name": "A", "email2": "a@x.vn", "phone": "0912345678", "consent": "yes"}
+        try:
+            app = importlib.import_module("dhcb.app"); db = os.path.join(tempfile.mkdtemp(), "t.db")
+            get = lambda p: app.handle("GET", p, {}, db); post = lambda f: app.handle("POST", "/dang-ky", f, db)
+            bad = {**ok, "dong-y": ""}
+        except ImportError:
+            w = importlib.import_module("dhcb.web")
+            get = lambda p: w.handle(p); post = lambda f: w.handle_post("/dang-ky", f); bad = {**ok, "consent": "no"}
+        for p in ["/", "/gioi-thieu", "/dang-ky"]: out[p] = get(p)[0]
+        out["404"] = get("/khong-co-trang")[0]
+        out["layout@/"] = 'lang="vi"' in get("/")[1]
+        out["POST ok"] = post(ok)[0]
+        out["POST no consent"] = post(bad)[0]
         print(json.dumps(out, ensure_ascii=False))
     ''')
-    r = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, encoding="utf-8")
+    r = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, encoding="utf-8",
+                       env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     if r.returncode != 0: return ["lỗi: " + r.stderr.strip()[-500:]]
     res = json.loads(r.stdout)
-    want = {"/": 200, "/gioi-thieu": 200, "/dang-ky": 200, "/static/site.css": 200, "layout@/": True,
-            "POST /dang-ky ok": 201, "POST /dang-ky no consent": 422}
-    return [f"{'OK ' if res.get(k) == v else 'LỖI'} {k}: {res.get(k)} (mong {v})" for k, v in want.items()]
+    want = {"/": {200}, "/gioi-thieu": {200}, "/dang-ky": {200}, "404": {404}, "layout@/": {True},
+            "POST ok": {200, 201}, "POST no consent": {400, 422}}
+    return [f"{'OK ' if res.get(k) in v else 'LỖI'} {k}: {res.get(k)} (mong {'/'.join(map(str, sorted(v, key=str)))})" for k, v in want.items()]
 
 
 def main(argv: list[str] | None = None) -> int:
