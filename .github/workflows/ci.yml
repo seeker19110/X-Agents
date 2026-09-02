@@ -36,12 +36,26 @@ jobs:
       - run: uv run pytest -q
         working-directory: software-company
 
+  eval-replay:
+    name: eval-replay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+        working-directory: software-company
+      # Eval từ bản ghi (ADR-0010): không gọi model. Agent chưa có bản ghi → SKIP; bản ghi lệch prompt → đỏ.
+      - run: PYTHONPATH=src uv run python -m company.evals all --replay
+        working-directory: software-company
+
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
   quality:
     name: quality
     runs-on: ubuntu-latest
-    needs: [static, unit]
+    needs: [static, unit, eval-replay]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success

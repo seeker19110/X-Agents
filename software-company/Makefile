@@ -1,4 +1,4 @@
-.PHONY: test demo lint fix golden gate eval run watch status
+.PHONY: test demo lint fix golden gate eval eval-record eval-replay run watch status
 test:
 	uv run pytest -q
 demo:
@@ -13,6 +13,10 @@ gate:
 	PYTHONPATH=src uv run python -m company.gate_cli list
 eval:
 	PYTHONPATH=src uv run python -m company.evals $(AGENT)
+eval-record:   # chạy model thật, lưu evals/recordings/$(AGENT).json — bắt buộc sau khi đổi prompt/skill (ADR-0010)
+	PYTHONPATH=src uv run python -m company.evals $(AGENT) --record
+eval-replay:   # như CI: phát lại từ bản ghi, không gọi model
+	PYTHONPATH=src uv run python -m company.evals all --replay
 run:
 	PYTHONPATH=src uv run python -m company.orchestrator run
 watch:

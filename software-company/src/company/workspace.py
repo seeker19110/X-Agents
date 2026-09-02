@@ -13,8 +13,8 @@ from typing import Any
 class WorkspaceError(Exception): ...
 
 
-def _git(repo: Path, *args: str) -> str:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8")
+def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", input=stdin)
     if r.returncode != 0:
         raise WorkspaceError(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout.strip()
@@ -72,10 +72,22 @@ class TicketWorkspace:
 
     def commit_all(self, message: str) -> str:
         _git(self.path, "add", "-A")
-        _git(self.path, "-c", "user.name=agent", "-c", "user.email=agent@company.local", "commit", "-m", message)
+        # message qua stdin: argv trên Windows đi qua codepage console, tiếng Việt thành mojibake
+        _git(self.path, "-c", "user.name=agent", "-c", "user.email=agent@company.local", "commit", "-F", "-", stdin=message)
         return _git(self.path, "rev-parse", "--short", "HEAD")
 
+    def base_sha(self) -> str:
+        """Điểm rẽ nhánh thật (merge-base) — diff/changed_files so với đây, không phụ thuộc HEAD của repo đã đi tiếp."""
+        return _git(self.repo, "merge-base", self.base, self.branch)
+
     def changed_files(self) -> list[str]:
-        out = _git(self.path, "diff", "--name-only", f"{self.base}...HEAD") if self.base != "HEAD" \
-            else _git(self.path, "diff", "--name-only", "HEAD~1", "HEAD")
+        out = _git(self.path, "diff", "--name-only", self.base_sha())
         return [x for x in out.splitlines() if x]
+
+    def has_changes(self) -> bool:
+        return bool(_git(self.path, "status", "--porcelain")) or bool(self.changed_files())
+
+    def diff(self, max_chars: int = 20_000) -> str:
+        """Diff so với điểm rẽ nhánh (gồm cả phần chưa commit) để reviewer/QA đọc; cắt để không phá ngữ cảnh."""
+        d = _git(self.path, "diff", self.base_sha())
+        return d if len(d) <= max_chars else d[:max_chars] + f"\n… (cắt, còn {len(d) - max_chars} ký tự)"

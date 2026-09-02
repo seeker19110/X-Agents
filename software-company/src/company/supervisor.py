@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import statistics
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -84,8 +86,26 @@ class Supervisor:
     def record_lesson(self, context: str, problem: str, solution: str, evidence: str) -> None:
         self.knowledge.append({"context": context, "problem": problem, "solution": solution, "evidence": evidence})
 
+    def lessons(self) -> list[dict]:
+        """Mọi bài học estimate-vs-actual đã ghi lên blackboard `knowledge` (bền vững qua bus, không chỉ bộ nhớ)."""
+        out = []
+        for env in self.bus.replay(topic="shared-context", key="knowledge"):
+            if not str(env.payload.get("content_ref", "")).startswith("audit-log:lesson:"): continue
+            try: d = json.loads(env.payload.get("summary") or "{}")
+            except json.JSONDecodeError: continue
+            if isinstance(d, dict) and d.get("ticket_id"): out.append(d)
+        return out
+
+    def calibration(self) -> dict[str, dict]:
+        """Hệ số hiệu chỉnh ước lượng theo assignee: median(actual/estimate) và số mẫu, từ bài học đã ghi.
+        Delivery-lead nhận bảng này khi lập kế hoạch để ước lượng lần sau sát hơn (vòng học đóng lại ở đây)."""
+        by: dict[str, list[float]] = defaultdict(list)
+        for d in self.lessons():
+            if d.get("ratio") and d.get("assignee"): by[d["assignee"]].append(float(d["ratio"]))
+        return {a: {"ratio_median": round(statistics.median(v), 2), "samples": len(v)} for a, v in sorted(by.items())}
+
     def sprint_report(self) -> dict:
-        """Estimate vs actual token mỗi ticket + tổng hành động, cho retrospective cuối sprint (đầu vào cho `knowledge`)."""
+        """Estimate vs actual token mỗi ticket, tỷ lệ làm lại, tỷ lệ review bắt lỗi, tổng hành động — cho retrospective."""
         tickets = {}
         for env in self.bus.replay(topic="tasks"):
             t = Task.model_validate(env.payload)
@@ -96,4 +116,12 @@ class Supervisor:
             row["ratio"] = round(row["actual_tokens"] / est, 2) if est else None
         actions = defaultdict(int)
         for a in self.actions: actions[a.action] += 1
-        return {"tickets": tickets, "actions": dict(actions), "lessons": len(self.knowledge)}
+        reviews = [e.payload for e in self.bus.replay(topic="review-results")]
+        caught = sum(1 for r in reviews if r.get("verdict") != "pass")
+        prs = sum(1 for _ in self.bus.replay(topic="pull-requests"))
+        unverified = sum(1 for e in self.bus.replay(topic="pull-requests")
+                         if (e.payload.get("local_checks") or {}).get("verified_by") != "workspace")
+        return {"tickets": tickets, "actions": dict(actions), "lessons": len(self.knowledge),
+                "rework_rate": round(sum(1 for r in tickets.values() if r["retry"]) / len(tickets), 2) if tickets else None,
+                "review_catch_rate": round(caught / len(reviews), 2) if reviews else None,
+                "prs": prs, "prs_unverified": unverified, "calibration": self.calibration()}
