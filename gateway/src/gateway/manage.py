@@ -22,7 +22,14 @@ import time
 from pathlib import Path
 
 from gateway.auth import AntigravityAuthManager
-from gateway.server import DEFAULT_HOST, DEFAULT_PORT, get_log_file, get_pid_file, is_server_running
+from gateway.server import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    get_log_file,
+    get_pid_file,
+    is_loopback_host,
+    is_server_running,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SETUP_TARGET = REPO_ROOT / "software-company" / "llm.yaml"
@@ -30,8 +37,42 @@ DEFAULT_STRONG_MODEL = "claude-sonnet-4-6"
 DEFAULT_STANDARD_MODEL = "gemini-3.7-flash"
 
 
+def _pid_is_gateway(pid: int) -> bool:
+    """Tránh SIGTERM nhầm tiến trình khác tái dùng PID: trên Linux kiểm tra /proc/<pid>/cmdline có "gateway".
+    Hệ khác không có /proc → bỏ qua kiểm tra."""
+    if not sys.platform.startswith("linux"):
+        return True
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return b"gateway" in cmdline
+
+
+def _run_daemon(host: str, port: int) -> None:
+    """Điểm vào của tiến trình daemon: xoá PID file khi thoát (atexit) rồi chạy server."""
+    import atexit
+
+    from gateway.server import run_server
+
+    pid_file = get_pid_file()
+
+    def _cleanup() -> None:
+        with contextlib.suppress(Exception):
+            if pid_file.is_file() and pid_file.read_text(encoding="utf-8").strip() == str(os.getpid()):
+                pid_file.unlink()
+
+    atexit.register(_cleanup)
+    run_server(host=host, port=port)
+
+
 def cmd_start(args: argparse.Namespace) -> int:
     host, port = args.host, args.port
+    if not is_loopback_host(host):
+        print(f"[!] CẢNH BÁO: --host {host} không phải loopback; gateway không có xác thực client, "
+              "mọi máy trong mạng đều dùng được pool tài khoản. Chỉ làm vậy sau firewall/reverse proxy.")
     if is_server_running(host, port):
         print(f"[*] Gateway đã chạy sẵn tại http://{host}:{port}")
         return 0
@@ -47,7 +88,7 @@ def cmd_start(args: argparse.Namespace) -> int:
     src_dir = Path(__file__).resolve().parents[1]
     env = dict(os.environ, PYTHONUNBUFFERED="1")
     env["PYTHONPATH"] = str(src_dir) + os.pathsep + env.get("PYTHONPATH", "")
-    cmd = [sys.executable, "-u", "-c", f"from gateway.server import run_server; run_server(host='{host}', port={port})"]
+    cmd = [sys.executable, "-u", "-c", f"from gateway.manage import _run_daemon; _run_daemon(host='{host}', port={port})"]
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
@@ -85,7 +126,9 @@ def cmd_stop(args: argparse.Namespace) -> int:
         pid = int(pid_file.read_text(encoding="utf-8").strip())
     except Exception:
         pid = 0
-    if pid > 0:
+    if pid > 0 and not _pid_is_gateway(pid):
+        print(f"[*] PID {pid} không phải tiến trình gateway (đã thoát hoặc PID được tái dùng); chỉ xoá PID file.")
+    elif pid > 0:
         try:
             if sys.platform == "win32":
                 subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, check=False)

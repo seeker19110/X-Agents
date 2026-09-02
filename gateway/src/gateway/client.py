@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -317,12 +318,24 @@ def _extract_tool_calls_from_text(text: str) -> tuple[list[dict[str, Any]], str]
     return tool_calls, cleaned
 
 
+# Trần ký tự cho kết quả tool gửi lên upstream (mặc định 200k ≈ rất rộng); vượt thì cắt và đánh dấu rõ.
+TOOL_RESULT_MAX_CHARS = int(os.getenv("GATEWAY_TOOL_RESULT_MAX_CHARS", "200000"))
+TOOL_RESULT_TRUNCATED_MARKER = "…[đã cắt]"
+
+
+def _truncate_tool_result(text: str) -> str:
+    if TOOL_RESULT_MAX_CHARS > 0 and len(text) > TOOL_RESULT_MAX_CHARS:
+        return text[:TOOL_RESULT_MAX_CHARS] + TOOL_RESULT_TRUNCATED_MARKER
+    return text
+
+
 def build_code_assist_request(openai_payload: dict[str, Any], project_id: str) -> dict[str, Any]:
     """OpenAI /v1/chat/completions payload → envelope Code Assist."""
     messages = openai_payload.get("messages") or []
     model_name = map_model_name(openai_payload.get("model") or "gemini-3.7-flash")
     system_parts: list[str] = []
     contents: list[dict[str, Any]] = []
+    tool_call_names: dict[str, str] = {}  # tool_call_id → tên hàm, để functionResponse khớp functionCall
 
     for msg in messages:
         if not isinstance(msg, dict):
@@ -334,10 +347,14 @@ def build_code_assist_request(openai_payload: dict[str, Any], project_id: str) -
                 system_parts.append(text)
             continue
         if role in {"tool", "function"}:
-            # Kết quả tool → text: tránh functionResponse mồ côi khi functionCall không có thoughtSignature thật.
-            tool_text = _coerce_content_to_text(msg.get("content"))
-            tool_name = msg.get("name") or msg.get("tool_call_id") or "tool"
-            contents.append({"role": "user", "parts": [{"text": f"[Tool result from {tool_name}: {tool_text[:2000]}]"}]})
+            # Kết quả tool → functionResponse thật (id khớp functionCall phía trên); cắt ở trần lớn có đánh dấu.
+            tool_text = _truncate_tool_result(_coerce_content_to_text(msg.get("content")))
+            call_id = str(msg.get("tool_call_id") or "")
+            tool_name = msg.get("name") or tool_call_names.get(call_id) or call_id or "tool"
+            function_response: dict[str, Any] = {"name": tool_name, "response": {"result": tool_text}}
+            if call_id:
+                function_response["id"] = call_id
+            contents.append({"role": "user", "parts": [{"functionResponse": function_response}]})
             continue
 
         gemini_role = "model" if role == "assistant" else "user"
@@ -347,11 +364,12 @@ def build_code_assist_request(openai_payload: dict[str, Any], project_id: str) -
             for tc in tool_calls:
                 if not isinstance(tc, dict):
                     continue
-                if _real_thought_signature(tc):
-                    parts.append(_translate_tool_call_to_gemini(tc))
-                else:
-                    fn = tc.get("function") or {}
-                    parts.append({"text": f"[Tool call: {fn.get('name', 'unknown')}({fn.get('arguments', '{}')})]"})
+                # Không có thoughtSignature thật (lịch sử cũ) → vẫn gửi functionCall thật với chữ ký
+                # "skip_thought_signature_validator" (_translate_tool_call_to_gemini tự điền), giữ nguyên id.
+                part = _translate_tool_call_to_gemini(tc)
+                if tc.get("id"):
+                    tool_call_names[str(tc["id"])] = part["functionCall"]["name"]
+                parts.append(part)
         if parts:
             contents.append({"role": gemini_role, "parts": parts})
 
@@ -506,9 +524,12 @@ def translate_gemini_stream_event(
         delta["reasoning_content"] = reasoning_piece
     if tool_calls:
         delta["tool_calls"] = tool_calls
-    if not delta:
-        return None
     finish = cand.get("finishReason")
+    has_usage = bool(inner.get("usageMetadata"))
+    if not delta and not finish and not has_usage:
+        return None
+    # Chunk chỉ có finishReason (MAX_TOKENS/SAFETY...) và/hoặc usageMetadata: vẫn phát với delta rỗng,
+    # kẻo client thấy finish_reason "stop" sạch và mất usage.
     finish_reason = "tool_calls" if tool_calls else (_map_finish_reason(finish) if finish else None)
     chunk: dict[str, Any] = {
         "id": stream_id,

@@ -9,7 +9,7 @@ Luồng chuẩn: **Ý tưởng → Đặc tả → Nhánh → PR → CI/Review �
 ## 1. Cổng đặc tả (chỉ với thay đổi lớn)
 
 Thay đổi kiến trúc, thêm/bỏ agent, đổi schema topic, đổi hợp đồng event → viết ADR trong
-`software-company/docs/adr/` **trước** khi code, và link ADR trong PR. Sửa lỗi nhỏ, chỉnh
+`<công ty>/docs/adr/` (ví dụ `software-company/docs/adr/`) **trước** khi code, và link ADR trong PR. Sửa lỗi nhỏ, chỉnh
 prompt/skill, sửa tài liệu thì đi thẳng bước 2.
 
 Không dùng "AI đề xuất" làm bằng chứng. Mọi khẳng định quan trọng phải truy được về code,

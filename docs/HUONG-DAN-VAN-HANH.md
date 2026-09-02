@@ -426,7 +426,7 @@ cd gateway
 PYTHONPATH=src uv run python -m gateway start            # daemon; --foreground/-f chạy tiền cảnh; --host/--port
 PYTHONPATH=src uv run python -m gateway stop
 PYTHONPATH=src uv run python -m gateway status           # exit 1 nếu server tắt hoặc không còn tài khoản sẵn sàng
-PYTHONPATH=src uv run python -m gateway login            # thêm tài khoản (--no-browser: in URL, tự mở); loopback cổng 51121
+PYTHONPATH=src uv run python -m gateway login            # thêm tài khoản (--no-browser: chỉ in URL, không mở trình duyệt); loopback cổng 51121
 PYTHONPATH=src uv run python -m gateway logout EMAIL
 PYTHONPATH=src uv run python -m gateway reset [EMAIL]    # xoá cooldown
 PYTHONPATH=src uv run python -m gateway setup            # ghi llm.yaml dạng MỘT provider (--target, --strong, --standard); không dùng khi đã có backends:
@@ -477,7 +477,7 @@ Lệnh kiểm tra chuẩn trước khi mở PR (mỗi thư mục):
 ```bash
 uv run ruff check src tests
 uv run mypy src/company --ignore-missing-imports      # software-company (CI chỉ chạy mypy và coverage ≥ 90% ở đây)
-uv run pytest -q                                      # software-company: 312 ca; Studio: 164; gateway: 42
+uv run pytest -q                                      # software-company: 314 ca; Studio: 164; gateway: 54
 PYTHONPATH=src uv run python -m company.evals all --replay --strict   # studio: python -m studio.evals all --replay
 ```
 

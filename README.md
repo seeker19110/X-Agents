@@ -14,7 +14,7 @@ Nguyên tắc chung cho mọi công ty:
 
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`), ADR 0001–0019, 312 test |
+| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`), ADR 0001–0021, 314 test |
 | [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0008 (0007 tool web, 0008 adapter YouTube thật), 164 test |
 | [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:8100/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup`, 42 test |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
