@@ -680,6 +680,13 @@ class Orchestrator:
                 return self._defer(env, res, f"gate:{sid}")
             if not self._threat_model(env, sid, res):
                 self._mark(env, res); return res
+            live = [pid for pid, p in self.plans.items() if p["project_id"] == project and p["source_topic"] == "approved-specs"
+                    and (pid in self.gate.pending or self.gate.is_approved(pid))]
+            if live:
+                # Spec publish lặp (spec-writer chạy lại, người publish hai lần) không được sinh plan thứ hai cho cùng
+                # dự án: ticket trùng, hai gate plan cho một việc. Muốn lập lại thì reject plan cũ trước.
+                self._audit("plan.duplicate_spec", {"project_id": project, "event_id": env.event_id, "existing": live}, project_id=project)
+                res.actions.append(f"plan_skipped:{','.join(live)}"); self._mark(env, res); return res
         cal = self.supervisor.calibration()  # vòng học: bài học estimate-vs-actual quay lại người ước lượng
         inp = env.model_copy(update={"payload": {**env.payload, "estimate_calibration": cal}}) if cal else env
         try:

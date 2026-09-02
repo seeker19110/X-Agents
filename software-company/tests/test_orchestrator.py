@@ -433,3 +433,17 @@ def test_cli_read_only_commands_do_not_need_model(tmp_path, capsys, monkeypatch)
     assert orch_main(["--db", db, "show", "prd"]) == 2  # chưa có artifact: lỗi nghiệp vụ, không phải lỗi model
     with pytest.raises(RuntimeError, match="SDK"):
         orch_main(["--db", db, "run", "--max-steps", "1"])  # chỉ `run` mới cần model
+
+
+def test_republished_spec_does_not_create_second_plan():
+    """F13: approved-specs publish lặp (spec-writer chạy lại / người publish hai lần) → không sinh plan thứ hai."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    spec = bus.latest("approved-specs", "P1")
+    _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()
+    assert list(orch.plans) == ["PLAN-P1-1"] and list(orch.gate.pending) == ["PLAN-P1-1"]
+    a = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan.duplicate_spec"]
+    assert a and a[0]["existing"] == ["PLAN-P1-1"]
+    orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()  # sau khi plan đã duyệt cũng không lập lại
+    assert list(orch.plans) == ["PLAN-P1-1"] and set(orch.lead.tickets) == {"T1", "T2"}

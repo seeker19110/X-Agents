@@ -5,6 +5,14 @@ trong worktree của repo khách (được tạo tạm), lint/test thật chạy
 tình nguyện viên, chạm PII) cố ý làm sai ở lần đầu để xem QA có bắt được và vòng retry có hoạt động không.
 
 Chạy:  cd software-company && PYTHONPATH=src uv run python examples/donghanhcungban_demo.py [--out DIR]
+Model thật (`--real`): không còn client giả — 20 agent do model sinh, model theo tier trong front matter agent
+(16 agent `strong`, 4 agent `standard`: intake, clarifier, supervisor, support-docs); người (kịch bản) chỉ trả lời câu
+hỏi làm rõ theo mặc định, duyệt gate, ký nghiệm thu. Cấu hình qua llm.yaml hoặc biến môi trường, ví dụ:
+    COMPANY_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-ant-... \
+    COMPANY_MODEL_STRONG=claude-opus-5 COMPANY_MODEL_STANDARD=claude-sonnet-5 COMPANY_BUDGET_USD=20 \
+    PYTHONPATH=src uv run python examples/donghanhcungban_demo.py --real --out sim-real
+(OpenAI-compatible: COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=... COMPANY_LLM_API_KEY=...). Điền `prices` trong
+llm.yaml để có chi phí USD; chạm `budget_usd` thì supervisor pause dự án (gate escalation) thay vì đốt tiếp.
 Kết quả: transcript ra stdout; DIR/company.sqlite (bus), DIR/company.artifacts/ (PRD, C4, OpenAPI, threat
 model, docs), DIR/donghanhcungban/ (repo khách với nhánh company/integration + ticket/*).
 """
@@ -21,7 +29,7 @@ from typing import Any
 
 from company.events import Envelope
 from company.gate_cli import PersistentGate
-from company.llm import FakeClient, ToolCall
+from company.llm import FakeClient, ToolCall, load_config, make_client
 from company.orchestrator import ENGINEERING, Orchestrator
 from company.runner import artifact_store
 from company.sqlite_bus import SQLiteBus
@@ -523,15 +531,15 @@ def tool_handler(msgs: list[dict[str, Any]], tools: list[Any]) -> list[ToolCall]
 # ---------------------------------------------------------------- điều khiển mô phỏng
 
 class Sim:
-    def __init__(self, out: Path):
-        self.out = out; out.mkdir(parents=True, exist_ok=True)
+    def __init__(self, out: Path, real: bool = False):
+        self.out = out; out.mkdir(parents=True, exist_ok=True); self.real = real
         self.db = out / "company.sqlite"
         for f in (self.db, out / "company.artifacts"):
             if f.is_dir(): shutil.rmtree(f)
             elif f.exists(): f.unlink()
         self.repo = init_customer_repo(out / "donghanhcungban")
         self.bus = SQLiteBus(self.db)
-        self.client = FakeClient(handler=handler, tool_handler=tool_handler)
+        self.client = make_client() if real else FakeClient(handler=handler, tool_handler=tool_handler)
         self.orch = Orchestrator(self.bus, self.client, repo=self.repo, base="main", artifacts=artifact_store(self.db),
                                  batch_releases=True)  # F7: một release cho cả bản demo
         self.gate: PersistentGate = self.orch.gate
@@ -539,6 +547,19 @@ class Sim:
 
     def say(self, s: str = "") -> None:
         print(s); self.log.append(s)
+
+    def stop_if_stuck(self, what: str) -> bool:
+        """Với model thật, dự án có thể kẹt (agent lỗi → gate escalation, hết ngân sách → pause). Kịch bản không tự
+        approve escalation: in trạng thái để người quyết, ghi transcript, và dừng. Trả về False nếu kẹt."""
+        st = self.orch.status()
+        stuck = st["stalled"] or [g for g, k in st["gates_pending"].items() if k == "escalation"] or st["paused"]
+        if not stuck and (self.gate.pending or self.orch.lead.releases or not self.real): return True
+        if not stuck: return True
+        self.say(f"\n!! Dự án kẹt ({what}): stalled={st['stalled']} escalation={[g for g, k in st['gates_pending'].items() if k == 'escalation']} "
+                 f"paused={st['paused']} cost_usd={st['cost_usd']}")
+        self.say(f"   Quyết định bằng: PYTHONPATH=src uv run python -m company.gate_cli approve|reject <subject> --by human:lead --db {self.db}")
+        (self.out / "transcript.md").write_text("\n".join(self.log), encoding="utf-8")
+        return False
 
     def pub(self, topic: str, key: str, actor: str, payload: dict[str, Any]) -> None:
         self.bus.publish(Envelope(topic=topic, key=key, actor=actor, payload=payload))
@@ -566,7 +587,7 @@ class Sim:
         if e.topic == "pull-requests":
             lc = p["local_checks"]
             return f"branch={p['branch']} sha={p['pr_ref'][:7]} lint={lc.get('lint')} tests={lc.get('tests')} verified_by={lc.get('verified_by')} files={p.get('impact', {}).get('files')}"
-        if e.topic == "tasks": return f"{p['assignee']} retry={p.get('retry')} hint={str(p.get('hint'))[:60]}"
+        if e.topic == "tasks": return f"{p['assignee']} retry={p.get('retry')} hint={' '.join(str(p.get('hint')).split())[:60]}"
         if e.topic == "release-events": return f"{p['env']} {p['status']} v{p['version']}"
         if e.topic == "clarification-questions": return f"{len(p['questions'])} câu hỏi"
         if e.topic == "approved-specs": return f"status={p['status']}"
@@ -600,9 +621,14 @@ def product_smoke(root: Path) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(); ap.add_argument("--out", type=Path, default=Path("sim-out"))
+    ap.add_argument("--real", action="store_true", help="gọi model thật theo cấu hình llm.yaml / COMPANY_* (mặc định: client giả)")
     ns = ap.parse_args(argv)
-    s = Sim(ns.out.resolve())
+    s = Sim(ns.out.resolve(), real=ns.real)
     s.say(f"# Mô phỏng giao dự án donghanhcungban.com (demo) — out={s.out}")
+    if ns.real:
+        cfg = load_config()
+        s.say(f"model thật: provider={cfg.provider} strong={cfg.models.get('strong') or '?'} standard={cfg.models.get('standard') or '?'} "
+              f"effort={cfg.effort} budget_usd={cfg.budget_usd} prices={sorted(cfg.prices) or 'CHƯA ĐIỀN (unpriced)'}")
 
     # 1. Sales đưa yêu cầu thô
     s.pub("research-requests", PID, "human:sales", {"project_id": PID, "description":
@@ -610,19 +636,30 @@ def main(argv: list[str] | None = None) -> int:
           "form đăng ký tình nguyện viên. Xem demo rồi mới quyết định bản đầy đủ.", "attachments": ["brief.pdf"]})
     s.run("Khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier")
 
-    # 2. Khách trả lời câu hỏi làm rõ
-    s.pub("clarification-answers", PID, "human:po", {"project_id": PID, "answers": [
-        {"question_id": "Q1", "answer": "lưu SQLite"}, {"question_id": "Q2", "answer": "không"}]})
-    s.run("Khách trả lời → spec-writer → approved-specs chờ gate spec")
+    # 2. Khách trả lời câu hỏi làm rõ (model thật: hỏi gì trả lời nấy theo phương án mặc định; tối đa 2 vòng)
+    answered: set[str] = set()
+    for _round in range(3):
+        q = s.bus.latest("clarification-questions", PID)
+        if q is None or not q.payload.get("questions") or q.event_id in answered: break
+        answered.add(q.event_id)
+        answers = [{"question_id": str(x.get("id")), "answer": str(x.get("default") or (x.get("options") or ["đồng ý"])[0])}
+                   for x in q.payload["questions"]]
+        s.say("  khách trả lời: " + "; ".join(f"{a['question_id']}={a['answer']}" for a in answers))
+        s.pub("clarification-answers", PID, "human:po", {"project_id": PID, "answers": answers})
+        s.run("Khách trả lời → clarifier/spec-writer")
+    if not s.stop_if_stuck("chưa tới approved-specs"): return 1
 
     # 3. Gate 1: duyệt spec
-    s.gate.decide(f"SPEC-{PID}", "approve", by="human:po")
+    if f"SPEC-{PID}" in s.gate.pending: s.gate.decide(f"SPEC-{PID}", "approve", by="human:po")
     s.run("Gate spec duyệt → threat model → delivery-lead lập plan → gate plan")
+    if not s.stop_if_stuck("chưa có plan"): return 1
 
     # 4. Gate 2: duyệt plan
-    plan = next(g for g in s.gate.pending if g.startswith("PLAN"))
-    s.gate.decide(plan, "approve", by="human:pm")
+    for plan in [g for g in list(s.gate.pending) if g.startswith("PLAN")]:
+        s.say("  plan: " + ", ".join(f"{t['ticket_id']}({t['assignee']},{t.get('estimate_tokens')}tok)" for t in s.orch.plans[plan]["tickets"]))
+        s.gate.decide(plan, "approve", by="human:pm")
     s.run("Gate plan duyệt → dispatch ticket → code thật → review → RC → staging → QA hồi quy → gate release")
+    if not s.stop_if_stuck("chưa có release chờ gate"): return 1
 
     # 5. Gate 3: release production
     for rid in [g for g in list(s.gate.pending) if g.startswith("REL")]:
@@ -647,7 +684,9 @@ def main(argv: list[str] | None = None) -> int:
     status = s.orch.status(); report = s.orch.supervisor.sprint_report()
     s.say("status: " + json.dumps({k: status[k] for k in status if k in {"tickets", "queue", "deferred", "gates", "cost"} and status.get(k)}, ensure_ascii=False))
     s.say("sprint_report: " + json.dumps({k: report[k] for k in ("tickets", "rework_rate", "review_catch_rate", "prs_unverified") if k in report}, ensure_ascii=False))
-    s.say(f"lời gọi model giả: {len(s.client.calls)}; lỗi orchestrator: {s.orch.stats['errors']}; event: {len(s.bus)}")
+    calls = len(s.client.calls) if hasattr(s.client, "calls") else sum(1 for a in s.bus.replay(topic="audit-log") if a.payload["action"].startswith("produced:"))
+    s.say(f"lời gọi model{'' if s.real else ' giả'}: {calls}; lỗi orchestrator: {s.orch.stats['errors']}; event: {len(s.bus)}; "
+          f"chi phí USD: {status.get('cost_usd')}; unpriced: {report.get('unpriced_calls')}")
     s.say("artifact store: " + ", ".join(sorted(str(p.relative_to(s.out)) for p in (s.out / "company.artifacts").rglob("latest.*"))))
     git = lambda *a: subprocess.run(["git", "-C", str(s.repo), *a], capture_output=True, text=True, encoding="utf-8").stdout.strip()  # noqa: E731
     s.say("repo khách branches:\n" + git("branch", "--list"))

@@ -92,3 +92,28 @@ Ba lỗi quy trình mới lộ ra khi chạy DHCB-5 (đều đã sửa, có test
 Ngoài ra, reviewer giả trong kịch bản chặn nhầm DHCB-5 vì heuristic khớp chữ "signup" ở dòng import — đã sửa kịch bản;
 điều này minh hoạ đúng cảnh reviewer thật báo sai: ticket retry, agent không đổi gì → `không sửa file` → blocked → gate,
 không có lỗi nào rơi vào im lặng.
+
+## 6. Chế độ model thật (`--real`)
+
+Kịch bản có cờ `--real`: bỏ client giả, 20 agent do model sinh, model theo tier trong front matter (16 `strong`: researcher,
+synthesizer, risk, spec-writer, delivery-lead, 6 kỹ thuật, reviewer, qa-debugger, security-engineer, release-engineer,
+account-manager; 4 `standard`: intake, clarifier, supervisor, support-docs). Kịch bản chỉ đóng vai người: trả lời câu hỏi
+làm rõ theo phương án mặc định (tối đa 2 vòng), duyệt gate spec/plan/release, ký nghiệm thu, quyết change request; dự án
+kẹt (agent lỗi, hết ngân sách) thì in trạng thái + lệnh `gate_cli` rồi dừng, không tự duyệt escalation.
+
+```bash
+COMPANY_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-ant-... \
+COMPANY_MODEL_STRONG=claude-opus-5 COMPANY_MODEL_STANDARD=claude-sonnet-5 COMPANY_BUDGET_USD=20 \
+PYTHONPATH=src uv run python examples/donghanhcungban_demo.py --real --out sim-real
+```
+
+Chạy thử trong môi trường không có khoá API (2026-09-02): intake nhận 401 → `project.stalled` → gate `escalation` DHCB,
+dự án paused, kịch bản dừng có hướng dẫn — đúng hành vi F1. **Chưa có kết quả với model thật** vì môi trường chạy không
+có `ANTHROPIC_API_KEY`; cần điền khoá (và bảng `prices` trong `llm.yaml` để có chi phí USD, đặt `budget_usd` để supervisor
+pause khi chạm trần) rồi chạy lệnh trên.
+
+Lỗi quy trình phát hiện thêm khi chuẩn bị chế độ này (đã sửa, có test):
+
+| # | Mức | Vấn đề | Sửa |
+|---|---|---|---|
+| F13 | trung bình | **Spec publish lặp → nhiều plan cho cùng dự án**: `approved-specs` xuất hiện lần hai (spec-writer chạy lại, người publish hai lần) sau khi gate spec đã duyệt → delivery-lead lập PLAN-2, PLAN-3 trùng ticket, ba gate plan cho một việc | `_plan`: đã có plan từ approved-specs của dự án đang chờ/đã duyệt → audit `plan.duplicate_spec`, bỏ qua; muốn lập lại phải reject plan cũ |
