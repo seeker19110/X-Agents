@@ -282,7 +282,7 @@ def test_plan_with_dependency_cycle_is_rejected_before_gate():
             return {"items": [{**T1, "depends_on": ["T2"]}, {**T2, "depends_on": ["T1"]}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=cyc))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     rej = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "plan_rejected"]
     assert rej and any("vòng" in p for p in rej[0]["problems"]) and not orch.plans
@@ -299,7 +299,7 @@ def test_lessons_calibrate_next_plan():
     cal = orch.supervisor.calibration()
     assert cal == {"backend": {"ratio_median": cal["backend"]["ratio_median"], "samples": 1}} and cal["backend"]["ratio_median"] > 0
     # dự án tiếp theo: delivery-lead nhận bảng hiệu chỉnh trong đầu vào
-    _pub(bus, "approved-specs", "P2", "spec-writer", {"project_id": "P2", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P2", "spec-writer", {"project_id": "P2", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P2", "approve", by="human:po"); orch.run()
     lead_calls = [c for c in client.calls if _agent_of(c["system"]) == "delivery-lead" and "P2" in c["user"]]
     assert lead_calls and _inp(lead_calls[-1]["user"])["estimate_calibration"] == cal

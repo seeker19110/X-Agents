@@ -35,9 +35,9 @@ def handler(system: str, user: str) -> dict:
     if a == "intake": return {"project_id": pid, "kind": "intake", "data": {"goals": ["G1"]}}
     if a == "researcher": return {"project_id": pid, "kind": "researcher", "data": {"domain": {}}}
     if a == "synthesizer": return {"project_id": pid, "kind": "draft", "requirements": []}
-    if a == "risk": return {"project_id": pid, "kind": "risk", "risks": ["R1"]}
+    if a == "risk": return {"project_id": pid, "kind": "risk", "risks": [{"id": "R1", "text": "rủi ro"}]}
     if a == "clarifier": return {"project_id": pid, "round": 1, "questions": [{"id": "Q1", "text": "?", "options": ["a"], "default": "a"}]}
-    if a == "spec-writer": return {"payload": {"project_id": pid, "status": "pending_human", "artifacts": ["docs/prd.md"]},
+    if a == "spec-writer": return {"payload": {"project_id": pid, "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}},
                                    "context_writes": [{"namespace": "prd", "content_ref": "docs/prd.md", "summary": "PRD v1"}]}
     if a == "delivery-lead":
         if p.get("decision") == "pending":  # ước lượng impact cho change request
@@ -190,7 +190,7 @@ def test_plan_rejected_when_budget_rule_violated():
         if _agent_of(system) == "delivery-lead": return {"items": [{**T1, "budget_tokens": 4_000}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=bad))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": []})
+    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "plan_rejected" in acts and not orch.plans and not orch.gate.pending and not orch.lead.tickets
@@ -257,7 +257,7 @@ def test_security_block_on_spec_stops_planning():
             return {"ticket_id": "SPEC-P1", "source": "security", "verdict": "block", "findings": [{"level": "block", "text": "PII không mã hoá"}]}
         return handler(system, user)
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=blocker))
-    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": ["prd"]})
+    _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run(); orch.gate.decide("SPEC-P1", "approve", by="human:po"); orch.run()
     assert not orch.plans and not orch.gate.pending
     assert any(e.payload["action"] == "spec_blocked_by_security" for e in bus.replay(topic="audit-log"))

@@ -36,7 +36,8 @@
             "infra",
             "analytics",
             "docs",
-            "knowledge"
+            "knowledge",
+            "contract"
           ]
         },
         "version": {
@@ -47,6 +48,13 @@
         },
         "summary": {
           "type": "string"
+        },
+        "project_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "null = toàn công ty (knowledge)"
         }
       },
       "required": [
@@ -55,6 +63,22 @@
         "content_ref"
       ],
       "additionalProperties": true
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (project/ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
     }
   },
   "required": [

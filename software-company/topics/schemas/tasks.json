@@ -51,7 +51,10 @@
           }
         },
         "estimate_tokens": {
-          "type": "integer",
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 0
         },
         "title": {
@@ -83,7 +86,10 @@
           "minimum": 0
         },
         "hint": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "budget_tokens": {
           "type": "integer"
@@ -101,10 +107,25 @@
         "requirement_id",
         "assignee",
         "title",
-        "acceptance",
-        "retry"
+        "acceptance"
       ],
       "additionalProperties": true
+    },
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "phiên bản envelope+payload của topic"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "event gốc của cả chuỗi (project/ticket)"
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "event trực tiếp sinh ra event này"
     }
   },
   "required": [

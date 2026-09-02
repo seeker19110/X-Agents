@@ -31,6 +31,9 @@ NAMESPACE_OWNERS: dict[str, set[str]] = {
 RISK_TAGS = frozenset({"auth", "payment", "pii", "crypto", "upload", "admin", "external-api"})
 BUDGET_FACTOR = 1.5  # budget_tokens ≥ estimate_tokens × BUDGET_FACTOR (skill cost-estimation)
 
+SCHEMA_VERSION = 1  # tăng khi envelope hoặc payload của topic đổi không tương thích ngược
+
+
 class Envelope(BaseModel):
     event_id: str = Field(default_factory=lambda: uuid4().hex)
     topic: Topic
@@ -38,6 +41,17 @@ class Envelope(BaseModel):
     actor: str
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
     payload: dict[str, Any]
+    schema_version: int = SCHEMA_VERSION
+    correlation_id: str | None = None  # event gốc của chuỗi nhân quả (mặc định = chính event_id khi không có cha)
+    causation_id: str | None = None    # event trực tiếp sinh ra event này
+
+    def model_post_init(self, _ctx: Any) -> None:
+        if self.correlation_id is None:
+            self.correlation_id = self.event_id
+
+    def child(self, **kw: Any) -> Envelope:
+        """Envelope mới trong cùng chuỗi nhân quả: kế thừa correlation_id, causation_id = event này."""
+        return Envelope(correlation_id=self.correlation_id, causation_id=self.event_id, **kw)
 
 class Task(BaseModel):
     ticket_id: str
@@ -83,6 +97,7 @@ class SharedContext(BaseModel):
     version: int
     content_ref: str
     summary: str = ""
+    project_id: str | None = None  # None = phạm vi toàn công ty (vd. knowledge); dự án khác nhau không ghi đè nhau
 
 class AuditLog(BaseModel):
     actor: str
