@@ -90,6 +90,57 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Studio-creators (phòng ban video): cùng cổng lint / unit / eval-replay, package `studio`.
+  studio-static:
+    name: studio-static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+        working-directory: Studio-creators
+      - run: uv run ruff check src tests
+        working-directory: Studio-creators
+
+  studio-unit:
+    name: studio-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg   # test ghép video thật; thiếu thì test tự bỏ qua
+      - run: uv sync --locked
+        working-directory: Studio-creators
+      - run: uv run pytest -q
+        working-directory: Studio-creators
+
+  studio-eval-replay:
+    name: studio-eval-replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+        working-directory: Studio-creators
+      # Eval từ bản ghi, không gọi model; agent chưa có bản ghi → SKIP, bản ghi lệch prompt → đỏ.
+      - run: PYTHONPATH=src uv run python -m studio.evals all --replay
+        working-directory: Studio-creators
+
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
   quality:
@@ -98,7 +149,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit]
+    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success

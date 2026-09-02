@@ -44,3 +44,9 @@ htmlcov/
 
 # đầu ra mô phỏng examples/donghanhcungban_demo.py
 software-company/sim-out/
+
+# Studio-creators: dữ liệu chạy, asset sinh ra và cấu hình cá nhân
+Studio-creators/studio.sqlite*
+Studio-creators/output/
+Studio-creators/llm.yaml
+Studio-creators/media.yaml

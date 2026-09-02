@@ -7,7 +7,7 @@ Chi tiết, tiêu chí vào/ra và ma trận kiểm thử: [`docs/QUY-TRINH-GIT.
 
 ## Bắt đầu nhanh
 
-1. Thay đổi lớn (kiến trúc, agent, schema topic) → viết ADR ở `software-company/docs/adr/` trước.
+1. Thay đổi lớn (kiến trúc, agent, schema topic) → viết ADR ở `<công ty>/docs/adr/` trước (`software-company/`, `Studio-creators/`).
 2. Tách nhánh từ `main`: `feat/<slug>`, `fix/<slug>`, `docs/<slug>`, `perf/<slug>`…
 3. Commit theo Conventional Commits, scope chữ thường, một thay đổi logic mỗi commit.
 4. Chạy cổng phù hợp mức rủi ro (bảng trong `docs/QUY-TRINH-GIT.md` mục 4).
@@ -18,7 +18,7 @@ Chi tiết, tiêu chí vào/ra và ma trận kiểm thử: [`docs/QUY-TRINH-GIT.
 ## Lệnh kiểm tra chuẩn
 
 ```bash
-cd software-company
+cd software-company   # hoặc: cd Studio-creators (phòng ban video, cùng lệnh)
 uv sync
 make lint      # ruff + mypy
 make test      # hoặc `make cov` để kèm ngưỡng coverage như CI
