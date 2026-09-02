@@ -164,6 +164,7 @@
     "skills": [
       "engineering-common",
       "frontend",
+      "ui-ux-design",
       "observability",
       "accessibility",
       "i18n",
@@ -172,7 +173,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 4,
+    "version": 5,
     "writes": [
       "pull-requests"
     ]
@@ -209,6 +210,7 @@
     "skills": [
       "engineering-common",
       "mobile",
+      "ui-ux-design",
       "observability",
       "accessibility",
       "i18n",
@@ -217,7 +219,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 4,
+    "version": 5,
     "writes": [
       "pull-requests"
     ]
@@ -263,7 +265,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 2,
+    "version": 3,
     "writes": [
       "review-results"
     ]
@@ -306,7 +308,7 @@
     ],
     "skills": [
       "domain-research",
-      "ux-design",
+      "ui-ux-design",
       "accessibility",
       "codebase-analysis",
       "tech-evaluation",
@@ -316,7 +318,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 120,
-    "version": 1,
+    "version": 4,
     "writes": [
       "research-findings"
     ]
@@ -405,11 +407,11 @@
       "requirements-engineering",
       "technical-writing",
       "customer-acceptance",
-      "ux-design",
+      "ui-ux-design",
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 3,
+    "version": 4,
     "writes": [
       "approved-specs"
     ]

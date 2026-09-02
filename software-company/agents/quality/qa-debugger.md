@@ -9,7 +9,7 @@ skills: [testing, debugging, performance-testing, accessibility]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
-version: 2
+version: 3
 ---
 # qa-debugger
 
