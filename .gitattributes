@@ -1,0 +1,8 @@
+# Chuẩn hoá xuống LF trong repo: golden và bản ghi eval được so bằng byte, nếu để Git
+# đổi sang CRLF trên Windows thì `make golden` sinh ra khác bản đã commit và CI đỏ oan.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.mp3 binary
+*.wav binary
