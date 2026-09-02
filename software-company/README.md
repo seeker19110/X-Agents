@@ -31,21 +31,25 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0019)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0019); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
-gates/         checklist human gate
+gates/         checklist 4 human gate + gate bất thường `escalation` (ticket và cấp dự án); GateKind = spec|plan|release|acceptance|escalation
 templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data contract
 topics/        18 JSON Schema topic + bảng owner namespace
 src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard (artifact store),
-               llm (ModelClient + adapter anthropic/openai/claude-code, tool-use, retry, bảng giá), routing (nhiều gói tài
+               llm (ModelClient + adapter anthropic/openai/claude-code/codex/fake, tool-use, retry, bảng giá), routing (nhiều gói tài
                khoản, chọn theo tier, xoay khi hết quota — ADR-0019), runner (vòng lặp tool, guard, cắt ngữ cảnh),
                orchestrator (vòng lặp tự động, song song, người can thiệp), workspace (worktree), tools (tool có ranh
                giới tin cậy), web (tool web cho researcher), guard (chống injection), context (hạn mức ngữ cảnh),
-               metrics (từ audit-log), evals (ghi/phát lại), graph
+               metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), demo, graph (cần
+               `uv sync --extra graph`, không tính coverage)
+examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
+               (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest (bus, registry↔events nhất quán, delivery+gates, supervisor, orchestrator, golden 20 agent)
+tests/         pytest 312 ca / 16 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh tích
+               hợp, routing, runner/persistence, tools/agentic, schema consistency, golden 20 agent); coverage fail_under=90
 ```
 
 ## Chạy
@@ -57,8 +61,10 @@ uv run pytest -q                          # hoặc: make test
 PYTHONPATH=src uv run python -m company.demo   # hoặc: make demo
 PYTHONPATH=src uv run python examples/donghanhcungban_demo.py --out sim-out   # mô phỏng cả công ty làm web demo
                                           # donghanhcungban.com trên repo khách tạo tạm (báo cáo: docs/reports/)
-                                          # thêm --real để gọi model thật theo tier (cấu hình llm.yaml / COMPANY_*)
-uv run ruff check src tests               # hoặc: make lint
+                                          # --real: gọi model thật theo tier (llm.yaml / COMPANY_*); --relay DIR: model là một
+                                          # phiên Claude Code khác trả lời qua file; --resume: chạy tiếp từ sim-out; --auto-escalate
+uv run ruff check src tests && uv run mypy src/company --ignore-missing-imports   # make lint (make fix = ruff --fix; make types = mypy)
+uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng 90%
 
 # Chạy model thật (provider bất kỳ). Cấu hình: cp llm.example.yaml llm.yaml rồi sửa, hoặc biến môi trường:
 #   COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://localhost:11434/v1 COMPANY_MODEL_STRONG=qwen2.5-coder:32b
@@ -66,31 +72,39 @@ uv run ruff check src tests               # hoặc: make lint
 #   Qua gateway xoay vòng tài khoản Google Antigravity (../gateway: `make login && make start && make setup`
 #   ghi sẵn llm.yaml): COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://127.0.0.1:8100/v1 COMPANY_LLM_API_KEY=gateway-local
 #   Gói Claude Pro/Max trên máy (không key, không tool-use): COMPANY_LLM_PROVIDER=claude-code COMPANY_MODEL_STRONG=claude-opus-5
+#   Gói ChatGPT Plus/Pro qua Codex CLI (không key, không tool-use): COMPANY_LLM_PROVIDER=codex COMPANY_MODEL_STRONG=gpt-5.6-terra
 #   NHIỀU gói cùng lúc (ADR-0019): `backends:` + `routing.prefer` trong llm.yaml — mẫu ở llm.example.yaml; agent có tier
-#   strong/standard/light, gói hết quota tự nghỉ. Bảng agent → tier: ../docs/DIEU-PHOI-MODEL.md
-PYTHONPATH=src uv run python -m company.runner reviewer review-results input.json --db company.sqlite
+#   strong/standard/light, gói hết quota tự nghỉ (routing.cooldown_s, transient_cooldown_s). Mỗi backend: name, provider,
+#   models{strong,standard,light}, base_url, api_key | api_key_env, config_dir (CLAUDE_CONFIG_DIR / CODEX_HOME — nhiều tài
+#   khoản cùng gói), binary, effort, max_tokens, extra, supports_tools. COMPANY_LLM_BACKENDS=a,b lọc và sắp lại backend.
+#   Biến môi trường khác: COMPANY_LLM_RETRIES, COMPANY_MAX_INPUT_CHARS, COMPANY_BUDGET_USD, COMPANY_SEARCH_URL.
+#   Bảng agent → tier: ../docs/DIEU-PHOI-MODEL.md
+PYTHONPATH=src uv run python -m company.runner reviewer review-results input.json --db company.sqlite [--artifacts DIR]
 
 # Chạy tự động cả công ty (ADR-0007): orchestrator nối topic → agent → topic, dừng ở human gate / supervisor / khách
 PYTHONPATH=src uv run python -m company.orchestrator publish research-requests req.json --actor human:sales
-PYTHONPATH=src uv run python -m company.orchestrator run --watch 5     # hoặc: make run  (một lượt: bỏ --watch)
+PYTHONPATH=src uv run python -m company.orchestrator run --watch 5     # hoặc: make watch (một lượt: make run; --max-steps N giới hạn số bước)
+#   cờ chung đặt trước subcommand: --db company.sqlite --repo --base --integration --artifacts --workers --web --batch-release
 PYTHONPATH=src uv run python -m company.orchestrator run --repo ../khach --base main   # làm THẬT: khối kỹ thuật sửa code
                                                                         # trong worktree ticket/<id>, PR mang lint/test thật;
                                                                         # ticket rẽ từ và merge vào company/integration (--integration)
-PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release
+PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po   # gate spec → plan → release → acceptance
+#   quyết định: approve | request_changes | reject | hold | rollback; `request KIND SUBJECT --by --checklist` mở gate tay
 PYTHONPATH=src uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 PYTHONPATH=src uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
 PYTHONPATH=src uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
 PYTHONPATH=src uv run python -m company.orchestrator run --batch-release   # gom ticket approved của dự án vào một RC (một staging, một gate 3, một UAT)
-PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard, chi phí
-PYTHONPATH=src uv run python -m company.orchestrator report              # estimate vs actual, chi phí USD theo agent/model, hành động supervisor
+PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard, chi phí,
+                                                                        # backend nào sẵn sàng/đang nghỉ (routing.status) — make status
+PYTHONPATH=src uv run python -m company.orchestrator report              # estimate vs actual, chi phí USD theo agent/model, hành động supervisor — make report
 PYTHONPATH=src uv run python -m company.orchestrator metrics [--prometheus]   # hoặc: make metrics [PROM=1] — gọi/token/USD/thời gian
 PYTHONPATH=src uv run python -m company.orchestrator show prd            # toàn văn artifact mới nhất (mirror ở company.artifacts/)
 PYTHONPATH=src uv run python -m company.orchestrator comment T1 --by human:lead --text "dùng hàm add có sẵn"   # hint giữa vòng, không tính retry
 PYTHONPATH=src uv run python -m company.orchestrator takeover T1 --by human:lead   # người sửa tay trong .worktrees/T1 → lint/test → PR dưới tên người
 PYTHONPATH=src uv run python -m company.gate_cli list          # hoặc: make gate
-PYTHONPATH=src uv run python -m company.evals reviewer         # hoặc: make eval AGENT=reviewer (model thật)
+PYTHONPATH=src uv run python -m company.evals reviewer         # hoặc: make eval AGENT=reviewer (provider theo llm.yaml / COMPANY_*)
 PYTHONPATH=src uv run python -m company.evals reviewer --record   # make eval-record AGENT=reviewer — sau khi đổi prompt/skill
-PYTHONPATH=src uv run python -m company.evals all --replay        # make eval-replay — như CI, không gọi model
+PYTHONPATH=src uv run python -m company.evals all --replay --strict   # make eval-replay — như CI, không gọi model; --strict đỏ khi agent trong REQUIRED.txt thiếu bản ghi
 UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golden — sau khi cố ý sửa agents/ hoặc skills/
 ```
 
@@ -107,19 +121,23 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0018; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0019; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
   supervisor (warn/cut/escalate, sprint_report), gates, blackboard, demo.
 - **Runner chạy model thật, trung lập provider** (`runner.py`, `llm.py`, ADR-0005): một interface `ModelClient`;
-  adapter `anthropic`, `openai` (mọi server OpenAI-compatible: OpenAI, Ollama, Groq, vLLM, LM Studio...), `fake`.
+  adapter `anthropic`, `openai` (mọi server OpenAI-compatible: OpenAI, Ollama, Groq, vLLM, LM Studio...), `claude-code`
+  (CLI `claude -p`, gói Claude Pro/Max, `config_dir` → `CLAUDE_CONFIG_DIR`), `codex` (CLI `codex exec --json`, gói ChatGPT
+  Plus/Pro, `config_dir` → `CODEX_HOME`, `effort` → `model_reasoning_effort`, tự tìm binary trong `%LOCALAPPDATA%/OpenAI/Codex/bin`), `fake`.
+  Hai provider CLI không có tool-use nên `supports_tools=false` mặc định: router bỏ qua chúng cho agent cần tool.
   Provider `openai` cũng nhận [`../gateway`](../gateway/README.md): proxy cục bộ xoay vòng nhiều tài khoản Google
   Antigravity (Gemini/Claude), tự cooldown khi hết quota và trả `usage` thật.
   Model theo tier cấu hình trong `llm.yaml` / `COMPANY_*`, không nằm trong code hay prompt. Đầu ra ép theo JSON Schema
   của topic, bus validate lại, token thật từ `usage` ghi vào `audit-log`.
 - **Bus bền vững SQLite** (`sqlite_bus.py`), cùng interface, replay theo topic/key.
-- **Human gate CLI** (`gate_cli.py`): request/approve/reject..., quyết định ghi vào `audit-log`, four-eyes.
+- **Human gate CLI** (`gate_cli.py`): `list`, `request`, và 5 quyết định `approve | request_changes | reject | hold | rollback`;
+  quyết định ghi vào `audit-log`, four-eyes; hạn 24h, nhắc 12h.
 - **Workspace theo ticket** (`workspace.py`): git worktree `ticket/<id>`, chạy ruff/pytest thật, trả `local_checks`.
 - **Eval prompt** (`evals/*.yaml`, `evals.py`): ca đầu vào + tiêu chí chấm; chạy với provider bất kỳ.
 - **Orchestrator** (`orchestrator.py`, ADR-0007): vòng lặp tự động theo bảng ROUTES khớp front matter; agent ghi blackboard
@@ -130,7 +148,8 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   ticket blocked/escalate → gate `escalation` (approve = mở lại với hint, reject = đóng); agent chuỗi nghiên cứu lỗi → dự án
   `stalled` + gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án); spec-writer đòi có `requirements-draft`; review quá hạn giao lại một lần;
   sau nghiệm thu ghi estimate vs actual vào `knowledge`; đánh dấu đã xử lý trong `audit-log` nên mở lại SQLite là chạy tiếp;
-  `--watch` nhận quyết định gate từ tiến trình khác; CLI `run | publish | decide-change | status | report`.
+  `--watch` nhận quyết định gate từ tiến trình khác; CLI `run | publish | decide-change | comment | takeover | status | report
+  | metrics | show`.
 - **Tool có ranh giới tin cậy + vòng lặp tool-use** (`tools.py`, ADR-0010): khối kỹ thuật sửa code thật trong worktree
   `ticket/<id>` (`--repo`); bảng tool tên cố định, không shell, allowlist lệnh, đường dẫn khoá trong worktree, lọc secret;
   tool-use trung lập provider (Anthropic, OpenAI-compatible, Fake). Vòng lặp dừng khi hết lượt hoặc vượt ngân sách token.
@@ -171,8 +190,18 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   ticket, dự án; sự kiện sức khoẻ; thời gian chờ gate; lead time ticket; xuất Prometheus text.
 - **Người can thiệp giữa vòng**: `comment` (hint cho ticket đang chạy, không tính retry), `takeover` (người sửa tay trong
   worktree, code chạy lint/test, PR dưới tên người thay PR của agent, review làm lại).
-- Test: pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+- **Ngân sách review tách khỏi ngân sách ticket** (F16, commit e26139b): token của reviewer/qa-debugger/security-engineer
+  (`Supervisor.REVIEW_ACTORS`) ghi vào `Budget.review_used`, có trong `sprint_report`/lesson (`review_tokens`), không kích
+  hoạt warn/cut của engineer. **Replay dựng RC từ log** (F19): delivery-lead subscribe `release-candidates`, mở lại bus thì
+  `releases`/`release_tickets`/`versions` dựng từ event thật; không tạo lại RC khi `replaying`.
+- **Mô phỏng cả công ty** (`examples/donghanhcungban_demo.py`, báo cáo `docs/reports/`): repo khách tạo tạm, chạy trọn vòng
+  research → ticket → code → review → release → nghiệm thu bằng client giả, model thật (`--real`) hoặc relay qua file
+  (`--relay DIR`, `examples/relay_client.py`: một phiên Claude Code khác trả lời `<n>.req.json`); `--resume` chạy tiếp.
+  Phát hiện F13–F19 từ mô phỏng đều đã sửa (bảng trong báo cáo).
+- Test: 312 ca pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
+  artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover, routing nhiều backend,
+  release flow và replay; ruff + mypy sạch, coverage ≥ 90% (`graph.py` không tính).
 - **Schema là nguồn sự thật**: bus validate đủ JSON Schema (enum, type, ràng buộc) cho cả payload và envelope;
   envelope có `schema_version`, `correlation_id`, `causation_id`. `tests/test_schema_consistency.py` khoá schema ↔ model.
 - **Blackboard phân vùng theo dự án** (ADR-0018): artifact thuộc một `project_id`, chỉ `knowledge` là chung.
@@ -184,16 +213,17 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   nhắc ở 12h, four-eyes, và quá hạn thì supervisor escalate chứ không im lặng.
 - **Lỗi tạm thời của provider** (429, 5xx, đứt mạng) được thử lại có backoff; `Refused` và 4xx thì không. Anthropic
   có timeout nên một request treo không giữ luôn cả orchestrator.
-  artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover; ruff sạch.
 
 ### Chưa có
 - **Bản ghi eval bằng model thật**: cơ chế và cổng `--strict` đã có (`evals/recordings/REQUIRED.txt`), nhưng
   `evals/recordings/` còn trống nên danh sách bắt buộc chưa có tên nào. Chạy `make eval-record` rồi thêm id vào file.
+- **Cắt blackboard theo vai trò + trần prompt theo agent** (ADR-0020, `context_namespace_read` / `max_input_chars` trong front
+  matter): đang làm trên nhánh `feat/context-by-role`, chưa merge; hiện reviewer/QA/security vẫn nhận toàn văn blackboard.
 - **Deploy thật**: release-engineer vẫn mô phỏng; chưa đẩy `company/integration` lên `main`/tag phiên bản; xung đột
   giải quyết bằng làm lại trên nền mới, chưa rebase tự động. Chưa dựng **CI/CD cho sản phẩm của khách** (CI của chính
   repo này thì có). **Kafka/Redis** thay SQLite khi chạy nhiều máy (song song mới ở mức thread trong một tiến trình).
 - **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env. Guard
-  injection là lưới chắn theo mẫu, không phải hàng rào — xem `SECURITY.md`.
+  injection là lưới chắn theo mẫu, không phải hàng rào — xem `../SECURITY.md` ở gốc hub.
 - **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn; **giao diện UAT cho khách**.
 
 ### Bước tiếp theo

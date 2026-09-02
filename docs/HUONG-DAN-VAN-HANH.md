@@ -10,7 +10,7 @@ Mục lục
 3. [Cấu hình model theo gói tài khoản](#3-cấu-hình-model-theo-gói-tài-khoản) — 3.5 nhiều tài khoản cùng gói
 4. [Chạy thử offline](#4-chạy-thử-offline-không-tốn-hạn-mức)
 5. [Vận hành software-company](#5-vận-hành-software-company)
-6. [Vận hành Studio-creators](#6-vận-hành-studio-creators)
+6. [Vận hành Studio-creators](#6-vận-hành-studio-creators) — 6.3 nối YouTube thật
 7. [Vận hành gateway](#7-vận-hành-gateway)
 8. [Theo dõi, chi phí, sự cố](#8-theo-dõi-chi-phí-sự-cố)
 9. [Bảo trì: sửa agent, skill, model](#9-bảo-trì-sửa-agent-skill-model)
@@ -28,6 +28,7 @@ Mục lục
 | Claude Code CLI (`claude`) đã `claude login` | Nếu dùng gói Claude Pro/Max | provider `claude-code`; không cần API key |
 | Codex CLI (`codex`) đã `codex login` | Nếu dùng gói ChatGPT Plus/Pro | provider `codex`; app Codex Windows đi kèm CLI |
 | Tài khoản Google (Antigravity) | Nếu dùng gateway | miễn phí theo quota; nhiều tài khoản thì xoay vòng |
+| Google Cloud OAuth client (`client_secret.json`) | Studio-creators, khi đăng YouTube thật | YouTube Data API v3 + YouTube Analytics API; đăng nhập một lần bằng `studio.youtube login` |
 | `ffmpeg` trên PATH | Studio-creators, khi ghép video thật | thiếu thì test ghép video tự bỏ qua, provider `fake` vẫn chạy |
 | `make` | Không | Windows thường không có; mọi lệnh `make x` đều có dạng `uv run` tương đương ghi trong `Makefile` |
 
@@ -134,15 +135,25 @@ Quy tắc cần nhớ:
 - Chỉ muốn một gói tạm thời: `COMPANY_LLM_BACKENDS=claude-sub` (hoặc `STUDIO_LLM_BACKENDS`) lọc và sắp lại thứ tự.
 - Đặt `COMPANY_LLM_PROVIDER` / `STUDIO_LLM_PROVIDER` bằng biến môi trường thì **bỏ qua `backends:`** (biến môi trường
   thắng file). Test và CI dùng cách này với `fake`.
+- Khoá backend ít dùng: `api_key_env` (tên biến chứa key thay vì ghi key vào file), `binary` (đường dẫn CLI `claude`/`codex`),
+  `supports_tools: true` ép router coi backend CLI là có tool-use (mặc định false cho `claude-code`/`codex`), `max_tokens`,
+  `effort` (theo tier: low|medium|high|xhigh|max), `extra` (tham số riêng của provider, vd. temperature). Retry lỗi mạng:
+  `retries` / `retry_base` trong llm.yaml hoặc `COMPANY_LLM_RETRIES`.
+- `gateway setup` ghi `llm.yaml` dạng một provider (không `backends:`); đã có `backends:` thì đừng chạy `setup`, khai backend
+  `antigravity` như mẫu trên.
 
-### 3.3 Media cho Studio-creators (TTS, ảnh, ghép video)
+### 3.3 Media và nền tảng cho Studio-creators (TTS, ảnh, ghép video, YouTube)
 
 ```bash
 cd Studio-creators
-cp media.example.yaml media.yaml     # rồi sửa provider/model; key đặt qua STUDIO_MEDIA_API_KEY
+cp media.example.yaml media.yaml     # rồi sửa provider/model; key đặt qua STUDIO_MEDIA_API_KEY (hoặc OPENAI_API_KEY)
 ```
 
-Chưa có nhà cung cấp media thì để `fake` cho cả ba kênh: pipeline vẫn chạy trọn vẹn với file giữ chỗ.
+`media.yaml` có bốn khoá: `tts` (provider openai-compatible: model, voice, base_url), `image` (model, size), `video` (`ffmpeg`:
+fps, resolution), và `platform` (`provider: fake | youtube`, `tokens:` đường dẫn token). Chưa có nhà cung cấp media thì để `fake`
+cho cả ba kênh: pipeline vẫn chạy trọn vẹn với file giữ chỗ. `platform` mặc định `fake` (không chạm YouTube); bật thật ở 6.3.
+Biến môi trường tương ứng: `STUDIO_MEDIA_{TTS,IMAGE,VIDEO}_PROVIDER`, `STUDIO_MEDIA_BASE_URL`, `STUDIO_MEDIA_OUTPUT_DIR`,
+`STUDIO_PLATFORM`, `STUDIO_YOUTUBE_TOKENS`.
 
 ### 3.4 Kiểm tra cấu hình bằng một lượt gọi thật
 
@@ -300,6 +311,10 @@ PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po
 PYTHONPATH=src uv run python -m company.gate_cli reject  PLAN-P1 --by human:po --reason "tách ticket thanh toán nhỏ hơn"
 ```
 
+Năm quyết định: `approve`, `request_changes`, `reject`, `hold`, `rollback` (cùng cú pháp `SUBJECT --by --reason`). Gate có hạn
+24 giờ, nhắc ở 12 giờ; quá hạn thì supervisor escalate. Ticket blocked hoặc dự án kẹt mở thêm gate `escalation` (approve = mở
+lại với hint, reject = đóng).
+
 Con người trả lời câu hỏi của clarifier, quyết định change request, nhận xét ticket đang chạy, hoặc tiếp quản worktree:
 
 ```bash
@@ -360,17 +375,47 @@ PYTHONPATH=src uv run python -m studio.orchestrator run --watch 5
 PYTHONPATH=src uv run python -m studio.gate_cli list
 ```
 
-### 6.3 Nối với nền tảng thật
+### 6.3 Nối với nền tảng thật (YouTube, ADR-0008)
 
-Chưa có adapter YouTube: publisher tạo `publish-events` mô tả hành động đăng, con người (hoặc script) thực hiện rồi
-báo lại; số liệu và bình luận cũng đưa vào bằng file:
+Mặc định `STUDIO_PLATFORM=fake`: publisher tạo `publish-events` mô tả hành động đăng, con người (hoặc script) thực hiện
+rồi báo lại; số liệu và bình luận đưa vào bằng file:
 
 ```bash
 PYTHONPATH=src uv run python -m studio.orchestrator publish publish-events published.json        # đã công khai
 PYTHONPATH=src uv run python -m studio.orchestrator publish performance-snapshots stats.json     # số liệu thật → analytics
 PYTHONPATH=src uv run python -m studio.orchestrator publish audience-comments comments.json      # bình luận → nháp trả lời
-PYTHONPATH=src uv run python -m studio.orchestrator status | report
+PYTHONPATH=src uv run python -m studio.orchestrator status
+PYTHONPATH=src uv run python -m studio.orchestrator report
 ```
+
+Adapter YouTube thật (`src/studio/platform.py`, `youtube.py`, `urllib` thuần, approval-first): code chỉ chạm YouTube sau khi
+gate `publish` / `replies` được approve. Bật bằng `platform: {provider: youtube}` trong `media.yaml` hoặc `STUDIO_PLATFORM=youtube`.
+
+1. Google Cloud Console: bật YouTube Data API v3 + YouTube Analytics API, tạo OAuth client loại "Desktop app", tải
+   `client_secret.json` (bị gitignore).
+2. Đăng nhập một lần, do NGƯỜI DÙNG làm (mở trình duyệt, loopback 127.0.0.1):
+
+```bash
+cd Studio-creators
+PYTHONPATH=src uv run python -m studio.youtube login --client-secrets client_secret.json   # [--port 8765] [--no-browser]
+PYTHONPATH=src uv run python -m studio.youtube status        # có token? hết hạn? scopes? (không in secret)
+```
+
+Token lưu `~/.x-agents/auth/youtube_tokens.json` (quyền 600, đổi bằng `STUDIO_YOUTUBE_TOKENS` hoặc `--tokens`), tự refresh
+kể cả khi gặp 401; không bao giờ commit.
+
+3. Vận hành: gate `publish` approve → code upload video private + thumbnail đã chọn + `publishAt` theo lịch publisher quyết,
+   `publish-events` mang `platform_ref`/`url` thật. Gate `replies` approve → code đăng từng reply đã duyệt. Hết quota (403) →
+   `failed` kèm bằng chứng, không im lặng.
+4. Kéo số liệu và bình luận thật lên bus (gọi tay hoặc cron; chưa có lịch tự động):
+
+```bash
+STUDIO_PLATFORM=youtube PYTHONPATH=src uv run python -m studio.youtube sync-comments CH1-V1 [--ref YT_ID] [--since 2026-09-01T00:00:00Z]
+STUDIO_PLATFORM=youtube PYTHONPATH=src uv run python -m studio.youtube sync-metrics  CH1-V1 --window 7 [--variant A] [--ref YT_ID] [--channel]
+```
+
+`sync-metrics` lấy views, phút xem, AVD, like, comment và retention theo cảnh từ Analytics; impressions/CTR API không cấp nên
+ghi 0 kèm evidence. Chưa có: playlist, Shorts flag, đổi lịch/gỡ video (rollback vẫn do người).
 
 Schema của từng topic ở `topics/schemas/*.json`; mẫu tài liệu ở `templates/`.
 
@@ -378,17 +423,23 @@ Schema của từng topic ở `topics/schemas/*.json`; mẫu tài liệu ở `te
 
 ```bash
 cd gateway
-PYTHONPATH=src uv run python -m gateway start | stop | status
-PYTHONPATH=src uv run python -m gateway login            # thêm tài khoản
+PYTHONPATH=src uv run python -m gateway start            # daemon; --foreground/-f chạy tiền cảnh; --host/--port
+PYTHONPATH=src uv run python -m gateway stop
+PYTHONPATH=src uv run python -m gateway status           # exit 1 nếu server tắt hoặc không còn tài khoản sẵn sàng
+PYTHONPATH=src uv run python -m gateway login            # thêm tài khoản (--no-browser: in URL, tự mở); loopback cổng 51121
 PYTHONPATH=src uv run python -m gateway logout EMAIL
 PYTHONPATH=src uv run python -m gateway reset [EMAIL]    # xoá cooldown
+PYTHONPATH=src uv run python -m gateway setup            # ghi llm.yaml dạng MỘT provider (--target, --strong, --standard); không dùng khi đã có backends:
 curl http://127.0.0.1:8100/auth/status                    # JSON: từng tài khoản, cooldown còn lại
 curl http://127.0.0.1:8100/v1/models
 ```
 
 - Token OAuth ở `~/.x-agents/auth/antigravity_tokens.json` (quyền 600); log ở `~/.x-agents/logs/gateway.log`.
-- Pool trống hoặc mọi tài khoản đều cooldown: gateway trả lỗi kèm "thử lại sau Ns"; router của công ty cho backend
-  antigravity nghỉ đúng chừng đó rồi đi gói khác. Không cần can thiệp.
+- Pool trống hoặc mọi tài khoản đều cooldown: gateway trả lỗi kèm "thử lại sau khoảng Ns"; router của công ty cho backend
+  antigravity nghỉ đúng chừng đó rồi đi gói khác. Không cần can thiệp. Cooldown mặc định: 401 → 5 phút; 402/403/429 → 1 giờ;
+  mã khác → 60 giây; `Retry-After` ghi đè. Gateway không tự retry, chỉ xoay tài khoản.
+- Bearer `gateway-local` (và `dummy`, `none`, `token`, `default`, `antigravity`, `sk-gateway`) là chuỗi giữ chỗ; muốn ghim một
+  tài khoản thì gửi email của tài khoản đó làm bearer.
 - Chạy trên VPS: copy file token lên, `start`; refresh token tự làm mới.
 
 ## 8. Theo dõi, chi phí, sự cố
@@ -399,7 +450,7 @@ SQLite; `status` / `report` / `metrics` đọc từ đó.
 | Dấu hiệu | Ý nghĩa | Làm gì |
 |---|---|---|
 | `llm_retry` có ghi chú "backend X hết quota → nghỉ 3600s" | gói X cạn hạn mức, việc đã chuyển gói kế | không cần làm gì; muốn quay lại sớm thì restart tiến trình (trạng thái nghỉ nằm trong bộ nhớ) |
-| "backend antigravity thiếu: Chưa có tài khoản" | gateway chưa có tài khoản Google | `gateway login` |
+| "backend antigravity thiếu: Chưa có tài khoản" | gateway chưa có tài khoản Google | `gateway login`; backend đã nghỉ trọn `cooldown_s` (1 giờ) nên restart tiến trình để dùng ngay |
 | "mọi backend đều đang nghỉ, thử lại sau Ns" | mọi gói cùng cạn | software-company hoãn event và tự thử lại ở nhịp sau; Studio ghi lỗi, chạy lại `run` sau |
 | `unpriced_calls` > 0 trong report | model không có dòng giá | thêm vào `prices:` (gói subscription: giá 0) |
 | supervisor `warn` 80% / `budget_cut` 100% | ticket hoặc dự án chạm ngân sách token/USD | xem `status`, tăng `budget_tokens` trong ticket hoặc `budget_usd`, rồi `resume` |
@@ -416,7 +467,8 @@ software-company còn có trần `budget_usd` theo dự án: 80% warn, 100% paus
 | Đổi model / gói / thứ tự ưu tiên | sửa `llm.yaml`; không chạm code hay prompt |
 | Đổi tier của một agent | sửa `model_tier` trong front matter `agents/<khối>/<agent>.md` → `make golden` (registry golden ghi tier). Không cần tăng `version`, không cần ghi lại eval. Cập nhật bảng ở `DIEU-PHOI-MODEL.md` |
 | Sửa prompt agent hoặc skill | tăng `version` trong front matter → `make golden` → `make eval-record AGENT=<id>` bằng model thật → commit `evals/recordings/<id>.json`. CI phát lại bản ghi và đỏ nếu lệch |
-| Thêm provider mới | thêm một class client trong `llm.py` + nhánh trong `_single_client`; khai báo trong `backends:` |
+| Thêm provider mới | thêm một class client trong `llm.py` + nhánh trong `_single_client` (hiện: anthropic, openai, claude-code, codex, fake); khai báo trong `backends:` |
+| Thêm nền tảng đăng (TikTok, Facebook…) | cài interface `Platform` trong `Studio-creators/src/studio/platform.py`, thêm vào `make_platform`; hiện: `fake`, `youtube` |
 | Thêm agent / topic / đổi schema | viết ADR ở `<công ty>/docs/adr/` trước; cập nhật `topics/`, `registry`, golden |
 | Đổi tool web | `COMPANY_SEARCH_URL` / `STUDIO_SEARCH_URL` (SearXNG...) |
 
@@ -424,8 +476,8 @@ Lệnh kiểm tra chuẩn trước khi mở PR (mỗi thư mục):
 
 ```bash
 uv run ruff check src tests
-uv run mypy src/company --ignore-missing-imports      # software-company
-uv run pytest -q
+uv run mypy src/company --ignore-missing-imports      # software-company (CI chỉ chạy mypy và coverage ≥ 90% ở đây)
+uv run pytest -q                                      # software-company: 312 ca; Studio: 164; gateway: 42
 PYTHONPATH=src uv run python -m company.evals all --replay --strict   # studio: python -m studio.evals all --replay
 ```
 
@@ -438,6 +490,6 @@ token gateway.
 2. `orchestrator status` từng công ty: có gate nào chờ người, event nào hoãn lâu, ticket nào pause.
 3. Duyệt gate; trả lời clarification / change request nếu có.
 4. `report`: chi phí và hành động supervisor bất thường; `llm_retry` cho biết gói nào đang gánh việc.
-5. Với Studio: đưa `publish-events`, `performance-snapshots`, `audience-comments` từ nền tảng vào để số liệu thật nuôi
-   chiến lược.
+5. Với Studio: chạy `studio.youtube sync-metrics` / `sync-comments` (hoặc đưa file `publish-events`, `performance-snapshots`,
+   `audience-comments` khi platform `fake`) để số liệu thật nuôi chiến lược; `studio.youtube status` xem token còn hạn.
 6. Sao lưu `company.sqlite` / `studio.sqlite` và `output/` nếu có nội dung quan trọng.
