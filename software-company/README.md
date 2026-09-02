@@ -25,13 +25,13 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
       → release-events(staging) → review-results(QA hồi quy) → gate 3 → release-events(production)
       → acceptance-results (khách ký) → closed
       → incidents (root_cause_class) → tasks | research-requests;  change-requests → intake/delivery-lead
-+ shared-context (blackboard 11 namespace)   + audit-log (mọi hành động)
++ shared-context (blackboard 12 namespace, phân vùng theo dự án)   + audit-log (mọi hành động)
 ```
 
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0011)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0013)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        38 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -88,7 +88,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0009; 20 system prompt có version; 38 skill có version; 8 template; checklist 4 gate.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0013; 20 system prompt có version; 38 skill có version; 8 template; checklist 4 gate.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -124,17 +124,25 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Vòng học đóng**: `Supervisor.calibration()` (median actual/estimate theo assignee, đọc từ bus) đi vào đầu vào của
   delivery-lead mỗi lần lập kế hoạch; `sprint_report` có `rework_rate`, `review_catch_rate`, `prs_unverified`;
   kế hoạch có `depends_on` vòng bị từ chối trước gate.
+- **Schema là nguồn sự thật**: bus validate đủ JSON Schema (enum, type, ràng buộc) cho cả payload và envelope;
+  envelope có `schema_version`, `correlation_id`, `causation_id`. `tests/test_schema_consistency.py` khoá schema ↔ model.
+- **Blackboard phân vùng theo dự án** (ADR-0012): artifact thuộc một `project_id`, chỉ `knowledge` là chung.
+- **Lint/test theo stack** (ADR-0013): Python, Node, Go, Rust, Gradle, Maven; stack lạ thì `local_checks` nói rõ
+  không kiểm được thay vì báo pass giả.
+- **Cổng eval có răng**: CI chạy `--replay --strict`; agent trong `evals/recordings/REQUIRED.txt` thiếu bản ghi
+  hoặc bản ghi ở phiên bản prompt cũ thì đỏ.
 - Test: pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả); ruff sạch.
 
 ### Chưa có
+- **Bản ghi eval bằng model thật**: cơ chế và cổng `--strict` đã có (`evals/recordings/REQUIRED.txt`), nhưng
+  `evals/recordings/` còn trống nên danh sách bắt buộc chưa có tên nào. Chạy `make eval-record` rồi thêm id vào file.
 - **Deploy thật**: release-engineer vẫn mô phỏng; chưa đẩy `company/integration` lên `main`/tag phiên bản; xung đột
   giải quyết bằng làm lại trên nền mới, chưa rebase tự động. **CI/CD**; **Kafka/Redis** thay SQLite khi chạy nhiều máy
   (orchestrator hiện tuần tự một tiến trình).
 - **Tool cho khối nghiên cứu** đọc codebase khách (dùng lại `WorkspaceTools` chỉ đọc, chưa nối route); blackboard
   vẫn chỉ tham chiếu (`content_ref`), artifact PRD/C4/OpenAPI chưa được viết ra file.
 - **Sandbox tiến trình** cho `run` (container/seccomp): hiện chỉ allowlist lệnh + khoá đường dẫn + lọc env.
-- **Bản ghi eval**: cơ chế có, nhưng `evals/recordings/` còn trống cho tới khi chạy `make eval-record` với model thật.
 - **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn; **giao diện UAT cho khách**.
 
 ### Bước tiếp theo
@@ -142,7 +150,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 2. Release-engineer thật: đẩy `company/integration` lên `main` + tag khi gate release duyệt; CI/CD.
 3. Nối `WorkspaceTools` chỉ đọc cho researcher (codebase-analysis); sandbox container cho `run`.
 4. Adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`); giao diện web cho human gate.
-4. Chạy nhiều orchestrator song song (khóa theo key) khi có bus Redis/Kafka.
+5. Chạy nhiều orchestrator song song (khóa theo key) khi có bus Redis/Kafka.
 
 ## Thứ tự triển khai khuyến nghị
 

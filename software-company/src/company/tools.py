@@ -13,7 +13,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -102,10 +101,8 @@ def _is_secret(parts: tuple[str, ...]) -> bool:
 class WorkspaceTools:
     """Tool đọc/ghi/tìm/chạy kiểm tra trong worktree của một ticket. `allow_write=False` cho reviewer/QA."""
 
-    # Lệnh chạy được: tên → argv. Model chỉ chọn tên và đưa đường dẫn (đã kiểm) — không có shell.
-    COMMANDS: ClassVar[dict[str, list[str]]] = {
-        "lint": [sys.executable, "-m", "ruff", "check"],
-        "test": [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+    # Lệnh luôn có, không phụ thuộc stack. Model chỉ chọn tên và đưa đường dẫn (đã kiểm) — không có shell.
+    GIT_COMMANDS: ClassVar[dict[str, list[str]]] = {
         "git_status": ["git", "status", "--short"],
         "git_diff": ["git", "diff"],
     }
@@ -113,6 +110,8 @@ class WorkspaceTools:
     def __init__(self, ws: TicketWorkspace, allow_write: bool = True, timeout: int = 600):
         self.ws, self.allow_write, self.timeout = ws, allow_write, timeout
         self.root = ws.path.resolve()
+        # lint/test lấy theo stack của repo khách (ADR-0013): argv vẫn do code ghép, model chỉ chọn tên lệnh
+        self.COMMANDS: dict[str, list[str]] = {**ws.stack().commands(), **self.GIT_COMMANDS}
 
     # ---------- ranh giới đường dẫn ----------
 

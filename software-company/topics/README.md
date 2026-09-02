@@ -19,6 +19,9 @@ với front matter agent):
 | knowledge | supervisor | bài học, estimate vs actual |
 | contract | account-manager | SOW, tiêu chí nghiệm thu, kịch bản UAT |
 
+`shared-context` phân vùng theo dự án (ADR-0012): payload có `project_id`, key event là `<project_id>/<namespace>`.
+Ngoại lệ là `knowledge` — phạm vi toàn công ty, `project_id=null`, key trần.
+
 ## Quy ước khác trong payload
 - `tasks.risk_tags`: có bất kỳ tag nào (auth, payment, pii, crypto, upload, admin, external-api)
   → delivery-lead chờ thêm `review-results` source=security trước khi tạo release candidate.
