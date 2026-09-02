@@ -1,0 +1,43 @@
+# Eval cho database. Chạy: python -m company.evals database
+cases:
+  - name: migration-phai-co-duong-lui
+    topic_out: pull-requests
+    context:
+      - {actor: database, namespace: schema, content_ref: schema.sql, summary: "bảng orders(id, user_id, total, created_at), 12 triệu dòng"}
+    input:
+      topic: tasks
+      key: TCK-40
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-40
+        project_id: P1
+        requirement_id: R-50
+        assignee: database
+        title: "Thêm cột status vào orders và index cho truy vấn theo user_id + status"
+        acceptance: ["Truy vấn danh sách đơn theo trạng thái dưới 200ms", "Triển khai không khoá bảng quá 1 giây"]
+        estimate_tokens: 40000
+        retry: 0
+    expect:
+      # migration có forward VÀ rollback, idempotent — bảng 12 triệu dòng không có đường lùi là sự cố chờ xảy ra
+      equals: {ticket_id: TCK-40, branch: "ticket/TCK-40"}
+      contains: {summary: rollback}
+
+  - name: cot-chua-pii-phai-duoc-bao-ve
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-41
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-41
+        project_id: P1
+        requirement_id: R-51
+        assignee: database
+        title: "Lưu số căn cước và số điện thoại người đặt lịch khám"
+        acceptance: ["Tra cứu được lịch hẹn theo số điện thoại", "Dữ liệu tuân Nghị định 13/2023"]
+        risk_tags: [pii]
+        estimate_tokens: 35000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-41, branch: "ticket/TCK-41"}
+      contains: {summary: PII}

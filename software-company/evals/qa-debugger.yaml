@@ -15,3 +15,20 @@ cases:
     expect:
       equals: {ticket_id: TCK-3, source: qa, verdict: fail}
       min_len: {root_cause: 10}
+
+  - name: test-xanh-va-phu-ca-bien-thi-phai-pass
+    topic_out: review-results
+    input:
+      topic: pull-requests
+      key: TCK-4
+      actor: backend
+      payload:
+        ticket_id: TCK-4
+        branch: ticket/TCK-4
+        pr_ref: "#15"
+        summary: "Tính phí huỷ đơn: unit test cho 0 giờ / 23 giờ / 24 giờ / 25 giờ trước giờ khám, property test cho tính idempotent, đồng hồ tiêm qua clock"
+        impact: {files: ["src/orders/cancel.py", "tests/test_cancel.py"]}
+        local_checks: {lint: true, tests: true, coverage: 0.93, test_output: "42 passed in 3.1s"}
+    expect:
+      # QA fail mọi thứ cũng vô dụng như QA pass mọi thứ: PR đã phủ ca biên thì phải được đi tiếp
+      equals: {ticket_id: TCK-4, source: qa, verdict: pass}

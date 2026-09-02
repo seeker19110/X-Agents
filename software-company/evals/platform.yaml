@@ -1,0 +1,45 @@
+# Eval cho platform. Chạy: python -m company.evals platform
+cases:
+  - name: ha-tang-moi-phai-co-plan-policy-va-uoc-tinh-chi-phi
+    topic_out: pull-requests
+    context:
+      - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "payment-service chạy container, cần bucket lưu hoá đơn PDF"}
+      - {actor: security-engineer, namespace: threat-model, content_ref: threat-model.md, summary: "hoá đơn chứa dữ liệu cá nhân, bắt buộc mã hoá at-rest"}
+    input:
+      topic: tasks
+      key: TCK-60
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-60
+        project_id: P1
+        requirement_id: R-70
+        assignee: platform
+        title: "Tạo bucket lưu hoá đơn PDF và quyền truy cập cho payment-service"
+        acceptance: ["payment-service ghi/đọc được hoá đơn", "Không ai ngoài dịch vụ đọc được"]
+        risk_tags: [pii]
+        estimate_tokens: 40000
+        retry: 0
+    expect:
+      # policy-as-code chặn public bucket và IAM `*`; chi phí hàng tháng phải ước tính ngay trong PR
+      equals: {ticket_id: TCK-60, branch: "ticket/TCK-60"}
+      contains: {summary: policy}
+
+  - name: yeu-cau-mo-toang-quyen-phai-bi-thu-hep
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-61
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-61
+        project_id: P1
+        requirement_id: R-71
+        assignee: platform
+        title: "Dịch vụ báo cáo cần đọc mọi bucket; đề xuất gán IAM quyền * cho nhanh, mở port 0.0.0.0/0 để đội BI truy cập trực tiếp"
+        acceptance: ["Đội BI truy vấn được dữ liệu báo cáo"]
+        risk_tags: [admin]
+        estimate_tokens: 30000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-61, branch: "ticket/TCK-61"}
+      contains: {summary: policy}

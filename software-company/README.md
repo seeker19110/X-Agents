@@ -40,7 +40,7 @@ templates/     PRD, ticket, PR, bug report, postmortem, ADR, threat model, data 
 topics/        18 JSON Schema topic + bảng owner namespace
 src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, gate_cli, blackboard,
                llm (ModelClient + adapter), runner, orchestrator (vòng lặp tự động), workspace, evals, graph
-evals/         ca eval prompt theo agent (YAML)
+evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca
 tests/         pytest (bus, registry↔events nhất quán, delivery+gates, supervisor, orchestrator, golden 20 agent)
 ```
 
@@ -111,12 +111,12 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **CI/CD, deploy thật** cho release-engineer/platform; **Kafka/Redis** thay SQLite khi chạy nhiều máy (orchestrator
   hiện tuần tự một tiến trình).
 - **Giao diện gate** ngoài CLI; thông báo (email/chat) khi gate quá hạn (hiện chỉ ghi `audit-log` gate.remind/overdue).
-- **Eval mới phủ reviewer, qa-debugger, researcher, account-manager**; cần ca eval cho 16 agent còn lại và chạy khi `version` tăng (CI).
+- **Eval phủ đủ 20 agent** (≥ 2 ca mỗi agent, test khoá bất biến này); còn thiếu: chạy eval trong CI khi `version` tăng — hiện phải chạy tay và cần model thật.
 - **Giao diện UAT cho khách**: sau production orchestrator chỉ ghi `uat.pending`; nghiệm thu qua `orchestrator publish acceptance-results`.
 
 ### Bước tiếp theo
 1. Tool thực thi cho khối kỹ thuật (đọc/sửa file trong worktree, chạy lệnh có allowlist), nối vào runner qua tool-use.
-2. Eval cho các agent còn lại; chạy eval trong CI khi prompt/skill đổi version.
+2. Chạy eval trong CI khi prompt/skill đổi version (cần model rẻ cho tier standard, hoặc bản ghi lại phản hồi).
 3. Adapter bus Redis Streams/Kafka giữ interface hiện tại (kể cả `poll`); giao diện web cho human gate.
 4. Chạy nhiều orchestrator song song (khóa theo key) khi có bus Redis/Kafka.
 

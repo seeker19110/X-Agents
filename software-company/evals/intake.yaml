@@ -1,0 +1,35 @@
+# Eval cho intake. Chạy: python -m company.evals intake
+cases:
+  - name: de-bai-tho-phai-ra-goal-rang-buoc-va-cau-hoi-cho-tung-agent
+    topic_out: research-findings
+    input:
+      topic: research-requests
+      key: P1
+      actor: human
+      payload:
+        project_id: P1
+        description: "Phòng khám tư 3 chi nhánh muốn cổng đặt lịch khám online. Bệnh nhân tự đặt, lễ tân xác nhận, nhắc lịch qua Zalo. Phải tuân Nghị định 13/2023 về dữ liệu cá nhân. Ngân sách 3 tháng. Hệ thống HIS hiện có chỉ xuất được CSV."
+        attachments: ["docs/quy-trinh-le-tan.pdf"]
+    expect:
+      # mọi ràng buộc trong đầu vào phải xuất hiện trong constraints — bỏ sót một ràng buộc là bỏ sót một rủi ro
+      equals: {project_id: P1, kind: intake}
+      min_len: {data.constraints: 3, data.questions: 2}
+      contains: {data.constraints: "13/2023"}
+
+  - name: change-request-da-duyet-phai-truy-ve-change-id
+    topic_out: research-findings
+    input:
+      topic: change-requests
+      key: CHG-1
+      actor: account-manager
+      payload:
+        change_id: CHG-1
+        project_id: P1
+        requested_by: "chủ phòng khám"
+        description: "Bổ sung thanh toán trước khi đặt lịch, qua ví điện tử, để giảm tỉ lệ không đến khám"
+        affects_requirements: [R-1, R-3]
+        decision: accepted
+    expect:
+      equals: {project_id: P1, kind: intake}
+      contains: {data.goal: "thanh toán"}
+      min_len: {data.questions: 2, data.constraints: 1}

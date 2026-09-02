@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import pytest
+import yaml
 
 from company.blackboard import Blackboard
 from company.bus import BusError, InMemoryBus
@@ -257,17 +258,54 @@ def test_eval_check_rules():
     assert len(fails) == 3
 
 
+def test_every_agent_has_an_eval():
+    """Agent không có eval là agent không ai biết prompt còn chạy đúng sau lần sửa tiếp theo."""
+    from company.evals import EVALS_DIR
+    from company.registry import load_agents
+    missing = sorted(set(load_agents()) - {f.stem for f in EVALS_DIR.glob("*.yaml")})
+    assert not missing, {"agent chưa có eval": missing}
+
+
 def test_eval_files_reference_real_agents_and_topics():
+    from company.evals import EVALS_DIR
     from company.registry import load_agents
     agents = load_agents()
-    from company.evals import EVALS_DIR
     files = list(EVALS_DIR.glob("*.yaml"))
     assert files, "phải có ít nhất một file eval"
     for f in files:
         assert f.stem in agents, f.name
-        for case in load_cases(f.stem):
+        cases = load_cases(f.stem)
+        assert len(cases) >= 2, f"{f.name}: cần ít nhất 2 ca (đường thường + đường khó)"
+        assert len({c["name"] for c in cases}) == len(cases), f"{f.name}: tên ca trùng"
+        for case in cases:
             assert case["topic_out"] in agents[f.stem].writes, (f.name, case["name"])
             assert case["input"]["topic"] in agents[f.stem].reads, (f.name, case["name"])
+            # đầu vào của ca phải là payload hợp lệ của topic đó, nếu không ca chỉ đang đo lỗi của chính nó
+            InMemoryBus().validate(case["input"]["topic"], case["input"]["payload"])
+
+
+class _NoDupLoader(yaml.SafeLoader):
+    """PyYAML im lặng giữ khoá cuối khi một mapping có khoá trùng — một `expect` viết hai lần
+    sẽ âm thầm mất nửa số tiêu chí. Bắt lỗi đó ngay thay vì để eval xanh giả."""
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for k, _ in node.value:
+            key = self.construct_object(k, deep=deep)
+            if key in seen:
+                raise AssertionError(f"khoá trùng `{key}` ở dòng {k.start_mark.line + 1}")
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
+def test_eval_files_have_no_duplicate_keys_and_known_criteria():
+    from company.evals import EVALS_DIR
+    known = {"equals", "contains", "min_len", "max_len", "one_of"}
+    for f in sorted(EVALS_DIR.glob("*.yaml")):
+        data = yaml.load(f.read_text(encoding="utf-8"), Loader=_NoDupLoader)
+        for case in data["cases"]:
+            unknown = set(case.get("expect", {})) - known
+            assert not unknown, (f.name, case["name"], unknown)
+            assert case.get("expect"), f"{f.name}/{case['name']}: ca không có tiêu chí chấm nào"
 
 
 def test_run_eval_offline_with_fake_client():

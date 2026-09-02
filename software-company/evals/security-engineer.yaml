@@ -1,0 +1,37 @@
+# Eval cho security-engineer. Chạy: python -m company.evals security-engineer
+cases:
+  - name: sql-noi-chuoi-tren-endpoint-auth-phai-block
+    topic_out: review-results
+    input:
+      topic: pull-requests
+      key: TCK-70
+      actor: backend
+      payload:
+        ticket_id: TCK-70
+        branch: ticket/TCK-70
+        pr_ref: "#30"
+        summary: "POST /login: tra cứu người dùng bằng f\"SELECT * FROM users WHERE email='{email}'\"; mật khẩu băm bằng md5; token phiên không hết hạn"
+        impact: {files: ["src/auth/login.py"]}
+        local_checks: {lint: true, tests: true, coverage: 0.85}
+    expect:
+      equals: {ticket_id: TCK-70, source: security, verdict: block}
+      min_len: {findings: 1}
+      one_of: {findings.0.level: [block]}
+
+  - name: pr-sach-khong-duoc-block-cho-co
+    topic_out: review-results
+    context:
+      - {actor: security-engineer, namespace: threat-model, content_ref: threat-model.md, summary: "luồng đơn hàng: ASVS L2, không có threat High tồn đọng"}
+    input:
+      topic: pull-requests
+      key: TCK-71
+      actor: frontend
+      payload:
+        ticket_id: TCK-71
+        branch: ticket/TCK-71
+        pr_ref: "#31"
+        summary: "Đổi nhãn nút và thêm bản dịch tiếng Anh cho màn hình danh sách đơn; không thêm phụ thuộc, không chạm dữ liệu"
+        impact: {files: ["src/ui/orders/List.tsx", "src/i18n/en.json"]}
+        local_checks: {lint: true, tests: true, coverage: 0.88}
+    expect:
+      equals: {ticket_id: TCK-71, source: security, verdict: pass}
