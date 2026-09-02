@@ -1,0 +1,39 @@
+# Eval cho delivery-lead. Chạy: python -m company.evals delivery-lead
+cases:
+  - name: spec-duyet-phai-ra-ticket-truy-vet-duoc-va-co-uoc-luong
+    topic_out: tasks
+    context:
+      - {actor: spec-writer, namespace: prd, content_ref: PRD.md, summary: "R-12 (Must): khách thanh toán đơn hàng bằng thẻ; R-20 (Should): xem lịch sử đơn"}
+      - {actor: security-engineer, namespace: threat-model, content_ref: threat-model.md, summary: "luồng thanh toán: STRIDE xong, threat model v1"}
+    input:
+      topic: approved-specs
+      key: P1
+      actor: human
+      payload:
+        project_id: P1
+        status: approved
+        reviewer: "chủ đầu tư"
+        artifacts: {prd: docs/PRD.md, requirements: docs/requirements.json, risks: docs/risk-register.json}
+    expect:
+      # ticket không truy được về requirement_id là ticket không ai biết vì sao phải làm
+      equals: {project_id: P1, retry: 0}
+      min_len: {acceptance: 1, requirement_id: 3}
+      one_of: {assignee: [backend, frontend, mobile, database, platform, data]}
+
+  - name: su-co-code-phai-thanh-ticket-uu-tien-cao
+    topic_out: tasks
+    input:
+      topic: incidents
+      key: INC-1
+      actor: support-docs
+      payload:
+        incident_id: INC-1
+        project_id: P1
+        severity: SEV1
+        summary: "Thanh toán trừ tiền hai lần khi khách bấm nút lúc mạng chậm; 14 khách bị ảnh hưởng"
+        ticket_id: TCK-10
+        root_cause_class: code
+    expect:
+      equals: {project_id: P1, retry: 0}
+      one_of: {priority: [1, 2], assignee: [backend, frontend, mobile, database, platform, data]}
+      min_len: {acceptance: 1}

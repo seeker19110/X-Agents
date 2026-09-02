@@ -1,0 +1,47 @@
+# Eval cho backend. Chạy: python -m company.evals backend
+cases:
+  - name: endpoint-ghi-phai-co-idempotency-va-test-truoc
+    topic_out: pull-requests
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "POST /payments chưa có trong contract v1"}
+      - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "payment-service gọi cổng thanh toán qua outbox"}
+    input:
+      topic: tasks
+      key: TCK-10
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-10
+        project_id: P1
+        requirement_id: R-12
+        assignee: backend
+        title: "POST /payments: tạo giao dịch thanh toán"
+        acceptance: ["Gửi trùng cùng một yêu cầu không tạo hai giao dịch", "Cổng thanh toán timeout thì trả lỗi rõ, không treo"]
+        risk_tags: [payment]
+        estimate_tokens: 60000
+        budget_tokens: 90000
+        retry: 0
+    expect:
+      # "idempotency key cho endpoint ghi" và "mọi lời gọi ra ngoài có timeout" là bắt buộc, không phải tuỳ chọn
+      equals: {ticket_id: TCK-10, branch: "ticket/TCK-10", local_checks.tests: true}
+      contains: {summary: idempotency}
+
+  - name: doi-hanh-vi-endpoint-phai-cap-nhat-contract-truoc
+    topic_out: pull-requests
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders trả 200 kèm mảng orders, chưa phân trang"}
+    input:
+      topic: tasks
+      key: TCK-11
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-11
+        project_id: P1
+        requirement_id: R-20
+        assignee: backend
+        title: "GET /orders: thêm phân trang, đổi dạng trả về"
+        acceptance: ["Trả về có cursor và limit", "Client cũ không vỡ"]
+        estimate_tokens: 40000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-11, branch: "ticket/TCK-11"}
+      contains: {summary: contract}

@@ -1,0 +1,40 @@
+# Eval cho mobile. Chạy: python -m company.evals mobile
+cases:
+  - name: luong-must-phai-co-a11y-va-quyen-toi-thieu
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-30
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-30
+        project_id: P1
+        requirement_id: R-40
+        assignee: mobile
+        title: "Chụp ảnh hoá đơn và đính kèm vào đơn hàng"
+        acceptance: ["Người dùng chụp và đính kèm được ảnh", "Từ chối quyền camera vẫn dùng được phần còn lại"]
+        risk_tags: [upload]
+        estimate_tokens: 50000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-30, branch: "ticket/TCK-30"}
+      # quyền tối thiểu là quy tắc cứng: không xin quyền vượt nhu cầu để "cho tiện sau này"
+      contains: {summary: quyền}
+
+  - name: offline-phai-xu-ly-chu-khong-treo
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-31
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-31
+        project_id: P1
+        requirement_id: R-41
+        assignee: mobile
+        title: "Danh sách đơn hàng cho tài xế, dùng ngoài vùng phủ sóng"
+        acceptance: ["Mất mạng vẫn xem được dữ liệu đã tải", "Có mạng lại thì đồng bộ, không mất thao tác"]
+        estimate_tokens: 60000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-31, branch: "ticket/TCK-31", local_checks.tests: true}

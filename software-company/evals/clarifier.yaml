@@ -1,0 +1,38 @@
+# Eval cho clarifier. Chạy: python -m company.evals clarifier
+cases:
+  - name: yeu-cau-mo-ho-phai-thanh-cau-hoi-co-lua-chon-va-mac-dinh
+    topic_out: clarification-questions
+    input:
+      topic: requirements-draft
+      key: P1
+      actor: synthesizer
+      payload:
+        project_id: P1
+        kind: draft
+        requirements:
+          - {id: R-1, type: FR, text: "Hệ thống gửi nhắc lịch khám cho bệnh nhân", source: "họp kickoff 2026-09-01", priority: must}
+          - {id: R-2, type: NFR, text: "Hệ thống phải nhanh", source: "email khách 2026-08-30", priority: must}
+          - {id: R-3, type: FR, text: "Lễ tân xem được lịch của các chi nhánh", source: "họp kickoff 2026-09-01", priority: should}
+        conflicts: ["chưa rõ nhắc qua Zalo hay SMS", "chưa rõ 'nhanh' là bao nhiêu giây"]
+    expect:
+      # mỗi câu hỏi kèm 2–4 lựa chọn và một mặc định: người trả lời bận, không trả lời cũng phải đi tiếp được
+      equals: {project_id: P1, round: 1}
+      min_len: {questions: 2, questions.0.options: 2, questions.0.default: 1}
+      max_len: {questions: 10, questions.0.options: 4}
+
+  - name: draft-ro-rang-thi-hoi-it-khong-hoi-lay-le
+    topic_out: clarification-questions
+    input:
+      topic: requirements-draft
+      key: P2
+      actor: synthesizer
+      payload:
+        project_id: P2
+        kind: draft
+        requirements:
+          - {id: R-1, type: FR, text: "Người dùng xuất danh sách đơn hàng ra CSV, mã hoá UTF-8, tối đa 10.000 dòng mỗi lần", source: "đặc tả khách gửi 2026-08-28", priority: must}
+          - {id: R-2, type: NFR, text: "Xuất 10.000 dòng xong trong 5 giây trên máy 2 vCPU", source: "đặc tả khách gửi 2026-08-28", priority: must, quality_char: "hiệu năng", measure: "p95 ≤ 5s"}
+        conflicts: []
+    expect:
+      equals: {project_id: P2, round: 1}
+      max_len: {questions: 3}

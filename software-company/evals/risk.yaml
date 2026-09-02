@@ -1,0 +1,37 @@
+# Eval cho risk. Chạy: python -m company.evals risk
+cases:
+  - name: luong-thanh-toan-phai-ra-rui-ro-co-mitigation-va-owner
+    topic_out: requirements-draft
+    input:
+      topic: requirements-draft
+      key: P1
+      actor: synthesizer
+      payload:
+        project_id: P1
+        kind: draft
+        requirements:
+          - {id: R-1, type: FR, text: "Bệnh nhân thanh toán trước phí khám qua ví điện tử", source: "CHG-1", priority: must}
+          - {id: R-2, type: FR, text: "Lưu số căn cước và tiền sử bệnh của bệnh nhân", source: "họp kickoff 2026-09-01", priority: must}
+          - {id: R-3, type: NFR, text: "Hệ thống sẵn sàng 99.5% trong giờ hành chính", source: "email khách 2026-08-30", priority: should, measure: "uptime ≥ 99.5%"}
+        conflicts: []
+    expect:
+      # mọi rủi ro High phải có mitigation và owner; rủi ro không ai sở hữu là rủi ro không ai xử lý
+      equals: {project_id: P1, kind: risk}
+      min_len: {risks: 2, risks.0.mitigation: 3, risks.0.owner: 2}
+
+  - name: yeu-cau-rui-ro-cao-khong-co-bien-phap-phai-de-xuat-cat-hoac-hoan
+    topic_out: requirements-draft
+    input:
+      topic: requirements-draft
+      key: P2
+      actor: synthesizer
+      payload:
+        project_id: P2
+        kind: draft
+        requirements:
+          - {id: R-1, type: FR, text: "Tự động chẩn đoán sơ bộ bằng LLM và gợi ý đơn thuốc cho bệnh nhân, không cần bác sĩ duyệt", source: "ý tưởng của khách", priority: must}
+          - {id: R-2, type: FR, text: "Đặt lịch khám online", source: "họp kickoff 2026-09-01", priority: must}
+        conflicts: []
+    expect:
+      equals: {project_id: P2, kind: risk}
+      min_len: {risks: 1, conflicts: 1}

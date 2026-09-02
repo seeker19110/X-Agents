@@ -1,0 +1,43 @@
+# Eval cho data. Chạy: python -m company.evals data
+cases:
+  - name: metric-moi-phai-co-dinh-nghia-duy-nhat-va-dq-test
+    topic_out: pull-requests
+    context:
+      - {actor: data, namespace: analytics, content_ref: metrics.yml, summary: "đã có metric doanh_thu_ngay định nghĩa bằng SQL trên bảng fct_orders"}
+    input:
+      topic: tasks
+      key: TCK-50
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-50
+        project_id: P1
+        requirement_id: R-60
+        assignee: data
+        title: "Thêm metric tỉ lệ huỷ đơn theo chi nhánh cho dashboard vận hành"
+        acceptance: ["Dashboard hiển thị tỉ lệ huỷ theo ngày và chi nhánh", "Số liệu khớp báo cáo tài chính"]
+        estimate_tokens: 45000
+        retry: 0
+    expect:
+      # pipeline fail thì không publish: test freshness/null/unique là cổng, không phải bước làm thêm
+      equals: {ticket_id: TCK-50, branch: "ticket/TCK-50"}
+      contains: {summary: freshness}
+
+  - name: du-lieu-ca-nhan-vao-kho-phan-tich-phai-gia-danh-hoa
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-51
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-51
+        project_id: P1
+        requirement_id: R-61
+        assignee: data
+        title: "Đẩy sự kiện đặt lịch khám (có email, số điện thoại bệnh nhân) sang kho phân tích"
+        acceptance: ["Phân tích được tỉ lệ đặt lịch theo kênh", "Tuân Nghị định 13/2023"]
+        risk_tags: [pii]
+        estimate_tokens: 50000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-51, branch: "ticket/TCK-51"}
+      contains: {summary: PII}

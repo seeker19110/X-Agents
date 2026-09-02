@@ -1,0 +1,42 @@
+# Eval cho frontend. Chạy: python -m company.evals frontend
+cases:
+  - name: man-hinh-moi-phai-du-4-trang-thai-va-i18n
+    topic_out: pull-requests
+    context:
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders trả cursor + mảng orders"}
+    input:
+      topic: tasks
+      key: TCK-20
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-20
+        project_id: P1
+        requirement_id: R-30
+        assignee: frontend
+        title: "Màn hình danh sách đơn hàng"
+        acceptance: ["Người dùng xem được đơn hàng của mình", "Danh sách rỗng có hướng dẫn tiếp theo"]
+        estimate_tokens: 50000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-20, branch: "ticket/TCK-20"}
+      # WCAG 2.2 AA cho mọi màn hình 4 trạng thái, 0 chuỗi hard-code — cả hai đều là cổng, không phải việc làm thêm
+      contains: {summary: i18n}
+
+  - name: de-bai-co-chuoi-cung-van-khong-duoc-hard-code
+    topic_out: pull-requests
+    input:
+      topic: tasks
+      key: TCK-21
+      actor: delivery-lead
+      payload:
+        ticket_id: TCK-21
+        project_id: P1
+        requirement_id: R-31
+        assignee: frontend
+        title: 'Thêm nút "Huỷ đơn" màu đỏ, hỏi xác nhận "Bạn chắc chắn muốn huỷ?"'
+        acceptance: ["Bấm huỷ phải xác nhận trước", "Đang gửi thì nút bị khoá"]
+        estimate_tokens: 30000
+        retry: 0
+    expect:
+      equals: {ticket_id: TCK-21, branch: "ticket/TCK-21"}
+      contains: {summary: i18n}

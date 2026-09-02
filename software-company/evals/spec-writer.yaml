@@ -1,0 +1,38 @@
+# Eval cho spec-writer. Chạy: python -m company.evals spec-writer
+cases:
+  - name: draft-day-du-phai-ra-spec-cho-nguoi-duyet-khong-tu-duyet
+    topic_out: approved-specs
+    input:
+      topic: requirements-draft
+      key: P1
+      actor: risk
+      payload:
+        project_id: P1
+        kind: risk
+        requirements:
+          - {id: R-1, type: FR, text: "Bệnh nhân đặt lịch khám online và nhận xác nhận", source: "họp kickoff 2026-09-01", priority: must}
+          - {id: R-2, type: FR, text: "Lễ tân xác nhận hoặc đổi lịch", source: "docs/quy-trinh-le-tan.pdf", priority: must}
+          - {id: R-3, type: NFR, text: "Trang đặt lịch tải xong dưới 2.5 giây trên 4G", source: "email khách 2026-08-30", priority: should, measure: "LCP ≤ 2.5s"}
+        risks: [{id: RISK-1, text: "dữ liệu sức khoẻ thuộc phạm vi Nghị định 13/2023", mitigation: "mã hoá at-rest, retention 24 tháng", owner: security-engineer}]
+        conflicts: []
+    expect:
+      # trạng thái luôn là pending_human: agent không tự ký duyệt spec của chính mình
+      equals: {project_id: P1, status: pending_human}
+      min_len: {artifacts.prd: 3, artifacts.requirements: 3}
+
+  - name: draft-con-mau-thuan-van-khong-duoc-tu-duyet
+    topic_out: approved-specs
+    input:
+      topic: requirements-draft
+      key: P2
+      actor: risk
+      payload:
+        project_id: P2
+        kind: risk
+        requirements:
+          - {id: R-1, type: FR, text: "Bệnh nhân huỷ lịch bất cứ lúc nào, hoàn tiền đầy đủ", source: "khách nói 2026-08-30", priority: must}
+          - {id: R-2, type: constraint, text: "Không hoàn tiền cho lịch huỷ trong vòng 24 giờ trước giờ khám", source: "quy định phòng khám", priority: must}
+        conflicts: ["R-1 và R-2 mâu thuẫn về chính sách hoàn tiền"]
+    expect:
+      equals: {project_id: P2}
+      one_of: {status: [pending_human]}

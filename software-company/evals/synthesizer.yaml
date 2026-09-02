@@ -1,0 +1,48 @@
+# Eval cho synthesizer. Chạy: python -m company.evals synthesizer
+cases:
+  - name: du-bao-cao-phai-ra-yeu-cau-co-source-va-nfr-do-duoc
+    topic_out: requirements-draft
+    input:
+      topic: research-findings
+      key: P1
+      actor: researcher
+      payload:
+        project_id: P1
+        kind: researcher
+        sources: ["họp kickoff 2026-09-01", "docs/quy-trinh-le-tan.pdf"]
+        data:
+          domain:
+            glossary: ["lịch hẹn", "ca khám", "bệnh nhân"]
+            regulations: ["Nghị định 13/2023"]
+          ux:
+            personas: ["bệnh nhân", "lễ tân"]
+            flows: ["đặt lịch → xác nhận → nhắc lịch"]
+          codebase: "không áp dụng — sản phẩm mới"
+          tech:
+            options: ["web app + Zalo OA API"]
+            ai_risks: []
+    expect:
+      # 100% requirement có source; NFR có số đo — "phải nhanh" không phải một yêu cầu
+      equals: {project_id: P1, kind: draft}
+      min_len: {requirements: 3, requirements.0.source: 3}
+
+  - name: thieu-muc-nghien-cuu-phai-tra-rong-khong-duoc-bia
+    topic_out: requirements-draft
+    input:
+      topic: research-findings
+      key: P2
+      actor: researcher
+      payload:
+        project_id: P2
+        kind: researcher
+        sources: ["brief khách"]
+        data:
+          domain:
+            glossary: ["ghi chú", "chuyến đi"]
+          tech:
+            options: ["ứng dụng Android"]
+    expect:
+      # tiêu chí bắt đầu không đủ (thiếu ux và codebase): nêu ra, không tự bịa yêu cầu
+      equals: {project_id: P2, kind: draft}
+      max_len: {requirements: 0}
+      min_len: {conflicts: 1}

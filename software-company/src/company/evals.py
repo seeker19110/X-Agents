@@ -5,6 +5,7 @@ Tiêu chí (`expect`):
   equals:   {field: value}         trường bằng đúng
   contains: {field: substring}     chuỗi chứa (không phân biệt hoa thường)
   min_len:  {field: n}             list/chuỗi có độ dài ≥ n
+  max_len:  {field: n}             list/chuỗi có độ dài ≤ n (n=0 nghĩa là phải rỗng)
   one_of:   {field: [v1, v2]}      giá trị nằm trong tập
 """
 from __future__ import annotations
@@ -52,6 +53,8 @@ def check(payload: dict[str, Any], expect: dict[str, Any]) -> list[str]:
         if str(v).lower() not in str(_get(payload, f) or "").lower(): fails.append(f"{f} phải chứa {v!r}")
     for f, n in (expect.get("min_len") or {}).items():
         if len(_get(payload, f) or []) < n: fails.append(f"len({f}) ≥ {n}")
+    for f, n in (expect.get("max_len") or {}).items():
+        if len(_get(payload, f) or []) > n: fails.append(f"len({f}) ≤ {n}, thực tế {len(_get(payload, f) or [])}")
     for f, vs in (expect.get("one_of") or {}).items():
         if _get(payload, f) not in vs: fails.append(f"{f} ∈ {vs}")
     return fails

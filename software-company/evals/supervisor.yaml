@@ -1,0 +1,37 @@
+# Eval cho supervisor. Chạy: python -m company.evals supervisor
+cases:
+  - name: vuot-ngan-sach-phai-cat-dung-agent-gay-ra
+    topic_out: supervisor-actions
+    input:
+      topic: audit-log
+      key: backend
+      actor: backend
+      payload:
+        actor: backend
+        action: "produced:pull-requests"
+        ticket_id: TCK-10
+        project_id: P1
+        tokens: 128000
+        evidence: "budget_tokens=90000, đã dùng 128000 (142%); retry lần 3 cùng lỗi 'đầu ra không hợp lệ cho pull-requests'"
+    expect:
+      # cảnh báo ở 80%, cắt ở 100% — vượt 142% mà chỉ `warn` là để lỗ hổng ngân sách chảy tiếp
+      equals: {target: backend}
+      one_of: {action: [budget_cut, escalate, pause]}
+      min_len: {reason: 10}
+
+  - name: review-qua-han-phai-canh-bao-dung-nguon-thieu
+    topic_out: supervisor-actions
+    input:
+      topic: audit-log
+      key: delivery-lead
+      actor: delivery-lead
+      payload:
+        actor: delivery-lead
+        action: overdue_reviews
+        ticket_id: TCK-11
+        project_id: P1
+        tokens: 0
+        evidence: "TCK-11 ở in_review 2 giờ 20 phút; đã có review của reviewer, thiếu nguồn qa"
+    expect:
+      one_of: {target: [qa-debugger, qa], action: [warn, escalate]}
+      min_len: {reason: 10}
