@@ -98,6 +98,12 @@ Người tự kiểm thêm:
 
 `gate_cli approve <ticket> --reason "<hint>"` = mở lại ticket với hint, retry về 0, resume; `reject` = đóng ticket.
 
+### Escalation cấp dự án (subject = project_id)
+Agent của chuỗi nghiên cứu (intake, researcher, synthesizer, risk, clarifier, spec-writer) lỗi thì dự án không có bước
+kế tiếp và không có ticket nào để retry. Orchestrator ghi `project.stalled`, supervisor `escalate` (mọi event của dự án
+bị hoãn), `status.stalled` nêu agent + lỗi, và mở gate này với checklist `agent_error`, `decision:retry|close`.
+`approve` = chạy lại đúng event đã lỗi (resume dự án); `reject` = đóng dự án (`project.closed`). Lỗi lần nữa → gate mới.
+
 ## Chỉ người được ký
 - Chấp nhận rủi ro bảo mật (threat accepted)
 - Ngoại lệ license (copyleft)

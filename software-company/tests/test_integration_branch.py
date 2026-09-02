@@ -2,6 +2,7 @@
 ticket làm lại trên nền mới. Nhánh của khách (`main`) không bị chạm."""
 from __future__ import annotations
 
+import json
 import subprocess
 
 from company.bus import InMemoryBus
@@ -98,3 +99,40 @@ def test_without_repo_no_integration():
     _pub(bus, "approved-specs", "P1", "spec-writer", {"project_id": "P1", "status": "pending_human", "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
     orch.run()
     assert orch.integration is None and orch.status()["integration"] is None
+
+
+def test_worktrees_dir_is_excluded_from_customer_git_status(tmp_path):
+    """F8: `.worktrees/` không hiện untracked trong repo khách; ghi `.git/info/exclude`, không chạm `.gitignore`."""
+    import subprocess
+
+    from company.workspace import Integration, TicketWorkspace
+    from test_tools_and_agentic import _init_repo
+    repo = _init_repo(tmp_path / "repo")
+    Integration(repo, "company/integration", "main").ensure()
+    TicketWorkspace(repo, "T1", base="company/integration").create()
+    st = subprocess.run(["git", "-C", str(repo), "status", "--short"], capture_output=True, text=True, encoding="utf-8").stdout
+    assert ".worktrees" not in st and st.strip() == ""
+    assert not (repo / ".gitignore").exists()
+    ex = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+    assert ex.count(".worktrees/") == 1
+    TicketWorkspace(repo, "T2", base="company/integration").create()  # không ghi trùng
+    assert (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8").count(".worktrees/") == 1
+
+
+def test_approved_ticket_is_merged_before_dependents_start(tmp_path):
+    """F10: ticket approved merge ngay vào nhánh tích hợp, ticket phụ thuộc rẽ từ nền đã có code của nó — kể cả khi
+    gom release (RC chưa có). Trước đây merge chỉ xảy ra lúc RC nên DHCB-5 import module của DHCB-2 và đỏ ngay."""
+    repo = _init_repo(tmp_path / "repo")
+    seen = {}
+    def th(msgs, tools):
+        if "write_file" in {t.name for t in tools} and _first_turn(msgs):
+            tid = _inp(msgs[0]["content"])["ticket_id"]
+            seen[tid] = sorted(p.name for p in (repo / ".worktrees" / tid).glob("f_*.py"))
+        return _repo_tool_handler(msgs, tools)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=th), repo=repo, base="main", batch_releases=True)
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert seen == {"T1": [], "T2": ["f_t1.py"]}, "T2 (depends_on T1) bắt đầu trên nền đã có code T1"
+    assert orch.lead.releases == ["REL-001"] and orch.lead.release_tickets["REL-001"] == ["T1", "T2"]
+    merged = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "integration.merged"]
+    assert [m["ticket_id"] for m in merged] == ["T1", "T2"] and merged[0]["release_id"] is None, "merge lúc approved, không đợi RC"
+    assert orch.integration.files().count("f_t1.py") == 1

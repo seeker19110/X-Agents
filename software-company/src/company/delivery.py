@@ -16,9 +16,15 @@ class DeliveryLead:
     LLM chỉ dùng để viết plan/ticket; phần đóng vòng ở đây là code."""
     BASE_REVIEWS: frozenset[str] = frozenset({"reviewer", "qa"})
 
+    IN_FLIGHT = frozenset({"waiting", "dispatched", "in_progress", "in_review", "changes_requested"})
+
     def __init__(self, bus: InMemoryBus, gate: HumanGate, max_retries: int = 3,
-                 review_timeout: timedelta = timedelta(hours=2)):
+                 review_timeout: timedelta = timedelta(hours=2), batch_releases: bool = False):
         self.bus, self.gate, self.max_retries, self.review_timeout = bus, gate, max_retries, review_timeout
+        # batch_releases: gom mọi ticket approved của dự án vào MỘT RC khi không còn ticket nào đang chạy (thay vì mỗi
+        # ticket một release → mỗi ticket một lần staging, một gate 3, một UAT). Ticket blocked/escalated chờ người,
+        # không giữ release của người khác.
+        self.batch_releases = batch_releases
         self.tickets: dict[str, Task] = {}
         self.state: dict[str, str] = {}
         self.plan_of: dict[str, str] = {}
@@ -32,7 +38,8 @@ class DeliveryLead:
         self.acceptance: dict[str, AcceptanceResult] = {}
         self.replaying = False  # True khi dựng lại trạng thái từ log: đổi state nhưng không publish/xin gate lại
         self.handlers = {"review-results": self._on_review, "pull-requests": self._on_pr,
-                         "release-events": self._on_release_event, "acceptance-results": self._on_acceptance}
+                         "release-events": self._on_release_event, "acceptance-results": self._on_acceptance,
+                         "change-requests": self._on_change_request}
         for topic, fn in self.handlers.items():
             bus.subscribe(topic, fn)
 
@@ -128,6 +135,14 @@ class DeliveryLead:
         self.review_since.pop(tid, None)
         self._publish_task(nt); return nt
 
+    def rework(self, tid: str, hint: str) -> None:
+        """PR bị code từ chối trước review (lint/test thật fail): ticket về `changes_requested` rồi retry+1 kèm hint là
+        đầu ra test, không đi qua reviewer/QA/security chỉ để nghe lại điều máy đã biết. Hết retry → blocked."""
+        if self.state.get(tid) not in {"dispatched", "in_progress"}:
+            raise ValueError(f"{tid}: rework chỉ từ dispatched/in_progress (đang {self.state.get(tid)})")
+        self.state[tid] = "changes_requested"
+        self._retry(tid, hint)
+
     def overdue_reviews(self, now: datetime | None = None) -> dict[str, set[str]]:
         """Ticket ở in_review quá review_timeout: trả về nguồn review còn thiếu để supervisor giao lại/escalate."""
         now = now or datetime.now(UTC); out = {}
@@ -160,7 +175,8 @@ class DeliveryLead:
         self.review_since.pop(tid, None)
         if all(x.verdict == "pass" for x in self.reviews[tid].values()):
             self._set(tid, "approved")
-            self._create_release_candidate([tid])
+            if self.batch_releases: self.flush_releases(self.tickets[tid].project_id)
+            else: self._create_release_candidate([tid])
             self._flush_waiting()
             return
         self._set(tid, "changes_requested")
@@ -180,6 +196,21 @@ class DeliveryLead:
         nxt = (major, minor + 1, 0) if breaking else (major, minor, patch + 1)
         self.versions[project_id] = nxt
         return ".".join(str(x) for x in nxt)
+
+    def unreleased(self, project_id: str) -> list[str]:
+        """Ticket approved của dự án chưa nằm trong RC nào."""
+        in_rc = {t for tids in self.release_tickets.values() for t in tids}
+        return [tid for tid, t in self.tickets.items()
+                if t.project_id == project_id and self.state.get(tid) == "approved" and tid not in in_rc]
+
+    def flush_releases(self, project_id: str) -> str | None:
+        """Chế độ gom release: tạo RC cho mọi ticket approved chưa release của dự án khi không còn ticket nào đang chạy.
+        Gọi lại khi trạng thái đổi (ticket approved, blocked, đóng sau escalation)."""
+        pending = self.unreleased(project_id)
+        if not pending: return None
+        if any(t.project_id == project_id and self.state.get(tid) in self.IN_FLIGHT for tid, t in self.tickets.items()):
+            return None
+        return self._create_release_candidate(sorted(pending, key=lambda x: list(self.tickets).index(x)))
 
     def _create_release_candidate(self, tids: list[str]) -> str:
         rid = f"REL-{len(self.releases)+1:03d}"; self.releases.append(rid); self.release_tickets[rid] = tids
@@ -253,4 +284,16 @@ class DeliveryLead:
             elif a.verdict == "rejected":
                 hint = "; ".join(f.text for f in a.findings) or "khách từ chối nghiệm thu"
                 self._set(tid, "changes_requested"); self._retry(tid, hint)
-            # conditional: giữ released, account-manager mở change-request cho phần còn lại
+            # conditional: giữ released cho tới khi change-request cho phần còn lại được quyết (`_on_change_request`)
+
+    def _on_change_request(self, env: Envelope) -> None:
+        """Change request sinh từ nghiệm thu conditional mang `release_id`. Khi khách đã quyết (accepted → phần còn lại
+        đi lập kế hoạch riêng; rejected/deferred → không làm nữa) thì release đó coi như đã nghiệm thu: ticket đóng.
+        Trước đây ticket giữ `released` mãi, dự án không bao giờ hết việc."""
+        p = env.payload
+        rid = p.get("release_id")
+        if p.get("decision", "pending") == "pending" or not rid: return
+        a = self.acceptance.get(str(rid))
+        if a is None or a.verdict != "conditional": return
+        for tid in self.release_tickets.get(str(rid), []):
+            if self.state.get(tid) == "released": self._set(tid, "closed")

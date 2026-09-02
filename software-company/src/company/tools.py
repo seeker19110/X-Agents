@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
 
+from .stacks import detect
 from .workspace import TicketWorkspace
 
 MAX_OUTPUT = 6_000          # ký tự trả về cho model mỗi lần gọi tool
@@ -114,7 +115,8 @@ class WorkspaceTools:
         self.root = (ws.path if isinstance(ws, TicketWorkspace) else Path(ws)).resolve()
         # lint/test lấy theo stack của repo khách (ADR-0013): argv vẫn do code ghép, model chỉ chọn tên lệnh.
         # Thư mục chỉ đọc (researcher trên repo khách) không có TicketWorkspace nên chỉ còn lệnh git.
-        stack_cmds = self.ws.stack().commands() if self.ws is not None else {}
+        # Thư mục thường mà được phép chạy (QA hồi quy trên worktree tích hợp) thì nhận stack theo file dấu hiệu ở gốc.
+        stack_cmds = (self.ws.stack() if self.ws is not None else detect(self.root)).commands() if allow_run else {}
         self.COMMANDS: dict[str, list[str]] = {**stack_cmds, **self.GIT_COMMANDS}
 
     # ---------- ranh giới đường dẫn ----------

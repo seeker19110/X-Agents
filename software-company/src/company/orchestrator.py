@@ -58,7 +58,7 @@ from .llm import LLMError, ModelClient, TransientError
 from .registry import AgentSpec, load_agents
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError, artifact_store
 from .supervisor import Supervisor
-from .tools import WorkspaceTools
+from .tools import ToolBox, WorkspaceTools
 from .web import WebTools, research_toolbox
 from .workspace import Integration, TicketWorkspace, WorkspaceError, _git
 
@@ -66,6 +66,9 @@ ACTOR = "orchestrator"
 MAX_CLARIFY_ROUNDS = 2  # khớp `clarification-questions.round` (maximum 2) và prompt clarifier
 ENGINEERING = ("backend", "frontend", "mobile", "database", "platform", "data")
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
+# Chuỗi nghiên cứu chạy theo key=project, không có ticket/retry/blocked: một agent lỗi là cả dự án đứng mà không ai
+# thấy. Lỗi ở các topic này mở gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án).
+RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
 REVIEW_AGENT = {"reviewer": "reviewer", "qa": "qa-debugger", "security": "security-engineer"}
 KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
@@ -131,6 +134,18 @@ def _answers_incomplete(e: Envelope, o: Orchestrator) -> bool:
     return not _answers_complete(e, o)
 
 
+def _spec_ready(e: Envelope, o: Orchestrator) -> bool:
+    """Spec-writer chỉ chạy khi đã trả lời hết câu hỏi VÀ dự án có `requirements-draft`. Trước đây câu trả lời gửi cho
+    một dự án chưa có bản nháp (chuỗi nghiên cứu chết, hoặc gửi nhầm dự án) vẫn sinh PRD từ đầu vào trống."""
+    if not _answers_complete(e, o): return False
+    pid = str(e.payload.get("project_id") or e.key)
+    if o.latest("requirements-draft", pid) is not None: return True
+    o._audit("spec_writer.no_draft", {"project_id": pid, "event_id": e.event_id,
+                                      "reason": "clarification-answers nhưng dự án chưa có requirements-draft"},
+             once=f"no_draft:{e.event_id}", project_id=pid)
+    return False
+
+
 def _cr_accepted_needs_research(e: Envelope, _o: Orchestrator) -> bool:
     return e.payload.get("decision") == "accepted" and bool(e.payload.get("affects_requirements"))
 
@@ -160,7 +175,7 @@ ROUTES: tuple[Route, ...] = (
     Route("requirements-draft", "risk", "requirements-draft", _from("synthesizer")),
     Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
     Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
-    Route("clarification-answers", "spec-writer", "approved-specs", _answers_complete, enrich=_with_draft),
+    Route("clarification-answers", "spec-writer", "approved-specs", _spec_ready, enrich=_with_draft),
     # kỹ thuật + chất lượng
     Route("tasks", "$assignee", "pull-requests", tools="rw"),
     Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),
@@ -169,7 +184,7 @@ ROUTES: tuple[Route, ...] = (
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     Route("release-candidates", "release-engineer", "release-events", target_env="staging"),
     Route("release-candidates", "security-engineer", "review-results", _release_needs_security),
-    Route("release-events", "qa-debugger", "review-results", _deployed("staging")),
+    Route("release-events", "qa-debugger", "review-results", _deployed("staging"), tools="ro"),  # tool trên worktree tích hợp
     Route("release-events", "support-docs", CONTEXT_ONLY, _deployed("production")),  # docs, release notes, runbook
     # khách và hậu release
     Route("external-feedback", "account-manager", "change-requests"),
@@ -218,6 +233,7 @@ class StepResult:
 class Orchestrator:
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
                  max_retries: int = 3, repo: Path | None = None, base: str = "HEAD", max_turns: int = 25,
+                 batch_releases: bool = False,
                  integration: str = "company/integration", workers: int = 1, web: WebTools | bool = False,
                  artifacts: Path | None = None, project_budget_usd: float | None = None):
         self.bus = bus
@@ -232,13 +248,16 @@ class Orchestrator:
             raise ValueError(f"repo không phải git repository: {self.repo}")
         self.integration = Integration(self.repo, integration, base) if self.repo is not None else None
         self.void_releases: set[str] = set()
+        self.integrated: set[str] = set()  # ticket đã merge vào nhánh tích hợp (khi approved, không đợi RC)
         self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
+        self.stalled: dict[str, dict[str, Any]] = {}  # project_id → {event_id, agent, topic, error}: dự án kẹt chờ người
+        self.stall_count: Counter[str] = Counter()  # event_id → số lần kẹt (mỗi lần một gate mới, không im lặng lần hai)
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
         self.blackboard = Blackboard(bus, store=artifacts)
         self.gate = PersistentGate(bus)
-        self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries)
+        self.lead = DeliveryLead(bus, self.gate, max_retries=max_retries, batch_releases=batch_releases)
         budget_usd = project_budget_usd if project_budget_usd is not None else getattr(client, "budget_usd", None)
         self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_usd=budget_usd)
         self.runner = AgentRunner(bus, client, self.agents, self.blackboard)
@@ -265,7 +284,11 @@ class Orchestrator:
                 elif a["actor"] == ACTOR and a["action"] == "once": self.once.add(d["key"])
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self.void_releases.add(d["release_id"])
+                elif a["action"] == "integration.merged": self.integrated.add(d["ticket_id"])
                 elif a["action"] == "threat_model.missing": self.missing_threat_model.add(d["subject_id"])
+                elif a["action"] == "project.stalled":
+                    self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
+                elif a["action"] in {"project.retried", "project.closed"}: self.stalled.pop(d["project_id"], None)
                 elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d["subject_id"] in self.plans:
                     self._dispatch_plan(d["subject_id"], replaying=True)
             elif env.topic == "supervisor-actions": self._track_pause(env)
@@ -339,6 +362,7 @@ class Orchestrator:
                     results = list(ex.map(self.process, batch))
             out += [r for r in results if r is not None]
             self._check_escalations()
+        self._check_escalations()  # supervisor escalate ở event cuối hàng đợi: gate vẫn phải mở, không chờ event kế tiếp
         return out
 
     def tick(self, now: datetime | None = None) -> list[StepResult]:
@@ -394,6 +418,10 @@ class Orchestrator:
             draft = self.latest("requirements-draft", env.key)
             if draft is not None:
                 self._call("spec-writer", draft, Route("requirements-draft", "spec-writer", "approved-specs"), res)
+        if env.topic in {"tasks", "review-results"}:
+            # Ticket approved lên nhánh tích hợp TRƯỚC khi ticket phụ thuộc (đã được delivery-lead dispatch ngay lúc
+            # approve, nên đứng trước review-results trong hàng đợi) tạo worktree.
+            self._integrate_approved(res)
         for r in ROUTES:
             if r.topic_in != env.topic or (r.when and not r.when(env, self)): continue
             agent = env.payload["assignee"] if r.agent == "$assignee" else r.agent
@@ -441,13 +469,16 @@ class Orchestrator:
             if r.target_env:
                 out = self._release(agent, env, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             elif r.tools == "rw":
-                out = self._engineer(agent, inp, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
+                pr = self._engineer(agent, inp, r)
+                res.actions.append(f"{agent}→{r.topic_out}:{pr.key}" if pr is not None else f"{agent}→rework:{inp.key}")
             elif r.topic_out == CONTEXT_ONLY:
                 g = self.runner.run_context(agent, inp)
                 res.actions.append(f"{agent}→blackboard:{','.join(w['namespace'] for w in g.context_writes) or '-'}")
             elif r.many:
                 g = self.runner.generate(agent, inp, r.topic_out, many=True)
                 if g.context_writes: self.runner.write_context(agent, env, g.context_writes)
+                if env.topic == "acceptance-results":  # CR từ nghiệm thu conditional phải truy được release (đóng ticket khi quyết)
+                    g.payloads = [{**p, "release_id": env.key} for p in g.payloads]
                 for i, p in enumerate(g.payloads):  # token/tiền tính một lần cho cả lượt, không nhân theo số payload
                     self.runner.publish(agent, env, r.topic_out, p, key=key_for(r.topic_out, p, env.key),
                                         tokens=g.tokens if i == 0 else 0, model=g.model, generated=g if i == 0 else None)
@@ -457,11 +488,15 @@ class Orchestrator:
                 res.actions.append(f"{agent}→{r.topic_out}×{len(g.payloads)}")
             else:
                 tools = None
-                if r.tools == "ro" and (ws := self.workspace(inp.payload.get("ticket_id") or inp.key)) and ws.path.exists():
-                    tools = WorkspaceTools(ws, allow_write=False).toolbox()
+                if r.tools == "ro":
+                    tools = self._read_only_tools(inp)
                 elif r.tools == "research":
                     tools = research_toolbox(self.repo, self.web)
                 g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns)
+                if r.tools == "ro" and tools is not None and not g.tool_calls:
+                    # Có tool mà không chạy gì: verdict chỉ là lời khai. Không chặn (người đọc review vẫn quyết), nhưng phải hiện.
+                    self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
+                                actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
                 out = self.runner.publish(agent, env, r.topic_out, g.payloads[0], key=key_for(r.topic_out, g.payloads[0], env.key),
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
@@ -470,43 +505,120 @@ class Orchestrator:
         except TransientError as e:  # hết retry transport: không phải lỗi agent — hoãn event, nhịp sau thử lại
             res.actions.append(f"transient:{agent}:{str(e)[:120]}"); res.transient = True
             with self._lock: self.stats["transient"] += 1
-        except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry (ADR-0005)
+        except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry lời gọi (ADR-0005)
             res.actions.append(f"error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
+            self._stall(env, agent, e, res)
+            self._rework_after_error(env, r, e)
         except Exception as e:  # handler xác định (delivery-lead) từ chối chuyển trạng thái: event đã ghi đĩa
             self._audit("handler_error", {"agent": agent, "error": str(e)[:300]}, ticket_id=env.payload.get("ticket_id"))
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
+            self._stall(env, agent, e, res)
+
+    def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> None:
+        """Agent kỹ thuật lỗi (không sửa file, JSON hỏng, hết ngân sách lượt...) → ticket không được treo `dispatched`
+        mãi: delivery-lead phát lại task retry+1 với hint là lỗi, hết retry → blocked → gate escalation."""
+        if r.tools != "rw": return
+        tid = str(env.payload.get("ticket_id") or env.key)
+        if self.lead.state.get(tid) not in {"dispatched", "in_progress"}: return
+        try:
+            self.lead.rework(tid, f"lần trước lỗi: {str(error)[:500]}")
+        except ValueError as ex:
+            self._audit("handler_error", {"agent": "delivery-lead", "error": str(ex)[:300]}, ticket_id=tid)
+
+    def _stall(self, env: Envelope, agent: str, error: Exception, res: StepResult) -> None:
+        """Agent của chuỗi nghiên cứu lỗi → dự án không có bước kế tiếp. Ghi `project.stalled`, supervisor escalate
+        (dự án bị hoãn mọi event), mở gate `escalation` subject=project_id. Ticket có cơ chế retry/blocked riêng."""
+        if env.topic not in RESEARCH_TOPICS: return
+        pid = str(env.payload.get("project_id") or env.key)
+        with self._lock:
+            self.stall_count[env.event_id] += 1; n = self.stall_count[env.event_id]
+            self.stalled[pid] = {"project_id": pid, "event_id": env.event_id, "topic": env.topic, "agent": agent,
+                                 "error": str(error)[:300], "attempt": n}
+        self._audit("project.stalled", self.stalled[pid], project_id=pid)
+        self.supervisor.escalate_gate(pid, f"{agent} lỗi trên {env.topic} (lần {n}): {str(error)[:200]}",
+                                      once_key=f"stall:{env.event_id}:{n}")
+        if pid not in self.gate.pending:
+            self.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by="supervisor",
+                                          checklist=["agent_error", "decision:retry|close"]))
+        res.actions.append(f"stalled:{pid}:{agent}")
+
+    def _retry_stalled(self, pid: str, by: str, reason: str) -> bool:
+        """Người duyệt gate escalation của dự án: chạy lại event đã lỗi (bỏ dấu đã xử lý, đưa về đầu hàng đợi)."""
+        st = self.stalled.get(pid)
+        if st is None: return False
+        env = next((e for e in self.bus.replay(topic=st["topic"], key=pid) if e.event_id == st["event_id"]), None)
+        if env is None: return False
+        with self._lock:
+            self.processed.discard(env.event_id); self.partial.pop(env.event_id, None); self.stalled.pop(pid, None)
+        self._audit("project.retried", {**st, "by": by, "reason": reason}, project_id=pid)
+        with self._qlock: self.queue.insert(0, env)
+        return True
+
+    def _integrate_approved(self, res: StepResult) -> None:
+        """Ticket vừa approved → merge ngay vào nhánh tích hợp, không đợi RC. Ticket phụ thuộc rẽ nhánh từ nhánh tích hợp,
+        nên nếu chỉ merge lúc release (nhất là khi gom release) thì ticket sau không thấy code của ticket trước:
+        DHCB-5 import `dhcb.layout` của DHCB-2 và đỏ ngay dù DHCB-2 đã approved."""
+        if self.integration is None: return
+        for tid, st in list(self.lead.state.items()):
+            if st != "approved" or tid in self.integrated: continue
+            self._merge_ticket(tid, res, release_id=None)
+
+    def _merge_ticket(self, tid: str, res: StepResult, release_id: str | None) -> bool:
+        """merge --no-ff branch ticket vào nhánh tích hợp. Xung đột → ticket về changes_requested với hint là file xung
+        đột, worktree tạo lại từ nền mới; trả về False."""
+        assert self.integration is not None
+        ws = self.workspace(tid)
+        if ws is None or not ws.path.exists():
+            self._audit("integration.skipped", {"release_id": release_id, "ticket_id": tid, "reason": "không có worktree"}, ticket_id=tid)
+            return True
+        t = self.lead.tickets.get(tid)
+        m = self.integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}" + (f"\n\nrelease: {release_id}" if release_id else ""))
+        if m.ok:
+            with self._lock: self.integrated.add(tid)
+            self._audit("integration.merged", {"release_id": release_id, "ticket_id": tid, "sha": m.sha, "branch": self.integration.branch}, ticket_id=tid)
+            res.actions.append(f"integrated:{tid}@{m.sha}"); return True
+        hint = f"xung đột với nhánh tích hợp {self.integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
+        self._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
+        try:
+            ws.fresh()
+            self.lead.request_changes(tid, hint)
+        except (ValueError, WorkspaceError) as e:
+            self._audit("handler_error", {"agent": "delivery-lead", "error": str(e)[:300]}, ticket_id=tid)
+        res.actions.append(f"conflict:{tid}")
+        with self._lock: self.stats["conflicts"] += 1
+        return False
 
     def _integrate(self, rc: Envelope, res: StepResult) -> bool:
-        """Merge branch ticket của RC vào nhánh tích hợp. Trả về False nếu RC bị huỷ (xung đột hoặc branch thiếu)."""
+        """Mọi ticket của RC phải nằm trên nhánh tích hợp (thường đã merge lúc approved). Trả về False nếu RC bị huỷ."""
         if self.integration is None: return True
         rid = rc.payload["release_id"]
         if rid in self.void_releases: return False
         for tid in rc.payload.get("tickets", []):
-            ws = self.workspace(tid)
-            if ws is None or not ws.path.exists():
-                self._audit("integration.skipped", {"release_id": rid, "ticket_id": tid, "reason": "không có worktree"}, ticket_id=tid)
-                continue
-            t = self.lead.tickets.get(tid)
-            m = self.integration.merge(ws.branch, f"merge({tid}): {t.title if t else tid}\n\nrelease: {rid}")
-            if m.ok:
-                self._audit("integration.merged", {"release_id": rid, "ticket_id": tid, "sha": m.sha, "branch": self.integration.branch}, ticket_id=tid)
-                res.actions.append(f"integrated:{tid}@{m.sha}"); continue
-            hint = f"xung đột với nhánh tích hợp {self.integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
-            self._audit("release.void", {"release_id": rid, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
-            self.void_releases.add(rid)
-            try:
-                ws.fresh()
-                self.lead.request_changes(tid, hint)
-            except (ValueError, WorkspaceError) as e:
-                self._audit("handler_error", {"agent": "delivery-lead", "error": str(e)[:300]}, ticket_id=tid)
-            res.actions.append(f"conflict:{tid}")
-            with self._lock: self.stats["conflicts"] += 1
-            return False
+            if tid in self.integrated: continue
+            if self.lead.state.get(tid) not in {"approved", "merged"}:  # đã bị trả về (xung đột lúc approved): RC vô nghĩa
+                self._audit("release.void", {"release_id": rid, "ticket_id": tid, "reason": f"ticket đang {self.lead.state.get(tid)}"}, ticket_id=tid)
+                self.void_releases.add(rid); res.actions.append(f"void:{rid}")
+                return False
+            if not self._merge_ticket(tid, res, release_id=rid):
+                self._audit("release.void", {"release_id": rid, "ticket_id": tid}, ticket_id=tid)
+                self.void_releases.add(rid)
+                return False
         return True
 
-    def _engineer(self, agent: str, task: Envelope, r: Route) -> Envelope:
+    def _read_only_tools(self, inp: Envelope) -> ToolBox | None:
+        """Tool chỉ đọc cho QA: worktree của ticket (review PR) hoặc worktree tích hợp (hồi quy sau khi deploy staging —
+        release không có ticket riêng, nhưng code vừa deploy chính là nhánh tích hợp). Không có repo → không tool."""
+        if self.repo is None or self.integration is None: return None
+        tid = inp.payload.get("ticket_id") or (inp.key if inp.topic in {"tasks", "pull-requests"} else None)
+        if tid and (ws := self.workspace(str(tid))) is not None and ws.path.exists():
+            return WorkspaceTools(ws, allow_write=False).toolbox()
+        if inp.payload.get("release_id") and self.integration.path.exists():
+            return WorkspaceTools(self.integration.path, allow_write=False).toolbox()
+        return None
+
+    def _engineer(self, agent: str, task: Envelope, r: Route) -> Envelope | None:
         """Ticket → PR. Có repo: agent làm trong worktree, bằng chứng do code điền. Không repo: PR đi tiếp nhưng
         `local_checks` của model bị thay bằng `{"unverified": true}` và ghi audit — không có bằng chứng giả."""
         tid = task.payload.get("ticket_id") or task.key
@@ -515,6 +627,17 @@ class Orchestrator:
         if ws is not None:
             g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns)
             p = g.payloads[0]
+            lc = p["local_checks"]
+            if lc.get("lint") is False or lc.get("tests") is False:
+                # Máy đã biết PR đỏ: không đưa qua reviewer/QA/security (tốn ba lượt để nghe lại), trả thẳng về ticket.
+                bad = [k for k in ("lint", "tests") if lc.get(k) is False]
+                hint = f"{'/'.join(bad)} local fail (retry {task.payload.get('retry', 0)}):\n" + \
+                       "\n".join((lc.get({"lint": "lint_output", "tests": "test_output"}[k]) or "")[-1500:] for k in bad)
+                self._audit("pr.rejected_local_checks", {"ticket_id": tid, "agent": agent, "failed": bad, "commit": p.get("pr_ref"),
+                                                         "files": p.get("impact", {}).get("files", [])},
+                            actor=agent, tokens=g.tokens, cost=g.cost_usd, ticket_id=tid, project_id=task.payload.get("project_id"))
+                if tid in self.lead.tickets: self.lead.rework(tid, hint)
+                return None
         else:
             g = self.runner.generate(agent, task, r.topic_out)
             p = {**g.payloads[0], "local_checks": {"unverified": True}}
@@ -535,6 +658,10 @@ class Orchestrator:
             self._audit("invalid_output", {"agent": agent, "expected_env": r.target_env, "got": p.get("env")},
                         actor=agent, tokens=g.tokens)
             raise RunnerError(f"{agent}: đầu ra env={p.get('env')} release_id={p.get('release_id')}, cần {r.target_env}/{rid}")
+        if (want := rc.payload.get("version")) and p.get("version") != want:
+            # Phiên bản là của RC (delivery-lead suy từ nội dung release), không phải lời khai của model.
+            self._audit("release.version_overridden", {"release_id": rid, "claimed": p.get("version"), "version": want}, actor=agent)
+            p = {**p, "version": want}
         return self.runner.publish(agent, rc, r.topic_out, p, key=rid, tokens=g.tokens, model=g.model, generated=g)
 
     # ---------- kế hoạch: gate spec → threat model → delivery-lead sinh ticket → gate plan → dispatch ----------
@@ -675,8 +802,9 @@ class Orchestrator:
         """Ticket blocked (retry hết) hoặc bị supervisor escalate → gate `escalation` cho người quyết (checklist gate 'bất thường')."""
         for tid in {*self.lead.blocked(), *(t for t in self.paused if t in self.lead.tickets)}:
             if self.lead.state.get(tid) in DONE_STATES: continue  # đã đóng/đã xong: không mở gate nữa
-            n = sum(1 for a in self.supervisor.actions if a.target == tid and a.action == "escalate")
-            key = f"escalation:{tid}:{n}:{self.lead.state.get(tid)}"  # mỗi lần escalate mới / blocked mới → một gate mới
+            # budget_cut cũng là "dừng chờ người" (approve = cấp thêm ngân sách): không có gate thì ticket treo im lặng.
+            n = sum(1 for a in self.supervisor.actions if a.target == tid and a.action in {"escalate", "budget_cut"})
+            key = f"escalation:{tid}:{n}:{self.lead.state.get(tid)}"  # mỗi lần escalate/cắt mới / blocked mới → một gate mới
             if tid in self.gate.pending or key in self.once: continue
             if self.lead.state.get(tid) == "blocked" or n:
                 self._remember(key)
@@ -684,6 +812,16 @@ class Orchestrator:
                                               checklist=["root_cause", "decision:reopen|close", "hint"]))
 
     def _on_escalation_decided(self, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
+        if tid in self.stalled:  # escalation cấp dự án (chuỗi nghiên cứu lỗi): retry event hoặc đóng dự án
+            if decision == "approve":
+                self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
+                                          payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
+                res.actions.append(f"retry:{tid}" if self._retry_stalled(tid, by, reason) else f"retry_failed:{tid}")
+            else:
+                st = self.stalled.pop(tid, {})
+                self._audit("project.closed", {**st, "project_id": tid, "by": by, "reason": reason}, project_id=tid)
+                res.actions.append(f"closed:{tid}")
+            return
         if decision == "approve":  # mở lại với hint = lý do người duyệt, cấp thêm một ngân sách ticket
             b = self.supervisor.budgets.get(tid); t = self.lead.tickets.get(tid)
             if b and t:
@@ -696,6 +834,8 @@ class Orchestrator:
             res.actions.append(f"reopen:{tid}")
         elif decision in {"reject", "rollback"} and tid in self.lead.tickets:
             self.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
+            if self.lead.batch_releases:  # ticket đóng không còn giữ release của các ticket đã approved
+                self.lead.flush_releases(self.lead.tickets[tid].project_id)
 
     # ---------- vòng học ----------
 
@@ -817,6 +957,7 @@ class Orchestrator:
         return {"queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,
+                "stalled": {pid: f"{st['agent']} lỗi trên {st['topic']}: {st['error'][:120]}" for pid, st in self.stalled.items()},
                 "gates_pending": {sid: g.kind for sid, g in self.gate.pending.items()}, "plans": list(self.plans),
                 "blackboard": {key: {"v": sc.version, "ref": sc.content_ref, "chars": len(sc.content or ""),
                                      "file": str(p) if (p := self.blackboard.path(sc.namespace,
@@ -870,6 +1011,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--artifacts", type=Path, help="artifact store của blackboard (mặc định <db>.artifacts/)")
     ap.add_argument("--workers", type=int, default=1, help="số event khác key chạy song song (mặc định 1)")
     ap.add_argument("--web", action="store_true", help="cho researcher tool web_search/fetch_url (mạng ra ngoài)")
+    ap.add_argument("--batch-release", action="store_true",
+                    help="gom mọi ticket approved của dự án vào một RC khi không còn ticket đang chạy (mặc định: mỗi ticket một RC)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     rn = sub.add_parser("run"); rn.add_argument("--max-steps", type=int); rn.add_argument("--watch", type=float,
         help="chạy liên tục, mỗi N giây nạp event mới (gate CLI, publish) rồi xử lý")
@@ -911,9 +1054,10 @@ def main(argv: list[str] | None = None) -> int:
         from .metrics import collect, prometheus
         m = collect(bus)
         print(prometheus(m) if ns.prometheus else json.dumps(m, ensure_ascii=False, indent=2)); return 0
-    from .llm import make_client
-    orch = Orchestrator(bus, make_client(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
-                        web=ns.web, artifacts=ns.artifacts or artifact_store(ns.db))
+    from .llm import FakeClient, make_client
+    # Chỉ `run` gọi model; status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
+    orch = Orchestrator(bus, make_client() if ns.cmd == "run" else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
+                        web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db))
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0
     if ns.cmd == "report":

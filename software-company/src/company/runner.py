@@ -294,9 +294,9 @@ class AgentRunner:
         ws.create()
         tools = WorkspaceTools(ws, allow_write=True).toolbox()
         g = self.generate(agent_id, inp, "pull-requests", tools=tools, max_turns=max_turns, budget=budget)
-        if not ws.has_changes():
+        if not ws.dirty():  # so với HEAD của branch: lần làm lại mà ghi y hệt lần trước cũng là "không sửa gì"
             self._audit(spec, "invalid_output", inp, evidence="worktree không có thay đổi sau vòng tool", tokens=g.tokens, cost=g.cost_usd)
-            raise RunnerError(f"{agent_id}: không sửa file nào trong worktree {ws.branch}")
+            raise RunnerError(f"{agent_id}: không sửa file nào trong worktree {ws.branch} (so với lần trước)")
         checks = ws.run_checks()
         title = str(inp.payload.get("title") or inp.key)[:72]
         try:

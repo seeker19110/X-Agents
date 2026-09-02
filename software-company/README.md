@@ -54,6 +54,8 @@ cd software-company
 uv sync                                   # tạo .venv từ pyproject.toml
 uv run pytest -q                          # hoặc: make test
 PYTHONPATH=src uv run python -m company.demo   # hoặc: make demo
+PYTHONPATH=src uv run python examples/donghanhcungban_demo.py --out sim-out   # mô phỏng cả công ty làm web demo
+                                          # donghanhcungban.com trên repo khách tạo tạm (báo cáo: docs/reports/)
 uv run ruff check src tests               # hoặc: make lint
 
 # Chạy model thật (provider bất kỳ). Cấu hình: cp llm.example.yaml llm.yaml rồi sửa, hoặc biến môi trường:
@@ -71,6 +73,7 @@ PYTHONPATH=src uv run python -m company.gate_cli approve SPEC-P1 --by human:po  
 PYTHONPATH=src uv run python -m company.orchestrator publish clarification-answers ans.json --actor human:po
 PYTHONPATH=src uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po   # sau khi delivery-lead ước lượng impact
 PYTHONPATH=src uv run python -m company.orchestrator run --workers 4 --web   # ticket khác key chạy song song; researcher có web
+PYTHONPATH=src uv run python -m company.orchestrator run --batch-release   # gom ticket approved của dự án vào một RC (một staging, một gate 3, một UAT)
 PYTHONPATH=src uv run python -m company.orchestrator status              # hàng đợi, hoãn, ticket, gate chờ, blackboard, chi phí
 PYTHONPATH=src uv run python -m company.orchestrator report              # estimate vs actual, chi phí USD theo agent/model, hành động supervisor
 PYTHONPATH=src uv run python -m company.orchestrator metrics [--prometheus]   # hoặc: make metrics [PROM=1] — gọi/token/USD/thời gian
@@ -115,7 +118,8 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   lên blackboard) → gate plan → dispatch; clarifier hết câu hỏi thì spec-writer đi thẳng; change request: delivery-lead ước
   lượng impact → người `decide-change` → accepted đi lập kế hoạch (hoặc intake nếu đổi requirement); nghiệm thu conditional
   → change request; support-docs viết docs sau production, mở incident từ feedback, incident requirement → nghiên cứu lại;
-  ticket blocked/escalate → gate `escalation` (approve = mở lại với hint, reject = đóng); review quá hạn giao lại một lần;
+  ticket blocked/escalate → gate `escalation` (approve = mở lại với hint, reject = đóng); agent chuỗi nghiên cứu lỗi → dự án
+  `stalled` + gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án); spec-writer đòi có `requirements-draft`; review quá hạn giao lại một lần;
   sau nghiệm thu ghi estimate vs actual vào `knowledge`; đánh dấu đã xử lý trong `audit-log` nên mở lại SQLite là chạy tiếp;
   `--watch` nhận quyết định gate từ tiến trình khác; CLI `run | publish | decide-change | status | report`.
 - **Tool có ranh giới tin cậy + vòng lặp tool-use** (`tools.py`, ADR-0010): khối kỹ thuật sửa code thật trong worktree
@@ -123,12 +127,15 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   tool-use trung lập provider (Anthropic, OpenAI-compatible, Fake). Vòng lặp dừng khi hết lượt hoặc vượt ngân sách token.
 - **Bằng chứng PR do code điền**: sau vòng tool, runner chạy lint/test thật, commit, ghi đè `branch`/`pr_ref`/
   `local_checks` (`verified_by: workspace`)/`impact.files`; worktree không đổi → PR bị từ chối. Reviewer/security đọc
-  `diff` thật; QA có tool chỉ đọc để tự chạy test. Không có `--repo` → `local_checks = {"unverified": true}` + audit.
+  `diff` thật; QA có tool chỉ đọc để tự chạy test (trên worktree ticket khi review PR, trên worktree tích hợp khi hồi quy
+  staging; có tool mà không chạy gì → audit `review.no_tool_evidence`). Lint/test thật đỏ → PR không publish, ticket
+  retry+1 với hint là đầu ra test (`pr.rejected_local_checks`), không tốn lượt reviewer/QA/security. Không có `--repo` → `local_checks = {"unverified": true}` + audit.
 - **Eval ghi / phát lại** (`--record` / `--replay`): CI job `eval-replay` chạy từ `evals/recordings/`, đỏ khi bản ghi
   lệch prompt — cổng "đổi prompt phải chạy eval" của ADR-0004 được máy cưỡng chế.
 - **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration` (worktree `.worktrees/_integration`, rẽ từ `--base`
   lần đầu); khi release-candidate xuất hiện, orchestrator `merge --no-ff` từng branch ticket vào đó rồi mới cho
-  release-engineer chạy (đầu vào có `integration_sha`). Xung đột → RC huỷ (`release.void`), ticket về `changes_requested`
+  release-engineer chạy (đầu vào có `integration_sha`); ticket approved được merge ngay (trước khi ticket phụ thuộc
+  tạo worktree), RC chỉ merge phần chưa có. Xung đột → RC huỷ (`release.void`), ticket về `changes_requested`
   với hint là file xung đột, worktree tạo lại từ nền mới. `main` của khách không bị chạm.
 - **Vòng học đóng**: `Supervisor.calibration()` (median actual/estimate theo assignee, đọc từ bus) đi vào đầu vào của
   delivery-lead mỗi lần lập kế hoạch; `sprint_report` có `rework_rate`, `review_catch_rate`, `prs_unverified`;
