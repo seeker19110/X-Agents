@@ -66,6 +66,9 @@ ACTOR = "orchestrator"
 MAX_CLARIFY_ROUNDS = 2  # khớp `clarification-questions.round` (maximum 2) và prompt clarifier
 ENGINEERING = ("backend", "frontend", "mobile", "database", "platform", "data")
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
+# Chuỗi nghiên cứu chạy theo key=project, không có ticket/retry/blocked: một agent lỗi là cả dự án đứng mà không ai
+# thấy. Lỗi ở các topic này mở gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án).
+RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
 REVIEW_AGENT = {"reviewer": "reviewer", "qa": "qa-debugger", "security": "security-engineer"}
 KEY_FIELD = {"tasks": "ticket_id", "pull-requests": "ticket_id", "review-results": "ticket_id", "incidents": "incident_id",
@@ -131,6 +134,18 @@ def _answers_incomplete(e: Envelope, o: Orchestrator) -> bool:
     return not _answers_complete(e, o)
 
 
+def _spec_ready(e: Envelope, o: Orchestrator) -> bool:
+    """Spec-writer chỉ chạy khi đã trả lời hết câu hỏi VÀ dự án có `requirements-draft`. Trước đây câu trả lời gửi cho
+    một dự án chưa có bản nháp (chuỗi nghiên cứu chết, hoặc gửi nhầm dự án) vẫn sinh PRD từ đầu vào trống."""
+    if not _answers_complete(e, o): return False
+    pid = str(e.payload.get("project_id") or e.key)
+    if o.latest("requirements-draft", pid) is not None: return True
+    o._audit("spec_writer.no_draft", {"project_id": pid, "event_id": e.event_id,
+                                      "reason": "clarification-answers nhưng dự án chưa có requirements-draft"},
+             once=f"no_draft:{e.event_id}", project_id=pid)
+    return False
+
+
 def _cr_accepted_needs_research(e: Envelope, _o: Orchestrator) -> bool:
     return e.payload.get("decision") == "accepted" and bool(e.payload.get("affects_requirements"))
 
@@ -160,7 +175,7 @@ ROUTES: tuple[Route, ...] = (
     Route("requirements-draft", "risk", "requirements-draft", _from("synthesizer")),
     Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
     Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
-    Route("clarification-answers", "spec-writer", "approved-specs", _answers_complete, enrich=_with_draft),
+    Route("clarification-answers", "spec-writer", "approved-specs", _spec_ready, enrich=_with_draft),
     # kỹ thuật + chất lượng
     Route("tasks", "$assignee", "pull-requests", tools="rw"),
     Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),
@@ -233,6 +248,8 @@ class Orchestrator:
         self.integration = Integration(self.repo, integration, base) if self.repo is not None else None
         self.void_releases: set[str] = set()
         self.missing_threat_model: set[str] = set()  # spec chưa có threat model vì security-engineer lỗi
+        self.stalled: dict[str, dict[str, Any]] = {}  # project_id → {event_id, agent, topic, error}: dự án kẹt chờ người
+        self.stall_count: Counter[str] = Counter()  # event_id → số lần kẹt (mỗi lần một gate mới, không im lặng lần hai)
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
@@ -266,6 +283,9 @@ class Orchestrator:
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "release.void": self.void_releases.add(d["release_id"])
                 elif a["action"] == "threat_model.missing": self.missing_threat_model.add(d["subject_id"])
+                elif a["action"] == "project.stalled":
+                    self.stalled[d["project_id"]] = d; self.stall_count[d["event_id"]] += 1
+                elif a["action"] in {"project.retried", "project.closed"}: self.stalled.pop(d["project_id"], None)
                 elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d["subject_id"] in self.plans:
                     self._dispatch_plan(d["subject_id"], replaying=True)
             elif env.topic == "supervisor-actions": self._track_pause(env)
@@ -473,10 +493,41 @@ class Orchestrator:
         except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry (ADR-0005)
             res.actions.append(f"error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
+            self._stall(env, agent, e, res)
         except Exception as e:  # handler xác định (delivery-lead) từ chối chuyển trạng thái: event đã ghi đĩa
             self._audit("handler_error", {"agent": agent, "error": str(e)[:300]}, ticket_id=env.payload.get("ticket_id"))
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
+            self._stall(env, agent, e, res)
+
+    def _stall(self, env: Envelope, agent: str, error: Exception, res: StepResult) -> None:
+        """Agent của chuỗi nghiên cứu lỗi → dự án không có bước kế tiếp. Ghi `project.stalled`, supervisor escalate
+        (dự án bị hoãn mọi event), mở gate `escalation` subject=project_id. Ticket có cơ chế retry/blocked riêng."""
+        if env.topic not in RESEARCH_TOPICS: return
+        pid = str(env.payload.get("project_id") or env.key)
+        with self._lock:
+            self.stall_count[env.event_id] += 1; n = self.stall_count[env.event_id]
+            self.stalled[pid] = {"project_id": pid, "event_id": env.event_id, "topic": env.topic, "agent": agent,
+                                 "error": str(error)[:300], "attempt": n}
+        self._audit("project.stalled", self.stalled[pid], project_id=pid)
+        self.supervisor.escalate_gate(pid, f"{agent} lỗi trên {env.topic} (lần {n}): {str(error)[:200]}",
+                                      once_key=f"stall:{env.event_id}:{n}")
+        if pid not in self.gate.pending:
+            self.gate.request(GateRequest(kind="escalation", subject_id=pid, created_by="supervisor",
+                                          checklist=["agent_error", "decision:retry|close"]))
+        res.actions.append(f"stalled:{pid}:{agent}")
+
+    def _retry_stalled(self, pid: str, by: str, reason: str) -> bool:
+        """Người duyệt gate escalation của dự án: chạy lại event đã lỗi (bỏ dấu đã xử lý, đưa về đầu hàng đợi)."""
+        st = self.stalled.get(pid)
+        if st is None: return False
+        env = next((e for e in self.bus.replay(topic=st["topic"], key=pid) if e.event_id == st["event_id"]), None)
+        if env is None: return False
+        with self._lock:
+            self.processed.discard(env.event_id); self.partial.pop(env.event_id, None); self.stalled.pop(pid, None)
+        self._audit("project.retried", {**st, "by": by, "reason": reason}, project_id=pid)
+        with self._qlock: self.queue.insert(0, env)
+        return True
 
     def _integrate(self, rc: Envelope, res: StepResult) -> bool:
         """Merge branch ticket của RC vào nhánh tích hợp. Trả về False nếu RC bị huỷ (xung đột hoặc branch thiếu)."""
@@ -684,6 +735,16 @@ class Orchestrator:
                                               checklist=["root_cause", "decision:reopen|close", "hint"]))
 
     def _on_escalation_decided(self, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
+        if tid in self.stalled:  # escalation cấp dự án (chuỗi nghiên cứu lỗi): retry event hoặc đóng dự án
+            if decision == "approve":
+                self.bus.publish(Envelope(topic="supervisor-actions", key=tid, actor=by,
+                                          payload={"target": tid, "action": "resume", "reason": f"escalation approve: {reason}"[:300]}))
+                res.actions.append(f"retry:{tid}" if self._retry_stalled(tid, by, reason) else f"retry_failed:{tid}")
+            else:
+                st = self.stalled.pop(tid, {})
+                self._audit("project.closed", {**st, "project_id": tid, "by": by, "reason": reason}, project_id=tid)
+                res.actions.append(f"closed:{tid}")
+            return
         if decision == "approve":  # mở lại với hint = lý do người duyệt, cấp thêm một ngân sách ticket
             b = self.supervisor.budgets.get(tid); t = self.lead.tickets.get(tid)
             if b and t:
@@ -817,6 +878,7 @@ class Orchestrator:
         return {"queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,
+                "stalled": {pid: f"{st['agent']} lỗi trên {st['topic']}: {st['error'][:120]}" for pid, st in self.stalled.items()},
                 "gates_pending": {sid: g.kind for sid, g in self.gate.pending.items()}, "plans": list(self.plans),
                 "blackboard": {key: {"v": sc.version, "ref": sc.content_ref, "chars": len(sc.content or ""),
                                      "file": str(p) if (p := self.blackboard.path(sc.namespace,
@@ -911,8 +973,9 @@ def main(argv: list[str] | None = None) -> int:
         from .metrics import collect, prometheus
         m = collect(bus)
         print(prometheus(m) if ns.prometheus else json.dumps(m, ensure_ascii=False, indent=2)); return 0
-    from .llm import make_client
-    orch = Orchestrator(bus, make_client(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
+    from .llm import FakeClient, make_client
+    # Chỉ `run` gọi model; status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
+    orch = Orchestrator(bus, make_client() if ns.cmd == "run" else FakeClient(), repo=ns.repo, base=ns.base, integration=ns.integration, workers=ns.workers,
                         web=ns.web, artifacts=ns.artifacts or artifact_store(ns.db))
     if ns.cmd == "status":
         print(json.dumps(orch.status(), ensure_ascii=False, indent=2)); return 0

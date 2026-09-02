@@ -48,11 +48,11 @@ Kết luận cho khách: bản demo "xanh" theo bằng chứng máy nhưng chưa
 
 | # | Mức | Vấn đề | Bằng chứng | Đề xuất |
 |---|---|---|---|---|
-| F1 | cao | **Dự án chết im lặng**: synthesizer trả sai schema (lần chạy đầu) → chuỗi nghiên cứu dừng, `status` không có queue/deferred/gate nào chờ; không ai biết dự án kẹt | audit `synthesizer:invalid_output`, `status.tickets={}`, không supervisor action | supervisor phát hiện project có `invalid_output` mà không có event kế tiếp → `escalate` + gate `escalation` cấp dự án; `status` liệt kê "dự án không có bước tiếp theo" |
-| F2 | cao | **Spec không cần bản nháp**: khách publish `clarification-answers` khi chưa có `clarification-questions` (vì chuỗi trên đã chết) → `_answers_complete` trả True → spec-writer viết PRD với `requirements_draft` trống | lần chạy đầu: `approved-specs` xuất hiện dù không có `requirements-draft` | route spec-writer yêu cầu có `requirements-draft` của cùng project, thiếu thì từ chối + audit |
+| F1 | cao — **đã sửa** | **Dự án chết im lặng**: synthesizer trả sai schema (lần chạy đầu) → chuỗi nghiên cứu dừng, `status` không có queue/deferred/gate nào chờ; không ai biết dự án kẹt | audit `synthesizer:invalid_output`, `status.tickets={}`, không supervisor action | supervisor phát hiện project có `invalid_output` mà không có event kế tiếp → `escalate` + gate `escalation` cấp dự án; `status` liệt kê "dự án không có bước tiếp theo" |
+| F2 | cao — **đã sửa** | **Spec không cần bản nháp**: khách publish `clarification-answers` khi chưa có `clarification-questions` (vì chuỗi trên đã chết) → `_answers_complete` trả True → spec-writer viết PRD với `requirements_draft` trống | lần chạy đầu: `approved-specs` xuất hiện dù không có `requirements-draft` | route spec-writer yêu cầu có `requirements-draft` của cùng project, thiếu thì từ chối + audit |
 | F3 | trung bình | **QA hồi quy staging không có tool**: route `release-events → qa-debugger` không cấp tool, QA chỉ "tin" mô tả deploy; S1/S2 lọt vì thế | `Route("release-events", "qa-debugger", ...)` không có `tools=`; QA staging trả "3/3 trang 200" mà không chạy gì | cấp tool chỉ đọc trên worktree `_integration` (`tools="ro"`) như QA trên PR; yêu cầu `metrics.smoke` do tool sinh |
 | F4 | trung bình | **Ticket `released` mãi mãi sau nghiệm thu conditional**: DHCB-4 giữ `released` kể cả khi CR sinh ra đã `deferred`/`rejected` | `status.tickets["DHCB-4"]="released"` sau `decide-change deferred` | khi CR con của acceptance conditional được quyết định → đóng ticket của release đó (hoặc mở lại nếu accepted-cần-sửa) |
-| F5 | trung bình | **CLI chỉ đọc vẫn cần model**: `orchestrator show/status/report` gọi `make_client()` → crash `cài SDK: uv sync --extra anthropic` khi máy người xem không có SDK/config | traceback ở `orchestrator.main` với `show prd` | lệnh chỉ đọc dùng `FakeClient()`/`None` thay vì `make_client()` |
+| F5 | trung bình — **đã sửa** | **CLI chỉ đọc vẫn cần model**: `orchestrator show/status/report` gọi `make_client()` → crash `cài SDK: uv sync --extra anthropic` khi máy người xem không có SDK/config | traceback ở `orchestrator.main` với `show prd` | lệnh chỉ đọc dùng `FakeClient()`/`None` thay vì `make_client()` |
 | F6 | thấp | **PR test đỏ vẫn đi qua 3 reviewer**: backend publish PR dù `tests=false` (vi phạm "KHÔNG publish PR khi test fail"); tốn reviewer + QA + security một vòng chỉ để nói "test fail" | DHCB-3 lần 1: 3 review-results cho PR đã biết đỏ | runner: `local_checks.tests=false` → trả thẳng về ticket (retry+1, hint = test_output) không qua review |
 | F7 | thấp | **Không gom release**: mỗi ticket approved → 1 RC → 1 staging → 1 gate 3 → 1 UAT; demo 4 ticket = 4 lần duyệt release, 4 release notes | REL-001..004, `docs` v1..v4 | delivery-lead gom RC theo cửa sổ/plan hoặc `--batch-release`; tối thiểu gom ticket cùng requirement |
 | F8 | thấp | **Rác trong repo khách**: `.worktrees/` không được ignore → `git status` của khách thấy untracked | `?? .worktrees/` | thêm vào `.git/info/exclude` của repo khách khi tạo worktree |
@@ -60,6 +60,7 @@ Kết luận cho khách: bản demo "xanh" theo bằng chứng máy nhưng chưa
 
 ## 4. Việc tiếp theo
 
-1. Sửa F1, F2, F5 (nhỏ, có test được) — ưu tiên vì ảnh hưởng khả năng vận hành thật.
+1. ~~Sửa F1, F2, F5~~ — đã sửa cùng ngày: gate `escalation` cấp dự án + `status.stalled` (F1), route spec-writer đòi
+   `requirements-draft` + audit `spec_writer.no_draft` (F2), chỉ `run` mới gọi `make_client()` (F5); test trong `tests/test_orchestrator.py`.
 2. F3 + F6: nâng chất lượng bằng chứng của QA (đây là lý do S1/S2 lọt).
 3. Với khách: mở ticket tích hợp DHCB-5 (route `/dang-ky`, bọc layout, static) rồi mới UAT bản demo.

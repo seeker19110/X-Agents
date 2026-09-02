@@ -117,7 +117,8 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   lên blackboard) → gate plan → dispatch; clarifier hết câu hỏi thì spec-writer đi thẳng; change request: delivery-lead ước
   lượng impact → người `decide-change` → accepted đi lập kế hoạch (hoặc intake nếu đổi requirement); nghiệm thu conditional
   → change request; support-docs viết docs sau production, mở incident từ feedback, incident requirement → nghiên cứu lại;
-  ticket blocked/escalate → gate `escalation` (approve = mở lại với hint, reject = đóng); review quá hạn giao lại một lần;
+  ticket blocked/escalate → gate `escalation` (approve = mở lại với hint, reject = đóng); agent chuỗi nghiên cứu lỗi → dự án
+  `stalled` + gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án); spec-writer đòi có `requirements-draft`; review quá hạn giao lại một lần;
   sau nghiệm thu ghi estimate vs actual vào `knowledge`; đánh dấu đã xử lý trong `audit-log` nên mở lại SQLite là chạy tiếp;
   `--watch` nhận quyết định gate từ tiến trình khác; CLI `run | publish | decide-change | status | report`.
 - **Tool có ranh giới tin cậy + vòng lặp tool-use** (`tools.py`, ADR-0010): khối kỹ thuật sửa code thật trong worktree

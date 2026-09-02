@@ -213,7 +213,8 @@ def test_model_error_is_audited_and_loop_continues():
     _pub(bus, "research-requests", "P1", "human", {"project_id": "P1", "description": "x"})
     res = orch.run()
     assert res[0].actions[0].startswith("error:intake") and orch.stats["errors"] == 1 and not orch.queue
-    assert [e.payload["action"] for e in bus.replay(topic="audit-log")] == ["llm_error", "orchestrated"]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert acts[0] == "llm_error" and "project.stalled" in acts and acts[-1] == "orchestrated"
 
 
 # ---------- CLI ----------
@@ -366,3 +367,69 @@ def test_incomplete_answers_go_back_to_clarifier_then_spec_writer():
          {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "a"}]})
     orch.run()
     assert "approved-specs" in _topics(bus), "trả lời đủ thì spec-writer chạy"
+
+
+# ---------- F1/F2/F5 (báo cáo mô phỏng donghanhcungban 2026-09-02) ----------
+
+def test_research_agent_error_stalls_project_opens_gate_and_retries_on_approve():
+    """F1: synthesizer lỗi → dự án không có bước tiếp theo. Trước đây: status trống, không gate, không ai biết."""
+    bad = {"n": 0}
+    def flaky(system, user):
+        if _agent_of(system) == "synthesizer" and bad["n"] == 0:
+            bad["n"] += 1; return {"project_id": "P1", "kind": "draft", "requirements": [{"id": "REQ-1"}]}  # sai schema
+        return handler(system, user)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=flaky))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "web demo"})
+    orch.run()
+    assert "requirements-draft" not in _topics(bus) and orch.stats["errors"] == 1
+    assert orch.gate.pending["P1"].kind == "escalation" and "P1" in orch.paused, "dự án kẹt phải hiện thành gate"
+    assert orch.status()["stalled"] == {"P1": "synthesizer lỗi trên research-findings: " + orch.stalled["P1"]["error"][:120]}
+    # khách trả lời câu hỏi chưa tồn tại: dự án đang hoãn → không sinh spec từ đầu vào trống
+    _pub(bus, "clarification-answers", "P1", "human:po", {"project_id": "P1", "answers": []})
+    orch.run()
+    assert "approved-specs" not in _topics(bus) and orch.deferred
+    # người duyệt: approve = chạy lại event đã lỗi → chuỗi đi tiếp tới câu hỏi làm rõ
+    orch.gate.decide("P1", "approve", by="human:lead", reason="model trả sai schema, thử lại")
+    orch.run()
+    assert "P1" not in orch.stalled and "P1" not in orch.paused
+    assert _topics(bus)[-1] == "clarification-questions"
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "project.stalled" in acts and "project.retried" in acts
+
+
+def test_stalled_project_survives_restart_and_reject_closes_it(tmp_path):
+    bus = SQLiteBus(tmp_path / "c.sqlite"); orch = Orchestrator(bus, FakeClient())  # mọi agent lỗi
+    _pub(bus, "research-requests", "P1", "human", {"project_id": "P1", "description": "x"})
+    orch.run()
+    assert "P1" in orch.stalled
+    orch2 = Orchestrator(SQLiteBus(tmp_path / "c.sqlite"), FakeClient())
+    assert orch2.stalled["P1"]["agent"] == "intake" and orch2.gate.pending["P1"].kind == "escalation"
+    orch2.gate.decide("P1", "reject", by="human:lead", reason="huỷ dự án"); orch2.run()
+    assert "P1" not in orch2.stalled and not orch2.queue
+    assert any(e.payload["action"] == "project.closed" for e in orch2.bus.replay(topic="audit-log"))
+
+
+def test_spec_writer_refuses_without_requirements_draft():
+    """F2: câu trả lời làm rõ cho dự án chưa có bản nháp → không viết PRD từ đầu vào trống, có audit."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _pub(bus, "clarification-answers", "P9", "human:po", {"project_id": "P9", "answers": [{"question_id": "Q1", "answer": "a"}]})
+    orch.run()
+    assert "approved-specs" not in _topics(bus) and orch.stats["errors"] == 0
+    a = next(e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "spec_writer.no_draft")
+    assert a["project_id"] == "P9"
+
+
+def test_cli_read_only_commands_do_not_need_model(tmp_path, capsys, monkeypatch):
+    """F5: status/report/show là lệnh của người xem; không được crash vì thiếu SDK hay API key."""
+    db = str(tmp_path / "c.sqlite")
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "anthropic"); monkeypatch.delenv("COMPANY_LLM_API_KEY", raising=False)
+    import company.orchestrator as om
+    monkeypatch.setattr(om, "load_agents", load_agents)
+    def boom(): raise RuntimeError("cài SDK: uv sync --extra anthropic")
+    import company.llm as llm_mod
+    monkeypatch.setattr(llm_mod, "make_client", boom)
+    assert orch_main(["--db", db, "status"]) == 0 and json.loads(capsys.readouterr().out)["queue"] == 0
+    assert orch_main(["--db", db, "report"]) == 0
+    assert orch_main(["--db", db, "show", "prd"]) == 2  # chưa có artifact: lỗi nghiệp vụ, không phải lỗi model
+    with pytest.raises(RuntimeError, match="SDK"):
+        orch_main(["--db", db, "run", "--max-steps", "1"])  # chỉ `run` mới cần model
