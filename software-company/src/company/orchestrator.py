@@ -112,6 +112,12 @@ def _needs_security(e: Envelope, o: Orchestrator) -> bool:
     return tid in o.lead.tickets and "security" in o.lead.required_reviews(tid)
 
 
+def _needs_qa(e: Envelope, o: Orchestrator) -> bool:
+    """ADR-0021: QA ở lượt PR chỉ cho ticket có risk_tags; ticket thường reviewer kiêm chấm test."""
+    tid = e.payload.get("ticket_id") or e.key
+    return tid in o.lead.tickets and "qa" in o.lead.required_reviews(tid)
+
+
 def _release_needs_security(e: Envelope, o: Orchestrator) -> bool:
     return o.lead.release_needs_security(e.payload["release_id"])
 
@@ -179,7 +185,7 @@ ROUTES: tuple[Route, ...] = (
     # kỹ thuật + chất lượng
     Route("tasks", "$assignee", "pull-requests", tools="rw"),
     Route("pull-requests", "reviewer", "review-results", enrich=_with_diff),
-    Route("pull-requests", "qa-debugger", "review-results", enrich=_with_diff, tools="ro"),
+    Route("pull-requests", "qa-debugger", "review-results", _needs_qa, enrich=_with_diff, tools="ro"),
     Route("pull-requests", "security-engineer", "review-results", _needs_security, enrich=_with_diff),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     Route("release-candidates", "release-engineer", "release-events", target_env="staging"),

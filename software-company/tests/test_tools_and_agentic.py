@@ -330,7 +330,7 @@ def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     assert all(r.passed for r in run_eval("reviewer", rec))
     path = rec.save()
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["agent"] == "reviewer" and data["prompt_version"] >= 1 and len(data["cases"]) == 2 and data["models"] == ["fake-strong"]
+    assert data["agent"] == "reviewer" and data["prompt_version"] >= 1 and len(data["cases"]) == 2 and data["models"] == ["fake-standard"]
     res = run_eval("reviewer", ReplayClient("reviewer"))
     assert [r.passed for r in res] == [True, True] and all(r.tokens == 540 for r in res)
     assert stale_recordings(["reviewer"]) == {}
@@ -494,7 +494,7 @@ def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path
     rej = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "pr.rejected_local_checks"]
     assert rej == [{"ticket_id": "T1", "agent": "backend", "failed": ["tests"], "commit": rej[0]["commit"], "files": ["f_t1.py", "test_t1.py"]}]
     reviews_t1 = [e for e in bus.replay(topic="review-results") if e.key == "T1"]
-    assert {e.payload["source"] for e in reviews_t1} == {"reviewer", "qa"} and len(reviews_t1) == 2, "chỉ review PR xanh"
+    assert {e.payload["source"] for e in reviews_t1} == {"reviewer"} and len(reviews_t1) == 1, "chỉ review PR xanh; ADR-0021: không QA ở PR"
     assert orch.supervisor.sprint_report()["tickets"]["T1"]["retry"] == 1
     assert orch.supervisor.budgets["T1"].used >= 2 * 1300, "token của lần đỏ vẫn được tính vào ticket"
 

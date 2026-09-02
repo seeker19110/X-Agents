@@ -14,7 +14,8 @@ class DeliveryLead:
     """Logic xác định của delivery-lead: lập lịch theo depends_on/priority, dispatch, gom review, retry,
     release candidate, QA trên staging trước gate 3, merge/release theo release-events, đóng ticket khi khách nghiệm thu.
     LLM chỉ dùng để viết plan/ticket; phần đóng vòng ở đây là code."""
-    BASE_REVIEWS: frozenset[str] = frozenset({"reviewer", "qa"})
+    BASE_REVIEWS: frozenset[str] = frozenset({"reviewer"})
+    RISK_REVIEWS: frozenset[str] = frozenset({"qa", "security"})  # ADR-0021: chỉ khi ticket có risk_tags
 
     IN_FLIGHT = frozenset({"waiting", "dispatched", "in_progress", "in_review", "changes_requested"})
 
@@ -74,8 +75,9 @@ class DeliveryLead:
         self.state[tid] = dst
 
     def required_reviews(self, tid: str) -> set[str]:
-        """reviewer + qa luôn; thêm security khi ticket có risk_tags (ADR-0003)."""
-        extra = {"security"} if self.tickets[tid].risk_tags else set()
+        """reviewer luôn; qa + security khi ticket có risk_tags (ADR-0003, ADR-0021). Ticket thường: reviewer kiêm
+        chấm test ở lượt PR, QA vẫn hồi quy toàn bộ trên staging (release-events) — bớt một lời gọi mỗi ticket."""
+        extra = set(self.RISK_REVIEWS) if self.tickets[tid].risk_tags else set()
         return set(self.BASE_REVIEWS) | extra
 
     # ---------- lập lịch và dispatch ----------

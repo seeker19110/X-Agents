@@ -337,7 +337,7 @@ class _Blip:
         self.inner = FakeClient(handler=handler); self.calls = self.inner.calls; self.failed = False
 
     def complete(self, **kw):
-        if _agent_of(kw["system"]) == "qa-debugger" and not self.failed:
+        if _agent_of(kw["system"]) == "qa-debugger" and "`pull-requests`" in kw["user"] and not self.failed:  # lượt QA ở PR (T2), không phải hồi quy REL
             self.failed = True; raise TransientError("hết 3 lần thử lại: HTTP 529")
         return self.inner.complete(**kw)
 
@@ -345,12 +345,13 @@ class _Blip:
 def test_transient_error_defers_event_and_next_tick_skips_agents_already_done():
     bus = InMemoryBus(); client = _Blip(); orch = Orchestrator(bus, client)
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
-    assert orch.lead.state["T1"] == "in_review" and orch.stats["transient"] == 1 and orch.stats["errors"] == 0
+    # ADR-0021: qa-debugger ở lượt PR chỉ chạy cho ticket có risk_tags (T2)
+    assert orch.lead.state["T2"] == "in_review" and orch.stats["transient"] == 1 and orch.stats["errors"] == 0
     assert [v for _, v in orch.deferred.values()] == ["transient:qa-debugger"]
-    n_rev = sum(1 for c in client.calls if _agent_of(c["system"]) == "reviewer" and _inp(c["user"]).get("ticket_id") == "T1")
+    n_rev = sum(1 for c in client.calls if _agent_of(c["system"]) == "reviewer" and _inp(c["user"]).get("ticket_id") == "T2")
     orch.tick()
     assert not orch.deferred and orch.lead.state["T1"] == "merged" and orch.lead.state["T2"] == "merged"
-    assert sum(1 for c in client.calls if _agent_of(c["system"]) == "reviewer" and _inp(c["user"]).get("ticket_id") == "T1") == n_rev, \
+    assert sum(1 for c in client.calls if _agent_of(c["system"]) == "reviewer" and _inp(c["user"]).get("ticket_id") == "T2") == n_rev, \
         "reviewer đã xong không chạy lại khi event được thử lại"
     acts = _acts(bus)
     assert "llm_error" in acts and acts.count("orchestrated") == len(orch.processed)
@@ -392,7 +393,7 @@ def test_metrics_collect_and_prometheus(tmp_path, capsys):
     produced = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"].startswith("produced:")]
     assert m["total"]["calls"] == len(produced) and m["total"]["tokens"] == sum(a["tokens"] for a in produced)
     assert m["total"]["cost_usd"] == pytest.approx(sum(a["cost_usd"] for a in produced)) and m["total"]["unpriced"] == 0
-    assert m["agents"]["reviewer"]["calls"] == 2 and m["models"]["fake-strong"]["calls"] > 0 and m["tickets"]["T1"]["calls"] >= 3
+    assert m["agents"]["reviewer"]["calls"] == 2 and m["models"]["fake-strong"]["calls"] > 0 and m["tickets"]["T1"]["calls"] >= 2
     assert m["gates"]["decided"] == 2 and m["gates"]["pending"] == 2 and m["gates"]["wait_seconds_avg"] is not None
     assert m["topics"]["pull-requests"] == 2 and m["health"] == {"local_checks.unverified": 2}
     text = prometheus(m)

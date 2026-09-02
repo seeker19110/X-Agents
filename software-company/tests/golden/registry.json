@@ -281,7 +281,7 @@
     "budget_tokens_per_task": 80000,
     "context_namespace_write": null,
     "max_retries": 1,
-    "model_tier": "strong",
+    "model_tier": "standard",
     "reads": [
       "pull-requests",
       "release-events"
@@ -295,7 +295,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 8,
+    "version": 9,
     "writes": [
       "review-results"
     ]
@@ -363,7 +363,7 @@
     "budget_tokens_per_task": 60000,
     "context_namespace_write": null,
     "max_retries": 1,
-    "model_tier": "strong",
+    "model_tier": "standard",
     "reads": [
       "pull-requests"
     ],
@@ -379,7 +379,7 @@
       "observability"
     ],
     "timeout_minutes": 60,
-    "version": 8,
+    "version": 9,
     "writes": [
       "review-results"
     ]
