@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import stat
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,13 +34,19 @@ SCOPES = ("https://www.googleapis.com/auth/youtube.upload", "https://www.googlea
           "https://www.googleapis.com/auth/yt-analytics.readonly")
 DEFAULT_TOKEN_FILE = Path.home() / ".x-agents" / "auth" / "youtube_tokens.json"
 TIMEOUT = 120.0
+MAX_ATTEMPTS = 3  # 5xx / 429 / lỗi mạng: thử lại với backoff mũ + jitter; 4xx khác (403 quota, 400...) không thử lại
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+BACKOFF_BASE_S = 0.5
+# reason trong error.errors[].reason của Google API cho biết 403 là hết quota hay thiếu quyền — xử lý khác nhau
+QUOTA_REASONS = frozenset({"quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded", "userRateLimitExceeded"})
 
 Fetcher = Callable[[str, str, dict[str, str], bytes | None], tuple[int, dict[str, str], bytes]]
 
 
 class PlatformError(Exception):
-    def __init__(self, msg: str, status: int | None = None):
+    def __init__(self, msg: str, status: int | None = None, reason: str | None = None):
         super().__init__(msg); self.status = status
+        self.reason = reason  # 403: quotaExceeded | forbidden ...; None với lỗi khác
 
 
 @dataclass
@@ -179,7 +187,10 @@ class TokenStore:
 
     def save(self, t: Tokens) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(t.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Tạo file với mode 0600 ngay từ đầu (không có khoảnh khắc 0644 rồi mới chmod); file cũ thì chmod lại cho chắc.
+        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(t.__dict__, ensure_ascii=False, indent=2))
         try: os.chmod(self.path, stat.S_IRUSR | stat.S_IWUSR)
         except OSError: pass
 
@@ -228,9 +239,11 @@ def parse_duration(s: str) -> float:
 class YouTubePlatform:
     name = "youtube"
 
-    def __init__(self, store: TokenStore, fetcher: Fetcher | None = None, now: Callable[[], datetime] | None = None):
+    def __init__(self, store: TokenStore, fetcher: Fetcher | None = None, now: Callable[[], datetime] | None = None,
+                 sleep: Callable[[float], None] | None = None):
         self.store, self.fetcher = store, fetcher or default_fetcher
         self.now = now or (lambda: datetime.now(UTC))
+        self.sleep = sleep or time.sleep  # test tiêm hàm giả để không chờ thật
         self._tokens: Tokens | None = None
 
     # --- auth + HTTP ---
@@ -244,16 +257,34 @@ class YouTubePlatform:
     def _call(self, method: str, url: str, body: bytes | None = None, headers: dict[str, str] | None = None,
               ok: tuple[int, ...] = (200, 201)) -> tuple[int, dict[str, str], bytes]:
         h = {"Authorization": f"Bearer {self._token()}", **(headers or {})}
-        st, rh, raw = self.fetcher(method, url, h, body)
-        if st == 401:  # token vừa bị thu hồi/hết hạn sớm → refresh đúng một lần rồi thử lại
-            h["Authorization"] = f"Bearer {self._token(force_refresh=True)}"
-            st, rh, raw = self.fetcher(method, url, h, body)
+        refreshed = False; err: PlatformError | None = None; st, raw = 0, b""; rh: dict[str, str] = {}
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                st, rh, raw = self.fetcher(method, url, h, body)
+            except PlatformError as e:  # lỗi mạng/timeout từ fetcher → thử lại
+                err = e; st = 0
+            else:
+                if st == 401 and not refreshed:  # token vừa bị thu hồi/hết hạn sớm → refresh đúng một lần rồi thử lại
+                    refreshed = True; h["Authorization"] = f"Bearer {self._token(force_refresh=True)}"
+                    st, rh, raw = self.fetcher(method, url, h, body)
+                if st not in RETRY_STATUSES: break
+                err = PlatformError(f"YouTube HTTP {st} tạm thời {method} {url.split('?')[0].rsplit('/', 1)[-1]}", status=st)
+            if attempt + 1 < MAX_ATTEMPTS:  # backoff mũ + jitter: 0.5s, 1s (+ ≤ 0.25s ngẫu nhiên)
+                self.sleep(BACKOFF_BASE_S * (2 ** attempt) + random.uniform(0, 0.25))
+        else:
+            assert err is not None
+            raise err
         if st not in ok:
-            msg = raw[:400].decode("utf-8", "replace")
-            try: msg = json.loads(raw)["error"]["message"]
+            msg = raw[:400].decode("utf-8", "replace"); reason = None
+            try:
+                body_err = json.loads(raw)["error"]; msg = body_err["message"]
+                reason = ((body_err.get("errors") or [{}])[0]).get("reason")
             except Exception: pass
-            kind = "quota/quyền" if st == 403 else "lỗi"
-            raise PlatformError(f"YouTube {kind} HTTP {st} {method} {url.split('?')[0].rsplit('/', 1)[-1]}: {msg}", status=st)
+            if st == 403:  # phân biệt hết quota (chờ reset/xin thêm) với thiếu quyền (đăng nhập lại đúng scope)
+                reason = reason or ("quotaExceeded" if "quota" in msg.lower() else "forbidden")
+                kind = f"quota ({reason})" if reason in QUOTA_REASONS else f"quyền ({reason})"
+            else: kind = "lỗi"
+            raise PlatformError(f"YouTube {kind} HTTP {st} {method} {url.split('?')[0].rsplit('/', 1)[-1]}: {msg}", status=st, reason=reason)
         return st, rh, raw
 
     def _json(self, method: str, url: str, body: dict[str, Any] | None = None, ok: tuple[int, ...] = (200, 201)) -> tuple[int, dict[str, Any]]:

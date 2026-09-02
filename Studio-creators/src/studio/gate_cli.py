@@ -60,6 +60,15 @@ class PersistentGate(HumanGate):
         return r
 
 
+def rollback_target(bus: InMemoryBus, vid: str) -> dict | None:
+    """publish-event (video) mới nhất đã scheduled/published có platform_ref — thứ duy nhất có thể rút lại."""
+    for env in reversed(list(bus.replay(topic="publish-events", key=vid))):
+        p = env.payload
+        if p.get("kind", "video") == "video" and p.get("status") in {"scheduled", "published"} and p.get("platform_ref"): return p
+        if p.get("kind", "video") == "video" and p.get("status") == "rolled_back": return None
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Human gate của phòng ban video")
     ap.add_argument("--db", type=Path, default=Path("studio.sqlite"))
@@ -85,6 +94,9 @@ def main(argv: list[str] | None = None) -> int:
         gate.request(GateRequest(kind=ns.kind, subject_id=ns.subject_id, created_by=ns.by,
                                  checklist=[c for c in ns.checklist.split(",") if c]))
         print(f"requested {ns.kind} {ns.subject_id}"); return 0
+    if ns.cmd == "rollback" and ns.subject_id.startswith("PUB-") and rollback_target(bus, ns.subject_id[4:]) is None:
+        print(f"không có gì để rollback: {ns.subject_id[4:]} chưa có publish-event scheduled/published với platform_ref", file=sys.stderr)
+        return 4
     try:
         r = gate.decide(ns.subject_id, ns.cmd, by=ns.by, reason=ns.reason)
     except KeyError:

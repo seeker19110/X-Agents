@@ -178,7 +178,7 @@ def test_tool_loop_calls_tool_feeds_result_back_and_audits(monkeypatch):
     assert second["messages"][1]["role"] == "assistant" and second["messages"][2]["role"] == "tool"
     audit = [e.payload for e in bus.replay("audit-log")]
     used = next(a for a in audit if a["action"] == "tools_used"); ev = json.loads(used["evidence"])
-    assert ev["turns"] == 2 and ev["calls"] == {"web_fetch": 2} and ev["urls"] == ["https://example.org/report"] and used["tokens"] == 2600
+    assert ev["turns"] == 2 and ev["calls"] == {"web_fetch": 2} and ev["urls"] == ["https://example.org/report"] and used["tokens"] == 0  # token chỉ đếm ở produced
     assert audit[-1]["action"] == "produced:review-results" and audit[-1]["tokens"] == 2600
 
 

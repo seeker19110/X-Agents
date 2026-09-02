@@ -98,3 +98,16 @@ def test_persistent_gate_rebuilds_from_sqlite(tmp_path):
     bus2 = SQLiteBus(db); gate2 = PersistentGate(bus2)
     assert gate2.is_approved("PUB-V1") and not gate2.pending
     bus2.close()
+
+
+def test_supervisor_warns_and_cuts_budget_once_per_video():
+    from studio.supervisor import Supervisor
+    bus = InMemoryBus(); sup = Supervisor(bus)
+    bus.publish(Envelope(topic="video-briefs", key="V1", actor="channel-strategist", payload=_brief()))
+    def spend(t):
+        bus.publish(Envelope(topic="audit-log", key="x", actor="x", payload={"actor": "x", "action": "produced:scripts", "video_id": "V1", "tokens": t}))
+    spend(12_500); spend(100); spend(100)  # 3 lần trên 80%
+    assert [a.action for a in sup.actions] == ["warn"]
+    spend(3_000); spend(100)  # 2 lần trên 100%
+    assert [a.action for a in sup.actions] == ["warn", "budget_cut"]
+    assert [e.payload["action"] for e in bus.replay("supervisor-actions")] == ["warn", "budget_cut"]

@@ -163,7 +163,8 @@ class AgentRunner:
         evidence: dict[str, Any] = {"turns": turn, "calls": tools.summary()}
         if tools.urls(): evidence["urls"] = tools.urls()
         if getattr(self.client, "delegated_tools", False): evidence["delegated"] = "claude-code"
-        self._audit(spec, "tools_used", inp, evidence=json.dumps(evidence, ensure_ascii=False)[:2000], tokens=total)
+        # tokens=0: token thật ghi MỘT lần ở audit `produced:*` (supervisor cộng ngân sách từ đó), không đếm đôi ở đây
+        self._audit(spec, "tools_used", inp, evidence=json.dumps(evidence, ensure_ascii=False)[:2000])
         return c, total, turn
 
     def generate(self, agent_id: str, inp: Envelope, topic_out: str, many: bool = False,

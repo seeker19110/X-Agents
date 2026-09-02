@@ -61,6 +61,7 @@ class MediaConfig:
     video: dict[str, Any] = field(default_factory=lambda: {"provider": "fake", "fps": 30, "resolution": "1920x1080"})
     platform: dict[str, Any] = field(default_factory=lambda: {"provider": "fake"})  # adapter nền tảng (ADR-0008): fake | youtube
     output_dir: Path = field(default_factory=lambda: ROOT / "output")
+    upload_dir: Path | None = None  # nơi người dùng đặt file thay thế cho `replace_asset`; None = <output_dir>/uploads
     api_key: str | None = None
 
 
@@ -72,6 +73,7 @@ def load_media_config(path: Path | None = None) -> MediaConfig:
         for k in ("tts", "image", "video", "platform"):
             getattr(cfg, k).update(data.get(k) or {})
         if data.get("output_dir"): cfg.output_dir = ROOT / str(data["output_dir"])
+        if data.get("upload_dir"): cfg.upload_dir = ROOT / str(data["upload_dir"])
     env = os.environ
     for k in ("tts", "image", "video"):
         v = env.get(f"STUDIO_MEDIA_{k.upper()}_PROVIDER")
@@ -80,6 +82,7 @@ def load_media_config(path: Path | None = None) -> MediaConfig:
     if env.get("STUDIO_MEDIA_BASE_URL"):
         cfg.tts["base_url"] = cfg.image["base_url"] = env["STUDIO_MEDIA_BASE_URL"]
     if env.get("STUDIO_MEDIA_OUTPUT_DIR"): cfg.output_dir = Path(env["STUDIO_MEDIA_OUTPUT_DIR"])
+    if env.get("STUDIO_MEDIA_UPLOAD_DIR"): cfg.upload_dir = Path(env["STUDIO_MEDIA_UPLOAD_DIR"])
     cfg.api_key = env.get("STUDIO_MEDIA_API_KEY") or env.get("STUDIO_LLM_API_KEY") or env.get("OPENAI_API_KEY")
     return cfg
 
@@ -223,6 +226,10 @@ class OpenAIImage:
 
 # ---------- ghép video bằng ffmpeg ----------
 
+def _concat_quote(p: Path) -> str:
+    return p.as_posix().replace("'", "'\\''")
+
+
 class FFmpegAssembler:
     def __init__(self, binary: str = "ffmpeg"):
         found = shutil.which(binary)
@@ -246,6 +253,7 @@ class FFmpegAssembler:
                        "-c:v", "libx264", "-tune", "stillimage", "-c:a", "aac", "-ar", "44100", "-shortest", str(seg)])
             parts.append(seg)
         lst = out.parent / f"{out.stem}_concat.txt"
-        lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in parts), encoding="utf-8")
+        # ffmpeg concat: đường dẫn trong nháy đơn, dấu ' trong tên file phải viết thành '\'' (đóng, escape, mở lại)
+        lst.write_text("".join(f"file '{_concat_quote(p)}'\n" for p in parts), encoding="utf-8")
         self._run(["-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", str(out)])
         return MediaResult(out, "ffmpeg", "libx264", round(sum(d for _, _, d in segments), 2))
