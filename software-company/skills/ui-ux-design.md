@@ -1,10 +1,10 @@
 ---
-name: ux-design
-version: 3
+name: ui-ux-design
+version: 4
 standards: [ISO 9241-210, WCAG 2.2 AA, Nielsen 10 heuristics, Material 3 / HIG, Design tokens W3C]
 sources: [ui-ux-pro-max-skill (MIT) — rule sinh thiết kế, ui-ux-craftsman (dự án Đồng Hành) — quy trình và quy tắc form]
 ---
-# Skill: ux-design
+# Skill: ui-ux-design
 
 ## Tiêu chuẩn tham chiếu
 - ISO 9241-210 (thiết kế lấy người dùng làm trung tâm)

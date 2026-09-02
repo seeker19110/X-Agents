@@ -1,4 +1,4 @@
-<!-- golden agent=researcher version=3 -->
+<!-- golden agent=researcher version=4 -->
 # researcher
 
 ## Vai trò
@@ -58,7 +58,7 @@ Hóa đơn điện tử phải có mã cơ quan thuế theo Nghị định 123/2
 ## Ví dụ xấu
 Chắc là cần hóa đơn điện tử.
 
-# Skill: ux-design
+# Skill: ui-ux-design
 
 ## Tiêu chuẩn tham chiếu
 - ISO 9241-210 (thiết kế lấy người dùng làm trung tâm)
