@@ -84,3 +84,9 @@ def test_context_namespace_read_names_real_namespaces():
         assert set(spec.context_namespace_read) <= set(NAMESPACE_OWNERS), spec.id
     for aid in ("reviewer", "qa-debugger", "security-engineer", "release-engineer", "support-docs", "supervisor"):
         assert agents[aid].max_input_chars and agents[aid].max_input_chars <= 70_000, aid
+
+
+def test_review_tiers_per_adr0021():
+    agents = load_agents()
+    assert agents["reviewer"].model_tier == "standard" and agents["qa-debugger"].model_tier == "standard"
+    assert agents["security-engineer"].model_tier == "strong", "separation of duties: security giữ tier mạnh"

@@ -37,9 +37,9 @@ def test_fail_retries_with_hint_then_blocks():
     bus, gate, lead = _setup(); gate.decide("PLAN", "approve", by="human")
     lead.dispatch(_task(), "PLAN")
     for i in range(2):
-        _pr(bus); _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "fail", rc=f"bug{i}")
+        _pr(bus); _rev(bus, "reviewer", "fail", rc=f"bug{i}")
     assert lead.state["T1"] == "dispatched" and lead.tickets["T1"].retry == 2 and lead.tickets["T1"].hint == "bug1"
-    _pr(bus); _rev(bus, "reviewer", "pass"); _rev(bus, "qa", "fail", rc="bug2")
+    _pr(bus); _rev(bus, "reviewer", "fail", rc="bug2")
     assert lead.state["T1"] == "blocked"
 
 def test_security_review_required_when_risk_tags():
@@ -64,7 +64,7 @@ def test_security_block_requests_changes_with_hint():
 def test_security_not_required_without_risk_tags():
     _, _, lead = _setup()
     lead.tickets["T1"] = _task()
-    assert lead.required_reviews("T1") == {"reviewer", "qa"}
+    assert lead.required_reviews("T1") == {"reviewer"}, "ADR-0021: ticket thường chỉ reviewer ở lượt PR"
     lead.tickets["T1"] = _task(risk_tags=["pii"])
     assert lead.required_reviews("T1") == {"reviewer", "qa", "security"}
 

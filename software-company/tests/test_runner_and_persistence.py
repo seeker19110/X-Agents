@@ -55,7 +55,7 @@ def test_runner_publishes_output_and_audit_with_real_tokens():
     call = client.calls[0]
     assert "# reviewer" in call["system"] and "Skill:" in call["system"], "system prompt = prompt + skill"
     assert "api-contract" in call["user"] and "DỮ LIỆU" in call["user"]
-    assert call["model_tier"] == "strong", "tier lấy từ front matter của reviewer"
+    assert call["model_tier"] == "standard", "tier lấy từ front matter của reviewer (ADR-0021)"
 
 
 def test_runner_feeds_supervisor_budget():
