@@ -128,7 +128,7 @@ TicketState = Literal["draft", "waiting", "dispatched", "in_progress", "in_revie
 TRANSITIONS: dict[str, set[str]] = {
     "draft": {"dispatched", "waiting"}, "waiting": {"dispatched"}, "dispatched": {"in_progress"},
     "in_progress": {"in_review"}, "in_review": {"changes_requested", "approved"}, "changes_requested": {"dispatched"},
-    "approved": {"merged"}, "merged": {"released", "changes_requested"}, "released": {"closed", "changes_requested"},
+    "approved": {"merged", "changes_requested"}, "merged": {"released", "changes_requested"}, "released": {"closed", "changes_requested"},
     "blocked": {"dispatched", "escalated"},
     "escalated": {"dispatched", "closed"}, "closed": set(),
 }

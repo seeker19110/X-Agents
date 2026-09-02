@@ -190,6 +190,11 @@ class DeliveryLead:
             self.gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead",
                                           checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook", "rollback"]))
 
+    def request_changes(self, tid: str, hint: str) -> None:
+        """Ticket đã approved nhưng không tích hợp được (xung đột với nhánh tích hợp): làm lại với hint, tính một retry.
+        Release candidate đang chứa ticket này do orchestrator huỷ (không đi tiếp)."""
+        self._set(tid, "changes_requested"); self._retry(tid, hint)
+
     def blocked(self) -> list[str]:
         return [tid for tid, st in self.state.items() if st == "blocked"]
 
