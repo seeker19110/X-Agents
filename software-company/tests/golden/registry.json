@@ -316,7 +316,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 120,
-    "version": 1,
+    "version": 2,
     "writes": [
       "research-findings"
     ]

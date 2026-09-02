@@ -9,7 +9,7 @@ skills: [domain-research, ux-design, accessibility, codebase-analysis, tech-eval
 budget_tokens_per_task: 120000
 max_retries: 1
 timeout_minutes: 120
-version: 1
+version: 2
 ---
 # researcher
 
