@@ -58,7 +58,7 @@ from .llm import LLMError, ModelClient, TransientError
 from .registry import AgentSpec, load_agents
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError, artifact_store
 from .supervisor import Supervisor
-from .tools import WorkspaceTools
+from .tools import ToolBox, WorkspaceTools
 from .web import WebTools, research_toolbox
 from .workspace import Integration, TicketWorkspace, WorkspaceError, _git
 
@@ -184,7 +184,7 @@ ROUTES: tuple[Route, ...] = (
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     Route("release-candidates", "release-engineer", "release-events", target_env="staging"),
     Route("release-candidates", "security-engineer", "review-results", _release_needs_security),
-    Route("release-events", "qa-debugger", "review-results", _deployed("staging")),
+    Route("release-events", "qa-debugger", "review-results", _deployed("staging"), tools="ro"),  # tool trên worktree tích hợp
     Route("release-events", "support-docs", CONTEXT_ONLY, _deployed("production")),  # docs, release notes, runbook
     # khách và hậu release
     Route("external-feedback", "account-manager", "change-requests"),
@@ -461,7 +461,8 @@ class Orchestrator:
             if r.target_env:
                 out = self._release(agent, env, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
             elif r.tools == "rw":
-                out = self._engineer(agent, inp, r); res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
+                pr = self._engineer(agent, inp, r)
+                res.actions.append(f"{agent}→{r.topic_out}:{pr.key}" if pr is not None else f"{agent}→rework:{inp.key}")
             elif r.topic_out == CONTEXT_ONLY:
                 g = self.runner.run_context(agent, inp)
                 res.actions.append(f"{agent}→blackboard:{','.join(w['namespace'] for w in g.context_writes) or '-'}")
@@ -477,11 +478,15 @@ class Orchestrator:
                 res.actions.append(f"{agent}→{r.topic_out}×{len(g.payloads)}")
             else:
                 tools = None
-                if r.tools == "ro" and (ws := self.workspace(inp.payload.get("ticket_id") or inp.key)) and ws.path.exists():
-                    tools = WorkspaceTools(ws, allow_write=False).toolbox()
+                if r.tools == "ro":
+                    tools = self._read_only_tools(inp)
                 elif r.tools == "research":
                     tools = research_toolbox(self.repo, self.web)
                 g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns)
+                if r.tools == "ro" and tools is not None and not g.tool_calls:
+                    # Có tool mà không chạy gì: verdict chỉ là lời khai. Không chặn (người đọc review vẫn quyết), nhưng phải hiện.
+                    self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
+                                actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
                 out = self.runner.publish(agent, env, r.topic_out, g.payloads[0], key=key_for(r.topic_out, g.payloads[0], env.key),
                                           tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
                 res.actions.append(f"{agent}→{r.topic_out}:{out.key}")
@@ -557,7 +562,18 @@ class Orchestrator:
             return False
         return True
 
-    def _engineer(self, agent: str, task: Envelope, r: Route) -> Envelope:
+    def _read_only_tools(self, inp: Envelope) -> ToolBox | None:
+        """Tool chỉ đọc cho QA: worktree của ticket (review PR) hoặc worktree tích hợp (hồi quy sau khi deploy staging —
+        release không có ticket riêng, nhưng code vừa deploy chính là nhánh tích hợp). Không có repo → không tool."""
+        if self.repo is None or self.integration is None: return None
+        tid = inp.payload.get("ticket_id") or (inp.key if inp.topic in {"tasks", "pull-requests"} else None)
+        if tid and (ws := self.workspace(str(tid))) is not None and ws.path.exists():
+            return WorkspaceTools(ws, allow_write=False).toolbox()
+        if inp.payload.get("release_id") and self.integration.path.exists():
+            return WorkspaceTools(self.integration.path, allow_write=False).toolbox()
+        return None
+
+    def _engineer(self, agent: str, task: Envelope, r: Route) -> Envelope | None:
         """Ticket → PR. Có repo: agent làm trong worktree, bằng chứng do code điền. Không repo: PR đi tiếp nhưng
         `local_checks` của model bị thay bằng `{"unverified": true}` và ghi audit — không có bằng chứng giả."""
         tid = task.payload.get("ticket_id") or task.key
@@ -566,6 +582,17 @@ class Orchestrator:
         if ws is not None:
             g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns)
             p = g.payloads[0]
+            lc = p["local_checks"]
+            if lc.get("lint") is False or lc.get("tests") is False:
+                # Máy đã biết PR đỏ: không đưa qua reviewer/QA/security (tốn ba lượt để nghe lại), trả thẳng về ticket.
+                bad = [k for k in ("lint", "tests") if lc.get(k) is False]
+                hint = f"{'/'.join(bad)} local fail (retry {task.payload.get('retry', 0)}):\n" + \
+                       "\n".join((lc.get({"lint": "lint_output", "tests": "test_output"}[k]) or "")[-1500:] for k in bad)
+                self._audit("pr.rejected_local_checks", {"ticket_id": tid, "agent": agent, "failed": bad, "commit": p.get("pr_ref"),
+                                                         "files": p.get("impact", {}).get("files", [])},
+                            actor=agent, tokens=g.tokens, cost=g.cost_usd, ticket_id=tid, project_id=task.payload.get("project_id"))
+                if tid in self.lead.tickets: self.lead.rework(tid, hint)
+                return None
         else:
             g = self.runner.generate(agent, task, r.topic_out)
             p = {**g.payloads[0], "local_checks": {"unverified": True}}

@@ -126,7 +126,9 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   tool-use trung lập provider (Anthropic, OpenAI-compatible, Fake). Vòng lặp dừng khi hết lượt hoặc vượt ngân sách token.
 - **Bằng chứng PR do code điền**: sau vòng tool, runner chạy lint/test thật, commit, ghi đè `branch`/`pr_ref`/
   `local_checks` (`verified_by: workspace`)/`impact.files`; worktree không đổi → PR bị từ chối. Reviewer/security đọc
-  `diff` thật; QA có tool chỉ đọc để tự chạy test. Không có `--repo` → `local_checks = {"unverified": true}` + audit.
+  `diff` thật; QA có tool chỉ đọc để tự chạy test (trên worktree ticket khi review PR, trên worktree tích hợp khi hồi quy
+  staging; có tool mà không chạy gì → audit `review.no_tool_evidence`). Lint/test thật đỏ → PR không publish, ticket
+  retry+1 với hint là đầu ra test (`pr.rejected_local_checks`), không tốn lượt reviewer/QA/security. Không có `--repo` → `local_checks = {"unverified": true}` + audit.
 - **Eval ghi / phát lại** (`--record` / `--replay`): CI job `eval-replay` chạy từ `evals/recordings/`, đỏ khi bản ghi
   lệch prompt — cổng "đổi prompt phải chạy eval" của ADR-0004 được máy cưỡng chế.
 - **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration` (worktree `.worktrees/_integration`, rẽ từ `--base`

@@ -443,3 +443,54 @@ def test_checks_follow_repo_stack_and_never_fake_pass(tmp_path):
     assert set(WorkspaceTools(ws).COMMANDS) == {"git_status", "git_diff"}
     checks = ws.run_checks()
     assert checks["stack"] == "unknown" and checks["lint"] is False and checks["tests"] is False
+
+
+# ---------- F3/F6 (báo cáo mô phỏng donghanhcungban 2026-09-02) ----------
+
+def test_staging_qa_gets_read_only_tools_on_integration_worktree(tmp_path):
+    """F3: QA hồi quy sau deploy staging trước đây không có tool, verdict chỉ là lời khai."""
+    repo = _init_repo(tmp_path / "repo")
+    bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=_repo_tool_handler)
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.releases == ["REL-001", "REL-002"] and orch.stats["errors"] == 0
+    staging_qa = [c for c in client.calls if _agent_of(c["system"]) == "qa-debugger" and _inp(c["user"]).get("release_id")]
+    assert staging_qa and all(c["tools"] == ["read_file", "list_files", "search", "run"] for c in staging_qa)
+    ran = [m["content"] for c in staging_qa for m in c["messages"] if m["role"] == "tool"]
+    assert ran and all(x.startswith("exit=0") for x in ran), "QA tự chạy test trên worktree tích hợp"
+    assert not any(e.payload["action"] == "review.no_tool_evidence" for e in bus.replay(topic="audit-log"))
+
+
+def test_reviewer_with_tools_but_no_calls_is_audited(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    lazy = lambda msgs, tools: _repo_tool_handler(msgs, tools) if "write_file" in {t.name for t in tools} else []  # noqa: E731
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=lazy), repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    lazy_qa = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "review.no_tool_evidence"]
+    assert lazy_qa and all(a["agent"] == "qa-debugger" for a in lazy_qa)
+    assert {a["topic"] for a in lazy_qa} == {"pull-requests", "release-events"}
+
+
+def test_pr_with_failing_local_checks_goes_back_to_ticket_not_to_review(tmp_path):
+    """F6: test thật đỏ → không publish PR, không tốn reviewer/QA/security; ticket retry+1 với hint là đầu ra test."""
+    repo = _init_repo(tmp_path / "repo")
+    def th(msgs, tools):
+        if "write_file" not in {t.name for t in tools} or not _first_turn(msgs): return _repo_tool_handler(msgs, tools)
+        p = _inp(msgs[0]["content"]); tid = p["ticket_id"]
+        body = "    return 1\n" if p.get("retry", 0) >= 1 or tid != "T1" else "    return 2\n"  # T1 lần đầu sai
+        return [_tc("write_file", path=f"f_{tid.lower()}.py", content=f"def {tid.lower()}():\n{body}"),
+                _tc("write_file", path=f"test_{tid.lower()}.py", content=f"from f_{tid.lower()} import {tid.lower()}\n\n\ndef test_x():\n    assert {tid.lower()}() == 1\n")]
+    bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=th)
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
+    assert orch.lead.state["T1"] == "merged" and orch.stats["errors"] == 0
+    prs = [e.payload for e in bus.replay(topic="pull-requests") if e.key == "T1"]
+    assert len(prs) == 1 and prs[0]["local_checks"]["tests"] is True, "PR đỏ không được publish"
+    tasks = [e.payload for e in bus.replay(topic="tasks") if e.key == "T1"]
+    assert [t["retry"] for t in tasks] == [0, 1] and "tests local fail" in tasks[1]["hint"] and "assert" in tasks[1]["hint"]
+    rej = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "pr.rejected_local_checks"]
+    assert rej == [{"ticket_id": "T1", "agent": "backend", "failed": ["tests"], "commit": rej[0]["commit"], "files": ["f_t1.py", "test_t1.py"]}]
+    reviews_t1 = [e for e in bus.replay(topic="review-results") if e.key == "T1"]
+    assert {e.payload["source"] for e in reviews_t1} == {"reviewer", "qa"} and len(reviews_t1) == 2, "chỉ review PR xanh"
+    assert orch.supervisor.sprint_report()["tickets"]["T1"]["retry"] == 1
+    assert orch.supervisor.budgets["T1"].used >= 2 * 1300, "token của lần đỏ vẫn được tính vào ticket"

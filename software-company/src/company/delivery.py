@@ -128,6 +128,14 @@ class DeliveryLead:
         self.review_since.pop(tid, None)
         self._publish_task(nt); return nt
 
+    def rework(self, tid: str, hint: str) -> None:
+        """PR bị code từ chối trước review (lint/test thật fail): ticket về `changes_requested` rồi retry+1 kèm hint là
+        đầu ra test, không đi qua reviewer/QA/security chỉ để nghe lại điều máy đã biết. Hết retry → blocked."""
+        if self.state.get(tid) not in {"dispatched", "in_progress"}:
+            raise ValueError(f"{tid}: rework chỉ từ dispatched/in_progress (đang {self.state.get(tid)})")
+        self.state[tid] = "changes_requested"
+        self._retry(tid, hint)
+
     def overdue_reviews(self, now: datetime | None = None) -> dict[str, set[str]]:
         """Ticket ở in_review quá review_timeout: trả về nguồn review còn thiếu để supervisor giao lại/escalate."""
         now = now or datetime.now(UTC); out = {}
