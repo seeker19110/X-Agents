@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: static
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+        working-directory: software-company
+      - run: uv run ruff check src tests
+        working-directory: software-company
+
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+        working-directory: software-company
+      - run: uv run pytest -q
+        working-directory: software-company
+
+  # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
+  # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    needs: [static, unit]
+    if: always()
+    steps:
+      - name: Kiểm mọi job con đã success
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "Có job con không success" >&2
+            exit 1
+          fi
