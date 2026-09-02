@@ -47,6 +47,10 @@
         },
         "summary": {
           "type": "string"
+        },
+        "content": {
+          "type": "string",
+          "description": "toàn văn artifact (markdown/yaml); bus là nguồn sự thật, artifact store chỉ là bản mirror ra file"
         }
       },
       "required": [

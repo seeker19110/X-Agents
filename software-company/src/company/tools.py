@@ -100,7 +100,8 @@ def _is_secret(parts: tuple[str, ...]) -> bool:
 
 
 class WorkspaceTools:
-    """Tool đọc/ghi/tìm/chạy kiểm tra trong worktree của một ticket. `allow_write=False` cho reviewer/QA."""
+    """Tool đọc/ghi/tìm/chạy kiểm tra trong một thư mục gốc: worktree của ticket (khối kỹ thuật, `allow_write=True`),
+    hoặc bất kỳ thư mục nào chỉ đọc (reviewer/QA trên worktree, researcher trên repo khách với `allow_run=False`)."""
 
     # Lệnh chạy được: tên → argv. Model chỉ chọn tên và đưa đường dẫn (đã kiểm) — không có shell.
     COMMANDS: ClassVar[dict[str, list[str]]] = {
@@ -110,9 +111,10 @@ class WorkspaceTools:
         "git_diff": ["git", "diff"],
     }
 
-    def __init__(self, ws: TicketWorkspace, allow_write: bool = True, timeout: int = 600):
-        self.ws, self.allow_write, self.timeout = ws, allow_write, timeout
-        self.root = ws.path.resolve()
+    def __init__(self, ws: TicketWorkspace | Path | str, allow_write: bool = True, timeout: int = 600, allow_run: bool = True):
+        self.ws = ws if isinstance(ws, TicketWorkspace) else None
+        self.allow_write, self.allow_run, self.timeout = allow_write, allow_run, timeout
+        self.root = (ws.path if isinstance(ws, TicketWorkspace) else Path(ws)).resolve()
 
     # ---------- ranh giới đường dẫn ----------
 
@@ -194,7 +196,9 @@ class WorkspaceTools:
     # ---------- bảng tool ----------
 
     def toolbox(self) -> ToolBox:
-        tb = ToolBox()
+        return self.add_to(ToolBox())
+
+    def add_to(self, tb: ToolBox) -> ToolBox:
         def s(desc: str = "") -> dict[str, Any]:
             return {"type": "string", **({"description": desc} if desc else {})}
         tb.add(ToolSpec("read_file", "Đọc file trong worktree (có số dòng). Dùng start/end cho file dài.",
@@ -209,10 +213,11 @@ class WorkspaceTools:
                self.list_files)
         tb.add(ToolSpec("search", "Tìm regex trong file (mặc định **/*.py); trả path:line: nội dung.",
                         {"type": "object", "properties": {"pattern": s(), "glob": s()}, "required": ["pattern"]}), self.search)
-        tb.add(ToolSpec("run", f"Chạy một lệnh trong allowlist: {sorted(self.COMMANDS)}. `paths` giới hạn phạm vi (tuỳ chọn).",
-                        {"type": "object", "properties": {"command": {"type": "string", "enum": sorted(self.COMMANDS)},
-                                                          "paths": {"type": "array", "items": {"type": "string"}}},
-                         "required": ["command"]}), self.run)
+        if self.allow_run:
+            tb.add(ToolSpec("run", f"Chạy một lệnh trong allowlist: {sorted(self.COMMANDS)}. `paths` giới hạn phạm vi (tuỳ chọn).",
+                            {"type": "object", "properties": {"command": {"type": "string", "enum": sorted(self.COMMANDS)},
+                                                              "paths": {"type": "array", "items": {"type": "string"}}},
+                             "required": ["command"]}), self.run)
         return tb
 
 
