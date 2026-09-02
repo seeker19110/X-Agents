@@ -11,11 +11,16 @@ from .bus import InMemoryBus
 from .events import NAMESPACE_OWNERS, AuditLog, Envelope, SupervisorAction, Task
 from .guard import scan
 
+# F16: token của 3 lượt review (mỗi lượt mang system prompt + blackboard) không tính vào ngân sách ticket — delivery-lead
+# ước lượng công của engineer, còn review là chi phí cố định của quy trình; cộng chung thì mọi ticket đều bị cắt.
+REVIEW_ACTORS = frozenset({"reviewer", "qa-debugger", "security-engineer"})
+
 
 @dataclass
 class Budget:
     limit: int
-    used: int = 0
+    used: int = 0            # token của agent làm ticket (so với `limit`)
+    review_used: int = 0     # token của reviewer/QA/security cho ticket — theo dõi, không trừ vào `limit`
     limit_usd: float | None = None  # trần tiền của ticket (Task.budget_usd), ngoài trần token
     cost_usd: float = 0.0
     @property
@@ -75,7 +80,9 @@ class Supervisor:
             if a.action.startswith("produced:") and '"unpriced": true' in (a.evidence or ""):
                 self.unpriced += 1
             if a.ticket_id and a.ticket_id in self.budgets:
-                b = self.budgets[a.ticket_id]; b.used += a.tokens; b.cost_usd += a.cost_usd
+                b = self.budgets[a.ticket_id]; b.cost_usd += a.cost_usd
+                if a.actor in REVIEW_ACTORS: b.review_used += a.tokens
+                else: b.used += a.tokens
                 if b.ratio >= self.CUT_AT: self._act(a.ticket_id, "budget_cut", f"dùng {b.used}/{b.limit} token")
                 elif b.limit_usd and b.ratio_usd >= self.CUT_AT:
                     self._act(a.ticket_id, "budget_cut", f"dùng {b.cost_usd:.2f}/{b.limit_usd:.2f} USD")
@@ -154,6 +161,7 @@ class Supervisor:
             t = Task.model_validate(env.payload); b = self.budgets.get(t.ticket_id)
             tickets[t.ticket_id] = {"estimate_tokens": t.estimate_tokens, "budget_tokens": t.budget_tokens,
                                     "retry": t.retry, "actual_tokens": b.used if b else 0,
+                                    "review_tokens": b.review_used if b else 0,
                                     "budget_usd": t.budget_usd, "cost_usd": round(b.cost_usd, 4) if b else 0.0}
         for row in tickets.values():
             est = row["estimate_tokens"]

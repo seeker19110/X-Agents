@@ -193,8 +193,8 @@ def test_commit_all_never_commits_pycache_and_drops_previously_tracked_junk(tmp_
 
 
 def test_dependents_start_only_after_dependency_is_integrated(tmp_path):
-    """F15: có nhánh tích hợp thì ticket phụ thuộc chờ tới khi dependency MERGE xong, không phải lúc approved —
-    kể cả khi review-results cuối bị hoãn vì supervisor cắt ngân sách (T1 budget 6000 < 3 lời gọi)."""
+    """F15: có nhánh tích hợp thì ticket phụ thuộc chờ tới khi dependency MERGE xong, không phải lúc approved.
+    F16: T1 budget 6000 < 3 lượt review, nhưng token review không trừ vào ngân sách ticket → T1 KHÔNG bị cắt."""
     repo = _init_repo(tmp_path / "repo")
     order: list[str] = []
     def th(msgs, tools):
@@ -205,8 +205,8 @@ def test_dependents_start_only_after_dependency_is_integrated(tmp_path):
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=th), repo=repo, base="main", batch_releases=True)
     _drive_to_plan(bus, orch); orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     assert orch.lead.require_integration
-    # review-results cuối của T1 bị hoãn (paused:T1) nhưng `_integrate_pending` vẫn merge T1 → T2 mới được dispatch
-    assert "T1" in orch.paused, "T1 bị supervisor cắt ngân sách sau lượt review cuối"
+    b = orch.supervisor.budgets["T1"]
+    assert "T1" not in orch.paused and b.review_used > 0 and b.used < b.limit, "F16: review không làm ticket bị cắt ngân sách"
     assert order == ["start:T1", "files:T1", "start:T2", "t2_sees_t1"], order
     tasks_t2 = [e for e in bus.replay(topic="tasks") if e.key == "T2"]
     merged_t1 = next(e for e in bus.replay(topic="audit-log") if e.payload["action"] == "integration.merged" and '"T1"' in e.payload["evidence"])

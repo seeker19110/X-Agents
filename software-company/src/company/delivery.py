@@ -42,6 +42,7 @@ class DeliveryLead:
         self.acceptance: dict[str, AcceptanceResult] = {}
         self.replaying = False  # True khi dựng lại trạng thái từ log: đổi state nhưng không publish/xin gate lại
         self.handlers = {"review-results": self._on_review, "pull-requests": self._on_pr,
+                         "release-candidates": self._on_release_candidate,
                          "release-events": self._on_release_event, "acceptance-results": self._on_acceptance,
                          "change-requests": self._on_change_request}
         for topic, fn in self.handlers.items():
@@ -201,7 +202,10 @@ class DeliveryLead:
         self.review_since.pop(tid, None)
         if all(x.verdict == "pass" for x in self.reviews[tid].values()):
             self._set(tid, "approved")
-            if self.batch_releases: self.flush_releases(self.tickets[tid].project_id)
+            # F19: khi khôi phục từ log không tạo RC — RC thật nằm trong `release-candidates` và được replay
+            # (`_on_release_candidate`); tạo lại ở đây sẽ sinh REL-* thừa với danh sách ticket khác lần chạy thật.
+            if self.replaying: pass
+            elif self.batch_releases: self.flush_releases(self.tickets[tid].project_id)
             else: self._create_release_candidate([tid])
             self._flush_waiting()
             return
@@ -232,6 +236,7 @@ class DeliveryLead:
     def flush_releases(self, project_id: str) -> str | None:
         """Chế độ gom release: tạo RC cho mọi ticket approved chưa release của dự án khi không còn ticket nào đang chạy.
         Gọi lại khi trạng thái đổi (ticket approved, blocked, đóng sau escalation)."""
+        if self.replaying: return None  # F19: RC được dựng lại từ log, không tạo mới
         pending = self.unreleased(project_id)
         if not pending: return None
         if any(t.project_id == project_id and self.state.get(tid) in self.IN_FLIGHT for tid, t in self.tickets.items()):
@@ -245,6 +250,19 @@ class DeliveryLead:
             payload={"release_id": rid, "project_id": project, "tickets": tids,
                      "version": self.next_version(project, tids)}))
         return rid
+
+    def _on_release_candidate(self, env: Envelope) -> None:
+        """RC do chính delivery-lead phát (đã ghi nhận trong `_create_release_candidate`) → bỏ qua. Khi replay từ log,
+        đây là nguồn duy nhất dựng lại `releases`/`release_tickets`/`versions` (F19), đúng id và đúng danh sách ticket
+        của lần chạy thật."""
+        p = env.payload; rid = p["release_id"]
+        if rid in self.release_tickets: return
+        self.releases.append(rid); self.release_tickets[rid] = list(p["tickets"])
+        try:
+            v = tuple(int(x) for x in str(p.get("version", "")).split("."))
+        except ValueError:
+            return
+        if len(v) == 3: self.versions[p["project_id"]] = v  # type: ignore[assignment]
 
     def _on_release_event(self, env: Envelope) -> None:
         p = env.payload; rid = p["release_id"]
