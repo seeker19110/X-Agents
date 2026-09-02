@@ -9,6 +9,7 @@ skills: [requirements-engineering]
 budget_tokens_per_task: 20000
 max_retries: 2
 timeout_minutes: 30
+version: 2
 ---
 # clarifier
 

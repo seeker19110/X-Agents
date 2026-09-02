@@ -9,7 +9,7 @@ skills: [code-review, security, license-compliance, testing, api-contract, obser
 budget_tokens_per_task: 60000
 max_retries: 1
 timeout_minutes: 60
-version: 4
+version: 5
 ---
 # reviewer
 

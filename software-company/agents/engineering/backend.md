@@ -9,7 +9,7 @@ skills: [engineering-common, backend, api-contract, observability, event-driven-
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 3
+version: 4
 ---
 # backend
 

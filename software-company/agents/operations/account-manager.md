@@ -9,7 +9,7 @@ skills: [customer-acceptance, project-management, requirements-engineering, tech
 budget_tokens_per_task: 60000
 max_retries: 2
 timeout_minutes: 120
-version: 2
+version: 3
 ---
 # account-manager
 

@@ -9,7 +9,7 @@ skills: [engineering-common, database, observability, privacy-compliance, perfor
 budget_tokens_per_task: 80000
 max_retries: 3
 timeout_minutes: 120
-version: 3
+version: 4
 ---
 # database
 

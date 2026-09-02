@@ -9,7 +9,7 @@ skills: [requirements-engineering]
 budget_tokens_per_task: 20000
 max_retries: 1
 timeout_minutes: 30
-version: 2
+version: 3
 ---
 # intake
 
