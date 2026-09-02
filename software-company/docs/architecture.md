@@ -85,6 +85,8 @@ account-manager ghi nhận). Timeout 24h, supervisor nhắc ở 12h. Không bao 
   `list_files`, `search`, `run`), không có shell; `run` chỉ nhận tên trong allowlist (`lint`, `test`, `git_status`,
   `git_diff`); đường dẫn khoá trong worktree, không chạm `.git/` hay file bí mật; env lệnh con lọc mọi khoá API.
   Vòng lặp model ↔ tool nằm trong runner (`generate(tools=…)`), dừng khi hết lượt hoặc vượt ngân sách token.
+- **Nhánh tích hợp** (ADR-0011): ticket rẽ từ `company/integration`; RC xuất hiện → `merge --no-ff` vào đó trước khi
+  release-engineer chạy; xung đột → RC huỷ, ticket làm lại trên nền mới. `main` của khách không bị chạm.
 - **Bằng chứng PR do code điền**: sau vòng tool, runner chạy lint/test thật, commit và ghi đè `branch`, `pr_ref`,
   `local_checks` (`verified_by: workspace`), `impact.files` — model không tự khai được. Không có `--repo` thì
   `local_checks` thành `{"unverified": true}`.
