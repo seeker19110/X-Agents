@@ -1,5 +1,6 @@
 ---
 name: debugging
+version: 1
 standards: [Scientific debugging]
 ---
 # Skill: debugging

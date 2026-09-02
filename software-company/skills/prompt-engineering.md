@@ -1,5 +1,6 @@
 ---
 name: prompt-engineering
+version: 1
 standards: [Prompt-as-code, OWASP Top 10 for LLM, Eval-driven prompt change, Structured output]
 ---
 # Skill: prompt-engineering

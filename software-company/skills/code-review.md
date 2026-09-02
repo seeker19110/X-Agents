@@ -1,5 +1,6 @@
 ---
 name: code-review
+version: 1
 standards: [Google Engineering Practices, CWE Top 25]
 ---
 # Skill: code-review

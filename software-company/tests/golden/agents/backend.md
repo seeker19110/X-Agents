@@ -1,4 +1,4 @@
-<!-- golden agent=backend version=2 -->
+<!-- golden agent=backend version=3 -->
 # backend
 
 ## Vai trò
@@ -225,3 +225,78 @@ Tính năng tóm tắt ticket: SummaryClient interface, prompt v3 kèm 40 ca eva
 
 ## Ví dụ xấu
 Gọi thẳng SDK một provider trong handler, prompt nối chuỗi với nội dung email khách, không eval.
+
+# Skill: testing
+
+## Tiêu chuẩn tham chiếu
+- ISO/IEC/IEEE 29119
+- ISTQB
+- Test pyramid
+- Contract testing (Pact)
+- Mutation testing
+
+## Quy tắc
+- Mọi Gherkin có test.
+- Unit > integration > e2e.
+- Mutation ≥ 70% module lõi.
+- Perf test so NFR.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Gherkin phủ 100%
+- [ ] Mutation đạt
+- [ ] Perf p95 đạt
+- [ ] a11y pass
+
+## Ví dụ tốt
+Scenario 'refund quá hạn' → test_refund_after_window_rejected.
+
+## Ví dụ xấu
+Chỉ có test happy path.
+
+# Skill: security
+
+## Tiêu chuẩn tham chiếu
+- OWASP ASVS
+- SLSA L3
+- SBOM SPDX/CycloneDX
+- Sigstore
+
+## Quy tắc
+- SAST + SCA + secret scan mỗi PR.
+- SBOM mỗi build.
+- License check.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] 0 High
+- [ ] SBOM có
+- [ ] Artifact ký
+
+## Ví dụ tốt
+Semgrep: 0 High; Trivy: 1 Medium (CVE-... trong lib X, không reachable, ghi nhận).
+
+## Ví dụ xấu
+Scan lỗi nhưng chắc không sao.
+
+# Skill: database
+
+## Tiêu chuẩn tham chiếu
+- 3NF
+- ACID
+- Migration best practice
+- PII protection
+
+## Quy tắc
+- Migration forward+rollback, idempotent.
+- Index có lý do đo được.
+- PII mã hóa hoặc che; backup có test restore.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Migration up/down sạch
+- [ ] RPO/RTO đạt NFR
+- [ ] PII được bảo vệ
+
+## Ví dụ tốt
+ALTER TABLE ... ADD COLUMN ... NULL; backfill theo batch; sau đó SET NOT NULL.
+
+## Ví dụ xấu
+DROP COLUMN ngay trong một migration.

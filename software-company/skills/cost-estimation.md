@@ -1,5 +1,6 @@
 ---
 name: cost-estimation
+version: 1
 standards: [Three-point estimate (PERT), Reference-class forecasting, FinOps unit economics, DORA]
 ---
 # Skill: cost-estimation

@@ -1,5 +1,6 @@
 ---
 name: event-driven-architecture
+version: 1
 standards: [AsyncAPI 3.0, CloudEvents, Enterprise Integration Patterns, Outbox pattern, Idempotent consumer]
 ---
 # Skill: event-driven-architecture

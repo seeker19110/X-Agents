@@ -1,4 +1,4 @@
-<!-- golden agent=frontend version=3 -->
+<!-- golden agent=frontend version=4 -->
 # frontend
 
 ## Vai trò
@@ -170,3 +170,80 @@ t('orders.count', {count}) với ICU plural: {count, plural, =0 {Không có đơ
 
 ## Ví dụ xấu
 'Bạn có ' + n + ' đơn hàng'.
+
+# Skill: testing
+
+## Tiêu chuẩn tham chiếu
+- ISO/IEC/IEEE 29119
+- ISTQB
+- Test pyramid
+- Contract testing (Pact)
+- Mutation testing
+
+## Quy tắc
+- Mọi Gherkin có test.
+- Unit > integration > e2e.
+- Mutation ≥ 70% module lõi.
+- Perf test so NFR.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Gherkin phủ 100%
+- [ ] Mutation đạt
+- [ ] Perf p95 đạt
+- [ ] a11y pass
+
+## Ví dụ tốt
+Scenario 'refund quá hạn' → test_refund_after_window_rejected.
+
+## Ví dụ xấu
+Chỉ có test happy path.
+
+# Skill: performance-testing
+
+## Tiêu chuẩn tham chiếu
+- ISO/IEC 25010 (performance efficiency)
+- k6/Gatling/Locust
+- RED/USE
+- Google SRE SLO
+
+## Quy tắc
+- Mọi NFR hiệu năng có số đo (p95/p99, RPS, error rate) và kịch bản load tương ứng trước khi code.
+- Chạy load/stress/soak trên staging với dữ liệu cỡ production; baseline được lưu để so hồi quy.
+- Ngưỡng pass = NFR; vượt ngưỡng là finding block trên release candidate, không phải warn.
+- Đo bằng công cụ, trích số thật; không suy đoán từ code.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Kịch bản load cho mọi endpoint/màn hình có NFR
+- [ ] p95/p99 và error rate đạt NFR trên staging
+- [ ] Soak ≥ 1h không rò rỉ bộ nhớ/kết nối
+- [ ] Baseline lưu trong `docs`, so với release trước
+
+## Ví dụ tốt
+NFR-07 p95 < 300ms @ 200 RPS → k6 script perf/orders_get.js, kết quả p95 = 212ms, lưu baseline.
+
+## Ví dụ xấu
+"Chạy thử thấy nhanh" không có số.
+
+# Skill: security
+
+## Tiêu chuẩn tham chiếu
+- OWASP ASVS
+- SLSA L3
+- SBOM SPDX/CycloneDX
+- Sigstore
+
+## Quy tắc
+- SAST + SCA + secret scan mỗi PR.
+- SBOM mỗi build.
+- License check.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] 0 High
+- [ ] SBOM có
+- [ ] Artifact ký
+
+## Ví dụ tốt
+Semgrep: 0 High; Trivy: 1 Medium (CVE-... trong lib X, không reachable, ghi nhận).
+
+## Ví dụ xấu
+Scan lỗi nhưng chắc không sao.

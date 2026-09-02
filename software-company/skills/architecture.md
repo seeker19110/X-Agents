@@ -1,5 +1,6 @@
 ---
 name: architecture
+version: 1
 standards: [C4 model, arc42, Clean/Hexagonal, DDD, ADR (Nygard)]
 ---
 # Skill: architecture

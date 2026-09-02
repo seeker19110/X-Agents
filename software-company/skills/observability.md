@@ -1,5 +1,6 @@
 ---
 name: observability
+version: 1
 standards: [OpenTelemetry, Google SRE SLI/SLO, RED/USE, Structured logging]
 ---
 # Skill: observability

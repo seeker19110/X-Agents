@@ -2,14 +2,14 @@
 id: account-manager
 block: operations
 model_tier: strong
-reads: [approved-specs, release-events, external-feedback]
+reads: [approved-specs, release-events, external-feedback, acceptance-results]
 writes: [change-requests, acceptance-results, research-requests]
 context_namespace_write: contract
-skills: [customer-acceptance, project-management, requirements-engineering, technical-writing]
+skills: [customer-acceptance, project-management, requirements-engineering, technical-writing, cost-estimation, risk-analysis]
 budget_tokens_per_task: 60000
 max_retries: 2
 timeout_minutes: 120
-version: 1
+version: 2
 ---
 # account-manager
 

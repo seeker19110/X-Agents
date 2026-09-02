@@ -1,5 +1,6 @@
 ---
 name: database
+version: 1
 standards: [3NF, ACID, Migration best practice, PII protection]
 ---
 # Skill: database

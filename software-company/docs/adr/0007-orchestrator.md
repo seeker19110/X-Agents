@@ -30,9 +30,24 @@ vẫn giữ nguyên ba nguyên tắc: human gate không bao giờ tự đi tiế
 6. **Không retry lời gọi model** (giữ ADR-0005): lỗi ghi audit rồi vòng lặp đi tiếp; delivery-lead retry theo hint,
    supervisor xử lý hạn mức, `tick()` nhắc gate/review quá hạn qua audit (`gate.remind`, `review.overdue`).
 
+7. **Blackboard qua đầu ra của agent**: agent sở hữu namespace trả `{"payload", "context_writes": [{namespace, content_ref,
+   summary}]}`; runner ghi `Blackboard.write` dưới danh nghĩa agent, namespace lạ bị bỏ và ghi audit. Route `CONTEXT_ONLY`
+   cho lượt chỉ ghi blackboard (support-docs sau production). Threat model: security-engineer chạy trên spec đã duyệt
+   trước khi delivery-lead sinh ticket (`review-results` key=SPEC-*, verdict block chặn lập kế hoạch); C4 + API contract
+   của delivery-lead lên blackboard trước khi xin gate plan.
+8. **Các nhánh từng hở** (audit 2026-09-02): clarifier không còn câu hỏi → spec-writer đi thẳng từ draft sau risk;
+   change request pending → delivery-lead ước lượng impact (`audit-log` change.impact) → người `decide-change`;
+   accepted có `affects_requirements` → intake nghiên cứu lại, ngược lại → lập kế hoạch; nghiệm thu conditional →
+   account-manager mở change request; security-engineer review release (DAST/license) khi release có ticket risk_tags,
+   gate 3 chỉ xin khi đủ QA + security; support-docs: docs sau production, incident từ feedback (0..n), incident
+   requirement → research-requests; ticket blocked hoặc supervisor escalate → gate `escalation` (approve = `reopen`
+   với hint, retry về 0; reject = đóng); review quá hạn giao lại đúng một lần; watchdog chỉ xét ticket đang chạy;
+   sau nghiệm thu ghi estimate vs actual vào `supervisor.knowledge` và namespace `knowledge`.
+
 ## Hệ quả
 - Một lệnh `make run` (hoặc `--watch 5`) chạy cả công ty; con người chỉ dùng `gate_cli` và `publish`.
 - Thêm bước mới = thêm một dòng ROUTES + test; sai front matter là lỗi khởi tạo chứ không phải lỗi âm thầm lúc chạy.
 - Review một PR chạy tuần tự trong một tiến trình; chạy song song nhiều máy cần bus Redis/Kafka (chưa có).
-- Chưa nối: security-engineer làm threat model từ `approved-specs` (ghi blackboard, không phải topic), support-docs
-  từ `release-events`/`external-feedback`, incident `root_cause_class=requirement` → `research-requests`.
+- Blackboard vẫn chỉ giữ tham chiếu + tóm tắt; nội dung artifact cần tool file (bước tiếp theo).
+- Skill bổ sung theo audit (backend +testing/security/database, reviewer +api-contract/observability, risk
+  +privacy/ai-governance/license...), mọi skill có `version`; agent đổi skill/reads đều tăng `version` và cập nhật golden.

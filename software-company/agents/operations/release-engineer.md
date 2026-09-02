@@ -5,11 +5,11 @@ model_tier: strong
 reads: [release-candidates]
 writes: [release-events]
 context_namespace_write: null
-skills: [release, devops, observability, incident-management]
+skills: [release, devops, observability, incident-management, license-compliance, security]
 budget_tokens_per_task: 80000
 max_retries: 2
 timeout_minutes: 120
-version: 2
+version: 3
 ---
 # release-engineer
 

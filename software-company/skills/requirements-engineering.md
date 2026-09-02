@@ -1,5 +1,6 @@
 ---
 name: requirements-engineering
+version: 1
 standards: [ISO/IEC/IEEE 29148, BABOK v3, INVEST, Gherkin, MoSCoW, ISO/IEC 25010]
 ---
 # Skill: requirements-engineering

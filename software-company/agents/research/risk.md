@@ -5,11 +5,11 @@ model_tier: strong
 reads: [requirements-draft]
 writes: [requirements-draft]
 context_namespace_write: null
-skills: [risk-analysis, threat-modeling]
+skills: [risk-analysis, threat-modeling, privacy-compliance, ai-governance, license-compliance]
 budget_tokens_per_task: 40000
 max_retries: 1
 timeout_minutes: 45
-version: 2
+version: 3
 ---
 # risk
 

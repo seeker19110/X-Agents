@@ -1,5 +1,6 @@
 ---
 name: incident-management
+version: 1
 standards: [ITIL 4, SRE postmortem]
 ---
 # Skill: incident-management

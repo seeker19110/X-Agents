@@ -1,5 +1,6 @@
 ---
 name: domain-research
+version: 1
 standards: [BABOK v3, Competitive analysis]
 ---
 # Skill: domain-research

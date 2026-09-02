@@ -1,5 +1,6 @@
 ---
 name: testing
+version: 1
 standards: [ISO/IEC/IEEE 29119, ISTQB, Test pyramid, Contract testing (Pact), Mutation testing]
 ---
 # Skill: testing

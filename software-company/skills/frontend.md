@@ -1,5 +1,6 @@
 ---
 name: frontend
+version: 1
 standards: [WCAG 2.2 AA, Core Web Vitals, CSP, OWASP client-side]
 ---
 # Skill: frontend

@@ -1,4 +1,4 @@
-<!-- golden agent=release-engineer version=2 -->
+<!-- golden agent=release-engineer version=3 -->
 # release-engineer
 
 ## Vai trò
@@ -131,3 +131,54 @@ SEV2: thanh toán chậm 30% user 20 phút. Root cause, timeline, action items.
 
 ## Ví dụ xấu
 Lỗi nhỏ, không cần ghi.
+
+# Skill: license-compliance
+
+## Tiêu chuẩn tham chiếu
+- SPDX (định danh license, SBOM)
+- OpenChain ISO/IEC 5230
+- OSI Approved Licenses
+- REUSE Specification
+
+## Quy tắc
+- Chính sách mặc định: **cho phép** MIT, Apache-2.0, BSD-2/3, ISC, MPL-2.0 (file-level); **cần ADR** LGPL, EPL, CDDL; **cấm** GPL/AGPL/SSPL/BUSL trong sản phẩm phân phối, trừ ADR có người ký.
+- Mọi dependency mới trong PR có license SPDX id; scan tự động (ScanCode/ORT/FOSSA hoặc tương đương) mỗi build.
+- Code sinh bởi AI: không sao chép nguyên khối > 10 dòng từ nguồn có license không tương thích.
+- NOTICE/THIRD-PARTY file cập nhật mỗi release.
+- Font, icon, ảnh, dataset cũng có license; ghi trong NOTICE.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] Mọi dependency có SPDX id
+- [ ] Không license cấm hoặc có ADR
+- [ ] NOTICE cập nhật
+- [ ] Scan license pass trong CI
+
+## Ví dụ tốt
+PR thêm `pdf-lib` (MIT) → ghi trong PR, scan pass, NOTICE cập nhật.
+
+## Ví dụ xấu
+Thêm thư viện AGPL vào backend SaaS "vì nó tốt nhất".
+
+# Skill: security
+
+## Tiêu chuẩn tham chiếu
+- OWASP ASVS
+- SLSA L3
+- SBOM SPDX/CycloneDX
+- Sigstore
+
+## Quy tắc
+- SAST + SCA + secret scan mỗi PR.
+- SBOM mỗi build.
+- License check.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] 0 High
+- [ ] SBOM có
+- [ ] Artifact ký
+
+## Ví dụ tốt
+Semgrep: 0 High; Trivy: 1 Medium (CVE-... trong lib X, không reachable, ghi nhận).
+
+## Ví dụ xấu
+Scan lỗi nhưng chắc không sao.

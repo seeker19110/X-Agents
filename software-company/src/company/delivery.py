@@ -27,6 +27,7 @@ class DeliveryLead:
         self.releases: list[str] = []
         self.release_tickets: dict[str, list[str]] = {}
         self.release_qa: dict[str, ReviewResult] = {}
+        self.release_reviews: dict[str, dict[str, ReviewResult]] = defaultdict(dict)
         self.acceptance: dict[str, AcceptanceResult] = {}
         self.replaying = False  # True khi dựng lại trạng thái từ log: đổi state nhưng không publish/xin gate lại
         self.handlers = {"review-results": self._on_review, "pull-requests": self._on_pr,
@@ -130,6 +131,7 @@ class DeliveryLead:
         if r.ticket_id in self.release_tickets:
             self._on_release_qa(r); return
         tid = r.ticket_id
+        if tid not in self.tickets: return  # review cho spec (threat model SPEC-*) hoặc ticket lạ: không phải vòng ticket
         self.reviews[tid][r.source] = r
         if not self.required_reviews(tid) <= set(self.reviews[tid]):
             return
@@ -168,18 +170,39 @@ class DeliveryLead:
                 if self.state.get(tid) in {"merged", "released"}:
                     self._set(tid, "changes_requested"); self._retry(tid, f"{rid} {p['status']} trên {p['env']}")
 
+    def release_needs_security(self, rid: str) -> bool:
+        return any(self.tickets[t].risk_tags for t in self.release_tickets.get(rid, []) if t in self.tickets)
+
     def _on_release_qa(self, r: ReviewResult) -> None:
-        """QA hồi quy/perf/a11y trên staging (ticket_id = release_id). Pass → mới xin gate 3."""
-        rid = r.ticket_id; self.release_qa[rid] = r
-        if r.verdict == "pass":
-            if not self.replaying:
-                self.gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead",
-                                              checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook", "rollback"]))
+        """Review trên release (ticket_id = release_id): QA hồi quy/perf/a11y trên staging, và security (DAST/license)
+        khi release có ticket risk_tags. Đủ nguồn và tất cả pass → mới xin gate 3."""
+        rid = r.ticket_id; self.release_reviews[rid][r.source] = r
+        if r.source == "qa": self.release_qa[rid] = r
+        if r.verdict != "pass":
+            hint = r.root_cause or "; ".join(f.text for f in r.findings if f.level == "block") or f"{r.source} trên release fail"
+            for tid in self.release_tickets[rid]:
+                if self.state.get(tid) == "merged":
+                    self._set(tid, "changes_requested"); self._retry(tid, hint)
             return
-        hint = r.root_cause or "; ".join(f.text for f in r.findings if f.level == "block") or "QA staging fail"
-        for tid in self.release_tickets[rid]:
-            if self.state.get(tid) == "merged":
-                self._set(tid, "changes_requested"); self._retry(tid, hint)
+        need = {"qa"} | ({"security"} if self.release_needs_security(rid) else set())
+        got = {s for s, x in self.release_reviews[rid].items() if x.verdict == "pass"}
+        if need <= got and not self.replaying and rid not in self.gate.pending and not self.gate.is_approved(rid):
+            self.gate.request(GateRequest(kind="release", subject_id=rid, created_by="delivery-lead",
+                                          checklist=["tests", "scan", "regression-staging", "perf", "a11y", "runbook", "rollback"]))
+
+    def blocked(self) -> list[str]:
+        return [tid for tid, st in self.state.items() if st == "blocked"]
+
+    def reopen(self, tid: str, hint: str) -> Task:
+        """Người duyệt escalation: mở lại ticket blocked/escalated với hint, đếm retry lại từ 0."""
+        if self.state.get(tid) not in {"blocked", "escalated"}:
+            raise ValueError(f"{tid}: chỉ mở lại ticket blocked/escalated (đang {self.state.get(tid)})")
+        nt = self.tickets[tid].model_copy(update={"retry": 0, "hint": hint}); self.tickets[tid] = nt
+        self._publish_task(nt); return nt
+
+    def close_escalated(self, tid: str) -> None:
+        """Người từ chối escalation: ticket đóng không làm nữa."""
+        self._set(tid, "escalated"); self._set(tid, "closed")
 
     def _on_acceptance(self, env: Envelope) -> None:
         a = AcceptanceResult.model_validate(env.payload); self.acceptance[a.release_id] = a

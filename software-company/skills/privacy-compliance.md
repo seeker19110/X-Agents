@@ -1,5 +1,6 @@
 ---
 name: privacy-compliance
+version: 1
 standards: [GDPR, Nghị định 13/2023/NĐ-CP, ISO/IEC 27701, DPIA, Privacy by Design]
 ---
 # Skill: privacy-compliance

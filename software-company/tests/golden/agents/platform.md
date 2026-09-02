@@ -1,4 +1,4 @@
-<!-- golden agent=platform version=1 -->
+<!-- golden agent=platform version=2 -->
 # platform
 
 ## Vai trò
@@ -169,3 +169,49 @@ TCK-42 dùng 92% budget → warn delivery-lead.
 
 ## Ví dụ xấu
 Không biết tốn bao nhiêu.
+
+# Skill: security
+
+## Tiêu chuẩn tham chiếu
+- OWASP ASVS
+- SLSA L3
+- SBOM SPDX/CycloneDX
+- Sigstore
+
+## Quy tắc
+- SAST + SCA + secret scan mỗi PR.
+- SBOM mỗi build.
+- License check.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] 0 High
+- [ ] SBOM có
+- [ ] Artifact ký
+
+## Ví dụ tốt
+Semgrep: 0 High; Trivy: 1 Medium (CVE-... trong lib X, không reachable, ghi nhận).
+
+## Ví dụ xấu
+Scan lỗi nhưng chắc không sao.
+
+# Skill: incident-management
+
+## Tiêu chuẩn tham chiếu
+- ITIL 4
+- SRE postmortem
+
+## Quy tắc
+- SEV1–4 với SLA phản hồi.
+- Postmortem blameless ≤ 48h, action item có owner.
+- Incident lặp → problem.
+
+## Checklist (supervisor và human gate dùng để chấm)
+- [ ] SEV đúng
+- [ ] Postmortem có
+- [ ] Action có owner
+
+## Ví dụ tốt
+SEV2: thanh toán chậm 30% user 20 phút. Root cause, timeline, action items.
+
+## Ví dụ xấu
+Lỗi nhỏ, không cần ghi.
