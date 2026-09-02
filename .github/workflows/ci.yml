@@ -141,6 +141,32 @@ jobs:
       - run: PYTHONPATH=src uv run python -m studio.evals all --replay
         working-directory: Studio-creators
 
+  gateway-static:
+    name: gateway-static
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync
+        working-directory: gateway
+      - run: uv run ruff check src tests
+        working-directory: gateway
+
+  gateway-unit:
+    name: gateway-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync
+        working-directory: gateway
+      - run: uv run pytest -q
+        working-directory: gateway
+
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
   quality:
@@ -149,7 +175,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay]
+    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, gateway-static, gateway-unit]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success

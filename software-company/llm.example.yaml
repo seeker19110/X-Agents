@@ -10,6 +10,7 @@ models:
   standard: qwen2.5-coder:7b
 
 # chỉ provider openai: base URL của server. OpenAI thật: https://api.openai.com/v1
+# Gateway xoay vòng tài khoản Antigravity (../gateway, `make setup` ghi sẵn): http://127.0.0.1:8100/v1
 base_url: http://localhost:11434/v1
 # api key đặt qua biến môi trường COMPANY_LLM_API_KEY (không ghi vào file)
 
