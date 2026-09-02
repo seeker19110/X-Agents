@@ -335,9 +335,13 @@ def test_eval_record_then_replay_without_model(tmp_path, monkeypatch, capsys):
     assert list(stale_recordings(["reviewer"])) == ["reviewer"] and len(stale_recordings(["reviewer"])["reviewer"]) == 2
     bad = run_eval("reviewer", ReplayClient("reviewer"))
     assert not bad[0].passed and "lệch prompt" in bad[0].failures[0]
-    # CLI: --replay bỏ qua agent chưa ghi (exit 0), --strict thì fail
+    # CLI: --replay bỏ qua agent chưa ghi (exit 0); --strict chỉ đỏ với agent có tên trong REQUIRED.txt
     assert evals_main(["backend", "--replay"]) == 0 and "SKIP backend" in capsys.readouterr().out
+    assert evals_main(["backend", "--replay", "--strict"]) == 0, "chưa bắt buộc thì vẫn chỉ là SKIP"
+    capsys.readouterr()
+    (tmp_path / "REQUIRED.txt").write_text("# bắt buộc\nbackend\n", encoding="utf-8")
     assert evals_main(["backend", "--replay", "--strict"]) == 1
+    assert "FAIL backend" in capsys.readouterr().out
     assert evals_main(["reviewer", "--replay"]) == 1
 
 
@@ -398,3 +402,12 @@ def test_anthropic_message_conversion_groups_tool_results():
     assert out[0] == {"role": "user", "content": "u"}
     assert [b["type"] for b in out[1]["content"]] == ["text", "tool_use", "tool_use"] and out[1]["content"][1]["input"] == {"path": "x"}
     assert out[2]["role"] == "user" and [b["tool_use_id"] for b in out[2]["content"]] == ["a", "b"], "hai tool_result gộp một lượt user"
+
+
+def test_required_recordings_exist_and_match_prompt_version():
+    """Agent có tên trong evals/recordings/REQUIRED.txt phải có bản ghi tươi (ADR-0010)."""
+    from company.evals import load_recording, outdated_versions, required_agents
+
+    missing = [a for a in required_agents() if load_recording(a) is None]
+    assert not missing, f"thiếu bản ghi eval: {missing} — chạy make eval-record cho từng agent"
+    assert outdated_versions(required_agents()) == {}
