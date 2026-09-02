@@ -47,8 +47,8 @@ def test_tickets_branch_from_integration_and_merge_in_order(tmp_path):
     it = orch.integration
     files = it.files()
     assert "f_t1.py" in files and "f_t2.py" in files
-    subjects = _git(repo, "log", "--format=%s", it.branch).splitlines()
-    assert subjects[0].startswith("merge(T2)") and subjects[2].startswith("merge(T1)"), subjects
+    subjects = _git(repo, "log", "--first-parent", "--format=%s", it.branch).splitlines()  # thứ tự theo cha đầu, không theo timestamp
+    assert [x.split(":")[0] for x in subjects] == ["merge(T2)", "merge(T1)", "init"], subjects
     # T2 (phụ thuộc T1) rẽ từ nhánh tích hợp SAU khi T1 đã merge → thấy code của T1
     assert (repo / ".worktrees" / "T2" / "f_t1.py").exists()
     assert _git(repo, "log", "-1", "--format=%s", "main") == "init", "main của khách không bị chạm"
