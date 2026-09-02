@@ -35,130 +35,201 @@ Chạy unit/integration/e2e/contract/performance/accessibility test; khi fail th
 # Skill: testing
 
 ## Tiêu chuẩn tham chiếu
-- ISO/IEC/IEEE 29119
-- ISTQB
-- Test pyramid
-- Contract testing (Pact)
-- Mutation testing
+- ISO/IEC/IEEE 29119 (quy trình và tài liệu kiểm thử) và ISTQB (kỹ thuật thiết kế ca kiểm thử)
+- Test pyramid: nhiều unit, vừa integration, ít e2e
+- Contract testing (Pact hoặc kiểm schema hai chiều) giữa producer và consumer
+- Mutation testing để đo chất lượng test, không chỉ đo coverage
+- Property-based testing cho logic có bất biến rõ ràng
 
-## Quy tắc
-- Mọi Gherkin có test.
-- Unit > integration > e2e.
-- Mutation ≥ 70% module lõi.
-- Perf test so NFR.
+## Quy trình (làm đúng thứ tự)
+Lấy tiêu chí Gherkin từ spec → thiết kế ca theo kỹ thuật (phân lớp tương đương, giá trị biên, bảng quyết định, chuyển trạng thái) → viết test đỏ trước → hiện thực → bổ sung ca lỗi và ca đồng thời → contract test → e2e cho luồng Must → kiểm hiệu năng và khả năng tiếp cận theo NFR → đo mutation ở module lõi → dọn test giòn.
+Test viết sau khi code xong thường chỉ chứng minh code làm đúng cái nó đang làm, không phải cái nó cần làm.
+
+## Quy tắc — thiết kế ca kiểm thử
+- Mọi tiêu chí Gherkin có test tương ứng, truy vết được về requirement_id; Must phủ 100%.
+- Ca lỗi và ca biên là bắt buộc, không phải phần thêm: rỗng, một phần tử, tối đa, vượt giới hạn, trùng lặp, sai định dạng, hết hạn, không có quyền, dịch vụ phụ thuộc lỗi hoặc chậm.
+- Dùng kỹ thuật thiết kế có hệ thống thay vì nghĩ ngẫu nhiên: phân lớp tương đương và giá trị biên cho đầu vào, bảng quyết định cho luật nghiệp vụ, sơ đồ chuyển trạng thái cho vòng đời.
+- Logic có bất biến rõ (mã hóa/giải mã, sắp xếp, tính tiền, idempotency) nên có property-based test.
+- Test đồng thời cho thao tác có tranh chấp: gửi trùng, hai người sửa cùng lúc, retry sau timeout.
+
+## Quy tắc — chất lượng test
+- Test kiểm hành vi quan sát được, không kiểm chi tiết cài đặt; đổi cấu trúc bên trong mà test đỏ hàng loạt là dấu hiệu test sai tầng.
+- Mỗi test có một lý do thất bại; tên test nói rõ tình huống và kỳ vọng.
+- Test độc lập, chạy song song được, không phụ thuộc thứ tự, tự dựng và tự dọn dữ liệu; không dùng dữ liệu dùng chung có thể bị test khác sửa.
+- Không mock chính thứ đang kiểm; mock ở biên hệ thống. Với phụ thuộc ngoài, ưu tiên phiên bản thật chạy trong container hơn là mock tự viết.
+- Thời gian, ngẫu nhiên, múi giờ, và định danh phải tiêm được để test tất định; test phụ thuộc `now()` thật sẽ hỏng vào một ngày nào đó.
+- Test giòn (thỉnh thoảng đỏ) là lỗi phải sửa hoặc gỡ trong 48h; test bị bỏ qua (skip) phải có ticket và hạn — bộ test không đáng tin thì cả đội sẽ bỏ qua nó.
+- Coverage nhánh ≥ 80% cho code mới là sàn, không phải mục tiêu; mutation score ≥ 70% ở module lõi mới là thước đo test có thật sự bắt lỗi.
+
+## Quy tắc — theo tầng
+- Unit: nhanh, không I/O, phủ luật nghiệp vụ và ca biên.
+- Integration: chạm DB, hàng đợi, HTTP thật ở mức tối thiểu cần thiết; kiểm cả migration và truy vấn.
+- Contract: mọi consumer đã biết có contract test; phá vỡ contract phải làm CI đỏ trước khi tới môi trường thật (xem `api-contract`).
+- E2E: chỉ cho luồng Must, số lượng ít, chạy trên môi trường giống production, có dữ liệu tự dựng; e2e không phải nơi kiểm mọi ca biên.
+- Hiệu năng theo `performance-testing`; khả năng tiếp cận theo `accessibility`; bảo mật theo `security` — cả ba đều là cổng, không phải việc làm thêm nếu còn thời gian.
 
 ## Checklist (supervisor và human gate dùng để chấm)
-- [ ] Gherkin phủ 100%
-- [ ] Mutation đạt
-- [ ] Perf p95 đạt
-- [ ] a11y pass
+- [ ] 100% tiêu chí Gherkin của Must có test, truy vết được về requirement_id
+- [ ] Có test cho ca lỗi, ca biên và ca đồng thời, không chỉ happy path
+- [ ] Coverage nhánh code mới ≥ 80%; mutation score module lõi ≥ 70%
+- [ ] Test độc lập, chạy song song được, tất định (thời gian/ngẫu nhiên tiêm được)
+- [ ] Không mock thứ đang kiểm; phụ thuộc ngoài dùng bản thật khi khả thi
+- [ ] Contract test pass cho mọi consumer đã biết
+- [ ] E2E chỉ phủ luồng Must và chạy ổn định
+- [ ] Không có test giòn tồn đọng quá 48h; test bị skip đều có ticket
+- [ ] Cổng hiệu năng, khả năng tiếp cận và bảo mật đều được chạy
 
 ## Ví dụ tốt
-Scenario 'refund quá hạn' → test_refund_after_window_rejected.
+Scenario "hoàn tiền quá hạn 30 ngày bị từ chối" → `test_refund_after_window_rejected` (unit, bảng quyết định 4 nhánh) + `test_refund_endpoint_returns_problem_details` (integration) + property test `refund_is_idempotent` gửi ngẫu nhiên 1–5 lần luôn cho cùng số dư; đồng hồ tiêm qua `clock` nên chạy được mọi ngày trong năm; mutation score module `refund` 78%.
 
 ## Ví dụ xấu
-Chỉ có test happy path.
+Chỉ có test happy path; test gọi `datetime.now()` nên đỏ vào ngày cuối tháng; 200 test e2e chạy 40 phút và đỏ ngẫu nhiên nên cả đội quen bấm chạy lại; coverage 92% nhưng phần lớn assert chỉ kiểm "không ném lỗi".
 
 # Skill: debugging
 
 ## Tiêu chuẩn tham chiếu
-- Scientific debugging
+- Scientific debugging (Zeller): giả thuyết → dự đoán → thí nghiệm → quan sát → kết luận, ghi lại từng vòng
+- Delta debugging: thu nhỏ đầu vào và thu nhỏ khoảng thay đổi (git bisect) để cô lập
+- Five whys để đi từ triệu chứng tới nguyên nhân hệ thống, không dừng ở nguyên nhân gần nhất
+- Debug bằng dữ liệu quan sát được (log, trace, metric) thay vì đoán (xem `observability`)
 
-## Quy tắc
-- Tái hiện → cô lập → giả thuyết → xác minh.
-- Bug report có repro step, expected/actual, mức độ.
-- Gợi ý sửa nhưng không sửa.
+## Quy trình (làm đúng thứ tự)
+Tái hiện ổn định → thu nhỏ ca tái hiện → xác định phạm vi (bisect theo commit, theo cấu hình, theo dữ liệu) → nêu giả thuyết kiểm được → thí nghiệm một biến mỗi lần → xác minh nguyên nhân gốc bằng cách bật/tắt được lỗi theo ý muốn → viết test đỏ tái hiện lỗi → đề xuất sửa → kiểm xem lỗi cùng loại còn ở đâu nữa.
+Chưa tái hiện được thì chưa được sửa; sửa mù là đổi triệu chứng, không phải sửa lỗi.
+
+## Quy tắc — điều tra
+- Một biến mỗi thí nghiệm; ghi lại giả thuyết, thao tác, và kết quả kể cả khi sai — giả thuyết bị bác bỏ cũng là kết quả có giá trị.
+- Đọc dữ liệu trước khi đọc code: log có trace_id, trace phân tán, metric quanh thời điểm lỗi, diff cấu hình và diff phiên bản.
+- Xác nhận điều "chắc chắn đúng" (phiên bản đang chạy, cấu hình thực tế, dữ liệu thật) — phần lớn thời gian mất vì tin vào giả định chưa kiểm.
+- Với lỗi không ổn định (đồng thời, thời gian, thứ tự): chạy lặp có công cụ, thêm áp lực (tải, độ trễ giả), hoặc dựng lại thứ tự bằng test; "không tái hiện được" chỉ được kết luận sau khi đã thử có phương pháp và ghi rõ đã thử gì.
+- Nếu bằng chứng bị mất do thiếu quan sát, thì phát hiện đầu ra là "thiếu observability ở X" và đó là một finding thật.
+- Timebox mỗi hướng điều tra; hết giờ thì đổi hướng và ghi lại, không đi mãi một ngõ cụt.
+
+## Quy tắc — báo cáo
+- Bug report có: môi trường và phiên bản, bước tái hiện tối thiểu, kết quả mong đợi, kết quả thực tế, tần suất, mức độ theo tác động nghiệp vụ, bằng chứng (log/trace/ảnh) và phạm vi ảnh hưởng (bao nhiêu người dùng, từ khi nào).
+- Nêu nguyên nhân gốc bằng cơ chế cụ thể ("hai worker cùng đọc số dư trước khi ghi"), không bằng phỏng đoán ("chắc do cache").
+- Đề xuất hướng sửa và, nếu có, cách giảm nhẹ tạm thời; nêu cả rủi ro của bản sửa.
+- Không tự sửa code của người khác trong vai trò gỡ lỗi; giao lại cho chủ sở hữu kèm test đỏ.
+- Ghi lỗi lặp lại và bài học vào `knowledge`; lỗi cùng loại xuất hiện lần thứ hai phải sinh chốt chặn (test, lint, hoặc kiểm trong CI), không chỉ sửa điểm.
+- Lỗi trên production đi kèm quy trình `incident-management`; gỡ lỗi không thay thế việc khôi phục dịch vụ trước.
 
 ## Checklist (supervisor và human gate dùng để chấm)
-- [ ] Có repro
-- [ ] Có root cause
-- [ ] Có gợi ý
+- [ ] Có bước tái hiện tối thiểu và ổn định (hoặc ghi rõ đã thử gì nếu không tái hiện được)
+- [ ] Có nguyên nhân gốc nêu bằng cơ chế, chứng minh được bằng cách bật/tắt lỗi
+- [ ] Có test đỏ tái hiện lỗi trước khi sửa
+- [ ] Nêu phạm vi ảnh hưởng và mức độ theo tác động nghiệp vụ
+- [ ] Có đề xuất sửa và rủi ro của bản sửa
+- [ ] Đã kiểm lỗi cùng loại ở chỗ khác trong codebase
+- [ ] Bài học và chốt chặn được ghi vào `knowledge` nếu lỗi lặp
 
 ## Ví dụ tốt
-Root cause: race giữa 2 worker cùng đọc balance trước khi ghi. Gợi ý: SELECT FOR UPDATE.
+Tái hiện: 2 request hoàn tiền song song cùng `order_id` → số dư trừ hai lần (10/10 lần). Bisect: xuất hiện từ `4b5a64b` khi bỏ `FOR UPDATE`. Nguyên nhân gốc: đọc-rồi-ghi không khóa ở mức cô lập read committed. Test đỏ `test_concurrent_refund_double_debit`. Đề xuất: khóa lạc quan bằng cột `version` (rẻ hơn `FOR UPDATE` ở đường nóng). Đã tìm thấy mẫu tương tự ở `wallet/topup.py:61`.
 
 ## Ví dụ xấu
-Đôi khi bị lỗi.
+"Đôi khi bị lỗi, chắc do mạng." Không phiên bản, không bước tái hiện, không bằng chứng; sửa bằng cách thêm `try/except` nuốt lỗi rồi đóng ticket.
 
 # Skill: performance-testing
 
 ## Tiêu chuẩn tham chiếu
-- ISO/IEC 25010 (performance efficiency)
-- k6/Gatling/Locust
-- RED/USE
-- Google SRE SLO
+- ISO/IEC 25010 — hiệu năng là thuộc tính chất lượng có tiêu chí đo được
+- Công cụ tạo tải có kịch bản dạng code (k6, Gatling, Locust) và lưu được kết quả
+- RED/USE để đọc kết quả: nhìn cả phía dịch vụ và phía tài nguyên
+- Google SRE: ngưỡng pass gắn với SLO, đo ở phân vị cao chứ không đo trung bình
+- Little's Law (concurrency = throughput × latency) để thiết kế kịch bản hợp lý
 
-## Quy tắc
-- Mọi NFR hiệu năng có số đo (p95/p99, RPS, error rate) và kịch bản load tương ứng trước khi code.
-- Chạy load/stress/soak trên staging với dữ liệu cỡ production; baseline được lưu để so hồi quy.
-- Ngưỡng pass = NFR; vượt ngưỡng là finding block trên release candidate, không phải warn.
-- Đo bằng công cụ, trích số thật; không suy đoán từ code.
+## Quy trình (làm đúng thứ tự)
+Lấy NFR có số từ spec → dựng hồ sơ tải từ dữ liệu thật (nhịp truy cập, tỉ lệ theo endpoint, giờ cao điểm) → chuẩn bị môi trường và dữ liệu cỡ production → chạy thử nhỏ để hiệu chỉnh kịch bản → đo baseline → chạy load, stress, soak, spike → phân tích nút thắt bằng dữ liệu quan sát → sửa → đo lại → lưu baseline mới.
+Chỉ tối ưu sau khi đã đo và biết nút thắt ở đâu; tối ưu theo cảm giác là lãng phí.
+
+## Quy tắc — thiết kế phép đo
+- Mọi NFR hiệu năng phải có: chỉ số (p95/p99 độ trễ, throughput, tỉ lệ lỗi), điều kiện (tải, cỡ dữ liệu), và ngưỡng — trước khi code.
+- Báo cáo theo phân vị, không theo trung bình; nêu cả tỉ lệ lỗi và độ lệch, vì độ trễ đẹp mà lỗi 5% là kết quả vô nghĩa.
+- Bốn kiểu chạy có mục đích khác nhau: load (đúng tải kỳ vọng), stress (tìm điểm gãy và cách gãy), soak (chạy dài tìm rò rỉ), spike (tăng đột ngột, kiểm khả năng hồi phục).
+- Kịch bản phải giống hành vi thật: có think time, có phân bố dữ liệu thật (không cùng một id), có tỉ lệ đọc/ghi thật, có đăng nhập nếu luồng thật cần.
+- Dữ liệu cỡ production: đo trên bảng 1.000 dòng rồi kết luận cho bảng 10 triệu dòng là sai từ gốc.
+- Bộ tạo tải không được là nút thắt; kiểm tài nguyên máy chạy tải và đo từ nhiều điểm nếu cần.
+- Khởi động nóng (warm-up) tách khỏi kết quả; nêu rõ trạng thái cache khi đo.
+
+## Quy tắc — môi trường và tính so sánh được
+- Chạy trên staging có cấu hình tương đương production; khác biệt nào còn lại phải ghi rõ và ước lượng ảnh hưởng.
+- Mỗi lần đo ghi: phiên bản build, cấu hình, cỡ dữ liệu, thời điểm, và kịch bản dùng — để lần sau so sánh được.
+- Baseline lưu trong `docs` và so với bản phát hành trước; hồi quy vượt ngưỡng đã thống nhất là finding block trên release candidate, không phải warn.
+- Đo lặp lại đủ số lần để loại nhiễu; một lần chạy không kết luận được.
+- Kết quả gắn với dữ liệu quan sát (trace, metric hệ thống) để chỉ ra nút thắt cụ thể: truy vấn nào, khóa nào, hàng đợi nào, GC hay mạng.
+
+## Quy tắc — phía client
+- Hiệu năng giao diện đo bằng Core Web Vitals ở p75 trên thiết bị và mạng thực tế; ngân sách bundle kiểm trong CI (xem `frontend`).
+- Ứng dụng di động đo thời gian tới màn hình dùng được, mức tiêu thụ pin và dữ liệu cho tác vụ nền (xem `mobile`).
 
 ## Checklist (supervisor và human gate dùng để chấm)
-- [ ] Kịch bản load cho mọi endpoint/màn hình có NFR
-- [ ] p95/p99 và error rate đạt NFR trên staging
-- [ ] Soak ≥ 1h không rò rỉ bộ nhớ/kết nối
-- [ ] Baseline lưu trong `docs`, so với release trước
+- [ ] Mọi endpoint/màn hình có NFR hiệu năng đều có kịch bản tải tương ứng
+- [ ] p95/p99 và tỉ lệ lỗi đạt NFR trên staging với dữ liệu cỡ production
+- [ ] Đã chạy đủ load, stress, spike; soak ≥ 1h không rò rỉ bộ nhớ hay kết nối
+- [ ] Kịch bản có think time và dữ liệu phân tán như thực tế
+- [ ] Bộ tạo tải không phải nút thắt; warm-up tách khỏi kết quả
+- [ ] Baseline lưu trong `docs` kèm phiên bản, cấu hình, cỡ dữ liệu
+- [ ] Hồi quy so với bản trước được kiểm và xử lý như finding block
+- [ ] Nút thắt được chỉ ra bằng bằng chứng quan sát, không bằng phỏng đoán
 
 ## Ví dụ tốt
-NFR-07 p95 < 300ms @ 200 RPS → k6 script perf/orders_get.js, kết quả p95 = 212ms, lưu baseline.
+NFR-07: p95 < 300ms tại 200 RPS với 10 triệu đơn. Kịch bản `perf/orders_get.js` (k6), think time 1–3s, id ngẫu nhiên theo phân bố thật; kết quả p95 = 212ms, p99 = 480ms, lỗi 0.02%; soak 2h bộ nhớ phẳng; nút thắt trước đó là truy vấn thiếu index `(tenant_id, created_at)`, đã sửa và ghi baseline `docs/perf/2026-09-02.md`.
 
 ## Ví dụ xấu
-"Chạy thử thấy nhanh" không có số.
+"Chạy thử thấy nhanh" — không số, không tải, không cỡ dữ liệu; đo trên bảng rỗng với cùng một `order_id` nên mọi thứ nằm trong cache; báo cáo độ trễ trung bình 40ms trong khi p99 là 6 giây và 4% request lỗi.
 
 # Skill: accessibility
 
 ## Tiêu chuẩn tham chiếu
-- WCAG 2.2 AA (4 nguyên tắc POUR: perceivable, operable, understandable, robust)
+- WCAG 2.2 AA (bốn nguyên tắc POUR: cảm nhận được, thao tác được, hiểu được, bền vững)
 - ISO 9241-210 (thiết kế lấy người dùng làm trung tâm)
 - EN 301 549 (bắt buộc với hợp đồng khu vực công EU) và Section 508 (Mỹ)
-- ARIA Authoring Practices Guide (APG) — mẫu tương tác chuẩn cho từng component
-- WAI-ARIA 1.2: luật thứ nhất là "đừng dùng ARIA nếu HTML ngữ nghĩa đã đủ"
+- ARIA Authoring Practices Guide — mẫu tương tác chuẩn cho từng component
+- WAI-ARIA 1.2: luật thứ nhất là đừng dùng ARIA nếu HTML ngữ nghĩa đã đủ
 
 ## Quy trình (làm đúng thứ tự)
-HTML ngữ nghĩa trước → bàn phím → tên/vai trò/giá trị (accessible name) → tương phản và kích thước → thông báo động (live region) → kiểm tự động (axe) → kiểm thủ công screen reader trên luồng Must.
-Không bắt đầu bằng ARIA: mỗi lần thêm `role=` hãy hỏi thẻ HTML nào đã có sẵn ngữ nghĩa đó.
+HTML ngữ nghĩa trước → bàn phím → tên/vai trò/giá trị (accessible name) → tương phản và kích thước → thông báo động (live region) → kiểm tự động (axe) → kiểm thủ công bằng screen reader trên luồng Must.
+Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi thẻ HTML nào đã có sẵn ngữ nghĩa đó.
 
 ## Quy tắc — cấu trúc và ngữ nghĩa
-- Dùng phần tử đúng ngữ nghĩa: `button` cho hành động, `a[href]` cho điều hướng, `label`+`input`, `table` có `th[scope]`; `div` có `onClick` là lỗi block.
-- Mỗi trang có đúng một `h1`, thứ bậc heading không nhảy cấp, có landmark (`header/nav/main/footer`) và link "bỏ qua điều hướng".
-- Ngôn ngữ khai báo (`lang="vi"`), tiêu đề trang duy nhất và mô tả đúng nội dung; đổi route phải đổi title và chuyển focus về đầu vùng nội dung.
-- Mọi phần tử tương tác có accessible name (text nhìn thấy, `aria-label`, hoặc `aria-labelledby`); icon-only bắt buộc có name.
+- Dùng phần tử đúng ngữ nghĩa: `button` cho hành động, `a[href]` cho điều hướng, `label` + `input`, `table` có `th[scope]`; `div` gắn `onClick` là lỗi block.
+- Mỗi trang có đúng một `h1`, thứ bậc heading không nhảy cấp, có landmark (`header/nav/main/footer`) và liên kết bỏ qua điều hướng.
+- Khai báo ngôn ngữ (`lang="vi"`); tiêu đề trang duy nhất và mô tả đúng nội dung; đổi route thì đổi title và chuyển focus về đầu vùng nội dung.
+- Mọi phần tử tương tác có accessible name (chữ nhìn thấy, `aria-label`, hoặc `aria-labelledby`); nút chỉ có icon bắt buộc phải có nhãn.
 
 ## Quy tắc — bàn phím và focus
-- Toàn bộ luồng Must đi hết bằng bàn phím, không bẫy focus; thứ tự tab khớp thứ tự đọc; không dùng `tabindex` dương.
-- Focus visible rõ ở mọi theme, tương phản viền focus ≥ 3:1, không bị `outline: none` nếu chưa có thay thế.
-- Modal/sheet: focus vào bên trong khi mở, giữ focus trong đó, Esc đóng, trả focus về phần tử đã mở.
-- Phím tắt một ký tự phải tắt được hoặc đổi được (WCAG 2.2), không chiếm phím screen reader.
+- Toàn bộ luồng Must đi hết được bằng bàn phím, không bẫy focus; thứ tự tab khớp thứ tự đọc; không dùng `tabindex` dương.
+- Focus visible rõ ở mọi theme, tương phản viền focus ≥ 3:1; không `outline: none` nếu chưa có thay thế.
+- Modal/sheet: focus vào bên trong khi mở, giữ focus trong đó, Esc đóng, và trả focus về phần tử đã mở nó.
+- Phím tắt một ký tự phải tắt được hoặc đổi được (WCAG 2.2) và không chiếm phím của screen reader.
 - Nội dung hiện khi hover phải hiện được bằng focus, giữ được và tắt được (WCAG 1.4.13).
 
 ## Quy tắc — cảm nhận và trạng thái
-- Tương phản ≥ 4.5:1 chữ thường, ≥ 3:1 chữ lớn (≥ 24px hoặc ≥ 19px đậm) và thành phần UI/đồ họa mang thông tin; kiểm ở cả light và dark.
-- Không truyền thông tin chỉ bằng màu, chỉ bằng hình dạng, hay chỉ bằng vị trí; luôn kèm text hoặc icon.
-- Target ≥ 24×24 CSS px (WCAG 2.2 AA) — mobile theo ui-ux-design là 44/48; nếu nhỏ hơn phải có khoảng đệm không chồng lấn.
-- Zoom 200% và reflow ở 320px không mất nội dung, không cuộn ngang hai chiều; giãn chữ (letter/word/line spacing) không cắt chữ.
-- Mọi màn hình đủ 5 trạng thái (loading, empty, error, success, validation) đều đạt AA — trạng thái lỗi thường bị bỏ quên nhất.
-- Thay đổi động thông báo qua live region: `aria-live="polite"` cho thông tin, `assertive`/`role="alert"` chỉ cho lỗi chặn; không spam live region mỗi ký tự.
-- Form: label hiển thị, lỗi liên kết bằng `aria-describedby`, `aria-invalid` khi sai; error summary đầu form có link tới field.
-- Không tự động phát media, không nội dung nháy > 3 lần/giây; video có phụ đề, audio có transcript.
+- Tương phản ≥ 4.5:1 cho chữ thường, ≥ 3:1 cho chữ lớn và cho thành phần UI mang thông tin; kiểm ở cả light và dark.
+- Không truyền thông tin chỉ bằng màu, chỉ bằng hình dạng, hay chỉ bằng vị trí; luôn kèm chữ hoặc icon.
+- Target ≥ 24×24 CSS px (WCAG 2.2 AA); trên mobile theo `ui-ux-design` là 44/48; nhỏ hơn thì phải có khoảng đệm không chồng lấn.
+- Zoom 200% và reflow ở 320px không mất nội dung, không cuộn ngang hai chiều; giãn chữ không làm cắt chữ.
+- Mọi màn hình đủ 5 trạng thái (loading, empty, error, success, validation) đều phải đạt AA — trạng thái lỗi là chỗ hay bị bỏ quên nhất.
+- Thay đổi động thông báo qua live region: `aria-live="polite"` cho thông tin, `role="alert"` chỉ cho lỗi chặn; không phát live region theo từng ký tự.
+- Form: label hiển thị, lỗi liên kết bằng `aria-describedby`, `aria-invalid` khi sai; error summary ở đầu form có liên kết tới từng field.
+- Không tự động phát media; không nội dung nháy quá 3 lần mỗi giây; video có phụ đề, audio có bản ghi chữ.
 
 ## Quy tắc — kiểm chứng
-- Kiểm tự động (axe/Lighthouse/pa11y trong CI) là sàn, bắt được ~30–40% vấn đề; 0 critical/serious là điều kiện cần.
-- Luồng Must phải test thủ công ≥ 1 screen reader theo nền tảng: NVDA hoặc JAWS (Windows), VoiceOver (macOS/iOS), TalkBack (Android).
-- Ghi kết quả kiểm vào review-results với vị trí cụ thể (file:line hoặc màn hình + phần tử) và tiêu chí WCAG bị vi phạm (ví dụ 1.4.3).
+- Kiểm tự động (axe/Lighthouse/pa11y trong CI) là sàn, chỉ bắt được khoảng một phần ba vấn đề; 0 lỗi critical/serious là điều kiện cần.
+- Luồng Must phải được kiểm thủ công với ít nhất một screen reader theo nền tảng: NVDA hoặc JAWS (Windows), VoiceOver (macOS/iOS), TalkBack (Android).
+- Ghi kết quả vào review-results với vị trí cụ thể và tiêu chí WCAG bị vi phạm (ví dụ 1.4.3), không ghi nhận xét chung chung.
 
 ## Checklist (supervisor và human gate dùng để chấm)
 - [ ] axe/Lighthouse 0 lỗi critical/serious trong CI
-- [ ] Luồng Must đi hết bằng bàn phím, focus visible, không bẫy focus
+- [ ] Luồng Must đi hết bằng bàn phím; focus visible; không bẫy focus
 - [ ] Mọi phần tử tương tác và ảnh có tên tiếp cận được đúng nghĩa
 - [ ] Form có label hiển thị, lỗi liên kết ARIA và đọc được bởi screen reader
 - [ ] Tương phản đạt ở cả light và dark; không thông tin chỉ bằng màu
-- [ ] Zoom 200% / reflow 320px không mất nội dung
-- [ ] Đã test thủ công ≥ 1 screen reader trên luồng Must, có ghi kết quả
+- [ ] Zoom 200% và reflow 320px không mất nội dung
+- [ ] Đã kiểm thủ công ít nhất một screen reader trên luồng Must, có ghi kết quả
 - [ ] Mỗi finding dẫn chiếu đúng tiêu chí WCAG
 
 ## Ví dụ tốt
-Nút icon-only: `<button aria-label="Xóa đơn hàng">` với focus ring 3:1; lỗi form `<p id="err-card" role="alert">Thẻ bị từ chối. Thử thẻ khác.</p>` và input có `aria-describedby="err-card" aria-invalid="true"`; NVDA đọc đủ nhãn, lỗi, và trạng thái.
+Nút chỉ có icon: `<button aria-label="Xóa đơn hàng">` với focus ring tương phản 3:1; lỗi form `<p id="err-card" role="alert">Thẻ bị từ chối. Thử thẻ khác.</p>` và input có `aria-describedby="err-card" aria-invalid="true"`; NVDA đọc đủ nhãn, lỗi và trạng thái.
 
 ## Ví dụ xấu
-`<div class="btn" onclick=...>` không focus được; lỗi chỉ tô đỏ viền input, không có text; modal mở nhưng focus vẫn ở nền, Esc không đóng; contrast 3.1:1 vì "nhìn cho dịu".
+`<div class="btn" onclick=...>` không focus được; lỗi chỉ tô đỏ viền input, không có chữ; modal mở nhưng focus vẫn ở nền và Esc không đóng; tương phản 3.1:1 vì "nhìn cho dịu mắt".

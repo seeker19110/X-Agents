@@ -5,10 +5,11 @@ model_tier: standard
 reads: [requirements-draft]
 writes: [clarification-questions]
 context_namespace_write: null
-skills: [requirements-engineering]
+skills: [requirements-engineering, technical-writing]
 budget_tokens_per_task: 20000
 max_retries: 2
 timeout_minutes: 30
+version: 3
 ---
 # clarifier
 

@@ -20,7 +20,7 @@
       "risk-analysis"
     ],
     "timeout_minutes": 120,
-    "version": 2,
+    "version": 3,
     "writes": [
       "change-requests",
       "acceptance-results",
@@ -49,7 +49,7 @@
       "database"
     ],
     "timeout_minutes": 180,
-    "version": 3,
+    "version": 4,
     "writes": [
       "pull-requests"
     ]
@@ -64,10 +64,11 @@
       "requirements-draft"
     ],
     "skills": [
-      "requirements-engineering"
+      "requirements-engineering",
+      "technical-writing"
     ],
     "timeout_minutes": 30,
-    "version": 1,
+    "version": 3,
     "writes": [
       "clarification-questions"
     ]
@@ -90,7 +91,7 @@
       "event-driven-architecture"
     ],
     "timeout_minutes": 180,
-    "version": 2,
+    "version": 3,
     "writes": [
       "pull-requests"
     ]
@@ -112,7 +113,7 @@
       "performance-testing"
     ],
     "timeout_minutes": 120,
-    "version": 3,
+    "version": 4,
     "writes": [
       "pull-requests"
     ]
@@ -145,7 +146,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 120,
-    "version": 4,
+    "version": 5,
     "writes": [
       "tasks",
       "release-candidates",
@@ -190,10 +191,12 @@
       "change-requests"
     ],
     "skills": [
-      "requirements-engineering"
+      "requirements-engineering",
+      "domain-research",
+      "customer-acceptance"
     ],
     "timeout_minutes": 30,
-    "version": 2,
+    "version": 4,
     "writes": [
       "research-findings"
     ]
@@ -243,7 +246,7 @@
       "incident-management"
     ],
     "timeout_minutes": 180,
-    "version": 2,
+    "version": 3,
     "writes": [
       "pull-requests"
     ]
@@ -288,7 +291,7 @@
       "security"
     ],
     "timeout_minutes": 120,
-    "version": 3,
+    "version": 4,
     "writes": [
       "release-events"
     ]
@@ -341,7 +344,7 @@
       "observability"
     ],
     "timeout_minutes": 60,
-    "version": 4,
+    "version": 5,
     "writes": [
       "review-results"
     ]
@@ -363,7 +366,7 @@
       "license-compliance"
     ],
     "timeout_minutes": 45,
-    "version": 3,
+    "version": 4,
     "writes": [
       "requirements-draft"
     ]
@@ -388,7 +391,7 @@
       "devops"
     ],
     "timeout_minutes": 90,
-    "version": 2,
+    "version": 3,
     "writes": [
       "review-results"
     ]
@@ -434,7 +437,7 @@
       "observability"
     ],
     "timeout_minutes": 15,
-    "version": 4,
+    "version": 5,
     "writes": [
       "supervisor-actions",
       "knowledge-base"
@@ -458,7 +461,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 60,
-    "version": 3,
+    "version": 4,
     "writes": [
       "incidents",
       "research-requests"
@@ -479,7 +482,7 @@
       "risk-analysis"
     ],
     "timeout_minutes": 60,
-    "version": 3,
+    "version": 4,
     "writes": [
       "requirements-draft"
     ]

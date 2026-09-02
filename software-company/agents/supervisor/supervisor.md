@@ -9,7 +9,7 @@ skills: [ai-governance, finops, prompt-engineering, cost-estimation, observabili
 budget_tokens_per_task: 40000
 max_retries: 0
 timeout_minutes: 15
-version: 4
+version: 5
 ---
 # supervisor
 

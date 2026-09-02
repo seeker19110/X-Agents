@@ -9,7 +9,7 @@ skills: [risk-analysis, threat-modeling, privacy-compliance, ai-governance, lice
 budget_tokens_per_task: 40000
 max_retries: 1
 timeout_minutes: 45
-version: 3
+version: 4
 ---
 # risk
 

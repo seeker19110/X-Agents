@@ -9,7 +9,7 @@ skills: [engineering-common, iac-platform, observability, devops, finops, securi
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 2
+version: 3
 ---
 # platform
 

@@ -9,7 +9,7 @@ skills: [technical-writing, incident-management, observability, requirements-eng
 budget_tokens_per_task: 40000
 max_retries: 2
 timeout_minutes: 60
-version: 3
+version: 4
 ---
 # support-docs
 

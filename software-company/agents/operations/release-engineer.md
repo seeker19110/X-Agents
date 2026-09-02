@@ -9,7 +9,7 @@ skills: [release, devops, observability, incident-management, license-compliance
 budget_tokens_per_task: 80000
 max_retries: 2
 timeout_minutes: 120
-version: 3
+version: 4
 ---
 # release-engineer
 

@@ -9,7 +9,7 @@ skills: [architecture, project-management, api-contract, cost-estimation, risk-a
 budget_tokens_per_task: 100000
 max_retries: 3
 timeout_minutes: 120
-version: 4
+version: 5
 ---
 # delivery-lead
 
