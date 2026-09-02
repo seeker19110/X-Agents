@@ -26,6 +26,7 @@ Mục lục
 | [`uv`](https://docs.astral.sh/uv/) | Có | quản lý `.venv` và `uv.lock`; không dùng `pip` trực tiếp |
 | Git | Có | software-company tạo git worktree theo ticket khi làm code thật |
 | Claude Code CLI (`claude`) đã `claude login` | Nếu dùng gói Claude Pro/Max | provider `claude-code`; không cần API key |
+| Codex CLI (`codex`) đã `codex login` | Nếu dùng gói ChatGPT Plus/Pro | provider `codex`; app Codex Windows đi kèm CLI |
 | Tài khoản Google (Antigravity) | Nếu dùng gateway | miễn phí theo quota; nhiều tài khoản thì xoay vòng |
 | `ffmpeg` trên PATH | Studio-creators, khi ghép video thật | thiếu thì test ghép video tự bỏ qua, provider `fake` vẫn chạy |
 | `make` | Không | Windows thường không có; mọi lệnh `make x` đều có dạng `uv run` tương đương ghi trong `Makefile` |
@@ -83,8 +84,13 @@ CLAUDE_CONFIG_DIR=~/.claude-acc2 claude auth status  # loggedIn: true
 CLAUDE_CONFIG_DIR=~/.claude-acc3 claude login        # ... tài khoản thứ ba
 ```
 
-Gói ChatGPT (Codex CLI) chưa có adapter; khi cần thì cài `codex`, đăng nhập từng tài khoản với `CODEX_HOME` riêng, và thêm
-provider `codex` theo cùng khuôn `claude-code` (xem mục 9).
+Gói ChatGPT Plus/Pro qua Codex CLI (provider `codex`): app Codex trên Windows đi kèm CLI và đã đăng nhập; không có `codex`
+trên PATH thì adapter tự tìm trong `%LOCALAPPDATA%/OpenAI/Codex/bin`, hoặc đặt `binary:` cho backend. Nhiều tài khoản ChatGPT:
+
+```bash
+CODEX_HOME=~/.codex-acc2 codex login          # tài khoản thứ hai
+CODEX_HOME=~/.codex-acc2 codex login status
+```
 
 ### 3.2 Viết `llm.yaml`
 
@@ -102,6 +108,10 @@ backends:
     provider: claude-code
     config_dir: ~/.claude-acc2
     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+  - name: chatgpt-sub          # ChatGPT Plus/Pro qua Codex CLI; KHÔNG hỗ trợ tool-use
+    provider: codex
+    models: {strong: gpt-5.6-terra, standard: gpt-5.6-terra, light: gpt-5.6-terra}
+    # config_dir: ~/.codex-acc2   # tài khoản ChatGPT thứ hai
   - name: antigravity          # gateway xoay vòng tài khoản Google; có tool-use
     provider: openai
     base_url: http://127.0.0.1:8100/v1
@@ -122,12 +132,13 @@ prices:
   claude-haiku-4-5: {input: 0.0, output: 0.0}
   claude-sonnet-4-6: {input: 0.0, output: 0.0}
   gemini-3.7-flash: {input: 0.0, output: 0.0}
+  gpt-5.6: {input: 0.0, output: 0.0}
 ```
 
 Quy tắc cần nhớ:
 
 - Khối kỹ thuật của software-company (backend, frontend, mobile, database, platform, data) dùng tool-use, nên **tự bỏ
-  qua backend `claude-code`** và đi antigravity. Muốn code bằng Claude thì để `claude-sonnet-4-6` ở antigravity như trên.
+  qua backend `claude-code` và `codex`** và đi antigravity. Muốn code bằng Claude thì để `claude-sonnet-4-6` ở antigravity như trên.
 - Thiếu model cho một tier thì backend đó dùng `standard`, rồi `strong`.
 - Chỉ muốn một gói tạm thời: `COMPANY_LLM_BACKENDS=claude-sub` (hoặc `STUDIO_LLM_BACKENDS`) lọc và sắp lại thứ tự.
 - Đặt `COMPANY_LLM_PROVIDER` / `STUDIO_LLM_PROVIDER` bằng biến môi trường thì **bỏ qua `backends:`** (biến môi trường
