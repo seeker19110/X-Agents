@@ -61,6 +61,8 @@ uv run ruff check src tests               # hoặc: make lint
 # Chạy model thật (provider bất kỳ). Cấu hình: cp llm.example.yaml llm.yaml rồi sửa, hoặc biến môi trường:
 #   COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://localhost:11434/v1 COMPANY_MODEL_STRONG=qwen2.5-coder:32b
 #   COMPANY_LLM_PROVIDER=anthropic COMPANY_MODEL_STRONG=claude-opus-5   (uv sync --extra anthropic)
+#   Qua gateway xoay vòng tài khoản Google Antigravity (../gateway: `make login && make start && make setup`
+#   ghi sẵn llm.yaml): COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://127.0.0.1:8100/v1 COMPANY_LLM_API_KEY=gateway-local
 PYTHONPATH=src uv run python -m company.runner reviewer review-results input.json --db company.sqlite
 
 # Chạy tự động cả công ty (ADR-0007): orchestrator nối topic → agent → topic, dừng ở human gate / supervisor / khách
@@ -107,6 +109,8 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   supervisor (warn/cut/escalate, sprint_report), gates, blackboard, demo.
 - **Runner chạy model thật, trung lập provider** (`runner.py`, `llm.py`, ADR-0005): một interface `ModelClient`;
   adapter `anthropic`, `openai` (mọi server OpenAI-compatible: OpenAI, Ollama, Groq, vLLM, LM Studio...), `fake`.
+  Provider `openai` cũng nhận [`../gateway`](../gateway/README.md): proxy cục bộ xoay vòng nhiều tài khoản Google
+  Antigravity (Gemini/Claude), tự cooldown khi hết quota và trả `usage` thật.
   Model theo tier cấu hình trong `llm.yaml` / `COMPANY_*`, không nằm trong code hay prompt. Đầu ra ép theo JSON Schema
   của topic, bus validate lại, token thật từ `usage` ghi vào `audit-log`.
 - **Bus bền vững SQLite** (`sqlite_bus.py`), cùng interface, replay theo topic/key.
