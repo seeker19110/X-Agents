@@ -25,20 +25,28 @@ def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
     return r.stdout.strip()
 
 
+# Rác do agent chạy lint/test sinh ra trong worktree. `commit_all` dùng `git add -A`: không loại thì `.pyc` của hai
+# ticket cùng vào branch rồi xung đột nhị phân lúc merge (mô phỏng donghanhcungban, F14). Ghi vào `.git/info/exclude`
+# (áp cho mọi worktree, không chạm `.gitignore` của khách) và không bao giờ add vào index.
+JUNK_PATTERNS = (".worktrees/", "__pycache__/", "*.pyc", "*.pyo", ".ruff_cache/", ".pytest_cache/", ".mypy_cache/",
+                 ".hypothesis/", ".venv/", "*.egg-info/")
+
+
 def exclude_worktrees(repo: Path) -> None:
-    """`.worktrees/` là của công ty, không phải của khách: ghi vào `.git/info/exclude` (áp cho mọi worktree của repo)
-    để `git status` của khách không thấy untracked và không ai lỡ commit nó. Không chạm `.gitignore` (file của khách)."""
+    """`.worktrees/` và rác lint/test là của công ty, không phải của khách: ghi vào `.git/info/exclude` để `git status`
+    của khách không thấy untracked và `git add -A` của `commit_all` không vơ vào."""
     git_dir = Path(_git(repo, "rev-parse", "--git-common-dir"))
     if not git_dir.is_absolute(): git_dir = repo / git_dir
     f = git_dir / "info" / "exclude"
-    line = ".worktrees/"
     try:
         current = f.read_text(encoding="utf-8") if f.exists() else ""
     except OSError:
         return
-    if line in current.splitlines(): return
+    have = set(current.splitlines())
+    missing = [x for x in JUNK_PATTERNS if x not in have]
+    if not missing: return
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(current + ("" if not current or current.endswith("\n") else "\n") + line + "\n", encoding="utf-8")
+    f.write_text(current + ("" if not current or current.endswith("\n") else "\n") + "\n".join(missing) + "\n", encoding="utf-8")
 
 
 @dataclass
@@ -105,7 +113,13 @@ class TicketWorkspace:
                 "stack": st.name}
 
     def commit_all(self, message: str) -> str:
+        exclude_worktrees(self.repo)  # rác lint/test không vào index (F14), kể cả khi worktree được tạo bởi bản cũ
         _git(self.path, "add", "-A")
+        # Rác đã bị theo dõi từ trước (branch cũ commit nhầm) thì gỡ khỏi index ở ticket này — không xoá file trên đĩa.
+        tracked = [x for x in _git(self.path, "ls-files", "--cached").splitlines()
+                   if "__pycache__/" in x or x.endswith((".pyc", ".pyo")) or x.startswith((".ruff_cache/", ".pytest_cache/", ".mypy_cache/"))]
+        if tracked:
+            _git(self.path, "rm", "-r", "-q", "--cached", "--", *tracked)
         # message qua stdin: argv trên Windows đi qua codepage console, tiếng Việt thành mojibake
         _git(self.path, "-c", "user.name=agent", "-c", "user.email=agent@company.local", "commit", "-F", "-", stdin=message)
         return _git(self.path, "rev-parse", "--short", "HEAD")
