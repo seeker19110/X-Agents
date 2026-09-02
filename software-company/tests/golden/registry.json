@@ -64,10 +64,11 @@
       "requirements-draft"
     ],
     "skills": [
-      "requirements-engineering"
+      "requirements-engineering",
+      "technical-writing"
     ],
     "timeout_minutes": 30,
-    "version": 2,
+    "version": 3,
     "writes": [
       "clarification-questions"
     ]
@@ -190,10 +191,12 @@
       "change-requests"
     ],
     "skills": [
-      "requirements-engineering"
+      "requirements-engineering",
+      "domain-research",
+      "customer-acceptance"
     ],
     "timeout_minutes": 30,
-    "version": 3,
+    "version": 4,
     "writes": [
       "research-findings"
     ]
