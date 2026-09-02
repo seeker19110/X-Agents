@@ -1,4 +1,4 @@
-<!-- golden agent=risk version=6 -->
+<!-- golden agent=risk version=7 -->
 # risk
 
 ## Vai trò

@@ -5,12 +5,14 @@ model_tier: standard
 reads: [approved-specs, release-events, external-feedback, acceptance-results]
 writes: [change-requests, acceptance-results, research-requests]
 context_namespace_write: contract
+context_namespace_read: [prd, knowledge]
+max_input_chars: 40000
 skills: [customer-acceptance, requirements-engineering, handover]
 skills_core: [project-management, technical-writing, cost-estimation, risk-analysis]
 budget_tokens_per_task: 60000
 max_retries: 2
 timeout_minutes: 120
-version: 6
+version: 7
 ---
 # account-manager
 

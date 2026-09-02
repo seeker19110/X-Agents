@@ -5,12 +5,14 @@ model_tier: strong
 reads: [tasks]
 writes: [pull-requests]
 context_namespace_write: schema
+context_namespace_read: [prd, architecture, api-contract]
+max_input_chars: 100000
 skills: [engineering-common, database]
 skills_core: [observability, privacy-compliance, performance-testing]
 budget_tokens_per_task: 80000
 max_retries: 3
 timeout_minutes: 120
-version: 6
+version: 7
 ---
 # database
 

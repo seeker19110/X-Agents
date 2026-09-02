@@ -1,4 +1,4 @@
-<!-- golden agent=spec-writer version=7 -->
+<!-- golden agent=spec-writer version=8 -->
 # spec-writer
 
 ## Vai trò

@@ -23,7 +23,7 @@
       "risk-analysis"
     ],
     "timeout_minutes": 120,
-    "version": 6,
+    "version": 7,
     "writes": [
       "change-requests",
       "acceptance-results",
@@ -54,7 +54,7 @@
       "database"
     ],
     "timeout_minutes": 180,
-    "version": 7,
+    "version": 8,
     "writes": [
       "pull-requests"
     ]
@@ -76,7 +76,7 @@
       "technical-writing"
     ],
     "timeout_minutes": 30,
-    "version": 6,
+    "version": 7,
     "writes": [
       "clarification-questions"
     ]
@@ -101,7 +101,7 @@
       "event-driven-architecture"
     ],
     "timeout_minutes": 180,
-    "version": 5,
+    "version": 6,
     "writes": [
       "pull-requests"
     ]
@@ -125,7 +125,7 @@
       "performance-testing"
     ],
     "timeout_minutes": 120,
-    "version": 6,
+    "version": 7,
     "writes": [
       "pull-requests"
     ]
@@ -160,7 +160,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 120,
-    "version": 8,
+    "version": 9,
     "writes": [
       "tasks",
       "release-candidates",
@@ -190,7 +190,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 9,
+    "version": 10,
     "writes": [
       "pull-requests"
     ]
@@ -214,7 +214,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 30,
-    "version": 7,
+    "version": 8,
     "writes": [
       "research-findings"
     ]
@@ -242,7 +242,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 8,
+    "version": 9,
     "writes": [
       "pull-requests"
     ]
@@ -271,7 +271,7 @@
       "incident-management"
     ],
     "timeout_minutes": 180,
-    "version": 6,
+    "version": 7,
     "writes": [
       "pull-requests"
     ]
@@ -295,7 +295,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 7,
+    "version": 8,
     "writes": [
       "review-results"
     ]
@@ -320,7 +320,7 @@
       "security"
     ],
     "timeout_minutes": 120,
-    "version": 6,
+    "version": 7,
     "writes": [
       "release-events"
     ]
@@ -353,7 +353,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 120,
-    "version": 8,
+    "version": 9,
     "writes": [
       "research-findings"
     ]
@@ -379,7 +379,7 @@
       "observability"
     ],
     "timeout_minutes": 60,
-    "version": 7,
+    "version": 8,
     "writes": [
       "review-results"
     ]
@@ -403,7 +403,7 @@
       "license-compliance"
     ],
     "timeout_minutes": 45,
-    "version": 6,
+    "version": 7,
     "writes": [
       "requirements-draft"
     ]
@@ -431,7 +431,7 @@
       "devops"
     ],
     "timeout_minutes": 90,
-    "version": 6,
+    "version": 7,
     "writes": [
       "review-results"
     ]
@@ -456,7 +456,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 7,
+    "version": 8,
     "writes": [
       "approved-specs"
     ]
@@ -481,7 +481,7 @@
       "observability"
     ],
     "timeout_minutes": 15,
-    "version": 8,
+    "version": 9,
     "writes": [
       "supervisor-actions",
       "knowledge-base"
@@ -507,7 +507,7 @@
       "requirements-engineering"
     ],
     "timeout_minutes": 60,
-    "version": 8,
+    "version": 9,
     "writes": [
       "incidents",
       "research-requests"
@@ -530,7 +530,7 @@
       "risk-analysis"
     ],
     "timeout_minutes": 60,
-    "version": 7,
+    "version": 8,
     "writes": [
       "requirements-draft"
     ]

@@ -212,11 +212,17 @@ class AgentRunner:
                                                                  ensure_ascii=False))
         return c, total, turn, usd
 
-    def _context(self, project_id: str | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
-        """Ngữ cảnh trong phạm vi một dự án, cộng namespace toàn công ty — agent của dự án B không đọc PRD của A."""
+    def _context(self, project_id: str | None = None, spec: AgentSpec | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+        """Ngữ cảnh trong phạm vi một dự án, cộng namespace toàn công ty — agent của dự án B không đọc PRD của A.
+        ADR-0020: namespace ngoài `context_namespace_read` của agent chỉ mang `summary`/`content_ref` (không `content`)
+        — reviewer không cần 29k ký tự threat model để chấm một diff; agent có tool vẫn đọc được tệp qua `path`."""
         if not self.blackboard: return {}, {}
         snap = self.blackboard.snapshot(project_id)
         ctx = {ns: sc.model_dump(exclude_none=True) for ns, sc in snap.items()}
+        if spec is not None:
+            for ns, item in ctx.items():
+                if "content" in item and not spec.reads_full(ns):
+                    item.pop("content"); item["content_omitted"] = "ngoài phạm vi đọc của agent; chỉ có tóm tắt"
         paths = {ns: str(p) for ns, sc in snap.items()
                  if (p := self.blackboard.path(ns, project_id=sc.project_id)) is not None and p.exists()}
         return ctx, paths
@@ -245,8 +251,9 @@ class AgentRunner:
             inp = inp.model_copy(update={"payload": payload})
 
         schema = None if context_only else payload_schema(topic_out)
-        raw_ctx, paths = self._context(project_of(inp))
-        payload, context, budget_ = fit(spec.system_prompt(), inp.payload, raw_ctx, self.max_input_chars, paths=paths)
+        raw_ctx, paths = self._context(project_of(inp), spec)
+        payload, context, budget_ = fit(spec.system_prompt(), inp.payload, raw_ctx,
+                                        min(spec.max_input_chars or self.max_input_chars, self.max_input_chars), paths=paths)
         if budget_.trimmed:
             self._audit(spec, "context_trimmed", inp, evidence=json.dumps(budget_.report(), ensure_ascii=False))
             inp = inp.model_copy(update={"payload": payload})

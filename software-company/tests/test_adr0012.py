@@ -444,3 +444,34 @@ def test_human_pr_replaces_agent_pr_in_review():
     _pub(bus, "pull-requests", "T1", "human:lead", {"ticket_id": "T1", "branch": "ticket/T1", "pr_ref": "abc",
                                                     "local_checks": {"lint": True, "tests": True, "verified_by": "workspace"}})
     assert orch.lead.state["T1"] == "in_review" and orch.lead.reviews["T1"] == {}, "vòng review làm lại"
+
+
+# ---------- ADR-0020: blackboard theo vai trò, trần prompt theo agent ----------
+
+def test_context_scoped_by_role_and_per_agent_max_input(tmp_path):
+    bus = InMemoryBus(); bb = Blackboard(bus, store=tmp_path / "art")
+    bb.write("spec-writer", "prd", "docs/prd.md", "PRD tóm tắt", content="# PRD\n\nREQ-1: đăng nhập")
+    bb.write("security-engineer", "threat-model", "docs/threat.md", "16 mối đe doạ", content="# Threat model\n\nT-01 XSS")
+    client = FakeClient(responses=[REVIEW])
+    runner = AgentRunner(bus, client, blackboard=bb)
+    spec = runner.agents["reviewer"]
+    assert spec.context_namespace_read and "prd" in spec.context_namespace_read and "threat-model" not in spec.context_namespace_read
+    assert spec.max_input_chars and spec.max_input_chars < runner.max_input_chars
+    runner.run("reviewer", _pr_env(), "review-results")
+    user = client.calls[0]["user"]
+    assert "REQ-1" in user, "namespace trong context_namespace_read: toàn văn"
+    assert "T-01 XSS" not in user and "16 mối đe doạ" in user and "content_omitted" in user, "namespace ngoài: chỉ tóm tắt"
+    # namespace mình sở hữu luôn toàn văn, kể cả không có trong danh sách đọc
+    sec = runner.agents["security-engineer"]
+    assert sec.reads_full("threat-model") and not sec.reads_full("docs")
+    # agent không khai báo danh sách đọc → như trước
+    spec.context_namespace_read = None
+    assert spec.reads_full("docs")
+
+
+def test_per_agent_max_input_chars_trims_more():
+    bus = InMemoryBus(); client = FakeClient(responses=[REVIEW])
+    runner = AgentRunner(bus, client, max_input_chars=200_000)
+    runner.agents["reviewer"].max_input_chars = 30_000
+    runner.run("reviewer", _pr_env(diff="+" * 100_000), "review-results")
+    assert "context_trimmed" in _acts(bus) and len(client.calls[0]["user"]) < 40_000

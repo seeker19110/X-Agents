@@ -27,10 +27,19 @@ class AgentSpec:
     skills_core: list[str] = field(default_factory=list)  # ADR-0008: skill phụ, chỉ nạp quy trình + checklist
     skill_text: str = field(default="")
     skill_core_text: str = field(default="")
+    # ADR-0020: blackboard theo vai trò. None = đọc toàn văn mọi namespace (như trước); danh sách = chỉ các namespace này
+    # (cộng namespace mình sở hữu) mang `content`, namespace khác chỉ còn `summary` + `content_ref`.
+    context_namespace_read: list[str] | None = None
+    max_input_chars: int | None = None  # trần prompt riêng của agent, không vượt trần chung llm.yaml (ADR-0020)
 
     @property
     def all_skills(self) -> list[str]:
         return [*self.skills, *self.skills_core]
+
+    def reads_full(self, namespace: str) -> bool:
+        """Agent có được đọc toàn văn namespace này không (ADR-0020)."""
+        if self.context_namespace_read is None: return True
+        return namespace in self.context_namespace_read or namespace in self.namespaces_write
 
     @property
     def namespaces_write(self) -> list[str]:

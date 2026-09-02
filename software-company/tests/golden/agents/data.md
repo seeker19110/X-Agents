@@ -1,4 +1,4 @@
-<!-- golden agent=data version=5 -->
+<!-- golden agent=data version=6 -->
 # data
 
 ## Vai trò

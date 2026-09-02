@@ -1,4 +1,4 @@
-<!-- golden agent=synthesizer version=7 -->
+<!-- golden agent=synthesizer version=8 -->
 # synthesizer
 
 ## Vai trò

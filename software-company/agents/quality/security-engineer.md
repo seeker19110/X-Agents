@@ -5,12 +5,14 @@ model_tier: strong
 reads: [approved-specs, pull-requests, release-candidates]
 writes: [review-results]
 context_namespace_write: threat-model
+context_namespace_read: [prd, api-contract, architecture, infra]
+max_input_chars: 70000
 skills: [threat-modeling, security, license-compliance, privacy-compliance, dependency-management]
 skills_core: [ai-governance, devops]
 budget_tokens_per_task: 80000
 max_retries: 1
 timeout_minutes: 90
-version: 6
+version: 7
 ---
 # security-engineer
 

@@ -1,4 +1,4 @@
-<!-- golden agent=researcher version=8 -->
+<!-- golden agent=researcher version=9 -->
 # researcher
 
 ## Vai trò

@@ -1,4 +1,4 @@
-<!-- golden agent=database version=6 -->
+<!-- golden agent=database version=7 -->
 # database
 
 ## Vai trò

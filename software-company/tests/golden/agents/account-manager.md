@@ -1,4 +1,4 @@
-<!-- golden agent=account-manager version=6 -->
+<!-- golden agent=account-manager version=7 -->
 # account-manager
 
 ## Vai trò
