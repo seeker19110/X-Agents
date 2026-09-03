@@ -408,6 +408,12 @@ class Orchestrator:
                 res = StepResult(pr.event_id, pr.topic, pr.key)
                 self._call(REVIEW_AGENT[src], pr, Route("pull-requests", REVIEW_AGENT[src], "review-results"), res)
                 results.append(res)
+                # Giao lại chỉ một lần (`once`): lượt thứ hai cũng lỗi/quá hạn thì không ai giao nữa và ticket nằm
+                # `in_review` mãi. Đưa cho người: supervisor escalate → ticket hoãn, gate `escalation` mở.
+                failed = [a for a in res.actions if a.split(":", 1)[0] in {"error", "handler_error", "transient"}]
+                if failed:
+                    self._audit("review.reassign_failed", {"ticket_id": tid, "source": src, "error": failed[0][:300]}, ticket_id=tid)
+                    self.supervisor.escalate_gate(tid, f"review {src} giao lại vẫn lỗi: {failed[0][:200]}", once_key=f"review.escalate:{key}")
         active = {tid for tid, st in self.lead.state.items() if st in ACTIVE_STATES}
         self.supervisor.check_timeouts(now, active=active)
         results += self.run()

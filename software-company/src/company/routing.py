@@ -25,13 +25,26 @@ from typing import Any
 from .llm import Completion, LLMError, ModelClient, Refused, TransientError
 from .tools import ToolSpec
 
+# Regex chỉ là đường lùi khi lỗi KHÔNG mang mã HTTP (CLI, gateway trả text): có ranh giới từ để "limited edition",
+# "unlimited", "billingham" hay số 4290 không bị coi là hết quota.
 QUOTA_PATTERNS = re.compile(
-    r"429|402|quota|rate.?limit|resource_exhausted|usage limit|hit your limit|limit reached|exhausted|cooldown|"
-    r"insufficient|billing|thử lại sau|overloaded|529", re.IGNORECASE)
+    r"\b429\b|\b402\b|\bquota\b|\brate.?limits?\b|\bresource_exhausted\b|\busage limit\b|\bhit your limit\b|"
+    r"\blimit reached\b|\bexhausted\b|\bcooldown\b|\binsufficient_quota\b|\binsufficient quota\b|\bbilling\b|"
+    r"thử lại sau|\boverloaded\b|\b529\b", re.IGNORECASE)
+QUOTA_STATUS = frozenset({429, 402})
+MISSING_STATUS = frozenset({404})
+AUTH_STATUS = frozenset({401, 403})
 RETRY_AFTER_PATTERNS = (re.compile(r"retry.?after[:\s]+(\d+)", re.IGNORECASE),
                         re.compile(r"thử lại sau(?: khoảng)?\s+(\d+)\s*s", re.IGNORECASE),
                         re.compile(r"resets? in\s+(\d+)\s*s", re.IGNORECASE))
-MISSING_PATTERNS = re.compile(r"không tìm thấy|not found|no such file|chưa cấu hình model|chưa có tài khoản|pool trống", re.IGNORECASE)
+MISSING_PATTERNS = re.compile(r"không tìm thấy|\bnot found\b|\bno such file\b|chưa cấu hình model|chưa có tài khoản|pool trống",
+                              re.IGNORECASE)
+
+
+def http_status(e: BaseException) -> int | None:
+    """Mã HTTP gắn trên LLMError (adapter API đặt); None với lỗi CLI/mạng → phân loại lùi về regex."""
+    s = getattr(e, "status", None)
+    return int(s) if isinstance(s, int) else None
 
 
 def plain(message: str) -> str:
@@ -47,11 +60,18 @@ def retry_after_seconds(message: str) -> float | None:
 
 
 def is_quota_error(e: BaseException) -> bool:
+    if (s := http_status(e)) is not None: return s in QUOTA_STATUS
     return bool(QUOTA_PATTERNS.search(plain(str(e))))
 
 
 def is_missing_error(e: BaseException) -> bool:
+    if (s := http_status(e)) is not None: return s in MISSING_STATUS
     return bool(MISSING_PATTERNS.search(plain(str(e))))
+
+
+def is_auth_error(e: BaseException) -> bool:
+    """401/403: backend cấu hình sai khoá/tài khoản — không phải lỗi nội dung, xoay backend khác và nghỉ dài."""
+    return http_status(e) in AUTH_STATUS
 
 
 @dataclass
@@ -113,8 +133,10 @@ class RoutingClient:
     # ---- gọi ----
     def _rest(self, b: Backend, e: BaseException, now: float) -> None:
         msg = plain(str(e))
-        if MISSING_PATTERNS.search(msg):
+        if is_missing_error(e):
             secs = self.cooldown_s; kind = "thiếu"
+        elif is_auth_error(e):
+            secs = self.cooldown_s; kind = "xác thực"
         elif (ra := retry_after_seconds(msg)) is not None:
             secs = ra; kind = "hết quota"
         elif is_quota_error(e):
@@ -146,7 +168,7 @@ class RoutingClient:
             except TransientError as e:
                 self._rest(b, e, now); continue
             except LLMError as e:
-                if is_quota_error(e) or is_missing_error(e):
+                if is_quota_error(e) or is_missing_error(e) or is_auth_error(e):
                     self._rest(b, e, now); continue
                 raise    # lỗi nội dung: việc của agent/supervisor, không phải của backend
             if tried > 1 or b is not candidates[0]:

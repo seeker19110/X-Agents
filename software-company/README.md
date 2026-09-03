@@ -219,6 +219,8 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ### Chưa có
 - **Bản ghi eval bằng model thật**: cơ chế và cổng `--strict` đã có (`evals/recordings/REQUIRED.txt`), nhưng
   `evals/recordings/` còn trống nên danh sách bắt buộc chưa có tên nào. Chạy `make eval-record` rồi thêm id vào file.
+  Vì thư mục còn trống, `eval-replay --strict` hiện KHÔNG bảo vệ gì cả — nó chỉ có răng sau khi bản ghi được tạo bằng
+  model thật.
 - **Deploy thật**: release-engineer vẫn mô phỏng; chưa đẩy `company/integration` lên `main`/tag phiên bản; xung đột
   giải quyết bằng làm lại trên nền mới, chưa rebase tự động. Chưa dựng **CI/CD cho sản phẩm của khách** (CI của chính
   repo này thì có). **Kafka/Redis** thay SQLite khi chạy nhiều máy (song song mới ở mức thread trong một tiến trình).

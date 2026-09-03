@@ -49,7 +49,11 @@ TIERS = ("strong", "standard", "light")   # light: việc cơ học/ngắn (inta
 TRANSIENT_HTTP = frozenset({408, 409, 425, 429, 500, 502, 503, 504, 529})
 
 
-class LLMError(Exception): ...
+class LLMError(Exception):
+    """`status`: mã HTTP của provider khi biết — routing phân loại theo mã (429 quota, 404 thiếu model, 401/403 xác thực)
+    thay vì đoán bằng regex trên thông điệp."""
+    def __init__(self, message: str = "", status: int | None = None):
+        super().__init__(message); self.status = status
 class Refused(LLMError):
     """Model từ chối trả lời. Không retry mù; để supervisor escalate."""
 class TransientError(LLMError):
@@ -373,8 +377,8 @@ class AnthropicClient:
             raise TransientError(f"lỗi mạng: {e}") from e
         except self._anthropic.APIStatusError as e:
             if e.status_code in TRANSIENT_HTTP:
-                raise TransientError(f"API {e.status_code}: {e.message}") from e
-            raise LLMError(f"API {e.status_code}: {e.message}") from e
+                raise TransientError(f"API {e.status_code}: {e.message}", status=e.status_code) from e
+            raise LLMError(f"API {e.status_code}: {e.message}", status=e.status_code) from e
         if msg.stop_reason == "refusal":
             raise Refused(f"model từ chối: {getattr(getattr(msg, 'stop_details', None), 'category', None)}")
         text = next((b.text for b in msg.content if b.type == "text"), "")
@@ -408,7 +412,7 @@ class OpenAICompatClient:
                 return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             msg = f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:500]}"
-            raise (TransientError if e.code in TRANSIENT_HTTP else LLMError)(msg) from e
+            raise (TransientError if e.code in TRANSIENT_HTTP else LLMError)(msg, status=e.code) from e
         except (urllib.error.URLError, TimeoutError) as e:
             raise TransientError(f"lỗi mạng: {getattr(e, 'reason', e)}") from e
 
@@ -508,6 +512,20 @@ def reported_model(model_usage: dict[str, Any], requested: str) -> str:
         return int(v.get("outputTokens", 0) or 0) if isinstance(v, dict) else 0
     return max(model_usage, key=out)
 
+# ---------- provider CLI: giới hạn argv ----------
+
+ARGV_LIMIT = 30_000 if os.name == "nt" else 120_000   # Windows: CreateProcess ~32K ký tự; Linux: một đối số ≤ 128K
+
+
+def check_argv(args: list[str]) -> None:
+    """Prompt dài không được đi qua argv (đã chuyển sang stdin); phần còn lại (system prompt) vượt trần thì báo rõ
+    thay vì để hệ điều hành thoát với `Argument list too long` / `The command line is too long` khó hiểu."""
+    total = sum(len(a) + 1 for a in args)
+    if total > ARGV_LIMIT:
+        raise LLMError(f"argv của CLI dài {total} ký tự > {ARGV_LIMIT} (system prompt quá lớn; rút gọn prompt/skill hoặc "
+                       "đổi provider API)")
+
+
 # ---------- provider: Claude Code CLI (gói Claude Pro/Max đã đăng nhập trên máy, không cần API key) ----------
 
 class ClaudeCodeClient:
@@ -520,7 +538,7 @@ class ClaudeCodeClient:
     được trải phẳng thành văn bản."""
 
     def __init__(self, cfg: LLMConfig | None = None, binary: str = "claude", timeout: float = 900.0,
-                 runner: Callable[[list[str]], str] | None = None):
+                 runner: Callable[[list[str], str], str] | None = None):
         import shutil
         self.cfg = cfg or load_config()
         self.binary = shutil.which(self.cfg.binary or binary) or self.cfg.binary or binary
@@ -528,13 +546,13 @@ class ClaudeCodeClient:
         self.env = dict(os.environ)
         if self.cfg.config_dir:   # nhiều tài khoản Claude trên một máy: mỗi backend một thư mục đăng nhập riêng
             self.env["CLAUDE_CONFIG_DIR"] = str(Path(self.cfg.config_dir).expanduser())
-        self._run = runner or self._subprocess  # test thay bằng hàm giả
+        self._run = runner or self._subprocess  # test thay bằng hàm giả (args, stdin) → stdout
 
-    def _subprocess(self, args: list[str]) -> str:
+    def _subprocess(self, args: list[str], stdin: str) -> str:
         import subprocess
         try:
             r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                               stdin=subprocess.DEVNULL, timeout=self.timeout, env=self.env)
+                               input=stdin, timeout=self.timeout, env=self.env)
         except FileNotFoundError as e:
             raise LLMError(f"không tìm thấy `{self.binary}` (cài Claude Code hoặc đổi provider)") from e
         except subprocess.TimeoutExpired as e:
@@ -555,9 +573,12 @@ class ClaudeCodeClient:
         msgs = neutral_messages(user, messages)
         prompt = msgs[0]["content"] if len(msgs) == 1 else "\n\n".join(f"[{m['role']}]\n{m.get('content') or ''}" for m in msgs)
         hint = "\n\n# JSON Schema bắt buộc cho câu trả lời\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
+        # User prompt đi qua stdin (`claude -p` không có prompt vị trí thì đọc stdin): payload/blackboard dài dễ vượt
+        # giới hạn argv (Windows ~32K); system prompt vẫn qua `--system-prompt`, có guard độ dài bên dưới.
         args = [self.binary, "-p", "--output-format", "json", "--model", model, "--tools", "", "--max-turns", "1",
-                "--system-prompt", system, prompt + hint]
-        out = self._run(args)
+                "--system-prompt", system]
+        check_argv(args)
+        out = self._run(args, prompt + hint)
         try:
             data = json.loads(out[out.index("{"):]) if "{" in out else {}
         except json.JSONDecodeError as e:
@@ -606,7 +627,7 @@ class CodexClient:
     Nhiều tài khoản ChatGPT trên một máy: `config_dir` → CODEX_HOME riêng (`CODEX_HOME=~/.codex-acc2 codex login`)."""
 
     def __init__(self, cfg: LLMConfig | None = None, binary: str | None = None, timeout: float = 900.0,
-                 runner: Callable[[list[str]], str] | None = None):
+                 runner: Callable[[list[str], str], str] | None = None):
         import shutil
         import tempfile
         self.cfg = cfg or load_config()
@@ -619,11 +640,11 @@ class CodexClient:
             self.env["CODEX_HOME"] = str(Path(self.cfg.config_dir).expanduser())
         self._run = runner or self._subprocess
 
-    def _subprocess(self, args: list[str]) -> str:
+    def _subprocess(self, args: list[str], stdin: str) -> str:
         import subprocess
         try:
             r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                               stdin=subprocess.DEVNULL, timeout=self.timeout, env=self.env)
+                               input=stdin, timeout=self.timeout, env=self.env)
         except FileNotFoundError as e:
             raise LLMError(f"không tìm thấy `{self.binary}` (cài Codex CLI hoặc đặt `binary:` cho backend)") from e
         except subprocess.TimeoutExpired as e:
@@ -633,10 +654,11 @@ class CodexClient:
             raise LLMError(f"codex exec thoát mã {r.returncode}: {detail}")
         return r.stdout
 
-    def _args(self, model: str, effort: str, prompt: str) -> list[str]:
+    def _args(self, model: str, effort: str) -> list[str]:
+        # Không có prompt vị trí: `codex exec` đọc prompt từ stdin (system + user + schema đều nằm trong đó).
         return [self.binary, "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check", "-s", "read-only",
                 "-C", str(self.workdir), "--json", "-m", model,
-                "-c", f"model_reasoning_effort={CODEX_EFFORT.get(effort, 'medium')}", prompt]
+                "-c", f"model_reasoning_effort={CODEX_EFFORT.get(effort, 'medium')}"]
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
@@ -649,7 +671,9 @@ class CodexClient:
         hint = "# JSON Schema bắt buộc cho câu trả lời\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
         prompt = (f"# Vai trò và quy tắc\n{system}\n\n# Yêu cầu\n{body}\n\n{hint}\n\n"
                   "Trả lời DUY NHẤT một JSON đúng schema trên, không giải thích, không đọc hay chạy gì trong thư mục làm việc.")
-        out = self._run(self._args(model, self.cfg.effort.get(model_tier, "medium"), prompt))
+        args = self._args(model, self.cfg.effort.get(model_tier, "medium"))
+        check_argv(args)
+        out = self._run(args, prompt)
         texts: list[str] = []; usage: dict[str, Any] = {}; errors: list[str] = []
         for line in out.splitlines():
             line = line.strip()

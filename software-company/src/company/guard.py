@@ -2,7 +2,10 @@
 
 Hai chính sách theo nguồn của dữ liệu:
 - Nguồn NỘI BỘ (event do agent phát): nghi injection → từ chối chạy (`injection_detected`), như trước. Agent nội bộ không
-  có lý do gì để viết "ignore previous instructions"; thấy là có gì đó hỏng.
+  có lý do gì để viết "ignore previous instructions"; thấy là có gì đó hỏng. NGOẠI LỆ: topic nội bộ mà nội dung sinh từ
+  code/tài liệu của khách (`pull-requests`, `research-findings`, `review-results`) — summary/finding trích một dòng
+  comment độc trong repo khách là chuyện bình thường; từ chối thì event ấy bị từ chối mãi (vòng lặp vô tận), nên lọc
+  như nguồn ngoài (`injection_sanitized`).
 - Nguồn NGOÀI (khách, người dùng, web, diff của repo khách, incident/feedback): không thể từ chối vì đó chính là việc
   (support-docs phải đọc phản hồi của khách dù nó chứa lệnh). Đoạn khớp mẫu bị THAY bằng nhãn `[đã lọc: nghi prompt
   injection]`, phần còn lại đi tiếp, và audit `injection_sanitized` kèm mẫu đã khớp.
@@ -14,7 +17,6 @@ system prompt, ra lệnh cho công cụ. Không có mẫu nào bắt được h�
 """
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -48,6 +50,8 @@ def normalize(text: str) -> str:
 # Topic mà payload đến từ ngoài công ty (khách, người dùng, hệ thống ngoài): lọc thay vì từ chối.
 EXTERNAL_TOPICS = frozenset({"external-feedback", "research-requests", "clarification-answers", "acceptance-results",
                              "incidents", "change-requests"})
+# Topic nội bộ nhưng payload dẫn xuất từ code/tài liệu khách: lọc thay vì từ chối (từ chối = lặp vô tận trên cùng event).
+DERIVED_TOPICS = frozenset({"pull-requests", "research-findings", "review-results"})
 # Trường mang nội dung không tin cậy dù event là nội bộ (diff repo khách, kết quả tool, nội dung web).
 EXTERNAL_FIELDS = frozenset({"diff", "web", "fetched", "attachments", "text", "description", "feedback"})
 
@@ -81,6 +85,20 @@ def sanitize_text(text: str) -> tuple[str, list[str]]:
     return text, hits
 
 
+def scan_obj(obj: Any) -> ScanResult:
+    """Quét đệ quy từng chuỗi trong payload (không json.dumps cả payload: escape `\\n`/`\\"` làm mẫu đầu dòng trượt
+    hoặc khớp nhầm qua ranh giới hai trường)."""
+    r = ScanResult()
+    def walk(x: Any) -> None:
+        if isinstance(x, str): r.hits.extend(scan(x).hits)
+        elif isinstance(x, dict):
+            for v in x.values(): walk(v)
+        elif isinstance(x, list):
+            for v in x: walk(v)
+    walk(obj)
+    return r
+
+
 def sanitize(obj: Any) -> tuple[Any, list[str]]:
     """Lọc đệ quy mọi chuỗi trong payload; trả về (bản sạch, danh sách mẫu đã khớp)."""
     hits: list[str] = []
@@ -102,12 +120,12 @@ def guard_payload(topic: str, actor: str, payload: dict[str, Any]) -> tuple[dict
     """Áp chính sách lên payload đầu vào của một agent.
     Trả về (payload để dùng, mẫu đã khớp, refused). `refused=True` nghĩa là nguồn nội bộ chứa injection → không chạy.
     Nguồn ngoài, hoặc chỉ các trường không tin cậy (diff, text...) khớp → lọc và đi tiếp."""
-    if is_external(topic, actor):
+    if is_external(topic, actor) or topic in DERIVED_TOPICS:
         clean, hits = sanitize(payload)
         return clean, hits, False
     # nội bộ: trường không tin cậy được lọc; trường khác khớp → từ chối
     trusted = {k: v for k, v in payload.items() if k not in EXTERNAL_FIELDS}
-    r = scan(json.dumps(trusted, ensure_ascii=False))
+    r = scan_obj(trusted)
     if not r.clean:
         return payload, r.hits, True
     untrusted = {k: v for k, v in payload.items() if k in EXTERNAL_FIELDS}

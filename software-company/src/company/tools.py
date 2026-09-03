@@ -24,7 +24,10 @@ MAX_OUTPUT = 6_000          # ký tự trả về cho model mỗi lần gọi to
 MAX_WRITE = 200_000         # byte một lần ghi
 MAX_READ = 60_000           # ký tự một lần đọc
 MAX_SEARCH_HITS = 60
-SECRET_FILES = ("*.pem", "*.key", ".env", ".env.*", "*secret*", "*credential*", "llm.yaml", "id_rsa*")
+SECRET_FILES = ("*.pem", "*.key", ".env", ".env.*", "*secret*", "*credential*", "llm.yaml", "id_rsa*",
+                ".netrc", ".npmrc", ".pypirc", "*.p12", "*.pfx", ".git-credentials", "*.keystore", ".aws", ".kube", ".docker")
+# `.aws`, `.kube`, `.docker` khớp theo THÀNH PHẦN đường dẫn (thư mục): `.aws/credentials`, `.kube/config`,
+# `.docker/config.json` đều bị chặn, kể cả file khác trong đó (token cache, cert).
 SKIP_DIRS = {".git", ".worktrees", ".venv", "__pycache__", "node_modules"}
 BINARY_EXT = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".sqlite", ".pyc", ".so", ".dll", ".exe"}
 

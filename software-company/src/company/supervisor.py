@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import statistics
 from collections import defaultdict
@@ -51,6 +52,7 @@ class Supervisor:
         self.actions: list[SupervisorAction] = []
         self.knowledge: list[dict] = []
         self._escalated_once: set[str] = set()
+        self._report_cache: tuple[tuple[int, int, int], dict] | None = None  # (len(bus), số action, số bài học) → báo cáo
         self.replaying = False  # dựng lại từ log: cộng dồn ngân sách/chữ ký lỗi nhưng không phát lại supervisor-actions
         bus.subscribe("*", self._on)
 
@@ -165,7 +167,16 @@ class Supervisor:
 
     def sprint_report(self) -> dict:
         """Estimate vs actual token/tiền mỗi ticket, tỷ lệ làm lại, tỷ lệ review bắt lỗi, chi phí theo agent/model,
-        tổng hành động — cho retrospective."""
+        tổng hành động — cho retrospective. Kết quả được cache theo (số event trên bus, số action, số bài học): `status`
+        gọi hàm này mỗi nhịp và trên bus SQLite mỗi lần là replay + parse lại cả log; bus không đổi thì báo cáo không đổi."""
+        stamp = (len(self.bus), len(self.actions), len(self.knowledge))
+        if self._report_cache is not None and self._report_cache[0] == stamp:
+            return copy.deepcopy(self._report_cache[1])
+        report = self._sprint_report()
+        self._report_cache = (stamp, copy.deepcopy(report))
+        return report
+
+    def _sprint_report(self) -> dict:
         tickets: dict[str, dict[str, Any]] = {}
         for env in self.bus.replay(topic="tasks"):
             t = Task.model_validate(env.payload); b = self.budgets.get(t.ticket_id)

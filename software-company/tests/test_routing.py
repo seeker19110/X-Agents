@@ -201,8 +201,8 @@ def _cc(**kw):
 def test_claude_code_client_parses_print_json_and_counts_cache_tokens():
     seen: list[list[str]] = []
 
-    def runner(args):
-        seen.append(args)
+    def runner(args, stdin):
+        seen.append((args, stdin))
         return "Warning: no stdin\n" + json.dumps({"result": '{"ticket_id": "T1"}', "stop_reason": "end_turn",
                                                    "usage": {"input_tokens": 100, "cache_read_input_tokens": 40,
                                                              "cache_creation_input_tokens": 10, "output_tokens": 7},
@@ -211,41 +211,42 @@ def test_claude_code_client_parses_print_json_and_counts_cache_tokens():
     c = _cc(runner=runner).complete(system="SYS", user="USER", schema={"type": "object"}, model_tier="standard")
     assert c.json() == {"ticket_id": "T1"} and c.input_tokens == 150 and c.cached_input_tokens == 40
     assert c.cache_write_tokens == 10 and c.output_tokens == 7 and c.model == "claude-sonnet-5"
-    args = seen[0]
+    args, stdin = seen[0]
     assert args[1:3] == ["-p", "--output-format"] and args[args.index("--model") + 1] == "claude-sonnet-5"
     assert args[args.index("--tools") + 1] == "" and args[args.index("--system-prompt") + 1] == "SYS"
-    assert args[-1].startswith("USER") and "JSON Schema" in args[-1]
+    assert args[-1] == "SYS", "user prompt không đi qua argv"
+    assert stdin.startswith("USER") and "JSON Schema" in stdin
 
 
 def test_claude_code_client_errors_and_limits():
     ok = json.dumps({"result": "{}", "stop_reason": "end_turn"})
     with pytest.raises(LLMError):
-        _cc(runner=lambda a: "not json").complete(system="s", user="u", schema={}, model_tier="strong")
+        _cc(runner=lambda a, s: "not json").complete(system="s", user="u", schema={}, model_tier="strong")
     with pytest.raises(LLMError, match="boom"):
-        _cc(runner=lambda a: json.dumps({"is_error": True, "result": "boom"})).complete(system="s", user="u", schema={}, model_tier="strong")
+        _cc(runner=lambda a, s: json.dumps({"is_error": True, "result": "boom"})).complete(system="s", user="u", schema={}, model_tier="strong")
     with pytest.raises(TransientError):
-        _cc(runner=lambda a: json.dumps({"is_error": True, "result": "You've hit your usage limit"})).complete(system="s", user="u", schema={}, model_tier="strong")
+        _cc(runner=lambda a, s: json.dumps({"is_error": True, "result": "You've hit your usage limit"})).complete(system="s", user="u", schema={}, model_tier="strong")
     with pytest.raises(Refused):
-        _cc(runner=lambda a: json.dumps({"result": "", "stop_reason": "refusal"})).complete(system="s", user="u", schema={}, model_tier="strong")
+        _cc(runner=lambda a, s: json.dumps({"result": "", "stop_reason": "refusal"})).complete(system="s", user="u", schema={}, model_tier="strong")
     with pytest.raises(LLMError, match="tool"):
-        _cc(runner=lambda a: ok).complete(system="s", user="u", schema={}, model_tier="strong",
+        _cc(runner=lambda a, s: ok).complete(system="s", user="u", schema={}, model_tier="strong",
                                           tools=[ToolSpec(name="t", description="", parameters={})])
     with pytest.raises(LLMError, match="không tìm thấy"):
         ClaudeCodeClient(LLMConfig(provider="claude-code", models={"standard": "m"}), binary="claude-binary-khong-ton-tai-xyz")\
             .complete(system="s", user="u", schema={}, model_tier="strong")
     # hội thoại nhiều lượt được trải phẳng
     seen = []
-    _cc(runner=lambda a: (seen.append(a), ok)[1]).complete(
+    _cc(runner=lambda a, s: (seen.append(s), ok)[1]).complete(
         system="s", user="u", schema={}, model_tier="strong",
         messages=[{"role": "user", "content": "A"}, {"role": "assistant", "content": "B"}, {"role": "user", "content": "C"}])
-    assert "[assistant]\nB" in seen[0][-1] and seen[0][-1].startswith("[user]\nA")
+    assert "[assistant]\nB" in seen[0] and seen[0].startswith("[user]\nA")
 
 
 def test_claude_code_reports_requested_model_not_internal_haiku():
     """`claude -p` liệt kê Haiku (helper nội bộ) trước model chính trong modelUsage; audit phải ghi model chính."""
     out = json.dumps({"result": "{}", "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1},
                       "modelUsage": {"claude-haiku-4-5-20251001": {"outputTokens": 40}, "claude-opus-5": {"outputTokens": 9}}})
-    c = _cc(runner=lambda a: out).complete(system="s", user="u", schema={}, model_tier="strong")
+    c = _cc(runner=lambda a, s: out).complete(system="s", user="u", schema={}, model_tier="strong")
     assert c.model == "claude-opus-5"
     assert reported_model({"claude-haiku-4-5-20251001": {"outputTokens": 40}, "x": {"outputTokens": 90}}, "claude-opus-5") == "x"
     assert reported_model({}, "claude-opus-5") == "claude-opus-5"
@@ -264,9 +265,9 @@ def test_claude_code_config_dir_isolates_login(tmp_path: Path, monkeypatch):
     """Mỗi backend claude-code có thể trỏ CLAUDE_CONFIG_DIR riêng → tài khoản Claude khác trên cùng máy."""
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     cfg = LLMConfig(provider="claude-code", models={"standard": "m"}, config_dir=str(tmp_path / "acc2"))
-    c = ClaudeCodeClient(cfg, runner=lambda a: "{}")
+    c = ClaudeCodeClient(cfg, runner=lambda a, s: "{}")
     assert c.env["CLAUDE_CONFIG_DIR"] == str(tmp_path / "acc2")
-    assert "CLAUDE_CONFIG_DIR" not in ClaudeCodeClient(LLMConfig(provider="claude-code", models={"standard": "m"}), runner=lambda a: "{}").env
+    assert "CLAUDE_CONFIG_DIR" not in ClaudeCodeClient(LLMConfig(provider="claude-code", models={"standard": "m"}), runner=lambda a, s: "{}").env
     p = tmp_path / "llm.yaml"
     p.write_text("provider: fake\nretries: 0\nbackends:\n  - {name: a, provider: claude-code, models: {standard: m}}\n"
                  "  - {name: b, provider: claude-code, config_dir: ~/.claude-acc2, models: {standard: m}}\n", encoding="utf-8")
@@ -299,7 +300,7 @@ FAIL_JSONL = """{"type":"thread.started","thread_id":"t2"}
 def _cx(tmp_path, out, **kw):
     cfg = LLMConfig(provider="codex", models={"strong": "gpt-5.6-terra", "standard": "gpt-5.6-terra"}, effort={"strong": "high", "standard": "low"}, **kw)
     seen = []
-    c = CodexClient(cfg, runner=lambda a: (seen.append(a), out)[1])
+    c = CodexClient(cfg, runner=lambda a, s: (seen.append((a, s)), out)[1])
     return c, seen
 
 
@@ -309,11 +310,12 @@ def test_codex_client_parses_jsonl_usage_and_builds_args(tmp_path: Path, monkeyp
     r = c.complete(system="SYS", user="USER", schema={"type": "object", "properties": {"answer": {"type": "string"}}}, model_tier="standard")
     assert r.json() == {"answer": "ok"} and r.input_tokens == 15131 and r.cached_input_tokens == 11008 and r.output_tokens == 9
     assert r.model == "gpt-5.6-terra" and "CODEX_HOME" not in c.env
-    a = seen[0]
+    a, stdin = seen[0]
     assert a[1] == "exec" and "--json" in a and "--ephemeral" in a and a[a.index("-m") + 1] == "gpt-5.6-terra"
     assert a[a.index("-s") + 1] == "read-only" and "model_reasoning_effort=low" in a
     assert "--output-schema" not in a   # strict mode của OpenAI không hợp schema topic có trường tuỳ chọn
-    assert a[-1].startswith("# Vai trò và quy tắc\nSYS") and "USER" in a[-1] and "JSON Schema" in a[-1] and '"answer"' in a[-1]
+    assert a[-1].startswith("model_reasoning_effort="), "prompt đi qua stdin, không phải argv"
+    assert stdin.startswith("# Vai trò và quy tắc\nSYS") and "USER" in stdin and "JSON Schema" in stdin and '"answer"' in stdin
 
 
 def test_codex_client_errors_config_dir_and_tools(tmp_path: Path):
