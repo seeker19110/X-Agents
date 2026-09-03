@@ -90,7 +90,11 @@ jobs:
           set -euo pipefail
           for dir in software-company Studio-creators gateway console; do
             echo "::group::pip-audit $dir"
-            (cd "$dir" && uvx pip-audit --strict -r <(uv export --no-hashes --no-dev))
+            # Bỏ dòng `-e`: đó là gói cục bộ trong repo (console và hai công ty nó phụ thuộc),
+            # PyPI không có nên pip-audit đỏ. Phụ thuộc bên thứ ba của chúng vẫn nằm trong
+            # cùng bản export nên không mất phạm vi quét.
+            (cd "$dir" && uv export --no-hashes --no-dev | sed '/^-e /d' > /tmp/req-$dir.txt \
+              && uvx pip-audit --strict -r /tmp/req-$dir.txt)
             echo "::endgroup::"
           done
       - name: Bí mật lọt vào lịch sử git
