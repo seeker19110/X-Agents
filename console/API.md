@@ -101,7 +101,9 @@ def decide(company_db: Path | None, studio_db: Path | None, *,
 GET  /                  → static/index.html, chèn <script>window.__CONSOLE__={token,readonly}</script>
 GET  /static/*          → file tĩnh trong static/
 GET  /api/state         → collect(...)
-POST /api/gate/decide   → body {subject_id, xuong, decision, by, reason}
+GET  /api/settings      → settings.read_settings(...) + {"can_edit": bool}
+POST /api/settings      → body {company, models?, prefer?, enable?, disable?}  (cần --allow-config)
+POST /api/gate/decide   → body {subject_id, xuong, decision, by, reason}      (cần --allow-decide)
 GET  /healthz           → {"ok": true}
 ```
 
@@ -115,12 +117,30 @@ Bảo mật — bắt buộc, đây là bề mặt đầu tiên cho phép duyệ
 3. Chống DNS rebinding: từ chối request có `Host` không phải loopback (404), và từ chối
    `Origin` khác `http://127.0.0.1:<port>` (403). Token nằm ở header chứ không phải cookie
    nên trang ngoài không giả mạo được POST.
-4. `--readonly` (mặc định **bật**) chặn mọi POST. Muốn duyệt gate từ trang thì chạy
+4. Hai quyền ghi TÁCH RIÊNG, không cái nào mở cái nào: `--allow-decide` cho `/api/gate/decide`,
+   `--allow-config` cho `POST /api/settings`. Duyệt gate và đổi model là hai rủi ro khác nhau.
+5. `--readonly` (mặc định **bật**) chặn mọi POST. Muốn duyệt gate từ trang thì chạy
    `--allow-decide`, và trang hiện rõ đang ở chế độ nào.
 5. Không log token, không log body.
 
 Lỗi trả `{"error": "…"}` kèm mã HTTP đúng nghĩa: 400 sai tham số, 401 sai token,
 403 bị chặn, 404 không có, 409 gate đã quyết rồi, 500 lỗi không lường trước.
+
+## `settings.py`
+
+```python
+def read_settings(paths: dict[str, Path] | None = None, gateway_url: str = ...) -> dict
+def update_settings(path: Path, *, models=None, prefer=None, enable=None, disable=None) -> dict
+```
+
+- **Mặc định = hiện trạng.** Không có bảng giá trị mặc định riêng: cái đang nằm trong `llm.yaml` là cái hiển thị.
+- **Tắt backend phải tắt thật.** `company.llm.load_config` bỏ qua khoá lạ nên `enabled: false` vô tác dụng;
+  tắt = chuyển phần tử sang `disabled_backends:` (loader không đọc), bật = chuyển ngược.
+- `prefer` trỏ vào backend đang tắt bị bỏ, ghi rõ trong `changes` — để trống thì router chọn hụt.
+- Validate xong mới ghi (đổi trọn hoặc không đổi gì); ghi nguyên tử, để lại `llm.yaml.bak`.
+- `catalog` lấy từ `GET <gateway>/v1/models`; gateway tắt → rỗng và **không** cảnh báo tên model, vì backend
+  `claude-code`/`codex` vốn không đi qua gateway.
+- Không có file → `ok: false` kèm lý do, không ném lỗi.
 
 ## `static/index.html`
 

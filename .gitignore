@@ -16,6 +16,7 @@ htmlcov/
 software-company/company.sqlite*
 software-company/.worktrees/
 software-company/llm.yaml
+software-company/llm.yaml.bak
 
 # đầu ra mô phỏng examples/donghanhcungban_demo.py
 software-company/sim-out/
@@ -24,6 +25,7 @@ software-company/sim-out/
 Studio-creators/studio.sqlite*
 Studio-creators/output/
 Studio-creators/llm.yaml
+Studio-creators/llm.yaml.bak
 Studio-creators/media.yaml
 
 # Studio-creators: OAuth client secret tải từ Google Cloud Console (chỉ dùng cho `studio.youtube login`) — không commit
