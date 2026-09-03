@@ -22,7 +22,9 @@ cases:
         retry: 0
     expect:
       # "idempotency key cho endpoint ghi" và "mọi lời gọi ra ngoài có timeout" là bắt buộc, không phải tuỳ chọn
-      equals: {ticket_id: TCK-10, branch: "ticket/TCK-10", local_checks.tests: true}
+      # `local_checks.tests` không nằm trong tiêu chí: lượt eval không chạy được test thật, đòi true là thưởng cho
+      # model nào dám khai man. Cái chấm được là PR có nói tới idempotency và timeout hay không.
+      equals: {ticket_id: TCK-10, branch: "ticket/TCK-10"}
       contains: {summary: idempotency}
 
   - name: doi-hanh-vi-endpoint-phai-cap-nhat-contract-truoc

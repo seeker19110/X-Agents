@@ -13,7 +13,9 @@ cases:
         version: "1.0.0"
         env: production
         status: deployed
-        uat_log: "UAT-01..UAT-05 đều pass trên production ngày 2026-09-02, chị Lan (PO khách) xác nhận qua email, project P1"
+        # bằng chứng đúng chuẩn `customer-acceptance`: từng kịch bản có kết quả thực tế + bằng chứng, và có biên bản
+        # ký; "khách bảo ok qua email" thì kết luận đúng phải là conditional, không phải accepted
+        uat_log: "Biên bản UAT REL-001 (docs/uat-results/REL-001.md) chạy cùng chị Lan (PO khách) ngày 2026-09-02 trên staging cấu hình giống production, dữ liệu khách đã chấp thuận. UAT-01↔REQ-1 đạt (đặt lịch thành công, id LH-1042, ảnh chụp uat/01.png); UAT-02↔REQ-2 đạt (lễ tân xác nhận, log id CF-88, ảnh uat/02.png); UAT-03↔REQ-3 đạt (báo cáo đúng giờ Việt Nam, ảnh uat/03.png); UAT-04↔REQ-4 đạt (nhắc lịch Zalo gửi thành công, message id ZL-771); UAT-05↔REQ-5 đạt (p95 240ms < NFR 300ms, báo cáo perf uat/05.json). 0 finding mức chặn, 0 finding mức đường vòng. Chị Lan (PO khách, có thẩm quyền ký) đã ký biên bản ngày 2026-09-02. project P1"
     expect:
       equals: {release_id: REL-001, project_id: P1, verdict: accepted}
       contains: {signed_by: "Lan"}

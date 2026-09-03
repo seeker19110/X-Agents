@@ -76,7 +76,7 @@
       "technical-writing"
     ],
     "timeout_minutes": 30,
-    "version": 7,
+    "version": 8,
     "writes": [
       "clarification-questions"
     ]
@@ -190,7 +190,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 10,
+    "version": 11,
     "writes": [
       "pull-requests"
     ]
@@ -214,7 +214,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 30,
-    "version": 8,
+    "version": 9,
     "writes": [
       "research-findings"
     ]
@@ -295,7 +295,7 @@
       "accessibility"
     ],
     "timeout_minutes": 90,
-    "version": 9,
+    "version": 10,
     "writes": [
       "review-results"
     ]
@@ -379,7 +379,7 @@
       "observability"
     ],
     "timeout_minutes": 60,
-    "version": 9,
+    "version": 10,
     "writes": [
       "review-results"
     ]
@@ -481,7 +481,7 @@
       "observability"
     ],
     "timeout_minutes": 15,
-    "version": 9,
+    "version": 10,
     "writes": [
       "supervisor-actions",
       "knowledge-base"
@@ -530,7 +530,7 @@
       "risk-analysis"
     ],
     "timeout_minutes": 60,
-    "version": 8,
+    "version": 9,
     "writes": [
       "requirements-draft"
     ]

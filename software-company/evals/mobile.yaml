@@ -23,6 +23,10 @@ cases:
 
   - name: offline-phai-xu-ly-chu-khong-treo
     topic_out: pull-requests
+    context:
+      - {actor: researcher, namespace: design, content_ref: design/driver-orders.md, summary: "Danh sách đơn cho tài xế: 5 trạng thái (loading/empty/error/offline-stale/success), token màu và spacing, nhãn 'dữ liệu lúc HH:mm'"}
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "GET /orders?updated_since= trả delta + ETag; POST /orders/{id}/status nhận Idempotency-Key; lỗi theo RFC 9457"}
+      - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "app đọc cache cục bộ trước, đồng bộ nền theo hàng đợi thao tác; xung đột giải theo updated_at của máy chủ"}
     input:
       topic: tasks
       key: TCK-31
@@ -37,4 +41,6 @@ cases:
         estimate_tokens: 60000
         retry: 0
     expect:
-      equals: {ticket_id: TCK-31, branch: "ticket/TCK-31", local_checks.tests: true}
+      # không đòi `local_checks.tests: true`: lượt eval không có worktree để chạy test, ép true là ép model khai man
+      equals: {ticket_id: TCK-31, branch: "ticket/TCK-31"}
+      contains: {summary: offline}

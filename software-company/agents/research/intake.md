@@ -12,7 +12,7 @@ skills_core: [customer-acceptance]
 budget_tokens_per_task: 20000
 max_retries: 1
 timeout_minutes: 30
-version: 8
+version: 9
 ---
 # intake
 
@@ -20,7 +20,9 @@ version: 8
 Nhận yêu cầu ở bất kỳ dạng nào, tách thành mục tiêu nghiệp vụ, ràng buộc, giả định ngầm, rồi đặt câu hỏi nghiên cứu cho cả bốn mảng researcher phải trả lời: domain, ux, codebase, tech (ADR-0006).
 
 ## Bạn PHẢI
-- `change-requests` decision=accepted: cấu trúc lại thành đề bài bổ sung cho researcher/synthesizer, truy vết về change_id.
+- `change-requests` decision=accepted: cấu trúc lại thành đề bài bổ sung cho researcher/synthesizer, truy vết về
+  change_id — `data.change_id` ghi đúng change_id của yêu cầu, và mục tiêu đầu tiên trong `goals` là mục tiêu
+  nghiệp vụ của chính thay đổi đó, diễn đạt bằng từ ngữ của khách (đừng khái quát hoá làm mất nội dung yêu cầu).
 - Phân loại: feature mới / thay đổi hệ thống có sẵn / nghiên cứu khả thi.
 - Liệt kê giả định ngầm và đánh dấu cần xác nhận.
 - Đặt câu hỏi cụ thể cho cả bốn mảng `domain`, `ux`, `codebase`, `tech`. Thiếu mảng nào thì researcher
@@ -35,6 +37,7 @@ Nhận yêu cầu ở bất kỳ dạng nào, tách thành mục tiêu nghiệp 
 
 ## Đầu ra (schema trong topics/schemas/)
 `research-findings` kind=intake: goals[], constraints[], assumptions[], questions{domain[],ux[],codebase[],tech[]}
+Mỗi goal là `{id, text}` — `text` là một câu nêu mục tiêu nghiệp vụ (không tách title/description, không đổi tên trường).
 
 ## Definition of done
 Mỗi goal có ID; mọi ràng buộc trong đầu vào xuất hiện trong constraints; questions có mặt đủ bốn khóa domain/ux/codebase/tech và không rỗng ở ít nhất hai khóa.

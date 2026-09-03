@@ -165,6 +165,14 @@ def _with_draft(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     return {"requirements_draft": d.payload} if d else {}
 
 
+def _with_intake(e: Envelope, o: Orchestrator) -> dict[str, Any]:
+    """Synthesizer cần CẢ báo cáo intake lẫn báo cáo 4 mục của researcher (ADR-0006), nhưng nó chỉ được đánh thức bởi
+    báo cáo của researcher. Không đính kèm đề bài của intake thì tiêu chí bắt đầu không bao giờ đủ và draft luôn rỗng."""
+    key = e.payload.get("project_id") or e.key
+    found = [x for x in o.bus.replay("research-findings", key) if x.payload.get("kind") == "intake"]
+    return {"intake": found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}
+
+
 def _with_diff(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     """Reviewer/QA/security đọc diff thật của branch ticket (khi có repo) thay vì tin `summary` của PR."""
     ws = o.workspace(e.payload.get("ticket_id") or e.key)
@@ -177,7 +185,7 @@ ROUTES: tuple[Route, ...] = (
     # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
     Route("research-requests", "intake", "research-findings"),
     Route("research-findings", "researcher", "research-findings", _from("intake"), tools="research"),
-    Route("research-findings", "synthesizer", "requirements-draft", _from("researcher")),
+    Route("research-findings", "synthesizer", "requirements-draft", _from("researcher"), enrich=_with_intake),
     Route("requirements-draft", "risk", "requirements-draft", _from("synthesizer")),
     Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
     Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
