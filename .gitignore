@@ -39,3 +39,6 @@ gateway/.venv/
 
 # console: token phiên sinh mỗi lần chạy server trực ban (quyền 0600) — không bao giờ commit
 console/.console-token
+
+# Claude Code: quyền và cấu hình riêng của từng máy (settings.json dùng chung thì vẫn commit)
+.claude/settings.local.json
