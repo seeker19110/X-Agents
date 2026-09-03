@@ -83,14 +83,34 @@ class Completion:
         return self.cached_input_tokens / self.input_tokens if self.input_tokens else 0.0
 
     def json(self) -> dict[str, Any]:
-        text = self.text.strip()
-        if text.startswith("```"):  # model nhỏ hay bọc JSON trong code fence
-            text = text.strip("`").split("\n", 1)[1] if "\n" in text else text.strip("`")
-            text = text.rsplit("```", 1)[0].strip()
+        text = _strip_code_fence(self.text)
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
-            raise LLMError(f"đầu ra không phải JSON: {e}\n{self.text[:500]}") from e
+            # chỉ trích đoạn quanh vị trí lỗi, không đổ cả đầu ra vào log
+            near = text[max(0, e.pos - 120):e.pos + 120]
+            raise LLMError(f"đầu ra không phải JSON: {e} — gần vị trí lỗi: ...{near}...") from e
+
+
+def _strip_code_fence(raw: str) -> str:
+    """Bóc code fence bao quanh JSON (model nhỏ hay bọc ```json ... ```).
+
+    Chỉ bỏ fence MỞ ở đầu và fence ĐÓNG ở CUỐI; fence nằm giữa là nội dung thật (research findings hay trích
+    đoạn config) — cắt theo nó sẽ chặt cụt JSON giữa chừng. Không có fence thì trả nguyên văn.
+    """
+    text = raw.strip()
+    if not text.startswith("```"):
+        return text
+    if "\n" in text:
+        text = text.split("\n", 1)[1]          # bỏ cả dòng mở (``` hoặc ```json)
+    else:
+        text = text[3:].lstrip()                # fence một dòng: ```{...}``` hoặc ```json {...}```
+        if not text.startswith(("{", "[")):     # bỏ nhãn ngôn ngữ dính liền (```json {...}```)
+            text = text.split(None, 1)[1] if len(text.split(None, 1)) > 1 else text
+    text = text.rstrip()
+    if text.endswith("```"):                    # fence đóng chỉ khi thật sự ở cuối
+        text = text[:-3]
+    return text.strip()
 
 
 class ModelClient(Protocol):
