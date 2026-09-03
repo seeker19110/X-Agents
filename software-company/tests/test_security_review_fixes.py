@@ -135,7 +135,42 @@ def test_architecture_topic_table_matches_routes():
             assert name in routed.get(topic, set()), f"{topic}: docs ghi consumer {name} nhưng không có route (ghi `(chỉ đọc)` nếu cố ý)"
 
 
-def test_readme_says_strict_replay_guards_nothing_while_recordings_empty():
+def test_required_txt_khop_voi_ban_ghi_thuc_te():
+    """Cổng `eval-replay --strict` chỉ có răng khi REQUIRED.txt gọi tên agent đã có bản ghi.
+
+    Ghi thừa một tên chưa có bản ghi làm CI đỏ; quên thêm tên sau khi ghi làm cổng lỏng mà
+    không ai biết. Test này canh cả hai chiều, và canh luôn tuyên bố trong README.
+    """
+    rec_dir = ROOT / "evals" / "recordings"
+    recorded = {p.stem for p in rec_dir.glob("*.json")}
+    required = {ln.strip() for ln in (rec_dir / "REQUIRED.txt").read_text(encoding="utf-8").splitlines()
+                if ln.strip() and not ln.lstrip().startswith("#")}
+    assert required <= recorded, f"REQUIRED.txt gọi tên chưa có bản ghi: {sorted(required - recorded)}"
+    assert recorded <= required, f"đã ghi nhưng chưa đưa vào REQUIRED.txt: {sorted(recorded - required)}"
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "eval-replay --strict` hiện KHÔNG bảo vệ gì" in text
-    assert not [p for p in (ROOT / "evals" / "recordings").glob("*.json")], "đã có bản ghi: sửa lại README"
+    assert ("eval-replay --strict` hiện KHÔNG bảo vệ gì" in text) == (not recorded), "README nói khác thực tế"
+
+
+def test_diem_cham_eval_khong_lam_ci_do_nhung_ban_ghi_thieu_thi_do(tmp_path, monkeypatch):
+    """Hợp đồng ở CONTRIBUTING §3: ca eval chấm không đạt là tín hiệu chất lượng, không phải cổng.
+
+    Chỉ bản ghi thiếu hoặc lệch phiên bản prompt mới làm CI đỏ. Trước đây `main` cộng cả điểm
+    chấm vào mã thoát, nên vừa commit bản ghi thật là CI đỏ ngay dù cổng vẫn nguyên.
+    """
+    from company import evals
+
+    monkeypatch.setattr(evals, "load_agents", lambda: {"x": object()})
+    monkeypatch.setattr(evals, "load_cases", lambda aid: [object()])
+    monkeypatch.setattr(evals, "outdated_versions", lambda ids: {})
+    monkeypatch.setattr(evals, "required_agents", lambda: ["x"])
+    monkeypatch.setattr(evals, "ReplayClient", lambda aid: object())
+    monkeypatch.setattr(evals, "run_eval", lambda *a: [evals.CaseResult(name="c", passed=False, failures=["x"], tokens=1)])
+    assert evals.main(["all", "--replay", "--strict"]) == 0, "điểm chấm không được làm CI đỏ"
+
+    def _missing(aid): raise evals.LLMError("chưa có bản ghi")
+    monkeypatch.setattr(evals, "ReplayClient", _missing)
+    assert evals.main(["all", "--replay", "--strict"]) == 1, "thiếu bản ghi phải đỏ"
+
+    monkeypatch.setattr(evals, "outdated_versions", lambda ids: {"x": "bản ghi ghi ở phiên bản prompt cũ"})
+    monkeypatch.setattr(evals, "ReplayClient", lambda aid: object())
+    assert evals.main(["all", "--replay", "--strict"]) == 1, "bản ghi lệch phiên bản phải đỏ"
