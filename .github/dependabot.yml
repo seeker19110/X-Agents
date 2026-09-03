@@ -33,6 +33,17 @@ updates:
       dev:
         dependency-type: development
 
+  - package-ecosystem: uv
+    directory: /console
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      dev:
+        dependency-type: development
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
