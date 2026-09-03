@@ -20,6 +20,7 @@ runner hay orchestrator.
    `llm_retry`.
 3. **Provider `claude-code`**: CLI `claude -p --output-format json` như một backend không key; không hỗ trợ tool-use
    nên `RoutingClient` bỏ qua nó khi request có `tools` (khối kỹ thuật đi backend khác).
+   *ADR-0023 nới điểm này*: bật `cli_tools: true` thì CLI tự cầm tool trong worktree, backend nhận được cả việc có tool.
 4. **Tier thứ ba `light`** cho việc cơ học/ngắn; `model_for` lùi light → standard → strong. Bảng agent → tier và lý do
    là `../../docs/DIEU-PHOI-MODEL.md` (nguồn sự thật chung của hub). Đổi tier chỉ cần `make golden`, không tăng
    `version` vì prompt không đổi.

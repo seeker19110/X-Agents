@@ -30,7 +30,7 @@ class _Client:
     def __init__(self, name: str, fail: list[BaseException] | None = None):
         self.name, self.fail, self.calls = name, list(fail or []), []
 
-    def complete(self, *, system, user, schema, model_tier, cache_key=None, tools=None, messages=None):
+    def complete(self, *, system, user, schema, model_tier, cache_key=None, tools=None, messages=None, workdir=None):
         self.calls.append(model_tier)
         if self.fail: raise self.fail.pop(0)
         return Completion(text="{}", input_tokens=10, output_tokens=1, model=f"{self.name}-{model_tier}")
@@ -343,3 +343,92 @@ def test_make_client_codex_backend_has_no_tools(tmp_path: Path, monkeypatch):
     assert [(b.name, b.supports_tools) for b in client.backends] == [("gpt", False), ("f", True)]
     inner = client.backends[0].client; inner = getattr(inner, "inner", inner)
     assert isinstance(inner, CodexClient) and inner.binary.endswith("codex-khong-ton-tai")
+
+
+# ---------- provider claude-code: chế độ tool CLI (cli_tools) ----------
+
+def _cc_tools(**kw):
+    cfg = LLMConfig(provider="claude-code", models={"strong": "claude-opus-5"}, cli_tools=True,
+                    cli_max_turns=12, cli_bash=["pytest:*", "ruff:*"])
+    return ClaudeCodeClient(cfg, **kw)
+
+
+_RW = [ToolSpec(name="read_file", description="", parameters={}),
+       ToolSpec(name="write_file", description="", parameters={}),
+       ToolSpec(name="search", description="", parameters={}),
+       ToolSpec(name="run", description="", parameters={})]
+
+_CC_OK = json.dumps({"result": '{"ticket_id": "T1"}', "stop_reason": "end_turn",
+                     "usage": {"input_tokens": 10, "output_tokens": 2}})
+
+
+def test_cli_tools_runs_claude_inside_worktree_with_narrow_permissions(tmp_path: Path):
+    """cli_tools: CLI tự cầm tool trong worktree. Tool công ty phải ánh xạ sang tool CLI tương ứng, và mọi hàng rào
+    thay cho tools.py (--restricted, --tools hẹp, Bash theo mẫu, deny file bí mật) phải có mặt trong argv."""
+    seen: list = []
+    c = _cc_tools(runner=lambda a, s, cwd=None: (seen.append((a, cwd)), _CC_OK)[1])
+    out = c.complete(system="SYS", user="u", schema={"type": "object"}, model_tier="strong",
+                     tools=_RW, workdir=str(tmp_path))
+    assert out.json() == {"ticket_id": "T1"}
+    assert out.tool_calls == [], "CLI đã tự chạy tool; không trả tool_calls ra vòng lặp của công ty"
+    args, cwd = seen[0]
+    assert cwd == str(tmp_path), "CLI phải chạy TRONG worktree của ticket"
+    assert args[args.index("--tools") + 1] == "Read,Edit,Write,Grep,Bash"
+    assert args[args.index("--max-turns") + 1] == "12"
+    assert args[args.index("--permission-mode") + 1] == "acceptEdits"
+    assert "--restricted" in args and "--strict-mcp-config" in args
+    assert args[args.index("--allowed-tools") + 1] == "Bash(pytest:*) Bash(ruff:*)"
+    deny = json.loads(args[args.index("--settings") + 1])["permissions"]["deny"]
+    assert "Read(**/.env)" in deny and "Write(**/*.pem)" in deny and "Edit(**/llm.yaml)" in deny
+
+
+def test_cli_tools_off_still_refuses_tools_and_keeps_single_turn():
+    """Mặc định (cli_tools=False) giữ nguyên hành vi cũ: có tool thì báo lỗi, không tool thì một lượt, không tool CLI."""
+    with pytest.raises(LLMError, match="cli_tools"):
+        _cc(runner=lambda a, s: _CC_OK).complete(system="s", user="u", schema={}, model_tier="strong", tools=_RW)
+    seen: list = []
+    _cc(runner=lambda a, s: (seen.append(a), _CC_OK)[1]).complete(system="s", user="u", schema={}, model_tier="strong")
+    assert seen[0][seen[0].index("--tools") + 1] == "" and seen[0][seen[0].index("--max-turns") + 1] == "1"
+    assert "--restricted" not in seen[0]
+
+
+def test_cli_tools_refuses_without_workdir_or_mappable_tool(tmp_path: Path):
+    """Không có worktree thì CLI sẽ sửa file ở thư mục bất kỳ — thà hỏng còn hơn ghi nhầm chỗ.
+    `run` mà không cấu hình cli_bash thì không có Bash: bảng tool rỗng cũng phải hỏng rõ ràng."""
+    with pytest.raises(LLMError, match="workdir"):
+        _cc_tools(runner=lambda a, s, cwd=None: _CC_OK).complete(
+            system="s", user="u", schema={}, model_tier="strong", tools=_RW)
+    cfg = LLMConfig(provider="claude-code", models={"strong": "m"}, cli_tools=True, cli_bash=[])
+    with pytest.raises(LLMError, match="cli_bash"):
+        ClaudeCodeClient(cfg, runner=lambda a, s, cwd=None: _CC_OK).complete(
+            system="s", user="u", schema={}, model_tier="strong",
+            tools=[ToolSpec(name="run", description="", parameters={})], workdir=str(tmp_path))
+
+
+def test_cli_tools_readonly_toolbox_gets_no_write_or_bash(tmp_path: Path):
+    """Reviewer/QA dùng toolbox chỉ đọc: CLI không được nhận Edit/Write/Bash."""
+    seen: list = []
+    ro = [ToolSpec(name="read_file", description="", parameters={}),
+          ToolSpec(name="list_files", description="", parameters={})]
+    _cc_tools(runner=lambda a, s, cwd=None: (seen.append(a), _CC_OK)[1]).complete(
+        system="s", user="u", schema={}, model_tier="strong", tools=ro, workdir=str(tmp_path))
+    names = seen[0][seen[0].index("--tools") + 1]
+    assert names == "Read,Glob" and "--allowed-tools" not in seen[0]
+
+
+def test_cli_tools_backend_is_routed_tool_work_unlike_plain_claude_code(tmp_path: Path):
+    """ADR-0019: backend claude-code thường bị loại khi request có tool; bật cli_tools thì được chọn."""
+    p = tmp_path / "llm.yaml"
+    p.write_text("provider: fake\nretries: 0\nbackends:\n"
+                 "  - {name: plain, provider: claude-code, models: {strong: m}}\n"
+                 "  - {name: cli, provider: claude-code, cli_tools: true, cli_bash: ['pytest:*'], models: {strong: m}}\n",
+                 encoding="utf-8")
+    client = make_client(load_config(p))
+    assert [(b.name, b.supports_tools) for b in client.backends] == [("plain", False), ("cli", True)]
+
+
+def test_workspace_toolbox_carries_root_so_provider_knows_worktree(tmp_path: Path):
+    """ToolBox phải mang gốc thư mục: runner lấy `root` làm `workdir` cho provider tự chạy tool."""
+    from company.tools import WorkspaceTools
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    assert WorkspaceTools(tmp_path, allow_write=False, allow_run=False).toolbox().root == str(tmp_path.resolve())

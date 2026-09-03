@@ -124,7 +124,7 @@ class ModelClient(Protocol):
     {"role": "tool", "tool_call_id", "content"}. Model muốn gọi tool thì `Completion.tool_calls` khác rỗng."""
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None) -> Completion: ...
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion: ...
 
 
 def neutral_messages(user: str, messages: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -143,6 +143,9 @@ class LLMConfig:
     effort: dict[str, str] = field(default_factory=lambda: {"strong": "high", "standard": "medium", "light": "low"})
     config_dir: str | None = None    # claude-code: CLAUDE_CONFIG_DIR / codex: CODEX_HOME riêng → tài khoản khác trên cùng máy
     binary: str | None = None        # đường dẫn CLI (claude / codex) khi không có trên PATH
+    cli_tools: bool = False          # claude-code: cho CLI tự dùng tool của nó trong worktree (ADR-0023) thay vì báo không hỗ trợ
+    cli_max_turns: int = 25          # trần lượt tool trong MỘT tiến trình `claude -p` (tương ứng max_turns của vòng tool công ty)
+    cli_bash: list[str] = field(default_factory=list)  # mẫu Bash được phép khi CLI có tool `run`, vd ["pytest:*", "ruff:*"]
     name: str = "default"            # tên backend (ADR-0019), hiện trong ghi chú audit khi xoay
     backends: list[dict[str, Any]] = field(default_factory=list)   # ADR-0019: mỗi phần tử = một backend, cùng khoá như cấp trên
     routing: dict[str, Any] = field(default_factory=dict)          # cooldown_s, transient_cooldown_s, prefer{tier: backend}
@@ -174,6 +177,9 @@ class LLMConfig:
         cfg.name = str(data.get("name") or cfg.provider)
         cfg.config_dir = str(data["config_dir"]) if data.get("config_dir") else None
         cfg.binary = str(data["binary"]) if data.get("binary") else None
+        cfg.cli_tools = bool(data.get("cli_tools", cfg.cli_tools))
+        cfg.cli_max_turns = int(data.get("cli_max_turns", cfg.cli_max_turns))
+        cfg.cli_bash = [str(x) for x in (data.get("cli_bash") or cfg.cli_bash)]
         if data.get("api_key"): cfg.api_key = str(data["api_key"])
         if data.get("api_key_env"): cfg.api_key = os.environ.get(str(data["api_key_env"]), cfg.api_key)
         return cfg
@@ -199,6 +205,9 @@ def load_config(path: Path | None = None) -> LLMConfig:
         cfg.max_input_chars = int(data.get("max_input_chars", cfg.max_input_chars))
         cfg.prices = {str(k): {kk: float(vv) for kk, vv in (v or {}).items()} for k, v in (data.get("prices") or {}).items()}
         if data.get("budget_usd") is not None: cfg.budget_usd = float(data["budget_usd"])
+        cfg.cli_tools = bool(data.get("cli_tools", cfg.cli_tools))
+        cfg.cli_max_turns = int(data.get("cli_max_turns", cfg.cli_max_turns))
+        cfg.cli_bash = [str(x) for x in (data.get("cli_bash") or cfg.cli_bash)]
         cfg.backends = [dict(b) for b in (data.get("backends") or []) if isinstance(b, dict)]
         cfg.routing = dict(data.get("routing") or {})
     env = os.environ
@@ -264,12 +273,12 @@ class RetryingClient:
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None) -> Completion:
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
         last: TransientError | None = None
         for i in range(self.retries + 1):
             try:
                 return self.inner.complete(system=system, user=user, schema=schema, model_tier=model_tier,
-                                           cache_key=cache_key, tools=tools, messages=messages)
+                                           cache_key=cache_key, tools=tools, messages=messages, workdir=workdir)
             except TransientError as e:
                 last = e
                 if i >= self.retries: break
@@ -305,7 +314,8 @@ def make_client(cfg: LLMConfig | None = None) -> ModelClient:
         for data in cfg.backends:
             bc = cfg.backend_config(data)
             bs.append(Backend(name=bc.name, client=_single_client(bc), tiers=bc.tiers_configured(),
-                              supports_tools=bool(data.get("supports_tools", bc.provider not in ("claude-code", "codex")))))
+                              supports_tools=bool(data.get("supports_tools", bc.provider not in ("claude-code", "codex")
+                                                            or (bc.provider == "claude-code" and bc.cli_tools)))))
         r = cfg.routing
         client = RoutingClient(bs, cooldown_s=float(r.get("cooldown_s", 3600)),
                                transient_cooldown_s=float(r.get("transient_cooldown_s", 60)),
@@ -378,7 +388,7 @@ class AnthropicClient:
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None) -> Completion:
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
         kwargs: dict[str, Any] = dict(
             model=self.cfg.model_for(model_tier), max_tokens=self.cfg.max_tokens,
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
@@ -476,7 +486,7 @@ class OpenAICompatClient:
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None) -> Completion:
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
         model = self.cfg.model_for(model_tier)
         msgs = self._messages(system, neutral_messages(user, messages))
         base: dict[str, Any] = {"model": model, "max_tokens": self.cfg.max_tokens, **self.cfg.extra, "messages": msgs}
@@ -548,17 +558,56 @@ def check_argv(args: list[str]) -> None:
 
 # ---------- provider: Claude Code CLI (gói Claude Pro/Max đã đăng nhập trên máy, không cần API key) ----------
 
+# ---------- provider claude-code: chế độ tool CLI ----------
+
+# Tool công ty (tools.py) → tool sẵn có của Claude Code. `run` chỉ thành Bash khi cấu hình có `cli_bash`,
+# vì Bash không giới hạn mẫu là mất hẳn allowlist argv của tools.py.
+CLI_TOOL_MAP = {"read_file": ["Read"], "list_files": ["Glob"], "search": ["Grep"], "write_file": ["Edit", "Write"]}
+
+# Deny-list file bí mật cho `--settings`: bù phần `_is_secret` của tools.py mà --restricted không làm
+# (--restricted khoá tool trong workdir, nhưng .env/khoá riêng NẰM TRONG worktree vẫn đọc được).
+CLI_DENY_GLOBS = ("**/.env", "**/.env.*", "**/*.pem", "**/*.key", "**/*.p12", "**/*.pfx", "**/*.keystore",
+                  "**/id_rsa*", "**/.netrc", "**/.npmrc", "**/.pypirc", "**/.git-credentials",
+                  "**/*secret*", "**/*credential*", "**/llm.yaml", "**/.aws/**", "**/.kube/**", "**/.docker/**")
+
+
+def cli_tool_names(tools: list[ToolSpec], bash: list[str]) -> list[str]:
+    """Tên tool CLI tương ứng bảng tool công ty, giữ thứ tự và không trùng."""
+    out: list[str] = []
+    for t in tools:
+        for name in CLI_TOOL_MAP.get(t.name, []):
+            if name not in out: out.append(name)
+        if t.name == "run" and bash and "Bash" not in out: out.append("Bash")
+    return out
+
+
+def cli_settings_json() -> str:
+    """Settings tạm cho `claude -p`: chặn đọc/ghi file bí mật. `--restricted` bỏ qua settings user/project nhưng
+    vẫn áp `--settings`, nên deny ở đây là lớp chặn thật, không phải lời dặn trong prompt."""
+    deny = [f"{tool}({g})" for g in CLI_DENY_GLOBS for tool in ("Read", "Edit", "Write")]
+    return json.dumps({"permissions": {"deny": deny}}, ensure_ascii=False)
+
+
 class ClaudeCodeClient:
     """Gọi `claude -p --output-format json` như một model backend: mỗi lượt là một tiến trình con, không tool của CLI,
     system prompt qua `--system-prompt`, schema nhúng vào user message (CLI không có structured output).
     Token thật lấy từ `usage` (input + cache read + cache creation, cùng nghĩa với adapter Anthropic).
 
-    KHÔNG hỗ trợ tool-use của công ty (`tools`): CLI không trả `tool_calls` cho lớp ngoài. Khối kỹ thuật cần tool phải
-    đi backend khác — `RoutingClient` tự bỏ qua backend này khi request có `tools`. Hội thoại nhiều lượt (`messages`)
-    được trải phẳng thành văn bản."""
+    Hội thoại nhiều lượt (`messages`) được trải phẳng thành văn bản.
+
+    Tool có HAI chế độ:
+
+    - `cli_tools: false` (mặc định) — không tool. CLI không trả `tool_calls` cho lớp ngoài nên vòng lặp tool của công ty
+      (`runner._tool_loop`) không chạy được ở đây; `RoutingClient` tự bỏ qua backend này khi request có `tools`.
+    - `cli_tools: true` — **chế độ tool CLI**: thay vì trả `tool_calls` ra ngoài, CLI tự chạy tool của nó ngay trong
+      worktree (`workdir`) rồi trả về câu trả lời cuối. Với `runner._tool_loop` thì đây là một lượt duy nhất không có
+      `tool_calls` → thoát vòng ngay; nhưng file trong worktree ĐÃ bị sửa thật, nên `ws.dirty()`, lint/test và diff mà
+      `generate_in_workspace` chấm vẫn là bằng chứng thật. Đổi lại, ranh giới tin cậy của `tools.py` (allowlist argv,
+      chặn file bí mật) chuyển sang hệ permission của CLI: ta bù bằng `--restricted` (khoá file tool trong `workdir`,
+      bỏ qua settings user/project), `--tools` hẹp, `--allowed-tools` cho Bash và deny-list file bí mật qua `--settings`."""
 
     def __init__(self, cfg: LLMConfig | None = None, binary: str = "claude", timeout: float = 900.0,
-                 runner: Callable[[list[str], str], str] | None = None):
+                 runner: Callable[..., str] | None = None):   # (args, stdin) hoặc (args, stdin, cwd) khi cli_tools
         import shutil
         self.cfg = cfg or load_config()
         self.binary = shutil.which(self.cfg.binary or binary) or self.cfg.binary or binary
@@ -568,11 +617,11 @@ class ClaudeCodeClient:
             self.env["CLAUDE_CONFIG_DIR"] = str(Path(self.cfg.config_dir).expanduser())
         self._run = runner or self._subprocess  # test thay bằng hàm giả (args, stdin) → stdout
 
-    def _subprocess(self, args: list[str], stdin: str) -> str:
+    def _subprocess(self, args: list[str], stdin: str, cwd: str | None = None) -> str:
         import subprocess
         try:
             r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                               input=stdin, timeout=self.timeout, env=self.env)
+                               input=stdin, timeout=self.timeout, env=self.env, cwd=cwd)
         except FileNotFoundError as e:
             raise LLMError(f"không tìm thấy `{self.binary}` (cài Claude Code hoặc đổi provider)") from e
         except subprocess.TimeoutExpired as e:
@@ -586,19 +635,38 @@ class ClaudeCodeClient:
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None) -> Completion:
-        if tools:
-            raise LLMError("claude-code không hỗ trợ tool-use; agent cần tool phải đi backend anthropic/openai")
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
+        cli = bool(tools) and self.cfg.cli_tools
+        if tools and not cli:
+            raise LLMError("claude-code không hỗ trợ tool-use; bật `cli_tools: true` cho backend này "
+                           "hoặc để agent cần tool đi backend anthropic/openai")
+        if cli and not workdir:
+            raise LLMError("claude-code cli_tools: thiếu `workdir` (thư mục gốc của bảng tool) — "
+                           "không có worktree thì CLI sẽ chạy tool ở thư mục bất kỳ")
         model = self.cfg.model_for(model_tier)
         msgs = neutral_messages(user, messages)
         prompt = msgs[0]["content"] if len(msgs) == 1 else "\n\n".join(f"[{m['role']}]\n{m.get('content') or ''}" for m in msgs)
         hint = "\n\n# JSON Schema bắt buộc cho câu trả lời\n```json\n" + json.dumps(schema, ensure_ascii=False) + "\n```"
         # User prompt đi qua stdin (`claude -p` không có prompt vị trí thì đọc stdin): payload/blackboard dài dễ vượt
         # giới hạn argv (Windows ~32K); system prompt vẫn qua `--system-prompt`, có guard độ dài bên dưới.
-        args = [self.binary, "-p", "--output-format", "json", "--model", model, "--tools", "", "--max-turns", "1",
-                "--system-prompt", system]
+        args = [self.binary, "-p", "--output-format", "json", "--model", model]
+        if cli:
+            names = cli_tool_names(tools or [], self.cfg.cli_bash)
+            if not names:
+                raise LLMError("claude-code cli_tools: không tool công ty nào ánh xạ được sang CLI "
+                               f"({[t.name for t in tools or []]}); `run` cần cấu hình `cli_bash`")
+            # --restricted: khoá file tool trong cwd, bỏ tool chạy lệnh trừ khi --tools gọi tên, và bỏ qua settings
+            # user/project của máy. --strict-mcp-config: không kéo MCP server nào của người dùng vào phiên.
+            args += ["--restricted", "--strict-mcp-config", "--permission-mode", "acceptEdits",
+                     "--max-turns", str(self.cfg.cli_max_turns), "--tools", ",".join(names),
+                     "--settings", cli_settings_json()]
+            if "Bash" in names:
+                args += ["--allowed-tools", " ".join(f"Bash({pat})" for pat in self.cfg.cli_bash)]
+        else:
+            args += ["--tools", "", "--max-turns", "1"]
+        args += ["--system-prompt", system]
         check_argv(args)
-        out = self._run(args, prompt + hint)
+        out = self._run(args, prompt + hint, workdir) if cli else self._run(args, prompt + hint)
         try:
             data = json.loads(out[out.index("{"):]) if "{" in out else {}
         except json.JSONDecodeError as e:
@@ -682,7 +750,7 @@ class CodexClient:
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None) -> Completion:
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
         if tools:
             raise LLMError("codex không hỗ trợ tool-use của công ty; agent cần tool phải đi backend anthropic/openai")
         model = self.cfg.model_for(model_tier)
@@ -739,7 +807,7 @@ class FakeClient:
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None) -> Completion:
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
         msgs = neutral_messages(user, messages)
         user = next(m["content"] for m in msgs if m["role"] == "user")
         self.calls.append({"system": system, "user": user, "schema": schema, "model_tier": model_tier,

@@ -62,8 +62,18 @@ prices:
 # Bảng agent → tier và lý do: ../docs/DIEU-PHOI-MODEL.md
 #
 # backends:
-#   - name: claude-sub                 # Claude Pro/Max qua CLI `claude -p` (tài khoản đang đăng nhập mặc định) (không tool-use → khối kỹ thuật tự đi backend khác)
-#     provider: claude-code
+#   - name: claude-sub                 # Claude Pro/Max qua CLI `claude -p` (tài khoản đang đăng nhập mặc định)
+#     provider: claude-code            #   không cli_tools → không tool-use, khối kỹ thuật tự đi backend khác
+#     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
+#   - name: claude-sub-tools           # NHƯ TRÊN, nhưng CLI tự cầm tool trong worktree của ticket → khối kỹ thuật
+#     provider: claude-code            #   (backend/frontend/...) và reviewer/QA chạy được bằng gói Claude, không cần API key.
+#     cli_tools: true                  #   Đánh đổi: allowlist argv + chặn file bí mật của tools.py nhường cho hệ
+#     cli_max_turns: 25                #   permission của CLI (--restricted + --tools hẹp + deny-list qua --settings).
+#     cli_bash:                        #   Mẫu lệnh Bash được phép; để trống thì agent không chạy được test/lint.
+#       - "pytest:*"
+#       - "ruff:*"
+#       - "git status:*"
+#       - "git diff:*"
 #     models: {strong: claude-opus-5, standard: claude-sonnet-5, light: claude-haiku-4-5}
 #   - name: claude-sub-2               # tài khoản Claude THỨ HAI trên cùng máy: đăng nhập trước bằng
 #     provider: claude-code            #   CLAUDE_CONFIG_DIR=~/.claude-acc2 claude login

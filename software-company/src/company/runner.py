@@ -171,7 +171,8 @@ class AgentRunner:
         drain = getattr(self.client, "drain_retries", None)
         try:
             c = self.client.complete(system=spec.system_prompt(), user=user, schema=schema, model_tier=spec.model_tier,
-                                     cache_key=spec.id, tools=tools.specs() if tools else None, messages=messages)
+                                     cache_key=spec.id, tools=tools.specs() if tools else None, messages=messages,
+                                     workdir=tools.root if tools else None)
         except LLMError as e:
             if drain and (notes := drain()):
                 self._audit(spec, "llm_retry", inp, evidence=json.dumps({"attempts": len(notes), "notes": notes}, ensure_ascii=False))

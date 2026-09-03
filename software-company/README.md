@@ -71,7 +71,8 @@ uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng 90%
 #   COMPANY_LLM_PROVIDER=anthropic COMPANY_MODEL_STRONG=claude-opus-5   (uv sync --extra anthropic)
 #   Qua gateway xoay vòng tài khoản Google Antigravity (../gateway: `make login && make start && make setup`
 #   ghi sẵn llm.yaml): COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://127.0.0.1:8100/v1 COMPANY_LLM_API_KEY=gateway-local
-#   Gói Claude Pro/Max trên máy (không key, không tool-use): COMPANY_LLM_PROVIDER=claude-code COMPANY_MODEL_STRONG=claude-opus-5
+#   Gói Claude Pro/Max trên máy (không key): COMPANY_LLM_PROVIDER=claude-code COMPANY_MODEL_STRONG=claude-opus-5
+#     mặc định không tool-use; muốn cả khối kỹ thuật chạy bằng gói này thì đặt `cli_tools: true` trong llm.yaml (ADR-0023)
 #   Gói ChatGPT Plus/Pro qua Codex CLI (không key, không tool-use): COMPANY_LLM_PROVIDER=codex COMPANY_MODEL_STRONG=gpt-5.6-terra
 #   NHIỀU gói cùng lúc (ADR-0019): `backends:` + `routing.prefer` trong llm.yaml — mẫu ở llm.example.yaml; agent có tier
 #   strong/standard/light, gói hết quota tự nghỉ (routing.cooldown_s, transient_cooldown_s). Mỗi backend: name, provider,
@@ -121,7 +122,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0022; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0023; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),

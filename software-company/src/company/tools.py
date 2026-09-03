@@ -55,6 +55,7 @@ class ToolBox:
     """Bảng tool: tên → (spec, hàm). Không có tool = không có hành động; model chỉ chọn trong bảng."""
     _tools: dict[str, tuple[ToolSpec, Callable[..., str]]] = field(default_factory=dict)
     calls: list[dict[str, Any]] = field(default_factory=list)  # vết gọi để audit
+    root: str | None = None  # thư mục gốc của bảng tool; provider tự chạy tool (claude-code cli_tools) cần biết cwd
 
     def add(self, spec: ToolSpec, fn: Callable[..., str]) -> None:
         self._tools[spec.name] = (spec, fn)
@@ -205,6 +206,7 @@ class WorkspaceTools:
         return self.add_to(ToolBox())
 
     def add_to(self, tb: ToolBox) -> ToolBox:
+        tb.root = str(self.root)
         def s(desc: str = "") -> dict[str, Any]:
             return {"type": "string", **({"description": desc} if desc else {})}
         tb.add(ToolSpec("read_file", "Đọc file trong worktree (có số dòng). Dùng start/end cho file dài.",

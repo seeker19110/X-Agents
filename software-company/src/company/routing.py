@@ -150,7 +150,7 @@ class RoutingClient:
 
     def complete(self, *, system: str, user: str, schema: dict[str, Any], model_tier: str,
                  cache_key: str | None = None, tools: list[ToolSpec] | None = None,
-                 messages: list[dict[str, Any]] | None = None) -> Completion:
+                 messages: list[dict[str, Any]] | None = None, workdir: str | None = None) -> Completion:
         candidates = self.order(model_tier, bool(tools))
         if not candidates:
             raise LLMError("routing: yêu cầu có tool nhưng không backend nào hỗ trợ tool-use")
@@ -162,7 +162,7 @@ class RoutingClient:
             b.calls += 1
             try:
                 c = b.client.complete(system=system, user=user, schema=schema, model_tier=model_tier,
-                                      cache_key=cache_key, tools=tools, messages=messages)
+                                      cache_key=cache_key, tools=tools, messages=messages, workdir=workdir)
             except Refused:
                 raise
             except TransientError as e:
