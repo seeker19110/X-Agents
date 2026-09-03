@@ -5,4 +5,24 @@
 # `evals/recordings/<id>.json`, rồi thêm <id> vào danh sách dưới đây. Từ lúc đó mọi
 # thay đổi prompt/skill của agent ấy buộc phải chạy lại eval mới merge được.
 #
-# Danh sách còn trống vì chưa bản ghi nào được tạo bằng model thật.
+# Ghi ngày 2026-09-03 bằng gói Claude trên máy qua provider claude-code.
+account-manager
+backend
+clarifier
+data
+database
+delivery-lead
+frontend
+intake
+mobile
+platform
+qa-debugger
+release-engineer
+researcher
+reviewer
+risk
+security-engineer
+spec-writer
+supervisor
+support-docs
+synthesizer

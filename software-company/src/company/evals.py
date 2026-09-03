@@ -157,6 +157,9 @@ class CaseResult:
     passed: bool
     failures: list[str] = field(default_factory=list)
     tokens: int = 0
+    # True khi ca hỏng vì bản ghi (thiếu hoặc lệch prompt), không phải vì model trả sai.
+    # Hai loại này có hệ quả khác nhau ở mã thoát: bản ghi hỏng là cổng, điểm chấm thì không.
+    broken_recording: bool = False
 
 
 def _get(d: Any, dotted: str) -> Any:
@@ -205,7 +208,8 @@ def run_eval(agent_id: str, client: ModelClient, agents: dict | None = None) -> 
         try:
             r = _run_case(agent_id, case, client, agents, bb, bus)
         except (RunnerError, LLMError) as e:
-            results.append(CaseResult(case["name"], False, [str(e)])); continue
+            broken = isinstance(e, LLMError) and "bản ghi" in str(e)
+            results.append(CaseResult(case["name"], False, [str(e)], broken_recording=broken)); continue
         fails = check(r.output.payload, case.get("expect", {}))
         results.append(CaseResult(case["name"], not fails, fails, r.tokens))
     return results
@@ -231,27 +235,31 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
     agents = load_agents()
     ids = sorted(agents) if ns.agent == "all" else [ns.agent]
-    ok = True
+    # Hai loại kết quả, cố ý tách: `gate_ok` là bản ghi có đủ và đúng phiên bản prompt hay không —
+    # đó là thứ duy nhất làm CI đỏ (ADR-0010). `cases_ok` là điểm chấm, một tín hiệu chất lượng cho
+    # vòng sau; nó chỉ đổi mã thoát khi chạy với model thật ở máy, không đổi khi CI phát lại.
+    gate_ok = True; cases_ok = True
     required = set(required_agents()) if ns.strict else set()
     if ns.strict:
         for aid, why in outdated_versions(ids).items():
-            print(f"FAIL {aid}: {why} — chạy `make eval-record AGENT={aid}` rồi commit lại"); ok = False
+            print(f"FAIL {aid}: {why} — chạy `make eval-record AGENT={aid}` rồi commit lại"); gate_ok = False
     for aid in ids:
         if not load_cases(aid): continue
         if ns.replay:
             try: client: ModelClient = ReplayClient(aid)
             except LLMError as e:
                 print(f"{'FAIL' if aid in required else 'SKIP'} {aid}: {e}")
-                ok = ok and aid not in required
+                gate_ok = gate_ok and aid not in required
                 continue
         else:
             from .llm import make_client
             client = RecordingClient(make_client(), aid) if ns.record else make_client()
         res = run_eval(aid, client, agents)
-        ok = _print(aid, res) and ok
+        cases_ok = _print(aid, res) and cases_ok
+        if any(r.broken_recording for r in res): gate_ok = False
         if ns.record and isinstance(client, RecordingClient):
             print(f"đã ghi {client.save()}")
-    return 0 if ok else 1
+    return 0 if gate_ok and (cases_ok or ns.replay) else 1
 
 
 if __name__ == "__main__":  # pragma: no cover
