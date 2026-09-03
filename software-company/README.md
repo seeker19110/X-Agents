@@ -42,7 +42,7 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
                llm (ModelClient + adapter anthropic/openai/claude-code/codex/fake, tool-use, retry, bảng giá), routing (nhiều gói tài
                khoản, chọn theo tier, xoay khi hết quota — ADR-0019), runner (vòng lặp tool, guard, cắt ngữ cảnh),
                orchestrator (vòng lặp tự động, song song, người can thiệp), workspace (worktree), tools (tool có ranh
-               giới tin cậy), web (tool web cho researcher), guard (chống injection), context (hạn mức ngữ cảnh),
+               giới tin cậy), web (tool web cho researcher), guard (chống injection), assetscan (quét tài sản prompt), context (hạn mức ngữ cảnh),
                metrics (từ audit-log), evals (ghi/phát lại), stacks (lint/test theo stack — ADR-0013), demo, graph (cần
                `uv sync --extra graph`, không tính coverage)
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
@@ -121,7 +121,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0021; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0022; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -174,6 +174,10 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   agent hạ nguồn đọc toàn văn trong prompt, agent chủ namespace bị schema ép trả `content`.
 - **Ngữ cảnh có hạn mức** (`context.py`): `max_input_chars` (llm.yaml / `COMPANY_MAX_INPUT_CHARS`); payload ưu tiên,
   chuỗi dài nhất cắt giữa có nhãn, blackboard chia water-filling, nhãn cắt chỉ đường dẫn artifact; audit `context_trimmed`.
+- **Quét tài sản prompt** (`assetscan.py`, ADR-0022, `make assetscan`): cổng CI cho chính `agents/ skills/
+  templates/ gates/ topics/` — injection (dùng lại `guard.PATTERNS`), ký tự vô hình/bidi, `curl … | sh` và
+  `rm -rf /`, khóa lộ; cảnh báo URL ngoài allowlist. Miễn trừ có lý do ở `assetscan-waivers.txt`. `make assetbudget`
+  báo prompt tĩnh của agent so với `budget_tokens_per_task` (>50% là đỏ, skill khai mà thiếu file cũng đỏ).
 - **Guard injection theo nguồn** (`guard.py`): regex Anh/Việt; nguồn nội bộ khớp → từ chối; nguồn ngoài (khách, web)
   và trường không tin cậy (`diff`, `text`) → thay bằng `[đã lọc]`, đi tiếp, audit `injection_sanitized`.
 - **Retry lỗi transport** (`RetryingClient`): mạng/408/429/5xx thử lại backoff mũ (`retries`, `retry_base`), audit

@@ -273,6 +273,28 @@ jobs:
       - run: uv run pytest -q --cov --cov-report=term
         working-directory: console
 
+  # Tài sản prompt của repo là chuỗi cung ứng (ADR-0022): injection, ký tự ẩn, lệnh nguy hiểm, khóa lộ
+  # trong `agents/ skills/ templates/ gates/ topics/` của CẢ HAI công ty. Miễn trừ: assetscan-waivers.txt.
+  asset-scan:
+    name: asset-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv sync --locked
+        working-directory: software-company
+      - run: PYTHONPATH=src uv run python -m company.assetscan scan . ../Studio-creators
+        working-directory: software-company
+      # Prompt tĩnh không được ăn quá nửa ngân sách token của chính agent đó, và skill khai phải tồn tại.
+      - run: PYTHONPATH=src uv run python -m company.assetscan budget . ../Studio-creators
+        working-directory: software-company
+
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
   quality:
@@ -281,7 +303,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit]
+    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, asset-scan]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success

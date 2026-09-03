@@ -64,6 +64,11 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    prompt cũ, đều làm CI đỏ. Bản ghi phát lại từ file, CI **không** gọi model.
 4. Commit bản ghi đầu tiên của một agent mới thì thêm id của nó vào `REQUIRED.txt` — từ lúc đó agent ấy được
    bảo vệ như trên.
+5. **`make assetscan`** (trong `software-company/`, quét cả hai công ty). Prompt là tài sản chuỗi cung ứng: mẫu
+   injection, ký tự vô hình, lệnh `curl … | sh`, khóa lộ trong file prompt đều làm CI đỏ (ADR-0022). Cần giữ một
+   mẫu để làm ví dụ dạy học thì thêm dòng có lý do vào `assetscan-waivers.txt`, đừng nới regex.
+6. Nhồi thêm skill vào một agent thì chạy **`make assetbudget`**: prompt tĩnh vượt 50% `budget_tokens_per_task`
+   của chính agent đó là đỏ — nâng ngân sách có chủ đích, hoặc bớt skill.
 
 Ca eval chấm không đạt **không** làm CI đỏ (đó là tín hiệu chất lượng cho vòng sau); chỉ bản ghi thiếu hoặc lệch
 mới đỏ.
