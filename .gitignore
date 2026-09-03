@@ -31,3 +31,6 @@ Studio-creators/client_secret*.json
 
 # gateway: token OAuth nằm ngoài cây repo (~/.x-agents/auth/); trong repo chỉ có venv
 gateway/.venv/
+
+# editable install của path dependency (console)
+*.egg-info/
