@@ -84,11 +84,11 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.13"
-      - name: Phụ thuộc có CVE đã biết (cả ba package)
+      - name: Phụ thuộc có CVE đã biết (cả bốn package)
         shell: bash
         run: |
           set -euo pipefail
-          for dir in software-company Studio-creators gateway; do
+          for dir in software-company Studio-creators gateway console; do
             echo "::group::pip-audit $dir"
             (cd "$dir" && uvx pip-audit --strict -r <(uv export --no-hashes --no-dev))
             echo "::endgroup::"
@@ -227,6 +227,48 @@ jobs:
       - run: uv run pytest -q --cov --cov-report=term
         working-directory: gateway
 
+  # console (trực ban hợp nhất): chỉ stdlib, phụ thuộc hai công ty qua path dependency.
+  console-static:
+    name: console-static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv sync --locked
+        working-directory: console
+      - run: uv run ruff check src tests
+        working-directory: console
+      - run: uv run mypy src/console --ignore-missing-imports
+        working-directory: console
+
+  console-unit:
+    name: console-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked
+        working-directory: console
+      # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
+      - run: uv run pytest -q --cov --cov-report=term
+        working-directory: console
+
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
   quality:
@@ -235,7 +277,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit]
+    needs: [static, unit, eval-replay, audit, studio-static, studio-unit, studio-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success

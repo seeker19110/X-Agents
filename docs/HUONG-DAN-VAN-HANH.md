@@ -44,6 +44,7 @@ cd X-Agents
 cd software-company && uv sync && cd ..
 cd Studio-creators  && uv sync && cd ..
 cd gateway          && uv sync && cd ..
+cd console          && uv sync && cd ..   # trực ban hợp nhất; lấy hai công ty qua path dependency
 ```
 
 `uv sync` tạo `.venv` trong từng thư mục theo `uv.lock`. Cần SDK Anthropic (chỉ khi dùng provider `anthropic` có key):
@@ -55,6 +56,7 @@ Kiểm tra cài đặt bằng test offline (không gọi model, không cần key
 cd software-company && uv run pytest -q && cd ..
 cd Studio-creators  && uv run pytest -q && cd ..
 cd gateway          && uv run pytest -q && cd ..
+cd console          && uv run pytest -q && cd ..
 ```
 
 ## 3. Cấu hình model theo gói tài khoản
@@ -442,7 +444,41 @@ curl http://127.0.0.1:8100/v1/models
   tài khoản thì gửi email của tài khoản đó làm bearer.
 - Chạy trên VPS: copy file token lên, `start`; refresh token tự làm mới.
 
-## 8. Theo dõi, chi phí, sự cố
+## 8. Trực ban hợp nhất (console)
+
+Một trang web cục bộ nhìn cả hai công ty trên một màn hình, thay cho việc mở bốn cửa sổ `status` / `report` / `gate_cli`.
+
+```bash
+cd console
+uv sync
+uv run python -m console                 # 127.0.0.1:8200, CHỈ ĐỌC; terminal in địa chỉ kèm token phiên
+uv run python -m console --allow-decide  # mở khoá các nút quyết định gate ngay trên trang
+```
+
+Mở đúng địa chỉ terminal in ra (có token phiên trong đó). Đường dẫn DB khác mặc định thì chỉ ra bằng
+`--company-db` / `--studio-db`.
+
+Năm màn hình: **Trực ban** (hàng đợi gate của cả hai xưởng xếp theo mức quá hạn, ô số event/token/PR chưa kiểm,
+chi phí 14 ngày theo tier, bảng gói tài khoản đang xoay), **Xưởng phần mềm** (bảng ticket, PR chờ review, kết quả
+review), **Xưởng video** (dây chuyền video, số liệu sau khi đăng, đường giữ chân), **Chi phí & hạn mức**
+(trần dự án, ngân sách token từng ticket, chi phí theo agent, can thiệp của supervisor), **Nhật ký** (audit-log
+có bộ lọc). Trang tự làm mới 10 giây một lần, có nút tạm dừng, và ngưng làm mới khi ngăn kéo chi tiết đang mở.
+
+Cần biết khi vận hành:
+
+- **Chỉ đọc là mặc định.** Không có `--allow-decide` thì mọi nút quyết định bị khoá — console là cửa sổ, không phải
+  nút bấm, cho tới khi bạn cố ý bật.
+- **Token sinh mỗi lần chạy**, ghi `console/.console-token` (quyền 600, đã gitignore). Tắt server là token hết hiệu
+  lực. Server chỉ bind loopback; `--host` khác bị từ chối khởi động.
+- **Quyết định đi qua đúng `HumanGate` của công ty**: four-eyes (người duyệt phải khác người tạo), allowlist
+  `STUDIO_GATE_APPROVERS` và `audit-log` vẫn áp như khi dùng `gate_cli`. Ô "Bạn là" trên ngăn kéo chính là `--by`.
+- **Công ty chưa chạy bao giờ** (chưa có file DB) không phải lỗi: trang hiện trạng thái rỗng kèm lý do, không hiện
+  số 0 giả. Mất liên lạc với server thì có dải cảnh báo trên cùng và số liệu giữ nguyên lần đọc cuối.
+- Console **đọc** SQLite trong lúc orchestrator đang ghi, không khoá gì; số liệu trễ tối đa một nhịp làm mới.
+
+Chi tiết: [`../console/README.md`](../console/README.md), quyết định thiết kế ở `console/docs/adr/0001-console-hop-nhat.md`.
+
+## 9. Theo dõi, chi phí, sự cố
 
 **Audit-log là nguồn sự thật.** Mọi lời gọi model, tool, gate, hành động supervisor đều là bản ghi `audit-log` trong
 SQLite; `status` / `report` / `metrics` đọc từ đó.
@@ -460,7 +496,7 @@ SQLite; `status` / `report` / `metrics` đọc từ đó.
 Ngân sách: mỗi brief/ticket phải có `estimate_tokens`; code từ chối kế hoạch nếu `budget_tokens < estimate × 1.5`.
 software-company còn có trần `budget_usd` theo dự án: 80% warn, 100% pause cho tới khi người `resume`.
 
-## 9. Bảo trì: sửa agent, skill, model
+## 10. Bảo trì: sửa agent, skill, model
 
 | Việc | Cần làm |
 |---|---|
@@ -484,10 +520,11 @@ PYTHONPATH=src uv run python -m company.evals all --replay --strict   # studio: 
 Quy trình Git: [`QUY-TRINH-GIT.md`](QUY-TRINH-GIT.md). Không commit `llm.yaml`, `media.yaml`, `*.sqlite`, `output/`,
 token gateway.
 
-## 10. Checklist hàng ngày
+## 11. Checklist hàng ngày
 
 1. `gateway status`: còn tài khoản sẵn sàng không; `claude auth status` còn đăng nhập không.
 2. `orchestrator status` từng công ty: có gate nào chờ người, event nào hoãn lâu, ticket nào pause.
+   Hoặc mở console (`cd console && uv run python -m console`) để thấy cả hai xưởng trên một màn hình.
 3. Duyệt gate; trả lời clarification / change request nếu có.
 4. `report`: chi phí và hành động supervisor bất thường; `llm_retry` cho biết gói nào đang gánh việc.
 5. Với Studio: chạy `studio.youtube sync-metrics` / `sync-comments` (hoặc đưa file `publish-events`, `performance-snapshots`,

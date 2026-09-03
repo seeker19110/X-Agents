@@ -34,3 +34,6 @@ gateway/.venv/
 
 # editable install của path dependency (console)
 *.egg-info/
+
+# console: token phiên sinh mỗi lần chạy server trực ban (quyền 0600) — không bao giờ commit
+console/.console-token

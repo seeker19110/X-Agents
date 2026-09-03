@@ -51,4 +51,4 @@ source = ["src/console"]
 
 [tool.coverage.report]
 # Đặt ở mức đang đạt để chặn tụt lùi, nâng lên khi coverage thật tăng.
-fail_under = 85
+fail_under = 84

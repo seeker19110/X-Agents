@@ -1,0 +1,913 @@
+<title>Trực ban X-Agents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#eff2f1; --surface:#fbfcfb; --surface-2:#f4f6f5; --surface-sunk:#e7ebea;
+  --line:#d5dcda; --line-soft:#e3e8e7;
+  --ink:#14201e; --ink-2:#4d5b58; --ink-muted:#798683;
+  --accent:#0b6e63; --accent-ink:#08514a; --accent-wash:#e0efec;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --warn-ink:#8a5c00; --good-ink:#0a6f0a; --crit-ink:#a12b2b;
+  --warn-wash:#fdf2da; --good-wash:#e4f4e4; --crit-wash:#f8e4e4;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  --chart-surface:#fcfcfb; --grid:#e0e5e3; --axis:#898781;
+  --shadow:0 1px 2px rgba(20,32,30,.06),0 8px 24px -12px rgba(20,32,30,.18);
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --sans:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --rail:236px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0e1413; --surface:#161e1d; --surface-2:#1b2422; --surface-sunk:#111817;
+  --line:#2a3634; --line-soft:#222d2b;
+  --ink:#eaf0ee; --ink-2:#a8b6b3; --ink-muted:#7d8a87;
+  --accent:#3fa495; --accent-ink:#5fbcae; --accent-wash:#14322e;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --warn-ink:#f0bd52; --good-ink:#5cc45c; --crit-ink:#e88484;
+  --warn-wash:#33280d; --good-wash:#16301a; --crit-wash:#34191a;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --chart-surface:#1a1a19; --grid:#2c3634; --axis:#898781;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.7);
+}}
+:root[data-theme="dark"]{
+  --ground:#0e1413; --surface:#161e1d; --surface-2:#1b2422; --surface-sunk:#111817;
+  --line:#2a3634; --line-soft:#222d2b;
+  --ink:#eaf0ee; --ink-2:#a8b6b3; --ink-muted:#7d8a87;
+  --accent:#3fa495; --accent-ink:#5fbcae; --accent-wash:#14322e;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+  --warn-ink:#f0bd52; --good-ink:#5cc45c; --crit-ink:#e88484;
+  --warn-wash:#33280d; --good-wash:#16301a; --crit-wash:#34191a;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --chart-surface:#1a1a19; --grid:#2c3634; --axis:#898781;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:600;letter-spacing:-.01em}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-muted)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-columns:var(--rail) minmax(0,1fr);min-height:100vh}
+.rail{background:var(--surface-sunk);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:20px;padding:18px 0 14px;position:sticky;top:0;height:100vh}
+.brand{padding:0 18px;display:flex;flex-direction:column;gap:2px}
+.brand b{font-size:15px;font-weight:700;letter-spacing:-.02em}
+.brand span{font-size:11px;color:var(--ink-muted)}
+.navgroup{display:flex;flex-direction:column;gap:1px}
+.navgroup .eyebrow{padding:0 18px 6px}
+.nav{display:flex;align-items:center;gap:9px;padding:7px 18px;background:none;border:0;border-left:2px solid transparent;cursor:pointer;text-align:left;color:var(--ink-2);font-size:13.5px}
+.nav:hover{background:var(--surface-2);color:var(--ink)}
+.nav[aria-current="true"]{color:var(--accent-ink);border-left-color:var(--accent);background:var(--surface);font-weight:600}
+.nav .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-muted)}
+.nav[aria-current="true"] .cnt{color:var(--accent-ink)}
+.nav .dot{width:6px;height:6px;border-radius:50%;background:var(--warn);flex:none}
+.rail-foot{margin-top:auto;padding:12px 18px 0;border-top:1px solid var(--line-soft);display:flex;flex-direction:column;gap:7px}
+.pool{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
+.pool .bar{flex:1;height:4px;background:var(--surface-2);border-radius:2px;overflow:hidden}
+.pool .bar i{display:block;height:100%;background:var(--accent)}
+
+main{min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;padding:20px 28px 14px;border-bottom:1px solid var(--line);background:var(--surface)}
+.topbar h1{font-size:19px}
+.topbar .sub{font-size:12.5px;color:var(--ink-muted)}
+.topbar .spacer{flex:1}
+.chips{display:flex;gap:14px;flex-wrap:wrap}
+.chip{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--ink-2)}
+.chip b{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink)}
+.view{padding:22px 28px 48px;display:none;flex-direction:column;gap:26px;max-width:1240px}
+.view.on{display:flex}
+
+/* ---------- blocks ---------- */
+.sect{display:flex;flex-direction:column;gap:11px}
+.sect-head{display:flex;align-items:baseline;gap:12px}
+.sect-head h2{font-size:14.5px}
+.sect-head p{margin:0;font-size:12.5px;color:var(--ink-muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px}
+
+/* gate queue — the one lifted element */
+.queue{display:flex;flex-direction:column;gap:8px}
+.gate{display:grid;grid-template-columns:3px 1fr auto;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:7px;box-shadow:var(--shadow);overflow:hidden;text-align:left;cursor:pointer;padding:0;font:inherit;color:inherit;width:100%}
+.gate:hover{border-color:var(--accent)}
+.gate .stripe{background:var(--warn)}
+.gate[data-sev="over"] .stripe{background:var(--crit)}
+.gate[data-sev="calm"] .stripe{background:var(--line)}
+.gate .body{padding:13px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.gate .id{font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:-.01em}
+.gate h3{font-size:14.5px;font-weight:500;line-height:1.35}
+.gate .meta{display:flex;flex-wrap:wrap;gap:5px 14px;font-size:12px;color:var(--ink-muted)}
+.gate .meta code{font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+.gate .side{padding:13px 16px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:6px;border-left:1px solid var(--line-soft);background:var(--surface-2)}
+.gate .age{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.cl{display:flex;flex-wrap:wrap;gap:4px}
+.cl code{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:3px;background:var(--surface-sunk);border:1px solid var(--line-soft);color:var(--ink-2)}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;padding:2px 8px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+.pill::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;flex:none}
+.pill.warn{color:var(--warn-ink);background:var(--warn-wash);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+.pill.good{color:var(--good-ink);background:var(--good-wash);border-color:color-mix(in srgb,var(--good) 30%,transparent)}
+.pill.crit{color:var(--crit-ink);background:var(--crit-wash);border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
+.pill.calm{color:var(--ink-2);background:var(--surface-2);border-color:var(--line)}
+.pill.accent{color:var(--accent-ink);background:var(--accent-wash);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.tile{background:var(--surface);padding:13px 15px;display:flex;flex-direction:column;gap:3px}
+.tile .k{font-size:11.5px;color:var(--ink-muted)}
+.tile .v{font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.15}
+.tile .n{font-size:11.5px;color:var(--ink-2)}
+
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:13px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+th{text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted);padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface-2)}
+td{padding:9px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--surface-2)}
+td.mono,th.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.r,th.r{text-align:right}
+.tr-click{cursor:pointer}
+
+/* board */
+.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.col{background:var(--surface-sunk);border:1px solid var(--line-soft);border-radius:6px;padding:9px;display:flex;flex-direction:column;gap:7px}
+.col-h{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--ink-2)}
+.col-h .n{margin-left:auto;font-family:var(--mono);color:var(--ink-muted);font-weight:500}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:9px 10px;display:flex;flex-direction:column;gap:5px;cursor:pointer;text-align:left;width:100%;font:inherit;color:inherit}
+.card:hover{border-color:var(--accent)}
+.card .id{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--ink-2)}
+.card .t{font-size:12.5px;line-height:1.35}
+.card .f{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--ink-muted)}
+.meter{height:3px;background:var(--surface-sunk);border-radius:2px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent)}
+.meter.over i{background:var(--crit)}
+.meter.near i{background:var(--warn)}
+
+/* charts */
+.chartbox{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px 10px;display:flex;flex-direction:column;gap:10px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:9px;height:9px;border-radius:2px;display:block}
+svg{display:block;overflow:visible}
+.tip{position:fixed;z-index:40;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:5px;box-shadow:var(--shadow);padding:8px 10px;font-size:12px;min-width:130px;opacity:0;transition:opacity .1s}
+.tip.on{opacity:1}
+.tip b{display:block;font-family:var(--mono);font-size:11.5px;margin-bottom:4px;color:var(--ink-2)}
+.tip .row{display:flex;align-items:center;gap:7px;justify-content:space-between}
+.tip .row i{width:8px;height:8px;border-radius:2px}
+.tip .row em{font-style:normal;flex:1;color:var(--ink-2)}
+.tip .row s{text-decoration:none;font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* budget rows */
+.brow{display:grid;grid-template-columns:110px 1fr 150px;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line-soft)}
+.brow:last-child{border-bottom:0}
+.brow .lbl{font-family:var(--mono);font-size:12.5px}
+.brow .track{height:8px;background:var(--surface-sunk);border-radius:3px;position:relative;overflow:hidden}
+.brow .track i{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:3px}
+.brow .track i.near{background:var(--warn)}
+.brow .track i.over{background:var(--crit)}
+.brow .track u{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);box-shadow:0 0 0 1.5px var(--surface)}
+.brow .fig{text-align:right;font-family:var(--mono);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+
+/* stream */
+.stream{display:flex;flex-direction:column}
+.ev{display:grid;grid-template-columns:56px 128px 1fr auto;gap:12px;padding:7px 14px;border-bottom:1px solid var(--line-soft);font-size:12.5px;align-items:baseline}
+.ev:last-child{border-bottom:0}
+.ev .t,.ev .a,.ev .tok{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.ev .t{color:var(--ink-muted);font-size:11.5px}
+.ev .a{color:var(--ink-2);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.ev .tok{color:var(--ink-muted);font-size:11.5px;text-align:right}
+.ev code{font-family:var(--mono);font-size:12px;color:var(--ink)}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.fbtn{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--ink-2);cursor:pointer}
+.fbtn[aria-pressed="true"]{background:var(--accent-wash);border-color:color-mix(in srgb,var(--accent) 40%,transparent);color:var(--accent-ink);font-weight:600}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(10,18,17,.42);opacity:0;pointer-events:none;transition:opacity .16s;z-index:50}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(468px,100%);background:var(--surface);border-left:1px solid var(--line);z-index:51;transform:translateX(100%);transition:transform .18s ease;display:flex;flex-direction:column}
+.drawer.on{transform:none}
+.dr-h{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:12px}
+.dr-h .id{font-family:var(--mono);font-size:14px;font-weight:600}
+.dr-h h2{font-size:15px;font-weight:500;margin-top:3px;line-height:1.35}
+.x{margin-left:auto;background:none;border:1px solid var(--line);border-radius:5px;width:28px;height:28px;cursor:pointer;color:var(--ink-2);flex:none;line-height:1}
+.x:hover{border-color:var(--accent);color:var(--accent-ink)}
+.dr-b{padding:16px 20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:18px}
+.dl{display:grid;grid-template-columns:104px 1fr;gap:7px 12px;font-size:12.5px}
+.dl dt{color:var(--ink-muted)}
+.dl dd{margin:0;font-family:var(--mono);font-size:12.5px;word-break:break-word}
+.check{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft);cursor:pointer}
+.check:last-child{border-bottom:0}
+.check input{margin:2px 0 0;accent-color:var(--accent);width:15px;height:15px;flex:none}
+.check .n{font-family:var(--mono);font-size:12.5px}
+.check .d{font-size:11.5px;color:var(--ink-muted);display:block;font-family:var(--sans)}
+.dr-f{border-top:1px solid var(--line);padding:14px 20px;display:flex;flex-direction:column;gap:10px;background:var(--surface-2)}
+.dr-f textarea{width:100%;resize:vertical;min-height:52px;border:1px solid var(--line);border-radius:5px;padding:8px 10px;background:var(--surface);font-size:12.5px;font-family:var(--sans)}
+.verbs{display:flex;gap:7px;flex-wrap:wrap}
+.vb{border:1px solid var(--line);background:var(--surface);border-radius:5px;padding:7px 13px;font-size:12.5px;font-weight:500;cursor:pointer}
+.vb:hover{border-color:var(--ink-2)}
+.vb.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.vb.primary:hover{background:var(--accent-ink)}
+.vb.danger:hover{border-color:var(--crit);color:var(--crit-ink)}
+.vb:disabled{opacity:.45;cursor:not-allowed}
+.note{font-size:11.5px;color:var(--ink-muted)}
+.empty{padding:26px 16px;text-align:center;color:var(--ink-muted);font-size:13px;border:1px dashed var(--line);border-radius:6px;background:var(--surface)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,14px);background:var(--ink);color:var(--ground);padding:9px 16px;border-radius:6px;font-size:13px;z-index:60;opacity:0;transition:.18s;pointer-events:none;box-shadow:var(--shadow)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:880px){
+  .app{grid-template-columns:1fr}
+  .rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;border-right:0;border-bottom:1px solid var(--line)}
+  .rail-foot{margin:0;border:0;padding:0;flex-direction:row;gap:12px}
+  .navgroup{flex-direction:row;flex-wrap:wrap}
+  .navgroup .eyebrow{display:none}
+  .nav{border-left:0;border-bottom:2px solid transparent;padding:6px 10px}
+  .nav[aria-current="true"]{border-left:0;border-bottom-color:var(--accent)}
+  .view,.topbar{padding-left:16px;padding-right:16px}
+  .brow{grid-template-columns:92px 1fr;grid-auto-rows:min-content}
+  .brow .fig{grid-column:2;text-align:left}
+  .ev{grid-template-columns:52px 1fr;row-gap:2px}
+  .ev .tok{grid-column:2;text-align:left}
+}
+
+/* ---------- trạng thái tải, lỗi, tự làm mới (nối dữ liệu thật) ---------- */
+.banner{display:none;gap:10px;align-items:baseline;flex-wrap:wrap;padding:9px 28px;font-size:12.5px;
+  background:var(--crit-wash);color:var(--crit-ink);border-bottom:1px solid color-mix(in srgb,var(--crit) 35%,transparent)}
+.banner.on{display:flex}
+.banner b{font-weight:600}
+.banner .note{color:var(--crit-ink);opacity:.85}
+.refresh{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-muted)}
+.refresh button{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--ink-2);cursor:pointer}
+.refresh button:hover{border-color:var(--accent);color:var(--accent-ink)}
+.refresh button[aria-pressed="true"]{background:var(--warn-wash);border-color:color-mix(in srgb,var(--warn) 40%,transparent);color:var(--warn-ink);font-weight:600}
+.skel{border-radius:4px;background:linear-gradient(90deg,var(--surface-sunk),var(--surface-2),var(--surface-sunk));
+  background-size:200% 100%;animation:sk 1.2s linear infinite;color:transparent!important}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skel-row{height:52px;margin:0 0 8px;border-radius:7px}
+.skel-line{height:12px;margin:6px 0}
+.loading .tile .v,.loading .chip b{color:transparent;background:var(--surface-sunk);border-radius:4px}
+.empty b{display:block;color:var(--ink-2);font-weight:600;margin-bottom:3px}
+.empty code{font-family:var(--mono);font-size:11.5px}
+.by{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-muted)}
+.by input{flex:1;border:1px solid var(--line);border-radius:5px;padding:6px 9px;background:var(--surface);font-size:12.5px;font-family:var(--mono)}
+</style>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <b>Trực ban X-Agents</b>
+      <span id="brand-sub">đang đọc trạng thái…</span>
+    </div>
+    <div class="navgroup" id="nav">
+      <div class="eyebrow">Điều hành</div>
+      <button class="nav" data-v="truc-ban" aria-current="true"><span class="dot"></span>Trực ban<span class="cnt" id="nav-gates">—</span></button>
+      <button class="nav" data-v="phan-mem">Xưởng phần mềm<span class="cnt" id="nav-tickets">—</span></button>
+      <button class="nav" data-v="video">Xưởng video<span class="cnt" id="nav-videos">—</span></button>
+      <button class="nav" data-v="chi-phi">Chi phí &amp; hạn mức</button>
+      <button class="nav" data-v="nhat-ky">Nhật ký</button>
+    </div>
+    <div class="rail-foot">
+      <div class="eyebrow">Gói tài khoản</div>
+      <div class="pool"><span id="pool-txt">—</span><span class="bar"><i id="pool-bar" style="width:0%"></i></span></div>
+      <div class="note" id="pool-note">chưa đọc được trạng thái backend</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div>
+        <h1 id="vt">Trực ban</h1>
+        <div class="sub" id="vs">đang đọc trạng thái…</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="chips">
+        <div class="chip">Chờ duyệt <b id="chip-gates">—</b></div>
+        <div class="chip">Hôm nay <b id="chip-cost">—</b></div>
+        <div class="chip">Token <b id="chip-tokens">—</b></div>
+        <div class="chip">Ticket kẹt <b id="chip-stuck">—</b></div>
+      </div>
+      <div class="refresh">
+        <span id="mode-pill"></span>
+        <span id="fresh">—</span>
+        <button id="pause" aria-pressed="false" title="Tạm dừng tự làm mới 10 giây một lần">Tạm dừng</button>
+      </div>
+    </div>
+
+    <div class="banner" id="banner" role="status" aria-live="polite">
+      <b id="banner-msg"></b><span class="note" id="banner-note"></span>
+    </div>
+
+    <!-- ============ TRỰC BAN ============ -->
+    <section class="view on" id="v-truc-ban">
+      <div class="sect">
+        <div class="sect-head">
+          <h2>Chờ bạn duyệt</h2>
+          <p>Không ai khác duyệt được — công việc dừng ở đây cho tới khi bạn quyết.</p>
+        </div>
+        <div class="queue" id="queue"></div>
+      </div>
+
+      <div class="tiles">
+        <div class="tile"><span class="k">Event đã xử lý</span><span class="v" id="t-events">—</span><span class="n" id="t-events-n">—</span></div>
+        <div class="tile"><span class="k">Lời gọi model</span><span class="v" id="t-calls">—</span><span class="n" id="t-calls-n">—</span></div>
+        <div class="tile"><span class="k">Token đã dùng</span><span class="v" id="t-tok">—</span><span class="n" id="t-tok-n">—</span></div>
+        <div class="tile"><span class="k">Tỉ lệ làm lại</span><span class="v" id="t-rework">—</span><span class="n" id="t-rework-n">—</span></div>
+        <div class="tile"><span class="k">PR chưa kiểm</span><span class="v" id="t-prs">—</span><span class="n">lint + test chạy thật</span></div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Chi phí 14 ngày theo tier</h2><p>USD mỗi ngày, tách theo tier định tuyến</p></div>
+        <div class="chartbox">
+          <div class="legend">
+            <span><i style="background:var(--s1)"></i>strong</span>
+            <span><i style="background:var(--s2)"></i>standard</span>
+            <span><i style="background:var(--s3)"></i>light</span>
+          </div>
+          <div id="chart-cost"></div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Gói tài khoản đang xoay</h2><p>tier nào đi gói nào, gói nào đang nghỉ</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Backend</th><th>Tier</th><th>Tool</th><th>Trạng thái</th><th class="r">Lời gọi</th><th class="r">Lỗi</th></tr></thead>
+            <tbody id="backends"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-head"><h2>Dòng sự kiện</h2><p>10 bản ghi audit gần nhất</p></div>
+        <div class="panel stream" id="stream-mini"></div>
+      </div>
+    </section>
+
+    <!-- ============ PHẦN MỀM ============ -->
+    <section class="view" id="v-phan-mem">
+      <div class="sect">
+        <div class="sect-head"><h2>Bảng ticket</h2><p>bấm một ticket để xem PR, review và ngân sách</p></div>
+        <div class="board" id="board-tickets"></div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Pull request chờ review</h2><p>lint và test do code chạy thật trên worktree, không phải model tự khai</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Ticket</th><th>Nhánh</th><th>Tóm tắt</th><th>lint</th><th>tests</th><th>Xác minh</th></tr></thead>
+            <tbody id="prs"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Kết quả review</h2><p>reviewer, qa và security cùng chấm một PR</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Ticket</th><th>Nguồn</th><th>Kết luận</th><th>Phát hiện</th></tr></thead>
+            <tbody id="reviews"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VIDEO ============ -->
+    <section class="view" id="v-video">
+      <div class="sect">
+        <div class="sect-head"><h2>Dây chuyền video</h2><p>bấm một video để xem ngân sách token của nó</p></div>
+        <div class="board" id="board-videos"></div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Số liệu sau khi đăng</h2><p>kéo về từ YouTube Analytics, nuôi lại chiến lược kênh</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Video</th><th class="r">Hiển thị</th><th class="r">Lượt xem</th><th class="r">CTR</th><th class="r">Xem TB</th><th>Giữ chân</th></tr></thead>
+            <tbody id="perf"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2 id="ret-title">Đường giữ chân</h2><p>phần trăm người còn xem theo mốc thời gian; chỗ rơi sâu nhất được đánh dấu</p></div>
+        <div class="chartbox"><div id="chart-ret"></div></div>
+      </div>
+    </section>
+
+    <!-- ============ CHI PHÍ ============ -->
+    <section class="view" id="v-chi-phi">
+      <div class="tiles">
+        <div class="tile"><span class="k">Chi phí dự án</span><span class="v" id="c-spent">—</span><span class="n" id="c-spent-n">—</span></div>
+        <div class="tile"><span class="k">Còn lại</span><span class="v" id="c-left">—</span><span class="n" id="c-left-n">—</span></div>
+        <div class="tile"><span class="k">Lời gọi chưa có giá</span><span class="v" id="c-unpriced">—</span><span class="n">gói thuê bao, không tính tiền</span></div>
+        <div class="tile"><span class="k">Hiệu chỉnh ước lượng</span><span class="v" id="c-cal">—</span><span class="n">thực tế / dự kiến</span></div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Ngân sách token theo ticket</h2><p>vạch đứng là ước lượng của lead, thanh là đã dùng thật</p></div>
+        <div class="panel" id="budgets"></div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Chi phí theo agent</h2><p>USD tích luỹ, gồm cả lượt review và làm lại</p></div>
+        <div class="chartbox"><div id="chart-agent"></div></div>
+      </div>
+      <div class="sect">
+        <div class="sect-head"><h2>Can thiệp của supervisor</h2><p>mỗi lần chạm ngưỡng đều ghi lý do và bằng chứng</p></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Mục tiêu</th><th>Hành động</th><th>Lý do</th><th>Lúc</th></tr></thead>
+            <tbody id="sup"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NHẬT KÝ ============ -->
+    <section class="view" id="v-nhat-ky">
+      <div class="sect">
+        <div class="sect-head"><h2>Audit-log</h2><p>mọi hành động của agent và người đều nằm ở đây, kèm token và chi phí thật</p></div>
+        <div class="filters" id="filters"></div>
+        <div class="panel stream" id="stream-full"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" role="dialog" aria-label="Chi tiết"></aside>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const vnd=n=>Number(n||0).toLocaleString("vi-VN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const num=n=>Number(n||0).toLocaleString("vi-VN");
+const kb=n=>n>=1000?(n/1000).toLocaleString("vi-VN",{maximumFractionDigits:1})+"k":String(n||0);
+const pctTxt=n=>(Number(n||0)*100).toFixed(1).replace(".",",")+"%";
+const dec2=n=>Number(n||0).toLocaleString("vi-VN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const mmss=s=>Math.floor(s/60)+":"+String(Math.round(s%60)).padStart(2,"0");
+
+/* ---------- cầu nối với server cục bộ ---------- */
+const CONSOLE=window.__CONSOLE__||{};
+const TOKEN=CONSOLE.token||"";
+const READONLY=CONSOLE.readonly!==false;          // không biết thì coi như chỉ đọc
+const ME_KEY="x-agents-console-by";
+const HTTP={400:"Tham số không hợp lệ.",401:"Token phiên không đúng — mở lại trang từ địa chỉ server in ra.",
+  403:"Bị chặn (chế độ chỉ đọc hoặc Origin lạ).",404:"Không có đường dẫn này.",409:"Gate đã được quyết rồi.",
+  500:"Server gặp lỗi không lường trước."};
+const httpMsg=s=>HTTP[s]||("Server trả HTTP "+s+".");
+
+async function api(path,init){
+  const r=await fetch(path,Object.assign({cache:"no-store"},init,
+    {headers:Object.assign({"X-Console-Token":TOKEN},(init&&init.headers)||{})}));
+  let body=null; try{body=await r.json();}catch(_){}
+  if(!r.ok) throw new Error((body&&body.error)||httpMsg(r.status));
+  return body;
+}
+
+/* ---------- trạng thái ---------- */
+const SC="software-company", ST="Studio-creators", GW="gateway";
+const BLANK={generated_at:null,sources:{},tiles:{},gates:[],tickets:[],prs:[],reviews:[],videos:[],perf:[],
+  retention:null,cost_days:{days:[],series:[]},agents:[],backends:[],supervisor:[],log:[]};
+let S=null;                    // dữ liệu tốt lần cuối đọc được — giữ nguyên khi lỗi
+let firstLoad=true, paused=false, drawerOpen=false, lastOk=null, timer=null;
+const st=()=>S||BLANK;
+const NOT_READ="chưa đọc được /api/state";
+function source(k){
+  const s=(st().sources||{})[k];
+  if(!s) return {ok:false,error:S?"nguồn này không có trong /api/state":NOT_READ};
+  return s;
+}
+const srcOk=k=>source(k).ok===true;
+const srcWhy=k=>source(k).error||"chưa có dữ liệu";
+function emptyBox(k,what){return `<div class="empty"><b>${esc(what)}</b>${esc(srcWhy(k))}</div>`;}
+function emptyRow(cols,k,what){return `<tr><td colspan="${cols}" style="padding:0">${emptyBox(k,what)}</td></tr>`;}
+const listOf=(k,arr)=>srcOk(k)?(arr||[]):[];     // nguồn hỏng thì không vẽ số nào của nó
+
+/* ---------- dải cảnh báo ---------- */
+function banner(msg,note){
+  const b=$("#banner");
+  if(!msg){b.classList.remove("on");return;}
+  b.classList.add("on"); $("#banner-msg").textContent=msg; $("#banner-note").textContent=note||"";
+}
+
+/* ---------- vòng đọc ---------- */
+function skeleton(){
+  document.body.classList.add("loading");
+  $("#queue").innerHTML='<div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div>';
+  $("#stream-mini").innerHTML=Array.from({length:6},()=>'<div class="skel skel-line" style="margin:9px 14px"></div>').join("");
+  $("#stream-full").innerHTML=$("#stream-mini").innerHTML;
+  $("#backends").innerHTML='<tr><td colspan="6"><div class="skel skel-line"></div></td></tr>';
+  $("#fresh").textContent="đang đọc…";
+}
+async function load(){
+  try{
+    const data=await api("/api/state");
+    S=data; lastOk=new Date(); banner(null);
+  }catch(err){
+    banner(S?"Mất liên lạc với server console — số liệu dưới đây là lần đọc cuối.":"Chưa đọc được trạng thái.",
+      err.message+(lastOk?" · lần đọc cuối "+lastOk.toLocaleTimeString("vi-VN"):""));
+  }finally{
+    firstLoad=false; document.body.classList.remove("loading"); render();
+  }
+}
+function schedule(){
+  clearTimeout(timer);
+  if(paused||drawerOpen) return;                 // ngăn kéo mở thì không làm mới dưới tay người đang đọc
+  timer=setTimeout(async()=>{await load(); schedule();},10000);
+}
+$("#pause").addEventListener("click",()=>{
+  paused=!paused;
+  $("#pause").setAttribute("aria-pressed",String(paused));
+  $("#pause").textContent=paused?"Tiếp tục":"Tạm dừng";
+  if(!paused) load().then(schedule); else clearTimeout(timer);
+  freshLabel();
+});
+function freshLabel(){
+  const f=$("#fresh");
+  if(firstLoad){f.textContent="đang đọc…";return;}
+  const t=lastOk?lastOk.toLocaleTimeString("vi-VN"):"chưa có";
+  f.textContent=paused?"đã dừng · đọc lúc "+t:drawerOpen?"tạm ngưng khi mở ngăn kéo · "+t:"làm mới 10 giây · "+t;
+}
+
+/* ---------- điều hướng ---------- */
+const TITLES={
+ "truc-ban":()=>["Trực ban",`${st().gates.length||0} việc chờ duyệt · hàng đợi còn ${num(st().tiles.queue)} event`],
+ "phan-mem":()=>["Xưởng phần mềm",srcOk(SC)?`${listOf(SC,st().tickets).length} ticket đang mở, ${listOf(SC,st().prs).length} PR chờ review`:srcWhy(SC)],
+ "video":()=>["Xưởng video",srcOk(ST)?`${listOf(ST,st().videos).length} video trong dây chuyền`:srcWhy(ST)],
+ "chi-phi":()=>["Chi phí & hạn mức",`${vnd(st().tiles.project_cost_usd)} / ${vnd(st().tiles.project_budget_usd)} USD dự án · ${st().backends.length} gói tài khoản`],
+ "nhat-ky":()=>["Nhật ký",`audit-log ${num(st().log.length)} bản ghi · lọc theo hành động`]};
+let view="truc-ban";
+function titles(){const [t,s]=TITLES[view]();$("#vt").textContent=t;$("#vs").textContent=s;}
+$("#nav").addEventListener("click",e=>{
+  const b=e.target.closest(".nav"); if(!b) return;
+  view=b.dataset.v;
+  $$(".nav").forEach(n=>n.setAttribute("aria-current",String(n===b)));
+  $$(".view").forEach(v=>v.classList.toggle("on",v.id==="v-"+view));
+  titles(); window.scrollTo({top:0});
+});
+
+/* ---------- hàng đợi gate ---------- */
+const KIND={plan:"kế hoạch",publish:"đăng",escalation:"leo thang",acceptance:"nghiệm thu",replies:"trả lời",spec:"đặc tả",release:"phát hành"};
+function renderQueue(){
+  const gates=st().gates||[], q=$("#queue");
+  const dead=[SC,ST].filter(k=>!srcOk(k));
+  if(!gates.length){
+    q.innerHTML=dead.length===2
+      ? `<div class="empty"><b>Chưa đọc được xưởng nào</b>${esc(dead.map(k=>k+": "+srcWhy(k)).join(" · "))}</div>`
+      : `<div class="empty"><b>Sạch hàng đợi</b>Không có gì chờ bạn duyệt${dead.length?" (chưa tính "+esc(dead[0])+": "+esc(srcWhy(dead[0]))+")":""}.</div>`;
+  }else q.innerHTML=gates.map(g=>{
+    const h=Number(g.hours||0);
+    const flag=h>=24?'<span class="pill crit">quá hạn</span>':h>=12?'<span class="pill warn">sắp quá hạn</span>':'<span class="pill calm">còn hạn</span>';
+    return `<button class="gate" data-id="${esc(g.id)}" data-sev="${esc(g.sev||"calm")}">
+      <span class="stripe"></span>
+      <span class="body">
+        <span class="id">${esc(g.id)}</span>
+        <h3>${esc(g.title)}</h3>
+        <span class="meta"><span>${esc(g.xuong)}</span><span>gate <code>${esc(KIND[g.kind]||g.kind)}</code></span><span>tạo bởi <code>${esc(g.by)}</code></span></span>
+        <span class="cl">${(g.cl||[]).map(c=>`<code>${esc(c[0])}</code>`).join("")}</span>
+      </span>
+      <span class="side">${flag}<span class="age">${h} giờ</span></span>
+    </button>`;}).join("");
+  $("#nav-gates").textContent=gates.length; $("#chip-gates").textContent=gates.length;
+  $$(".nav")[0].querySelector(".dot").style.display=gates.length?"":"none";
+}
+$("#queue").addEventListener("click",e=>{const b=e.target.closest(".gate"); if(b) openGate(b.dataset.id);});
+
+/* ---------- ngăn kéo ---------- */
+const drawer=$("#drawer"), scrim=$("#scrim");
+function shut(){
+  drawer.classList.remove("on");scrim.classList.remove("on");drawer.setAttribute("aria-hidden","true");
+  drawerOpen=false; freshLabel(); schedule();
+}
+scrim.addEventListener("click",shut);
+document.addEventListener("keydown",e=>{if(e.key==="Escape")shut();});
+function show(html){
+  drawer.innerHTML=html;drawer.classList.add("on");scrim.classList.add("on");drawer.setAttribute("aria-hidden","false");
+  drawerOpen=true; clearTimeout(timer); freshLabel();
+  const c=drawer.querySelector(".x"); if(c)c.addEventListener("click",shut);
+  const b=drawer.querySelector(".dr-b"); if(b)b.scrollTop=0;
+}
+const toastEl=$("#toast");
+function toast(m){toastEl.textContent=m;toastEl.classList.add("on");clearTimeout(toastEl._h);toastEl._h=setTimeout(()=>toastEl.classList.remove("on"),2600);}
+
+const VERB={approve:"Đã duyệt",request_changes:"Đã trả lại sửa",hold:"Đã giữ lại",reject:"Đã từ chối",rollback:"Đã thu hồi"};
+const VERB_ING={request_changes:"trả lại",hold:"giữ",reject:"từ chối",rollback:"thu hồi"};
+const RO_NOTE='Chế độ <b>chỉ đọc</b> — nút quyết định bị khoá. Muốn duyệt gate từ trang này thì dừng server và chạy lại '
+  +'<code>uv run python -m console --allow-decide</code> (chỉ nghe trên 127.0.0.1, vẫn cần token phiên).';
+
+function openGate(id){
+  const g=(st().gates||[]).find(x=>x.id===id); if(!g) return;
+  const cl=g.cl||[], facts=g.facts||[];
+  show(`<div class="dr-h">
+      <div><div class="id">${esc(g.id)}</div><h2>${esc(g.title)}</h2></div>
+      <button class="x" aria-label="Đóng">✕</button>
+    </div>
+    <div class="dr-b">
+      <div><div class="eyebrow" style="margin-bottom:8px">Hồ sơ</div>
+        <dl class="dl">${facts.map(f=>`<dt>${esc(f[0])}</dt><dd>${esc(f[1])}</dd>`).join("")}
+        <dt>xưởng</dt><dd>${esc(g.xuong)}</dd><dt>created_by</dt><dd>${esc(g.by)}</dd><dt>triggered_by</dt><dd>${esc(g.trigger)}</dd></dl></div>
+      <div><div class="eyebrow" style="margin-bottom:4px">Checklist — tick hết mới duyệt được</div>
+        <div id="cl">${cl.length?cl.map((c,i)=>`<label class="check"><input type="checkbox" data-i="${i}"><span><span class="n">${esc(c[0])}</span><span class="d">${esc(c[1])}</span></span></label>`).join("")
+          :'<div class="empty">Gate này không kèm checklist.</div>'}</div></div>
+      <p class="note">Quyết định đi qua <code>HumanGate</code> của xưởng và ghi thẳng vào <code>audit-log</code> kèm tên bạn.
+        Người duyệt phải khác người tạo (four-eyes); gate chỉ quyết một lần.</p>
+    </div>
+    <div class="dr-f">
+      <label class="by">Bạn là <input id="by" value="${esc(localStorage.getItem(ME_KEY)||"human:owner")}" placeholder="human:owner"></label>
+      <textarea id="reason" placeholder="Lý do — bắt buộc khi trả lại, giữ, từ chối hoặc thu hồi"></textarea>
+      <div class="verbs">
+        <button class="vb primary" data-d="approve" disabled>Duyệt</button>
+        <button class="vb" data-d="request_changes">Trả lại sửa</button>
+        <button class="vb" data-d="hold">Giữ</button>
+        <button class="vb danger" data-d="reject">Từ chối</button>
+        ${g.kind==="publish"?'<button class="vb danger" data-d="rollback">Thu hồi</button>':""}
+      </div>
+      <div class="note" id="gnote"></div>
+    </div>`);
+
+  const boxes=$$("#cl input");
+  const sync=()=>{
+    const left=boxes.filter(b=>!b.checked).length;
+    drawer.querySelector('[data-d="approve"]').disabled=READONLY||left>0;
+    $("#gnote").innerHTML=READONLY?RO_NOTE:left?`Còn ${left} mục chưa tick.`:"Đủ điều kiện duyệt.";
+  };
+  boxes.forEach(b=>b.addEventListener("change",sync));
+  if(READONLY){$$(".vb",drawer).forEach(b=>{b.disabled=true;});}
+  sync();
+
+  drawer.querySelector(".verbs").addEventListener("click",async e=>{
+    const b=e.target.closest(".vb"); if(!b||b.disabled) return;
+    const d=b.dataset.d, reason=$("#reason").value.trim(), by=$("#by").value.trim();
+    if(!by){$("#by").focus();toast("Ghi tên người duyệt trước đã.");return;}
+    if(d!=="approve"&&!reason){$("#reason").focus();toast("Cần ghi lý do trước khi "+VERB_ING[d]+".");return;}
+    localStorage.setItem(ME_KEY,by);
+    const all=$$(".vb",drawer); all.forEach(x=>{x.disabled=true;});
+    $("#gnote").textContent="Đang gửi quyết định…";
+    try{
+      await api("/api/gate/decide",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({subject_id:g.id,xuong:g.xuong,decision:d,by:by,reason:reason})});
+      shut(); toast(VERB[d]+" "+g.id+".");
+      await load(); schedule();
+    }catch(err){
+      all.forEach(x=>{x.disabled=false;}); sync();
+      $("#gnote").textContent="Không ghi được quyết định: "+err.message;
+      toast("Không ghi được quyết định.");
+    }
+  });
+}
+
+function openTicket(id){
+  const t=(st().tickets||[]).find(x=>x.id===id); if(!t) return;
+  const pr=(st().prs||[]).find(p=>p.id===id), rv=(st().reviews||[]).filter(r=>r.id===id);
+  const pct=t.bud?Math.round(t.used/t.bud*100):0;
+  show(`<div class="dr-h"><div><div class="id">${esc(t.id)}</div><h2>${esc(t.t)}</h2></div><button class="x" aria-label="Đóng">✕</button></div>
+    <div class="dr-b">
+      <dl class="dl"><dt>trạng thái</dt><dd>${esc(t.st)}</dd><dt>assignee</dt><dd>${esc(t.who)}</dd><dt>retry</dt><dd>${num(t.retry)}</dd>
+        <dt>estimate</dt><dd>${num(t.est)}</dd><dt>budget</dt><dd>${num(t.bud)}</dd>
+        <dt>đã dùng</dt><dd>${num(t.used)} · ${pct}%</dd></dl>
+      <div><div class="eyebrow" style="margin-bottom:8px">Pull request</div>
+        ${pr?`<dl class="dl"><dt>nhánh</dt><dd>${esc(pr.br)}</dd><dt>lint</dt><dd>${esc(pr.lint)}</dd><dt>tests</dt><dd>${esc(pr.tests)}</dd><dt>verified_by</dt><dd>${esc(pr.v)}</dd></dl>
+        <p class="note" style="margin:8px 0 0">${esc(pr.s)}</p>`:'<div class="empty">Chưa có PR — ticket chưa chạy xong lượt đầu.</div>'}</div>
+      <div><div class="eyebrow" style="margin-bottom:8px">Review</div>
+        ${rv.length?rv.map(r=>`<div class="check"><span><span class="n">${esc(r.src)} · ${esc(r.v)}</span><span class="d">${esc(r.f)}</span></span></div>`).join(""):'<div class="empty">Chưa có review.</div>'}</div>
+    </div>`);
+}
+function openVideo(id){
+  const v=(st().videos||[]).find(x=>x.id===id); if(!v) return;
+  const p=(st().perf||[]).find(x=>x.id===id);
+  show(`<div class="dr-h"><div><div class="id">${esc(v.id)}</div><h2>${esc(v.t)}</h2></div><button class="x" aria-label="Đóng">✕</button></div>
+    <div class="dr-b">
+      <dl class="dl"><dt>trạng thái</dt><dd>${esc(v.st)}</dd><dt>format</dt><dd>${esc(v.fmt)}</dd>
+        <dt>token</dt><dd>${num(v.used)} / ${num(v.bud)}</dd></dl>
+      <div><div class="eyebrow" style="margin-bottom:8px">Số liệu sau khi đăng</div>
+        ${p?`<dl class="dl"><dt>hiển thị</dt><dd>${num(p.imp)}</dd><dt>lượt xem</dt><dd>${num(p.views)}</dd>
+          <dt>CTR</dt><dd>${pctTxt(p.ctr)}</dd><dt>xem trung bình</dt><dd>${mmss(p.avd)}</dd></dl>`
+        :'<div class="empty">Chưa có số liệu — video chưa đăng hoặc chưa kéo về được từ nền tảng.</div>'}</div>
+      <p class="note">Cảnh, quyền sử dụng tài sản và manifest nằm trong bus của xưởng video; console chỉ đọc phần
+        đã có trong <code>/api/state</code>.</p>
+    </div>`);
+}
+
+/* ---------- bảng & danh sách ---------- */
+const TSTATE=[["waiting","Chờ phụ thuộc"],["dispatched","Đã giao"],["in_progress","Đang làm"],["in_review","Đang review"],["approved","Đã duyệt"],["merged","Đã gộp"],["blocked","Kẹt"],["escalated","Đã leo thang"]];
+const VSTATE=[["briefed","Đã có đề bài"],["scripted","Đã có kịch bản"],["in_review","Đang review"],["approved","Đã duyệt"],["published","Đã đăng"],["analyzed","Đã phân tích"]];
+
+function renderBackends(){
+  const rows=st().backends||[];
+  $("#backends").innerHTML=rows.length?rows.map(b=>`<tr>
+    <td class="mono">${esc(b.n)}${b.note?`<div class="note">${esc(b.note)}</div>`:""}</td>
+    <td class="mono">${esc(b.tiers)}</td><td>${esc(b.tools)}</td>
+    <td><span class="pill ${b.ok?"good":"warn"}">${esc(b.st)}</span></td>
+    <td class="mono r">${num(b.calls)}</td><td class="mono r">${num(b.fail)}</td></tr>`).join("")
+    :emptyRow(6,GW,"Chưa đọc được gói tài khoản nào");
+  const ok=rows.filter(b=>b.ok).length;
+  $("#pool-txt").textContent=rows.length?`${ok}/${rows.length} sẵn sàng`:"—";
+  $("#pool-bar").style.width=(rows.length?Math.round(ok/rows.length*100):0)+"%";
+  const rest=rows.filter(b=>!b.ok);
+  $("#pool-note").textContent=rest.length?`${rest[0].n} ${rest[0].st}${rest[0].note?" — "+rest[0].note:""}`
+    :rows.length?"tất cả gói đang sẵn sàng":srcWhy(GW);
+}
+function board(host,states,items,key,tag,fmt){
+  $(host).innerHTML=states.map(([k,label])=>{
+    const list=items.filter(x=>x.st===k);
+    return `<div class="col"><div class="col-h">${label}<span class="n">${list.length}</span></div>
+      ${list.map(x=>{const p=x.bud?Math.min(100,Math.round(x.used/x.bud*100)):0;const cls=p>=100?"over":p>=80?"near":"";
+        return `<button class="card" data-${tag}="${esc(x.id)}"><span class="id">${esc(x.id)}</span><span class="t">${esc(x.t)}</span>
+          <span class="meter ${cls}"><i style="width:${p}%"></i></span>
+          <span class="f">${fmt(x)}</span></button>`;}).join("")
+      ||'<div class="note" style="padding:6px 2px">—</div>'}</div>`;}).join("");
+}
+function renderBoards(){
+  const tickets=listOf(SC,st().tickets), videos=listOf(ST,st().videos);
+  if(!srcOk(SC)) $("#board-tickets").innerHTML=emptyBox(SC,"Chưa có dữ liệu xưởng phần mềm");
+  else board("#board-tickets",TSTATE,tickets,"st","t",t=>`<span>${esc(t.who)}</span><span>${kb(t.used)}/${kb(t.bud)}</span>${t.retry?`<span>retry ${num(t.retry)}</span>`:""}`);
+  if(!srcOk(ST)) $("#board-videos").innerHTML=emptyBox(ST,"Chưa có dữ liệu xưởng video");
+  else board("#board-videos",VSTATE,videos,"st","vid",v=>`<span>${esc(v.fmt)}</span><span>${kb(v.used)}/${kb(v.bud)}</span>`);
+  $("#nav-tickets").textContent=srcOk(SC)?tickets.length:"—";
+  $("#nav-videos").textContent=srcOk(ST)?videos.length:"—";
+}
+$("#board-tickets").addEventListener("click",e=>{const c=e.target.closest(".card");if(c)openTicket(c.dataset.t);});
+$("#board-videos").addEventListener("click",e=>{const c=e.target.closest(".card");if(c)openVideo(c.dataset.vid);});
+$("#prs").addEventListener("click",e=>{const r=e.target.closest("tr");if(r&&r.dataset.t)openTicket(r.dataset.t);});
+
+function renderTables(){
+  const prs=listOf(SC,st().prs), reviews=listOf(SC,st().reviews), perf=listOf(ST,st().perf);
+  const okPill=v=>`<span class="pill ${v==="pass"?"good":v==="fail"?"crit":"calm"}">${esc(v)}</span>`;
+  $("#prs").innerHTML=prs.length?prs.map(p=>`<tr class="tr-click" data-t="${esc(p.id)}"><td class="mono">${esc(p.id)}</td><td class="mono">${esc(p.br)}</td>
+    <td>${esc(p.s)}</td><td>${okPill(p.lint)}</td><td>${okPill(p.tests)}</td><td class="mono">${esc(p.v)}</td></tr>`).join("")
+    :emptyRow(6,SC,srcOk(SC)?"Không có PR nào chờ review":"Chưa có dữ liệu xưởng phần mềm");
+  $("#reviews").innerHTML=reviews.length?reviews.map(r=>`<tr><td class="mono">${esc(r.id)}</td><td class="mono">${esc(r.src)}</td>
+    <td><span class="pill ${r.v==="pass"?"good":"crit"}">${esc(r.v)}</span></td><td>${esc(r.f)}</td></tr>`).join("")
+    :emptyRow(4,SC,srcOk(SC)?"Chưa có kết quả review":"Chưa có dữ liệu xưởng phần mềm");
+  $("#perf").innerHTML=perf.length?perf.map(p=>{const w=Math.round(Math.min(1,(p.ctr||0)/.25)*100);
+    return `<tr><td class="mono">${esc(p.id)}</td><td class="mono r">${num(p.imp)}</td><td class="mono r">${num(p.views)}</td>
+      <td class="mono r">${pctTxt(p.ctr)}</td><td class="mono r">${mmss(p.avd)}</td>
+      <td><span class="meter" style="width:88px"><i style="width:${w}%"></i></span></td></tr>`;}).join("")
+    :emptyRow(6,ST,srcOk(ST)?"Chưa có video nào đăng để đo":"Chưa có dữ liệu xưởng video");
+  const sup=st().supervisor||[];
+  $("#sup").innerHTML=sup.length?sup.map(s=>{const cls=s.a==="warn"?"warn":s.a==="pause"?"calm":"crit";
+    return `<tr><td class="mono">${esc(s.t)}</td><td><span class="pill ${cls}">${esc(s.a)}</span></td><td>${esc(s.r)}</td><td class="mono">${esc(s.w)}</td></tr>`;}).join("")
+    :emptyRow(4,SC,"Supervisor chưa phải can thiệp lần nào");
+  const budg=listOf(SC,st().tickets).filter(t=>t.used>0);
+  $("#budgets").innerHTML=budg.length?budg.map(t=>{
+    const p=t.bud?Math.min(100,t.used/t.bud*100):0, e=t.bud?Math.min(100,t.est/t.bud*100):0;
+    const cls=t.bud&&t.used>=t.bud?"over":p>=80?"near":"";
+    return `<div class="brow"><span class="lbl">${esc(t.id)}</span>
+      <span class="track"><i class="${cls}" style="width:${p}%"></i><u style="left:${e}%"></u></span>
+      <span class="fig">${num(t.used)} / ${num(t.bud)}</span></div>`;}).join("")
+    :emptyBox(SC,srcOk(SC)?"Chưa ticket nào tiêu token":"Chưa có dữ liệu xưởng phần mềm");
+}
+
+/* ---------- ô số ---------- */
+function renderTiles(){
+  const t=st().tiles||{}, any=srcOk(SC)||srcOk(ST);
+  const v=(id,val)=>{$(id).textContent=any&&val!=null?val:"—";};
+  v("#t-events",num(t.events)); $("#t-events-n").textContent=any?`hàng đợi còn ${num(t.queue)}`:srcWhy(srcOk(SC)?ST:SC);
+  v("#t-calls",num(t.model_calls)); $("#t-calls-n").textContent=any?`${num(t.tool_calls)} lời gọi tool`:"—";
+  v("#t-tok",kb(t.tokens)); $("#t-tok-n").textContent=any?`trần dự án ${kb(t.project_budget_tokens)}`:"—";
+  v("#t-rework",dec2(t.rework_rate)); $("#t-rework-n").textContent=any?`review bắt ${dec2(t.review_catch_rate)}`:"—";
+  v("#t-prs",num(t.prs_unverified));
+
+  $("#chip-cost").innerHTML=any?`${vnd(t.cost_today_usd)} <span style="font-size:11px;font-weight:400">USD</span>`:"—";
+  $("#chip-tokens").textContent=any?kb(t.tokens_today):"—";
+  $("#chip-stuck").textContent=any?num(t.stuck_tickets):"—";
+
+  const spent=Number(t.project_cost_usd||0), cap=Number(t.project_budget_usd||0);
+  const series=(st().cost_days||{}).series||[];
+  const recent=series.slice(-7).map(d=>d.reduce((a,b)=>a+b,0));
+  const rate=recent.length?recent.reduce((a,b)=>a+b,0)/recent.length:0;
+  v("#c-spent",vnd(spent)); $("#c-spent-n").textContent=any?`trần ${vnd(cap)} USD`:"—";
+  v("#c-left",vnd(Math.max(0,cap-spent)));
+  $("#c-left-n").textContent=!any?"—":rate>0?`theo nhịp hiện tại: ${Math.floor(Math.max(0,cap-spent)/rate)} ngày`:"chưa đủ dữ liệu để ước nhịp";
+  v("#c-unpriced",num(t.unpriced_calls));
+  v("#c-cal",dec2(t.calibration));
+}
+
+/* ---------- nhật ký ---------- */
+let filter="all";
+const FILTERS=[["all","Tất cả"],["produced","Sản phẩm agent"],["gate","Gate"],["supervisor","Supervisor"],["human","Người"],["error","Lỗi & chặn"]];
+const matches=e=>filter==="all"||
+  (filter==="produced"&&String(e.ac).startsWith("produced:"))||
+  (filter==="gate"&&String(e.ac).startsWith("gate."))||
+  (filter==="supervisor"&&["budget_cut","pause","warn","resume","escalate"].includes(e.ac))||
+  (filter==="human"&&String(e.a).startsWith("human:"))||
+  (filter==="error"&&["llm_error","publish_denied","injection_sanitized","tick_error","invalid_output"].includes(e.ac));
+function evRow(e){
+  const bad=["llm_error","publish_denied","tick_error","invalid_output","budget_cut"].includes(e.ac);
+  const soft=["injection_sanitized","warn","pause","review.reassign"].includes(e.ac);
+  return `<div class="ev"><span class="t">${esc(e.t)}</span><span class="a">${esc(e.a)}</span>
+    <span><code style="${bad?"color:var(--crit-ink)":soft?"color:var(--warn-ink)":""}">${esc(e.ac)}</code> <span style="color:var(--ink-muted)">${esc(e.k)}</span></span>
+    <span class="tok">${e.tok?kb(e.tok)+" tok":"—"}${e.c?" · "+vnd(e.c)+" $":""}</span></div>`;
+}
+function renderStreams(){
+  const log=st().log||[];
+  $("#stream-mini").innerHTML=log.length?log.slice(0,10).map(evRow).join("")
+    :emptyBox(srcOk(SC)?ST:SC,"Chưa có bản ghi audit nào");
+  const rows=log.filter(matches);
+  $("#stream-full").innerHTML=rows.length?rows.map(evRow).join("")
+    :log.length?'<div class="empty">Không có bản ghi nào khớp bộ lọc này.</div>'
+    :emptyBox(srcOk(SC)?ST:SC,"Chưa có bản ghi audit nào");
+}
+$("#filters").innerHTML=FILTERS.map(f=>`<button class="fbtn" data-f="${f[0]}" aria-pressed="${f[0]==="all"}">${f[1]}</button>`).join("");
+$("#filters").addEventListener("click",e=>{const b=e.target.closest(".fbtn");if(!b)return;
+  filter=b.dataset.f;$$(".fbtn").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));renderStreams();});
+
+/* ---------- biểu đồ ---------- */
+const tip=$("#tip");
+function showTip(html,x,y){tip.innerHTML=html;tip.classList.add("on");
+  const r=tip.getBoundingClientRect();
+  tip.style.left=Math.min(Math.max(8,x-r.width/2),innerWidth-r.width-8)+"px";
+  tip.style.top=(y-r.height-12<8?y+16:y-r.height-12)+"px";}
+const hideTip=()=>tip.classList.remove("on");
+
+function costChart(){
+  const cd=st().cost_days||{}, days=cd.series||[], labels=cd.days||[];
+  const host=$("#chart-cost");
+  if(!days.length){host.innerHTML=emptyBox(srcOk(SC)?ST:SC,"Chưa có ngày nào có chi phí");return;}
+  const W=760,H=210,L=42,R=12,T=10,B=26, iw=W-L-R, ih=H-T-B;
+  const tot=days.map(d=>d.reduce((a,b)=>a+b,0)), max=Math.max(.5,Math.ceil(Math.max(...tot)*2)/2);
+  const bw=iw/days.length*.62, gap=iw/days.length;
+  const y=v=>T+ih-v/max*ih;
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Chi phí theo ngày và tier">`;
+  [0,max/2,max].forEach(t=>{g+=`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>
+    <text x="${L-8}" y="${y(t)+4}" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--axis)">${vnd(t)}</text>`;});
+  days.forEach((d,i)=>{
+    const x=L+gap*i+(gap-bw)/2; let acc=0;
+    d.forEach((v,s)=>{const h=v/max*ih, yy=y(acc+v)+(s?1:0), hh=Math.max(1,h-(s?2:0));
+      acc+=v;
+      g+=`<rect x="${x}" y="${yy}" width="${bw}" height="${hh}" fill="var(--s${s+1})" ${s===2?'rx="3" ry="3"':""}/>`;});
+    g+=`<rect class="hit" x="${L+gap*i}" y="${T}" width="${gap}" height="${ih}" fill="transparent" data-i="${i}" style="cursor:crosshair"/>`;
+    if(i%2===1||i===days.length-1)g+=`<text x="${x+bw/2}" y="${H-8}" text-anchor="middle" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--axis)">${esc(labels[i]||"")}</text>`;
+  });
+  const last=tot[tot.length-1];
+  g+=`<text x="${L+gap*(days.length-1)+gap/2}" y="${y(last)-7}" text-anchor="middle" font-size="11" font-weight="600" font-family="IBM Plex Mono, monospace" fill="var(--ink)">${vnd(last)}</text>`;
+  g+=`<line x1="${L}" x2="${W-R}" y1="${T+ih}" y2="${T+ih}" stroke="var(--axis)" stroke-width="1"/></svg>`;
+  host.innerHTML=g;
+  host.querySelectorAll(".hit").forEach(h=>{
+    h.addEventListener("mousemove",ev=>{const i=+h.dataset.i,d=days[i];
+      showTip(`<b>${esc(labels[i]||"")} · ${vnd(d.reduce((a,b)=>a+b,0))} USD</b>
+        <div class="row"><i style="background:var(--s1)"></i><em>strong</em><s>${vnd(d[0])}</s></div>
+        <div class="row"><i style="background:var(--s2)"></i><em>standard</em><s>${vnd(d[1])}</s></div>
+        <div class="row"><i style="background:var(--s3)"></i><em>light</em><s>${vnd(d[2])}</s></div>`,ev.clientX,ev.clientY);});
+    h.addEventListener("mouseleave",hideTip);});
+}
+
+function retChart(){
+  const host=$("#chart-ret"), r=srcOk(ST)?st().retention:null;
+  const pts=(r&&r.points)||[];
+  $("#ret-title").textContent="Đường giữ chân"+(r&&r.video_id?" · "+r.video_id:"");
+  if(pts.length<2){host.innerHTML=emptyBox(ST,"Chưa có đường giữ chân");return;}
+  const W=760,H=200,L=40,R=14,T=12,B=26, iw=W-L-R, ih=H-T-B;
+  const maxT=pts[pts.length-1][0]||1;
+  const x=t=>L+t/maxT*iw, y=p=>T+ih-p/100*ih;
+  // hai đoạn rơi sâu nhất — tự tính, không đánh dấu cứng
+  const drops=pts.slice(1).map((d,i)=>({t:d[0],p:d[1],d:pts[i][1]-d[1]})).sort((a,b)=>b.d-a.d).slice(0,2).filter(d=>d.d>0);
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Đường giữ chân người xem">`;
+  [0,50,100].forEach(p=>{g+=`<line x1="${L}" x2="${W-R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--grid)"/>
+    <text x="${L-8}" y="${y(p)+4}" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--axis)">${p}%</text>`;});
+  const line=pts.map((d,i)=>`${i?"L":"M"}${x(d[0])} ${y(d[1])}`).join(" ");
+  g+=`<path d="${line} L${x(maxT)} ${y(0)} L${L} ${y(0)} Z" fill="var(--s1)" fill-opacity=".12"/>`;
+  g+=`<path d="${line}" fill="none" stroke="var(--s1)" stroke-width="2" stroke-linejoin="round"/>`;
+  drops.forEach((d,i)=>{g+=`<line x1="${x(d.t)}" x2="${x(d.t)}" y1="${T}" y2="${T+ih}" stroke="var(--serious)" stroke-width="1" stroke-dasharray="3 3"/>
+    <circle cx="${x(d.t)}" cy="${y(d.p)}" r="4.5" fill="var(--serious)" stroke="var(--chart-surface)" stroke-width="2"/>
+    <text x="${x(d.t)+(i?-6:6)}" y="${T+13}" ${i?'text-anchor="end"':""} font-size="11" fill="var(--ink-2)" font-family="Be Vietnam Pro, sans-serif">rơi ${Math.round(d.d)}% ở ${mmss(d.t)}</text>`;});
+  pts.forEach(d=>{g+=`<rect class="hit" x="${x(d[0])-14}" y="${T}" width="28" height="${ih}" fill="transparent" data-t="${d[0]}" data-p="${d[1]}" style="cursor:crosshair"/>`;});
+  const step=Math.max(30,Math.round(maxT/4/30)*30);
+  for(let t=0;t<=maxT;t+=step) g+=`<text x="${x(t)}" y="${H-8}" text-anchor="middle" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--axis)">${mmss(t)}</text>`;
+  g+=`<line x1="${L}" x2="${W-R}" y1="${T+ih}" y2="${T+ih}" stroke="var(--axis)"/></svg>`;
+  host.innerHTML=g;
+  host.querySelectorAll(".hit").forEach(h=>{
+    h.addEventListener("mousemove",ev=>{
+      showTip(`<b>${mmss(+h.dataset.t)}</b><div class="row"><i style="background:var(--s1)"></i><em>còn xem</em><s>${h.dataset.p}%</s></div>`,ev.clientX,ev.clientY);});
+    h.addEventListener("mouseleave",hideTip);});
+}
+
+function agentChart(){
+  const rows=st().agents||[], host=$("#chart-agent");
+  if(!rows.length){host.innerHTML=emptyBox(srcOk(SC)?ST:SC,"Chưa có agent nào phát sinh chi phí");return;}
+  const rowH=26, W=760, L=136, R=56, H=rows.length*rowH+16;
+  const max=rows[0][1]||1;
+  let g=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Chi phí theo agent">`;
+  rows.forEach((a,i)=>{const w=(a[1]/max)*(W-L-R), yy=i*rowH+8;
+    g+=`<text x="${L-10}" y="${yy+12}" text-anchor="end" font-size="12" font-family="IBM Plex Mono, monospace" fill="var(--ink-2)">${esc(a[0])}</text>
+      <rect x="${L}" y="${yy}" width="${Math.max(3,w)}" height="15" rx="3" ry="3" fill="var(--s1)"/>
+      <text x="${L+w+8}" y="${yy+12}" font-size="11.5" font-family="IBM Plex Mono, monospace" fill="var(--ink-2)">${vnd(a[1])}</text>`;});
+  host.innerHTML=g+"</svg>";
+}
+
+/* ---------- vẽ lại toàn trang ---------- */
+function render(){
+  const okCount=[SC,ST].filter(srcOk).length;
+  $("#brand-sub").textContent=`${okCount}/2 xưởng đọc được · ${st().backends.length} gói tài khoản`
+    +(READONLY?" · chỉ đọc":" · duyệt được");
+  $("#mode-pill").innerHTML=READONLY?'<span class="pill calm">chỉ đọc</span>':'<span class="pill accent">duyệt được</span>';
+  renderQueue(); renderTiles(); renderBackends(); renderBoards(); renderTables(); renderStreams();
+  costChart(); retChart(); agentChart();
+  titles(); freshLabel();
+}
+
+/* ---------- khởi động ---------- */
+addEventListener("scroll",hideTip,{passive:true});
+skeleton();
+load().then(schedule);
+</script>
