@@ -85,3 +85,76 @@ def test_daemon_entry_removes_pid_file_at_exit(tmp_path, monkeypatch):
     assert len(registered) == 1
     registered[0]()
     assert not pid_file.exists()
+
+
+def test_models_lists_and_accepts_valid_llm_yaml(tmp_path, capsys):
+    target = tmp_path / "llm.yaml"
+    target.write_text(
+        "provider: claude-code\n"
+        "backends:\n"
+        "  - {name: claude-sub, provider: claude-code, models: {strong: claude-opus-5}}\n"
+        "  - name: antigravity\n"
+        "    provider: openai\n"
+        "    base_url: http://127.0.0.1:8100/v1\n"
+        "    models: {strong: claude-sonnet-4-6, standard: gemini-3.7-flash, light: gemini-3.7-flash-low}\n",
+        encoding="utf-8",
+    )
+    assert manage.main(["models", "--check", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert "gemini-3-flash-agent" in out                 # bảng model hỗ trợ
+    assert "KHÔNG HỖ TRỢ" not in out
+    # Backend CLI được liệt kê nhưng không phán xét — gateway không đứng giữa chúng.
+    assert "claude-opus-5" in out and "--probe-cli" in out
+
+
+def test_models_flags_unknown_model_in_llm_yaml(tmp_path, capsys):
+    target = tmp_path / "llm.yaml"
+    target.write_text(
+        "backends:\n"
+        "  - name: antigravity\n"
+        "    provider: openai\n"
+        "    base_url: http://127.0.0.1:8100/v1\n"
+        "    models: {strong: gemini-9-ultra, standard: gemini-3.7-flash}\n",
+        encoding="utf-8",
+    )
+    assert manage.main(["models", "--check", str(target)]) == 1
+    out = capsys.readouterr().out
+    assert "gemini-9-ultra" in out and "KHÔNG HỖ TRỢ" in out
+
+
+def test_models_ignores_backend_pointing_elsewhere(tmp_path, capsys):
+    target = tmp_path / "llm.yaml"
+    target.write_text(
+        "provider: openai\nbase_url: https://api.openai.com/v1\nmodels: {strong: gpt-5.6}\n", encoding="utf-8"
+    )
+    assert manage.main(["models", "--check", str(target)]) == 0
+    assert "không có backend nào để đối chiếu" in capsys.readouterr().out
+
+
+def test_models_probe_reports_dead_model_and_exits_1(tmp_path, monkeypatch, capsys):
+    """Probe: model gateway khai hợp lệ nhưng upstream đã nghỉ hưu → exit 1, kể cả khi llm.yaml sạch."""
+    target = tmp_path / "llm.yaml"
+    target.write_text("backends: []\n", encoding="utf-8")
+    monkeypatch.setattr(manage, "_probe_antigravity", lambda ids: len(ids))
+    assert manage.main(["models", "--check", str(target), "--probe"]) == 1
+    assert "nghỉ hưu" in capsys.readouterr().out
+
+
+def test_models_probe_cli_flags_failing_cli_model(tmp_path, monkeypatch, capsys):
+    target = tmp_path / "llm.yaml"
+    target.write_text(
+        "backends:\n  - {name: claude-sub, provider: claude-code, models: {strong: claude-opus-99}}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manage, "_probe_cli", lambda provider, model: ("LỖI", "exit 1: unknown model"))
+    assert manage.main(["models", "--check", str(target), "--probe-cli"]) == 1
+    assert "claude-opus-99" in capsys.readouterr().out
+
+
+def test_models_probe_id_does_not_treat_missing_candidate_as_config_error(tmp_path, monkeypatch, capsys):
+    """`--probe-id gemini-3.8-flash` dò model chưa ra mắt: báo 'chưa có', không phải cấu hình sai → exit 0."""
+    target = tmp_path / "llm.yaml"
+    target.write_text("backends: []\n", encoding="utf-8")
+    monkeypatch.setattr(manage, "_probe_antigravity", lambda ids: len(ids))
+    assert manage.main(["models", "--check", str(target), "--probe", "--probe-id", "gemini-3.8-flash"]) == 0
+    assert "không có trên kênh Antigravity" in capsys.readouterr().out

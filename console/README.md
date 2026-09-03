@@ -23,6 +23,17 @@ Terminal in ra địa chỉ kèm token phiên — mở đúng địa chỉ đó.
 
 ```bash
 uv run python -m console --allow-decide
+uv run python -m console --allow-config    # cho phép sửa model/backend của từng công ty ngay trên trang
+```
+
+Mục **Cài đặt model** trong trang cho từng công ty: chọn model cho tier mạnh/tiêu chuẩn/nhẹ trên từng backend,
+đặt ưu tiên backend theo tier, bật/tắt backend. Giá trị hiển thị là đúng cái đang chạy (`llm.yaml`); lưu là ghi
+thẳng vào file, bản cũ để lại `llm.yaml.bak`. Không muốn mở trang thì dùng CLI:
+
+```bash
+uv run python -m console models
+uv run python -m console models --company software-company --set antigravity.standard=gemini-3.8-flash-medium
+uv run python -m console models --company software-company --prefer standard=antigravity --disable chatgpt-sub
 ```
 
 Đường dẫn DB không phải mặc định thì chỉ ra bằng `--company-db` / `--studio-db`; công ty nào chưa

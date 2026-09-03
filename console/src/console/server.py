@@ -127,16 +127,21 @@ class ConsoleServer(ThreadingHTTPServer):
         *,
         token: str,
         readonly: bool = True,
+        allow_config: bool = False,
         company_db: Path | None = None,
         studio_db: Path | None = None,
+        llm_yaml: dict[str, Path] | None = None,
         static_dir: Path = STATIC_DIR,
     ) -> None:
         if ":" in host and not host.startswith("["):
             self.address_family = socket.AF_INET6
         self.token = token
         self.readonly = readonly
+        # Sửa llm.yaml là quyền RIÊNG, không đi kèm --allow-decide: duyệt gate và đổi model là hai rủi ro khác nhau.
+        self.allow_config = allow_config
         self.company_db = company_db
         self.studio_db = studio_db
+        self.llm_yaml = llm_yaml
         self.static_dir = Path(static_dir)
         super().__init__((host.strip("[]"), port), ConsoleHandler)
 
@@ -227,6 +232,11 @@ class ConsoleHandler(BaseHTTPRequestHandler):
                 self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
                 return
             self._api_state()
+        elif path == "/api/settings":
+            if not self._authorized():
+                self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
+                return
+            self._api_settings_get()
         elif path.startswith("/api/"):
             if not self._authorized():
                 self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
@@ -248,18 +258,24 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
             return
-        if path != "/api/gate/decide":
+        if path not in {"/api/gate/decide", "/api/settings"}:
             self._error(HTTPStatus.NOT_FOUND, "không có đường dẫn này")
             return
-        if self.server.readonly:
+        if path == "/api/gate/decide" and self.server.readonly:
             self._error(HTTPStatus.FORBIDDEN, "console đang ở chế độ chỉ đọc; chạy lại với --allow-decide để duyệt gate")
+            return
+        if path == "/api/settings" and not self.server.allow_config:
+            self._error(HTTPStatus.FORBIDDEN, "sửa cấu hình model bị khoá; chạy lại với --allow-config")
             return
         try:
             payload = self._read_json_body()
         except GateHTTPError as e:
             self._error(e.status, e.message)
             return
-        self._api_decide(payload)
+        if path == "/api/settings":
+            self._api_settings_post(payload)
+        else:
+            self._api_decide(payload)
 
     # --- xử lý ---------------------------------------------------------------
 
@@ -326,6 +342,38 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         else:
             self._json(HTTPStatus.OK, result)
 
+    def _api_settings_get(self) -> None:
+        from console.settings import read_settings  # nhập trễ, xem _api_state.
+
+        payload = read_settings(self.server.llm_yaml)
+        payload["can_edit"] = self.server.allow_config
+        self._json(HTTPStatus.OK, payload)
+
+    def _api_settings_post(self, payload: dict[str, Any]) -> None:
+        from console.settings import DEFAULT_LLM_YAML, SettingsError, update_settings
+
+        company = payload.get("company")
+        paths = self.server.llm_yaml or DEFAULT_LLM_YAML
+        if not isinstance(company, str) or company not in paths:
+            self._error(HTTPStatus.BAD_REQUEST, f"'company' phải là một trong {sorted(paths)}")
+            return
+        try:
+            result = update_settings(
+                paths[company],
+                models=payload.get("models") or None,
+                prefer=payload.get("prefer") or None,
+                enable=payload.get("enable") or None,
+                disable=payload.get("disable") or None,
+            )
+        except SettingsError as e:
+            self._error(HTTPStatus.BAD_REQUEST, str(e))
+        except OSError as e:
+            logger.error("không ghi được llm.yaml: %s", e)
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "không ghi được llm.yaml")
+        else:
+            result["company"] = company
+            self._json(HTTPStatus.OK, result)
+
     # --- file tĩnh -----------------------------------------------------------
 
     def _serve_index(self) -> None:
@@ -369,8 +417,10 @@ def make_server(
     *,
     token: str | None = None,
     readonly: bool = True,
+    allow_config: bool = False,
     company_db: Path | None = None,
     studio_db: Path | None = None,
+    llm_yaml: dict[str, Path] | None = None,
     static_dir: Path = STATIC_DIR,
 ) -> ConsoleServer:
     return ConsoleServer(
@@ -378,7 +428,9 @@ def make_server(
         port,
         token=token or generate_token(),
         readonly=readonly,
+        allow_config=allow_config,
         company_db=company_db,
         studio_db=studio_db,
+        llm_yaml=llm_yaml,
         static_dir=static_dir,
     )
