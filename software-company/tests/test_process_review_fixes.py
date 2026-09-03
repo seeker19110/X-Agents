@@ -4,13 +4,14 @@ Mỗi test dưới đây thất bại trên bản trước khi sửa.
 """
 from __future__ import annotations
 
+import json
+import socket
 import threading
 import time
-import urllib.error
-import urllib.request
 
 import pytest
 
+from company import web as web_mod
 from company.blackboard import Blackboard
 from company.bus import InMemoryBus
 from company.delivery import DeliveryLead
@@ -19,7 +20,7 @@ from company.gate_cli import PersistentGate
 from company.gates import GateRequest
 from company.metrics import collect
 from company.tools import ToolError
-from company.web import _CheckedRedirect, check_url
+from company.web import check_url
 
 T1 = {"ticket_id": "T1", "project_id": "P1", "requirement_id": "REQ-1", "assignee": "backend", "title": "GET /orders",
       "acceptance": ["given/when/then"], "estimate_tokens": 4_000, "budget_tokens": 6_000}
@@ -122,14 +123,79 @@ def test_lead_time_ticket_co_so_lieu():
 
 # ---------- tool web ----------
 
-def test_chuyen_huong_ve_host_noi_bo_bi_chan():
-    """check_url chỉ gác URL đầu; urlopen đi theo 302. Handler phải gác lại từng chặng."""
-    h = _CheckedRedirect()
-    req = urllib.request.Request("https://example.com/")
-    with pytest.raises(ToolError, match="host bị chặn"):
-        h.redirect_request(req, None, 302, "Found", {}, "http://169.254.169.254/latest/meta-data/")
-    with pytest.raises(ToolError):
-        h.redirect_request(req, None, 302, "Found", {}, "http://127.0.0.1:8080/")
+class _Resp:
+    def __init__(self, status, headers=None, body=b""):
+        self.status, self.headers, self.body = status, headers or {}, body
+    def getheader(self, k, default=None): return self.headers.get(k, default)
+    def read(self, n=-1): return self.body
+    def close(self): ...
+    def __enter__(self): return self
+    def __exit__(self, *a): ...
+
+
+def _dns(monkeypatch, table):
+    calls = []
+    def fake(host, port, *a, **k):
+        calls.append(host)
+        if host not in table: raise socket.gaierror(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (table[host], 0))]
+    monkeypatch.setattr(web_mod.socket, "getaddrinfo", fake)
+    return calls
+
+
+def test_chuyen_huong_ve_host_noi_bo_bi_chan(monkeypatch):
+    """check_url chỉ gác URL đầu; fetcher tự theo 302 và phải gác lại từng chặng."""
+    _dns(monkeypatch, {"example.com": "93.184.216.34", "169.254.169.254": "169.254.169.254", "localhost": "127.0.0.1"})
+    for target in ("http://169.254.169.254/latest/meta-data/", "http://localhost:8080/"):
+        monkeypatch.setattr(web_mod, "_open_pinned", lambda url, ip, t, target=target: _Resp(302, {"Location": target}))
+        with pytest.raises(ToolError, match="host bị chặn"):
+            web_mod.default_fetcher("https://example.com/")
+
+
+def test_fetcher_ghim_ip_da_kiem_va_theo_chuyen_huong_cong_khai(monkeypatch):
+    """DNS rebinding: phân giải một lần, kết nối đúng IP đã kiểm ở mỗi chặng; quá MAX_REDIRECTS thì dừng."""
+    calls = _dns(monkeypatch, {"a.example": "93.184.216.34", "b.example": "1.1.1.1"})
+    seen = []
+    def opener(url, ip, t):
+        seen.append((url, ip))
+        return _Resp(301, {"Location": "https://b.example/x?y=1"}) if "a.example" in url else _Resp(200, {"Content-Type": "text/plain"}, b"ok")
+    monkeypatch.setattr(web_mod, "_open_pinned", opener)
+    assert web_mod.default_fetcher("https://a.example/") == (200, "text/plain", b"ok")
+    assert seen == [("https://a.example/", "93.184.216.34"), ("https://b.example/x?y=1", "1.1.1.1")]
+    assert calls == ["a.example", "b.example"], "mỗi chặng phân giải đúng một lần"
+    monkeypatch.setattr(web_mod, "_open_pinned", lambda url, ip, t: _Resp(302, {"Location": "https://a.example/loop"}))
+    with pytest.raises(ToolError, match="chuyển hướng"):
+        web_mod.default_fetcher("https://a.example/")
+
+
+def test_ket_noi_ghim_ip_giu_host_va_sni(monkeypatch):
+    seen = []
+    monkeypatch.setattr(web_mod.socket, "create_connection", lambda addr, timeout=None, *a, **k: (seen.append(addr), object())[1])
+    c = web_mod._PinnedHTTPConnection("example.com", 8080, pinned_ip="93.184.216.34", timeout=1)
+    c.connect()
+    assert seen == [("93.184.216.34", 8080)] and c.host == "example.com"   # header Host lấy từ `host`, không phải IP
+    sni = []
+    class _Ctx:
+        def wrap_socket(self, sock, server_hostname=None): sni.append(server_hostname); return sock
+    cs = web_mod._PinnedHTTPSConnection("example.com", 443, pinned_ip="93.184.216.34", timeout=1)
+    cs._context = _Ctx(); cs.connect()
+    assert seen[-1] == ("93.184.216.34", 443) and sni == ["example.com"]
+
+
+def test_search_url_noi_bo_cua_nguoi_van_hanh_duoc_phep_con_url_cua_model_thi_khong(monkeypatch):
+    _dns(monkeypatch, {"searx.internal": "10.0.0.5"})
+    body = json.dumps({"results": [{"title": "t", "url": "https://x.example/", "content": "c"}]}).encode()
+    fetched = []
+    def fetcher(url): fetched.append(url); return 200, "application/json", body
+    web = web_mod.WebTools(fetcher=fetcher, search_url="http://searx.internal:8080/search?q={q}&format=json")
+    assert web.trusted_hosts == frozenset({"searx.internal"})
+    assert "1. t" in web.web_search("abc") and fetched == ["http://searx.internal:8080/search?q=abc&format=json"]
+    with pytest.raises(ToolError, match="host bị chặn"):   # cùng host nhưng do model đưa qua fetch_url: vẫn chặn
+        web.fetch_url("http://searx.internal:8080/admin")
+    with pytest.raises(ToolError, match="http/https"):     # scheme vẫn bị kiểm với URL cấu hình
+        web_mod.WebTools(fetcher=fetcher, search_url="file:///etc/passwd?{q}").web_search("abc")
+    d = web_mod.WebTools(search_url="http://searx.internal/?q={q}")
+    assert d.fetcher.keywords == {"trusted_hosts": frozenset({"searx.internal"})}   # fetcher mặc định mang danh sách tin cậy
 
 
 def test_check_url_van_chan_o_chang_dau():

@@ -1,0 +1,22 @@
+{
+ "agent": "clarifier",
+ "prompt_version": 8,
+ "recorded_at": "2026-09-03T05:01:55.124937+00:00",
+ "models": [
+  "claude-sonnet-5"
+ ],
+ "cases": {
+  "3708b9bf516e9f04cafb8d3e": {
+   "text": "```json\n{\n  \"project_id\": \"P1\",\n  \"round\": 1,\n  \"questions\": [\n    {\n      \"id\": \"Q-1\",\n      \"req_id\": \"R-1\",\n      \"text\": \"Hệ thống nhắc lịch khám qua kênh nào?\",\n      \"options\": [\"Zalo\", \"SMS\", \"Cả Zalo và SMS (ưu tiên Zalo, fallback SMS)\"],\n      \"default\": \"Cả Zalo và SMS (ưu tiên Zalo, fallback SMS)\"\n    },\n    {\n      \"id\": \"Q-2\",\n      \"req_id\": \"R-2\",\n      \"text\": \"Yêu cầu 'hệ thống phải nhanh' cụ thể áp dụng cho thao tác nào và ngưỡng thời gian là bao nhiêu?\",\n      \"options\": [\"Gửi nhắc lịch trong ≤5 giây/tin\", \"Thao tác xem lịch trên UI phản hồi ≤2 giây (p95)\", \"Cả hai ngưỡng trên\"],\n      \"default\": \"Cả hai ngưỡng trên\"\n    }\n  ]\n}\n```",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5701,
+   "output_tokens": 380
+  },
+  "1bd5bfbf7008ea209d883c0e": {
+   "text": "```json\n{\n  \"project_id\": \"P2\",\n  \"round\": 1,\n  \"questions\": [\n    {\n      \"id\": \"Q-1\",\n      \"req_id\": \"R-1\",\n      \"text\": \"Khi số đơn hàng cần xuất vượt quá 10.000 dòng, hệ thống nên xử lý thế nào?\",\n      \"options\": [\n        \"Báo lỗi, yêu cầu người dùng thu hẹp bộ lọc trước khi xuất\",\n        \"Tự động chỉ xuất 10.000 dòng đầu tiên (theo tiêu chí sắp xếp nào đó) và báo đã cắt bớt\",\n        \"Tự động chia thành nhiều file CSV, mỗi file tối đa 10.000 dòng\"\n      ],\n      \"default\": \"Báo lỗi, yêu cầu người dùng thu hẹp bộ lọc trước khi xuất\"\n    },\n    {\n      \"id\": \"Q-2\",\n      \"req_id\": \"R-1\",\n      \"text\": \"\\\"Danh sách đơn hàng\\\" cần xuất là danh sách theo phạm vi nào?\",\n      \"options\": [\n        \"Toàn bộ đơn hàng người dùng có quyền xem, có thể áp bộ lọc/tìm kiếm hiện có trước khi xuất\",\n        \"Chỉ đơn hàng đang hiển thị trên trang hiện tại (kết quả đã lọc/phân trang)\",\n        \"Toàn bộ đơn hàng trong hệ thống, không phân biệt quyền hay bộ lọc\"\n      ],\n      \"default\": \"Toàn bộ đơn hàng người dùng có quyền xem, có thể áp bộ lọc/tìm kiếm hiện có trước khi xuất\"\n    }\n  ]\n}\n```",
+   "model": "claude-sonnet-5",
+   "input_tokens": 5656,
+   "output_tokens": 1479
+  }
+ }
+}

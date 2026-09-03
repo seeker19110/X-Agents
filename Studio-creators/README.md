@@ -84,10 +84,15 @@ PYTHONPATH=src uv run python -m studio.gate_cli list                    # hoặc
 PYTHONPATH=src uv run python -m studio.gate_cli approve PLAN-CH1-1 --by human:owner
 PYTHONPATH=src uv run python -m studio.gate_cli approve PUB-CH1-V1 --by human:editor --reason "đăng 12:00 thứ 6"
 #   quyết định: approve | request_changes | reject | hold | rollback; `request KIND SUBJECT --by --checklist` mở gate tay;
-#   gate hạn 24h, nhắc 12h (`list` in remind/OVERDUE)
+#   gate hạn 24h, nhắc 12h (`list` in remind/OVERDUE; `list --full` in nguyên văn checklist thay vì cắt 80 ký tự)
+#   four-eyes: --by phải khác người tạo gate; gate ghi `trigger=` người đã kích hoạt bước đó (vd. người duyệt plan) khi biết.
+#   Giới hạn ai được duyệt: STUDIO_GATE_APPROVERS=human:owner,human:editor (hoặc media.yaml `gate: {approvers: [...]}`);
+#   đặt rồi thì --by ngoài danh sách bị từ chối (mã 3). Checklist gate publish kèm final_video, thumbnail đã chọn, title.
 PYTHONPATH=src uv run python -m studio.orchestrator publish publish-events published.json      # nền tảng đã công khai (tay)
 PYTHONPATH=src uv run python -m studio.orchestrator publish performance-snapshots stats.json   # số liệu thật (nạp tay)
 PYTHONPATH=src uv run python -m studio.orchestrator publish audience-comments comments.json    # bình luận (nạp tay)
+#   `publish` chỉ nhận 4 topic do người/adapter nạp ở trên; audit-log (quyết định gate) và topic của agent bị từ chối (mã 2).
+#   STUDIO_SYNC_EVERY=300 → `run --watch` tự gọi sync-metrics/sync-comments cho video scheduled/published mỗi 300 s (audit `sync.tick`)
 
 # YouTube THẬT (ADR-0008) — mặc định STUDIO_PLATFORM=fake (offline). Bật: `platform: {provider: youtube}` trong media.yaml
 # hoặc STUDIO_PLATFORM=youtube. Đăng nhập là việc của NGƯỜI DÙNG (OAuth Desktop app, loopback 127.0.0.1, mở trình duyệt);
@@ -145,6 +150,10 @@ Asset sinh ra nằm ở `output/<video_id>/` (bị gitignore): `S1.wav`, `S1.png
 - **Preflight** (`preflight.py`, ADR-0005): giới hạn nền tảng (block: tiêu đề ≤ 100, mô tả ≤ 5000, tag ≤ 500 ký tự, cụm cấm)
   + quy tắc chất lượng (warn: tiêu đề ≤ 70, mô tả ≥ 200, ≥ 3 chapter bắt đầu 00:00 mỗi chapter ≥ 10s), seo-optimizer sửa block
   một lần, finding còn lại vào checklist gate.
+- **Tài sản prompt qua cổng quét**: `agents/ skills/ templates/ gates/ topics/` của công ty này được job CI
+  `asset-scan` quét cùng lúc với software-company (mẫu injection, ký tự vô hình, lệnh nguy hiểm, khóa lộ —
+  ADR-0022 bên `software-company/docs/adr/`). Chạy tay: `cd ../software-company && make assetscan`.
+  Miễn trừ của công ty này nằm ở `assetscan-waivers.txt` tại thư mục gốc của nó.
 - **Analytics bằng code**: điểm rơi retention map vào `scene_id`; A/B thumbnail z-test hai tỷ lệ, tin cậy ≥ 0.95, guard giữ chân.
 - **Desk** (`desk.py`): trạng thái video, gom 3 review, `ready_for_publish`, rework có hint, block/reopen, review quá hạn.
 - **Orchestrator** (`orchestrator.py`): bảng ROUTES khớp front matter (kiểm lúc khởi tạo); kế hoạch → gate plan → dispatch;

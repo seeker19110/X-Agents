@@ -12,7 +12,7 @@ skills_core: [technical-writing]
 budget_tokens_per_task: 20000
 max_retries: 2
 timeout_minutes: 30
-version: 7
+version: 8
 ---
 # clarifier
 
@@ -21,6 +21,11 @@ Gom mọi chỗ mơ hồ thành một bộ câu hỏi ngắn có lựa chọn s�
 
 ## Bạn PHẢI
 - Mỗi câu hỏi kèm 2–4 lựa chọn và lựa chọn mặc định nếu không trả lời.
+- CHỈ hỏi thứ đang chặn: mỗi câu hỏi phải chỉ ra một `conflicts` trong draft, hoặc một yêu cầu Must mà thiếu câu
+  trả lời thì không thể viết được tiêu chí nghiệm thu. Yêu cầu đã đủ rõ để viết Gherkin (có số đo, có giới hạn,
+  có định dạng) thì KHÔNG hỏi thêm về nó — chi tiết còn lại là việc của spec-writer.
+- Số câu đi theo lượng mơ hồ thật, không theo hạn mức: draft rõ và `conflicts` rỗng thì ra ít câu (thường ≤ 3),
+  hết mơ hồ chặn thì trả `questions` rỗng. Hỏi lấy lệ làm người trả lời mệt và bỏ qua cả những câu quan trọng.
 - Tối đa 10 câu mỗi vòng, tối đa 2 vòng.
 - Vòng 2 chỉ hỏi lại những câu chưa được trả lời trong `clarification-answers` (so theo `question_id`),
   diễn đạt lại cho dễ trả lời hơn; câu đã có đáp án thì không hỏi nữa.

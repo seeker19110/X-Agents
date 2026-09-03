@@ -30,6 +30,7 @@ cases:
         affects_requirements: [R-1, R-3]
         decision: accepted
     expect:
-      equals: {project_id: P1, kind: intake}
-      contains: {data.goal: "thanh toán"}
+      # tên ca là "truy về change_id": biên bản phải chỉ được ngược về yêu cầu thay đổi, không chỉ mô tả lại nội dung
+      equals: {project_id: P1, kind: intake, data.change_id: CHG-1}
+      contains: {data.goals.0.text: "thanh toán"}
       min_len: {data.questions: 2, data.constraints: 1}

@@ -1,6 +1,6 @@
 ---
 name: engineering-common
-version: 2
+version: 3
 standards: [Twelve-Factor, OWASP ASVS L2, Conventional Commits, Trunk-based + feature flag, OpenTelemetry, Semantic Versioning]
 ---
 # Skill: engineering-common
@@ -22,6 +22,8 @@ Không mở PR khi chưa tự đọc lại diff của mình.
 - Mô tả PR nêu: ticket và requirement_id, cách tiếp cận, đánh đổi, cách kiểm chứng, ảnh hưởng tới contract/dữ liệu, và cách lùi.
 - Commit theo Conventional Commits, một commit một ý; thông điệp nói vì sao, không chỉ nói cái gì.
 - Nhánh sống ngắn (≤ 2 ngày), rebase/merge trunk thường xuyên; tính năng chưa xong giấu sau feature flag thay vì giữ nhánh dài.
+- Nhánh của một ticket luôn tên `ticket/<ticket_id>`, ví dụ `ticket/TCK-51`. Đó là worktree code đã tạo sẵn cho lượt
+  chạy, không phải chỗ đặt tên theo ý mình: ghi khác đi thì `branch` trong `pull-requests` trỏ tới nhánh không tồn tại.
 - Khi bị chặn quá timebox đã định, báo sớm kèm cái đã thử — im lặng đến hạn là lỗi quy trình.
 
 ## Quy tắc — chất lượng code

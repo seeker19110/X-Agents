@@ -1,0 +1,24 @@
+# Cài: `uv tool install pre-commit && pre-commit install` (xem CONTRIBUTING.md §2).
+# Hook chạy trên file được stage; CI chạy lại cùng bộ ruff/gitleaks nên đây chỉ là vòng phản hồi sớm.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+
+  # Chỉ ruff-check, không ruff-format: các package cố ý giữ nhiều lệnh một dòng (ignore E701/E702),
+  # ruff format sẽ viết lại hàng chục file. Mỗi file lấy cấu hình từ pyproject.toml của package chứa nó.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5   # cùng bản ruff với uv.lock của các package
+    hooks:
+      - id: ruff-check
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks   # dùng .gitleaks.toml ở gốc repo, cùng cấu hình với job `audit`

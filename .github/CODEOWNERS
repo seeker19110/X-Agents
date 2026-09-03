@@ -14,5 +14,12 @@
 /software-company/docs/adr/              @seeker19110
 /software-company/gates/                 @seeker19110
 
+# Studio-creators: prompt/skill cũng là code, cùng quy tắc với software-company.
+/Studio-creators/agents/                 @seeker19110
+/Studio-creators/skills/                 @seeker19110
+
+# OAuth client và lưu trữ token của gateway: đổi sai là lộ tài khoản Google trong pool.
+/gateway/src/gateway/auth.py             @seeker19110
+
 # Hạ tầng CI và chính các quy tắc này.
 /.github/                                @seeker19110

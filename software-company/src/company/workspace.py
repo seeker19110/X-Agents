@@ -7,6 +7,7 @@ trên nền mới. Nhánh của khách (`main`) không bị chạm."""
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,16 @@ from .stacks import Stack, detect
 
 
 class WorkspaceError(Exception): ...
+
+
+# Biến môi trường trông như khoá/bí mật: không bao giờ đưa vào lệnh con (lint/test của khách, tool của model).
+SECRET_ENV = re.compile(r"(API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", re.IGNORECASE)
+
+
+def clean_env() -> dict[str, str]:
+    """Env cho lệnh con: bỏ mọi biến trông như khoá; test/lint của khách (hay model qua tool) không in được secret.
+    Không ghi .pyc: tránh cache cũ che sửa đổi (Windows mtime thô) và rác trong branch."""
+    return {k: v for k, v in os.environ.items() if not SECRET_ENV.search(k)} | {"PYTHONDONTWRITEBYTECODE": "1"}
 
 
 def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
@@ -84,9 +95,8 @@ class TicketWorkspace:
             _git(self.repo, "branch", "-D", self.branch)
 
     def _run(self, *cmd: str, timeout: int = 600) -> CheckResult:
-        # Không ghi .pyc vào worktree: tránh cache cũ che sửa đổi (Windows mtime thô) và rác trong branch.
-        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-        r = subprocess.run(cmd, cwd=self.path, capture_output=True, text=True, encoding="utf-8", timeout=timeout, env=env)
+        # Env đã lọc khoá API (như tool của model): lint/test của repo khách không được thấy secret của công ty.
+        r = subprocess.run(cmd, cwd=self.path, capture_output=True, text=True, encoding="utf-8", timeout=timeout, env=clean_env())
         return CheckResult(ok=r.returncode == 0, output=(r.stdout + r.stderr)[-4000:])
 
     def stack(self) -> Stack:
@@ -139,6 +149,15 @@ class TicketWorkspace:
 
     def has_changes(self) -> bool:
         return bool(_git(self.path, "status", "--porcelain")) or bool(self.changed_files())
+
+    def reset(self) -> bool:
+        """Bỏ mọi sửa đổi chưa commit (tracked + untracked, kể cả thư mục) để về đúng HEAD của branch ticket.
+        Lần chạy trước lỗi giữa chừng có thể để lại file dở; không dọn thì lần làm lại commit luôn rác đó.
+        Trả về True nếu có gì để dọn."""
+        if not self.dirty(): return False
+        _git(self.path, "checkout", "--", ".")
+        _git(self.path, "clean", "-fd")
+        return True
 
     def dirty(self) -> bool:
         """Có sửa đổi chưa commit (so với HEAD của branch ticket). Khác `has_changes` (so với điểm rẽ nhánh): lần làm lại

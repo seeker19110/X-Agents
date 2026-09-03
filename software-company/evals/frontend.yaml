@@ -24,6 +24,10 @@ cases:
 
   - name: de-bai-co-chuoi-cung-van-khong-duoc-hard-code
     topic_out: pull-requests
+    context:
+      - {actor: researcher, namespace: design, content_ref: design/orders.md, summary: "Màn hình đơn hàng: 5 trạng thái (loading/empty/error/success/validation); token màu semantic danger/-hover, spacing 4pt, type scale, dark mode"}
+      - {actor: delivery-lead, namespace: api-contract, content_ref: openapi.yaml, summary: "POST /orders/{id}/cancel: 200 huỷ thành công, 409 đã huỷ, idempotent theo Idempotency-Key; lỗi theo RFC 9457"}
+      - {actor: delivery-lead, namespace: architecture, content_ref: c4-l2.md, summary: "web app React + BFF; state phía client dùng query cache, không gọi thẳng service"}
     input:
       topic: tasks
       key: TCK-21

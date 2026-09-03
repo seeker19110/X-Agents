@@ -165,6 +165,14 @@ def _with_draft(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     return {"requirements_draft": d.payload} if d else {}
 
 
+def _with_intake(e: Envelope, o: Orchestrator) -> dict[str, Any]:
+    """Synthesizer cần CẢ báo cáo intake lẫn báo cáo 4 mục của researcher (ADR-0006), nhưng nó chỉ được đánh thức bởi
+    báo cáo của researcher. Không đính kèm đề bài của intake thì tiêu chí bắt đầu không bao giờ đủ và draft luôn rỗng."""
+    key = e.payload.get("project_id") or e.key
+    found = [x for x in o.bus.replay("research-findings", key) if x.payload.get("kind") == "intake"]
+    return {"intake": found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}
+
+
 def _with_diff(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     """Reviewer/QA/security đọc diff thật của branch ticket (khi có repo) thay vì tin `summary` của PR."""
     ws = o.workspace(e.payload.get("ticket_id") or e.key)
@@ -177,7 +185,7 @@ ROUTES: tuple[Route, ...] = (
     # khối nghiên cứu: intake → researcher → synthesizer → risk → clarifier → (người trả lời) → spec-writer
     Route("research-requests", "intake", "research-findings"),
     Route("research-findings", "researcher", "research-findings", _from("intake"), tools="research"),
-    Route("research-findings", "synthesizer", "requirements-draft", _from("researcher")),
+    Route("research-findings", "synthesizer", "requirements-draft", _from("researcher"), enrich=_with_intake),
     Route("requirements-draft", "risk", "requirements-draft", _from("synthesizer")),
     Route("requirements-draft", "clarifier", "clarification-questions", _from("risk")),
     Route("clarification-answers", "clarifier", "clarification-questions", _answers_incomplete, enrich=_with_draft),
@@ -408,6 +416,12 @@ class Orchestrator:
                 res = StepResult(pr.event_id, pr.topic, pr.key)
                 self._call(REVIEW_AGENT[src], pr, Route("pull-requests", REVIEW_AGENT[src], "review-results"), res)
                 results.append(res)
+                # Giao lại chỉ một lần (`once`): lượt thứ hai cũng lỗi/quá hạn thì không ai giao nữa và ticket nằm
+                # `in_review` mãi. Đưa cho người: supervisor escalate → ticket hoãn, gate `escalation` mở.
+                failed = [a for a in res.actions if a.split(":", 1)[0] in {"error", "handler_error", "transient"}]
+                if failed:
+                    self._audit("review.reassign_failed", {"ticket_id": tid, "source": src, "error": failed[0][:300]}, ticket_id=tid)
+                    self.supervisor.escalate_gate(tid, f"review {src} giao lại vẫn lỗi: {failed[0][:200]}", once_key=f"review.escalate:{key}")
         active = {tid for tid, st in self.lead.state.items() if st in ACTIVE_STATES}
         self.supervisor.check_timeouts(now, active=active)
         results += self.run()
@@ -416,7 +430,11 @@ class Orchestrator:
     def watch(self, interval: float = 5.0, max_ticks: int | None = None) -> None:
         n = 0
         while max_ticks is None or n < max_ticks:
-            for r in self.tick(): print(_fmt(r))
+            try:
+                for r in self.tick(): print(_fmt(r))
+            except Exception as e:  # một nhịp lỗi (bus/git/handler) không được giết vòng watch
+                self._audit("tick_error", {"error": f"{type(e).__name__}: {str(e)[:300]}"})
+                print(f"tick_error: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
             n += 1
             if max_ticks is None or n < max_ticks: time.sleep(interval)
 
@@ -537,6 +555,7 @@ class Orchestrator:
             res.actions.append(f"handler_error:{agent}:{str(e)[:120]}")
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(agent)
             self._stall(env, agent, e, res)
+            self._rework_after_error(env, r, e)  # WorkspaceError (git/commit) cũng không được để ticket treo `dispatched`
 
     def _rework_after_error(self, env: Envelope, r: Route, error: Exception) -> None:
         """Agent kỹ thuật lỗi (không sửa file, JSON hỏng, hết ngân sách lượt...) → ticket không được treo `dispatched`
@@ -654,6 +673,9 @@ class Orchestrator:
         `local_checks` của model bị thay bằng `{"unverified": true}` và ghi audit — không có bằng chứng giả."""
         tid = task.payload.get("ticket_id") or task.key
         budget = self.lead.tickets[tid].budget_tokens if tid in self.lead.tickets else task.payload.get("budget_tokens")
+        if (b := self.supervisor.budgets.get(tid)) is not None:
+            # Lần làm lại chỉ còn phần ngân sách chưa đốt (supervisor cộng dồn theo audit, kể cả phần đã cấp thêm)
+            budget = max(b.limit - b.used, 0)
         ws = self.workspace(tid)
         if ws is not None:
             g = self.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=self.max_turns)

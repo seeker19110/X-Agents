@@ -1,0 +1,22 @@
+{
+ "agent": "mobile",
+ "prompt_version": 9,
+ "recorded_at": "2026-09-03T05:09:57.543973+00:00",
+ "models": [
+  "claude-sonnet-5"
+ ],
+ "cases": {
+  "e564bdaa4fa6a2de28fab2dd": {
+   "text": "```json\n{\n  \"ticket_id\": \"TCK-30\",\n  \"branch\": \"ticket/TCK-30\",\n  \"pr_ref\": \"BLOCKED - chưa mở PR\",\n  \"summary\": \"Dừng theo ngưỡng: shared-context (blackboard) đang trống — thiếu architecture, api-contract, schema và đặc biệt là design (flow, trạng thái, tokens cho màn hình chụp/đính kèm ảnh hoá đơn). Theo skill mobile, PHẢI đọc các namespace này trước khi dựng màn hình và lấy flow/trạng thái/tokens từ design; đồng thời KHÔNG ĐƯỢC tự chế giao diện. Vì đầu vào thiếu trường bắt buộc, không tiến hành code/PR để tránh vi phạm contract UI, quy tắc quyền camera theo HIG/Material 3, và MASVS cho luồng upload ảnh (rủi ro upload đã được gắn tag). Đề nghị delivery-lead hoặc chủ sở hữu design/architecture bổ sung: (1) flow màn hình chụp ảnh + trạng thái từ chối quyền, (2) design tokens liên quan, (3) api-contract cho endpoint đính kèm ảnh vào đơn hàng, (4) schema dữ liệu ảnh đính kèm. Sau khi có đủ, sẽ nối lại theo TDD: viết test cho luồng cấp quyền/từ chối quyền camera trước, hiện thực offline-first cho việc lưu ảnh chờ đồng bộ, lưu ý không hard-code token/API key, ảnh nhạy cảm không vào cache dùng chung.\",\n  \"impact\": {\n    \"code_changed\": false,\n    \"reason\": \"missing_required_inputs\",\n    \"missing\": [\"architecture\", \"api-contract\", \"schema\", \"design\"],\n    \"blocked_since\": \"2026-09-03\"\n  },\n  \"local_checks\": {\n    \"lint\": false,\n    \"tests\": false,\n    \"coverage\": 0,\n    \"verified_by\": null,\n    \"unverified\": true,\n    \"stack\": \"N/A - không có code được viết do thiếu đầu vào bắt buộc từ shared-context\"\n  }\n}\n```",
+   "model": "claude-sonnet-5",
+   "input_tokens": 12955,
+   "output_tokens": 1384
+  },
+  "1a4deacaaae0ae798d784742": {
+   "text": "```json\n{\n  \"ticket_id\": \"TCK-31\",\n  \"branch\": \"ticket/TCK-31\",\n  \"pr_ref\": \"DRAFT-NOT-PUBLISHED\",\n  \"summary\": \"Đã thiết kế/triển khai (chưa xác minh chạy thực tế trong phiên này) màn hình danh sách đơn hàng tài xế theo design/driver-orders.md: cache-first đọc dữ liệu cục bộ trước, hàng đợi thao tác đồng bộ nền khi có mạng lại (theo architecture c4-l2.md), gọi GET /orders?updated_since= dùng ETag để lấy delta, POST /orders/{id}/status kèm Idempotency-Key để retry an toàn không mất/nhân đôi thao tác, xung đột giải theo updated_at của server (server thắng, có báo người dùng). UI đủ 5 trạng thái loading/empty/error/offline-stale/success với nhãn 'dữ liệu lúc HH:mm', token màu/spacing lấy từ design, không tự vẽ lại. Token phiên đăng nhập lưu Keychain/Keystore, không lưu SharedPreferences/UserDefaults. Bổ sung a11y label cho TalkBack/VoiceOver trên luồng xem danh sách và cập nhật trạng thái đơn. KHÔNG publish PR vì chưa chạy được lint/test cục bộ thật trong phiên này (thiếu môi trường thực thi tool) — theo quy tắc không được publish PR khi chưa xác minh test pass. Cần supervisor cấp môi trường build/test hoặc xác nhận lại trước khi mở PR chính thức.\",\n  \"impact\": {\n    \"requirement_id\": \"R-41\",\n    \"scope\": \"màn hình danh sách đơn hàng tài xế (offline-first + sync)\",\n    \"contract_touched\": [\"GET /orders?updated_since=\", \"POST /orders/{id}/status\"],\n    \"data_migration\": false,\n    \"feature_flag\": \"driver_orders_offline_v1\",\n    \"rollback\": \"tắt feature flag driver_orders_offline_v1, fallback về màn hình danh sách online-only cũ\"\n  },\n  \"local_checks\": {\n    \"lint\": false,\n    \"tests\": false,\n    \"coverage\": 0,\n    \"verified_by\": null,\n    \"unverified\": true,\n    \"stack\": \"Không thể xác minh: phiên làm việc hiện tại không có công cụ thực thi (không chạy được lint/test/build thật trên worktree ticket/TCK-31). Không bịa kết quả pass; PR không được publish theo quy tắc 'KHÔNG ĐƯỢC publish PR khi test local fail/chưa chạy'. Cần chạy lại trong môi trường có quyền thực thi để lấy bằng chứng lint pass, test pass và coverage nhánh code mới trước khi mở PR thật.\"\n  }\n}\n```",
+   "model": "claude-sonnet-5",
+   "input_tokens": 13285,
+   "output_tokens": 2319
+  }
+ }
+}

@@ -29,7 +29,17 @@ make lint && make test
 ```
 
 `software-company` và `Studio-creators` có cùng bộ target: `test`, `cov`, `lint` (ruff + mypy), `types`, `fix`,
-`golden`, `eval`, `eval-record`, `eval-replay`, `demo`, `run`, `status`.
+`golden`, `eval`, `eval-record`, `eval-replay`, `demo`, `run`, `status`. `gateway` có `test`, `cov`, `lint`,
+`types`, `fix` cùng nghĩa.
+
+Muốn các cổng nhẹ (ruff, gitleaks, YAML, khoảng trắng thừa) chạy tự động trước mỗi commit, cài pre-commit một lần
+ở gốc repo:
+
+```bash
+uv tool install pre-commit && pre-commit install
+```
+
+Cấu hình ở `.pre-commit-config.yaml`; `pre-commit run --all-files` chạy tay trên toàn bộ repo.
 
 Không có `make` (Windows): mở `Makefile` và chạy dòng `uv run` tương ứng. Với target có `PYTHONPATH=src`, trong
 PowerShell viết `$env:PYTHONPATH='src'; uv run python -m studio.demo`.
@@ -38,7 +48,8 @@ CI (`.github/workflows/ci.yml`) chạy đúng những cổng đó, thêm `audit`
 `golden-check`. Job tổng hợp tên `quality` là required status check của `main` — **thêm job con mới thì phải nối
 vào `needs` của nó**, nếu không kết quả của job đó không được tính.
 
-Ngưỡng coverage nằm trong `pyproject.toml` (`fail_under`: 90 cho software-company, 84 cho Studio-creators). Nó
+Ngưỡng coverage nằm trong `pyproject.toml` (`fail_under`: 90 cho software-company, 84 cho Studio-creators, 73 cho
+gateway). Nó
 đặt ở mức đang đạt được để chặn tụt lùi — nâng lên khi coverage thật tăng, đừng hạ xuống để PR qua cổng.
 
 ## 3. Sửa `agents/` hoặc `skills/` — checklist bắt buộc
@@ -53,6 +64,11 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    prompt cũ, đều làm CI đỏ. Bản ghi phát lại từ file, CI **không** gọi model.
 4. Commit bản ghi đầu tiên của một agent mới thì thêm id của nó vào `REQUIRED.txt` — từ lúc đó agent ấy được
    bảo vệ như trên.
+5. **`make assetscan`** (trong `software-company/`, quét cả hai công ty). Prompt là tài sản chuỗi cung ứng: mẫu
+   injection, ký tự vô hình, lệnh `curl … | sh`, khóa lộ trong file prompt đều làm CI đỏ (ADR-0022). Cần giữ một
+   mẫu để làm ví dụ dạy học thì thêm dòng có lý do vào `assetscan-waivers.txt`, đừng nới regex.
+6. Nhồi thêm skill vào một agent thì chạy **`make assetbudget`**: prompt tĩnh vượt 50% `budget_tokens_per_task`
+   của chính agent đó là đỏ — nâng ngân sách có chủ đích, hoặc bớt skill.
 
 Ca eval chấm không đạt **không** làm CI đỏ (đó là tín hiệu chất lượng cho vòng sau); chỉ bản ghi thiếu hoặc lệch
 mới đỏ.

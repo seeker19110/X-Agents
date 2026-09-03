@@ -14,9 +14,10 @@ Nguyên tắc chung cho mọi công ty:
 
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`), ADR 0001–0019, 312 test |
+| [`software-company/`](software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 20 agent, 45 skill, 18 topic, 14 template, 4 human gate (+ gate `escalation`), ADR 0001–0022, 394 test |
 | [`Studio-creators/`](Studio-creators/) | Phòng ban sáng tạo video (YouTube): kế hoạch → kịch bản → fact-check → render (TTS + ảnh + ghép) → sửa từng cảnh → review → đăng → số liệu thật nuôi chiến lược. Approval-first, media trung lập provider | 7 khối, 14 agent, 24 skill, 19 topic, 7 template, 4 human gate, ADR 0001–0008 (0007 tool web, 0008 adapter YouTube thật), 164 test |
 | [`gateway/`](gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code | daemon `127.0.0.1:8100/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/setup`, 42 test |
+| [`console/`](console/) | Trực ban hợp nhất: một trang web cục bộ nhìn cả hai công ty — hàng đợi human gate, ticket, dây chuyền video, token và chi phí, gói tài khoản đang xoay — và duyệt gate ngay tại chỗ khi bật `--allow-decide`. Đọc bus SQLite ở chế độ chỉ đọc, quyết định đi qua đúng `HumanGate` của từng công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 5 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001 |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
 | [`docs/DIEU-PHOI-MODEL.md`](docs/DIEU-PHOI-MODEL.md) | Điều phối model theo gói tài khoản: backend, 3 tier, bảng agent → tier, cơ chế xoay khi hết quota | |
 | [`docs/QUY-TRINH-GIT.md`](docs/QUY-TRINH-GIT.md) | Quy trình Git chung: nhánh, commit, PR, CI, merge squash | |
@@ -62,6 +63,14 @@ cd gateway && uv sync
 make login      # đăng nhập Google; chạy lại để thêm tài khoản   (= PYTHONPATH=src uv run python -m gateway login)
 make start      # daemon tại 127.0.0.1:8100
 make setup      # ghi ../software-company/llm.yaml dạng một provider trỏ vào gateway (không dùng khi llm.yaml đã có `backends:`)
+```
+
+Nhìn cả hai công ty trên một màn hình (và duyệt gate tại chỗ):
+
+```bash
+cd console && uv sync
+uv run python -m console                 # 127.0.0.1:8200, chỉ đọc; terminal in địa chỉ kèm token phiên
+uv run python -m console --allow-decide  # mở khoá các nút quyết định gate
 ```
 
 ## Kiến trúc chung của một công ty

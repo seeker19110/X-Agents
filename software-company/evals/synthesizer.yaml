@@ -10,6 +10,18 @@ cases:
         project_id: P1
         kind: researcher
         sources: ["họp kickoff 2026-09-01", "docs/quy-trinh-le-tan.pdf"]
+        # đề bài của intake, orchestrator đính kèm qua `_with_intake` (ADR-0006: tiêu chí bắt đầu cần cả hai báo cáo)
+        intake:
+          goals:
+            - {id: G-1, text: "Bệnh nhân tự đặt lịch khám online, không phải gọi điện"}
+            - {id: G-2, text: "Lễ tân xác nhận hoặc từ chối yêu cầu đặt lịch trong ngày"}
+            - {id: G-3, text: "Hệ thống nhắc lịch khám qua Zalo trước giờ hẹn"}
+          constraints:
+            - {id: C-1, text: "Tuân Nghị định 13/2023 về bảo vệ dữ liệu cá nhân", source: "họp kickoff 2026-09-01"}
+            - {id: C-2, text: "Ngân sách 3 tháng cho bản đầu", source: "họp kickoff 2026-09-01"}
+            - {id: C-3, text: "HIS hiện có chỉ xuất được CSV", source: "docs/quy-trinh-le-tan.pdf"}
+          assumptions:
+            - {id: A-1, text: "Bệnh nhân đã dùng Zalo", needs_confirmation: true}
         data:
           domain:
             glossary: ["lịch hẹn", "ca khám", "bệnh nhân"]

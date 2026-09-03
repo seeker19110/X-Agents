@@ -8,7 +8,7 @@ Mỗi gate dưới đây tách làm hai phần:
   mở gate, còn việc từng mục có đạt hay không thì người duyệt xác nhận.
 - **Người tự kiểm thêm** — không có trong payload, không có tên khoá; người duyệt phải tự đọc và trả lời.
 
-`GateKind` hiện có đúng bốn giá trị: `spec`, `plan`, `release`, `escalation` (`src/company/gates.py`).
+`GateKind` hiện có đúng năm giá trị: `spec`, `plan`, `release`, `acceptance`, `escalation` (`src/company/gates.py`).
 
 ## Gate 1 — Duyệt spec (kind `spec`, subject `SPEC-<project>`)
 Code gửi kèm: `prd`, `acceptance-criteria`, `ux-flow`, `risks`

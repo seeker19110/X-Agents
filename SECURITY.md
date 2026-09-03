@@ -43,11 +43,21 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
 - **Human gate**: các bước không thể hoàn tác (release, đăng video) dừng lại chờ người duyệt bằng `gate_cli`.
 - **Chống prompt injection** (`guard.py`, ADR-0012): dữ liệu nguồn nội bộ nghi injection thì từ chối chạy; dữ liệu
   nguồn ngoài (khách, web, diff repo khách) bị lọc đoạn khớp mẫu và ghi audit, vì không thể từ chối đọc.
+- **Quét tài sản prompt** (`company.assetscan`, ADR-0022): `guard.py` canh dữ liệu chạy qua, còn cổng này canh
+  chính các file `agents/ skills/ templates/ gates/ topics/` — thứ ghép thành system prompt và không qua lớp lọc
+  nào. Bốn lỗi làm CI đỏ: mẫu injection, ký tự vô hình/đảo chiều (mắt người không thấy trong diff), lệnh nguy hiểm
+  (`curl … | sh`, `rm -rf /`, POST biến môi trường), khóa lộ. Miễn trừ phải có lý do trong `assetscan-waivers.txt`.
 - **Ranh giới ghi**: agent sửa code trong git worktree tách riêng, không ghi thẳng vào cây làm việc.
 - **Guardrail chi phí**: ước lượng token trước khi dispatch, ngân sách theo việc, supervisor cắt khi vượt hạn mức;
   audit-log ghi token thật và quy ra USD.
 - **Trần quyền theo agent**: mỗi agent chỉ được đọc/ghi những topic đã khai trong registry; ghi sai topic là lỗi
   chạy, không phải cảnh báo.
+
+Danh tính `--by` khi duyệt gate hay publish (`gate_cli`, lệnh publish) chỉ là **chuỗi gõ tay trên CLI, không được
+xác thực**: ai có shell trên máy đó đều ghi được tên người khác. Quy tắc "bốn mắt" (người duyệt khác người tạo) vì vậy
+là kiểm soát *quy trình* trên một máy tin cậy duy nhất, không phải ranh giới xác thực. Nếu gate được đưa lên giao diện
+web hoặc dùng chung nhiều người, nó cần xác thực thật (đăng nhập, phiên, audit theo danh tính đã xác minh) trước khi
+tin vào `--by`.
 
 Gateway lắng nghe `127.0.0.1:8100` và **không có xác thực người dùng**. Đừng bind nó ra địa chỉ công khai; muốn
 dùng từ máy khác thì đi qua SSH tunnel.

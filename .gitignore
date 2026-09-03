@@ -2,45 +2,20 @@
 __pycache__/
 *.pyc
 .env
-*.faiss
-*.pkl
 
-# Bỏ qua tất cả các file bản vẽ và báo cáo dự án
-*.dxf
-*.dwg
-*.xlsx
-*.xls
-*.pdf
-*.docx
-
-# Giữ lại duy nhất Thư viện Block mẫu chuẩn của hệ thống
-!data/blocks/mepf_library.dxf
-
-# Thư mục làm việc riêng theo từng phiên Streamlit (per-session workspace, xem src/workspace.py)
-outputs/
-
-# Checkpoint hội thoại (SQLite) — dữ liệu chạy, không commit
-data/checkpoints.sqlite*
-.redis/
-uploads/
-
-# CSDL người dùng sinh ra lúc chạy — không bao giờ commit (chứa hash mật khẩu thật)
-data/users.sqlite
-data/workspaces/
-
-# CSDL Project Kernel sinh ra lúc chạy (src/project_kernel.py) — không commit
-data/project_kernel.sqlite
+# Cache công cụ và báo cáo coverage do pytest-cov sinh (nhị phân, đổi mỗi lần chạy) — không thuộc lịch sử git
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
 # software-company: dữ liệu chạy và cấu hình model cá nhân
 software-company/company.sqlite*
 software-company/.worktrees/
 software-company/llm.yaml
-
-# Báo cáo coverage do pytest-cov sinh (nhị phân, đổi mỗi lần chạy) — không thuộc lịch sử git
-.coverage
-.coverage.*
-coverage.xml
-htmlcov/
 
 # đầu ra mô phỏng examples/donghanhcungban_demo.py
 software-company/sim-out/
@@ -51,9 +26,14 @@ Studio-creators/output/
 Studio-creators/llm.yaml
 Studio-creators/media.yaml
 
-# gateway: token OAuth và cấu hình cá nhân — không bao giờ commit
-gateway/.venv/
-gateway/llm.yaml
-
 # Studio-creators: OAuth client secret tải từ Google Cloud Console (chỉ dùng cho `studio.youtube login`) — không commit
 Studio-creators/client_secret*.json
+
+# gateway: token OAuth nằm ngoài cây repo (~/.x-agents/auth/); trong repo chỉ có venv
+gateway/.venv/
+
+# editable install của path dependency (console)
+*.egg-info/
+
+# console: token phiên sinh mỗi lần chạy server trực ban (quyền 0600) — không bao giờ commit
+console/.console-token

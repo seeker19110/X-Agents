@@ -53,8 +53,10 @@
             },
             "verified_by": {
               "enum": [
-                "workspace"
-              ]
+                "workspace",
+                null
+              ],
+              "description": "chỉ code đặt \"workspace\" sau khi thật sự chạy lint/test; agent không chạy được thì để null (= chưa xác minh)"
             },
             "unverified": {
               "type": "boolean"
