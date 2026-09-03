@@ -151,3 +151,30 @@ def test_stream_event_with_only_finish_reason_and_usage_is_emitted():
     assert chunk["usage"]["total_tokens"] == 10
     safety = {"response": {"candidates": [{"finishReason": "SAFETY", "content": {"parts": []}}]}}
     assert gw.translate_gemini_stream_event(safety, "m", "id1")["choices"][0]["finish_reason"] == "content_filter"
+
+
+def test_stream_tool_call_index_counts_tool_calls_not_parts():
+    event = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {"text": "thinking...", "thought": True},
+                        {"functionCall": {"name": "a", "args": {}}},
+                        {"text": "and"},
+                        {"functionCall": {"name": "b", "args": {}}},
+                    ]
+                }
+            }
+        ]
+    }
+    chunk = gw.translate_gemini_stream_event(event, "gemini-3.7-flash", "chatcmpl-x")
+    assert [tc["index"] for tc in chunk["choices"][0]["delta"]["tool_calls"]] == [0, 1]
+
+
+def test_response_translation_extracts_action_style_textual_tool_call():
+    resp = {"candidates": [{"content": {"parts": [{"text": 'Action: Called search({"q": "x"})'}]}}]}
+    out = gw.translate_gemini_to_openai_response(resp, "gemini-3.7-flash")
+    calls = out["choices"][0]["message"]["tool_calls"]
+    assert calls[0]["function"]["name"] == "search"
+    assert out["choices"][0]["finish_reason"] == "tool_calls"

@@ -5,8 +5,11 @@ useDefault = true
 [allowlist]
 description = """gateway/src/gateway/auth.py chứa OAuth client id/secret CÔNG KHAI của Google Antigravity IDE
 (client desktop: giá trị nằm sẵn trong IDE và trong repo gốc donghanhcungban/Plugin-For-Hermes, không thể giữ bí mật).
-Chỉ bỏ qua đúng hằng số đó; token người dùng vẫn nằm ngoài git (~/.x-agents/auth/)."""
+Chỉ bỏ qua đúng hằng số đó, đúng giá trị đó, trong đúng file đó — đổi giá trị hay chép sang file khác là gitleaks báo lại.
+Token người dùng vẫn nằm ngoài git (~/.x-agents/auth/)."""
 regexTarget = "line"
+condition = "AND"   # phải khớp CẢ đường dẫn lẫn regex (mặc định là OR: khớp một trong hai đã bỏ qua)
+paths = ['''gateway/src/gateway/auth\.py''']
 regexes = [
-  '''_PUBLIC_CLIENT_SECRET_SUFFIX = "[A-Za-z0-9_-]{28}"''',
+  '''_PUBLIC_CLIENT_SECRET_SUFFIX = "K58FWR486LdLJ1mLB8sXC4z6qDAf"''',
 ]

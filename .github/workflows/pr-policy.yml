@@ -9,6 +9,9 @@ jobs:
   metadata:
     name: metadata
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - name: Tiêu đề PR theo Conventional Commits
         env:

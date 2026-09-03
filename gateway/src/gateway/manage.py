@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from gateway.auth import AntigravityAuthManager
 from gateway.server import (
@@ -101,7 +102,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             stdin=subprocess.DEVNULL,
             creationflags=flags,
             env=env,
-            **({} if sys.platform == "win32" else {"start_new_session": True}),
+            start_new_session=sys.platform != "win32",
         )
     get_pid_file().write_text(str(proc.pid), encoding="utf-8")
 
@@ -222,7 +223,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         data = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
     data["provider"] = "openai"
     data["base_url"] = f"http://{args.host}:{args.port}/v1"
-    models = data.get("models") if isinstance(data.get("models"), dict) else {}
+    models: dict[str, Any] = data["models"] if isinstance(data.get("models"), dict) else {}
     models["strong"] = args.strong
     models["standard"] = args.standard
     data["models"] = models
@@ -239,8 +240,10 @@ def cmd_setup(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     # Console Windows mặc định cp1252 không in được tiếng Việt.
     for stream in (sys.stdout, sys.stderr):
-        with contextlib.suppress(Exception):
-            stream.reconfigure(encoding="utf-8", errors="replace")
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(Exception):
+                reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(prog="gateway", description="Proxy xoay vòng tài khoản Antigravity")
     sub = parser.add_subparsers(dest="action", required=True)
 
