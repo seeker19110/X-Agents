@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import stat
 import sys
 import threading
 import types
-import os
 from pathlib import Path
 from typing import Any
 

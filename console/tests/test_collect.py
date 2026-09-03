@@ -11,8 +11,8 @@ from studio.events import AuditLog as StudioAudit
 from studio.events import Envelope as StudioEnvelope
 from studio.sqlite_bus import SQLiteBus as StudioSQLiteBus
 
-from conftest import gate_decide
 import console.collect as collect_mod
+from conftest import gate_decide
 from console.collect import COMPANY, STUDIO, collect
 
 DEAD_GATEWAY = "http://127.0.0.1:9"  # cổng 9 (discard) không có ai nghe → luôn từ chối ngay
