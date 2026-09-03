@@ -8,6 +8,7 @@ OpenAI-compatible (`/audio/speech`, `/images/generations`) nên dùng được v
 Mọi kết quả là `MediaResult(path, provider, model, duration_s)` — renderer đóng gói thành `media-assets` có checksum
 và provenance. Không có model text nào gọi được lớp này: chỉ code gọi.
 """
+
 from __future__ import annotations
 
 import base64
@@ -23,6 +24,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import yaml
+
+from .tools import ToolError, check_url
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_FILE = ROOT / "media.yaml"
@@ -49,17 +52,27 @@ class ImageGen(Protocol):
 
 
 class VideoAssembler(Protocol):
-    def assemble(self, segments: list[tuple[Path, Path, float]], out: Path, fps: int, resolution: str) -> MediaResult: ...
+    def assemble(
+        self, segments: list[tuple[Path, Path, float]], out: Path, fps: int, resolution: str
+    ) -> MediaResult: ...
 
 
 # ---------- cấu hình ----------
 
+
 @dataclass
 class MediaConfig:
     tts: dict[str, Any] = field(default_factory=lambda: {"provider": "fake", "model": "fake-tts", "voice": "neutral"})
-    image: dict[str, Any] = field(default_factory=lambda: {"provider": "fake", "model": "fake-image", "size": "1792x1024"})
+    image: dict[str, Any] = field(
+        default_factory=lambda: {"provider": "fake", "model": "fake-image", "size": "1792x1024"}
+    )
     video: dict[str, Any] = field(default_factory=lambda: {"provider": "fake", "fps": 30, "resolution": "1920x1080"})
-    platform: dict[str, Any] = field(default_factory=lambda: {"provider": "fake"})  # adapter nền tảng (ADR-0008): fake | youtube
+    platform: dict[str, Any] = field(
+        default_factory=lambda: {"provider": "fake"}
+    )  # adapter nền tảng (ADR-0008): fake | youtube
+    gate: dict[str, Any] = field(
+        default_factory=dict
+    )  # gate.approvers: [human:owner, ...] — ai được duyệt (env STUDIO_GATE_APPROVERS thắng)
     output_dir: Path = field(default_factory=lambda: ROOT / "output")
     upload_dir: Path | None = None  # nơi người dùng đặt file thay thế cho `replace_asset`; None = <output_dir>/uploads
     api_key: str | None = None
@@ -70,19 +83,25 @@ def load_media_config(path: Path | None = None) -> MediaConfig:
     p = path or CONFIG_FILE
     if p.exists():
         data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        for k in ("tts", "image", "video", "platform"):
+        for k in ("tts", "image", "video", "platform", "gate"):
             getattr(cfg, k).update(data.get(k) or {})
-        if data.get("output_dir"): cfg.output_dir = ROOT / str(data["output_dir"])
-        if data.get("upload_dir"): cfg.upload_dir = ROOT / str(data["upload_dir"])
+        if data.get("output_dir"):
+            cfg.output_dir = ROOT / str(data["output_dir"])
+        if data.get("upload_dir"):
+            cfg.upload_dir = ROOT / str(data["upload_dir"])
     env = os.environ
     for k in ("tts", "image", "video"):
         v = env.get(f"STUDIO_MEDIA_{k.upper()}_PROVIDER")
-        if v: getattr(cfg, k)["provider"] = v
-    if env.get("STUDIO_PLATFORM"): cfg.platform["provider"] = env["STUDIO_PLATFORM"]
+        if v:
+            getattr(cfg, k)["provider"] = v
+    if env.get("STUDIO_PLATFORM"):
+        cfg.platform["provider"] = env["STUDIO_PLATFORM"]
     if env.get("STUDIO_MEDIA_BASE_URL"):
         cfg.tts["base_url"] = cfg.image["base_url"] = env["STUDIO_MEDIA_BASE_URL"]
-    if env.get("STUDIO_MEDIA_OUTPUT_DIR"): cfg.output_dir = Path(env["STUDIO_MEDIA_OUTPUT_DIR"])
-    if env.get("STUDIO_MEDIA_UPLOAD_DIR"): cfg.upload_dir = Path(env["STUDIO_MEDIA_UPLOAD_DIR"])
+    if env.get("STUDIO_MEDIA_OUTPUT_DIR"):
+        cfg.output_dir = Path(env["STUDIO_MEDIA_OUTPUT_DIR"])
+    if env.get("STUDIO_MEDIA_UPLOAD_DIR"):
+        cfg.upload_dir = Path(env["STUDIO_MEDIA_UPLOAD_DIR"])
     cfg.api_key = env.get("STUDIO_MEDIA_API_KEY") or env.get("STUDIO_LLM_API_KEY") or env.get("OPENAI_API_KEY")
     return cfg
 
@@ -102,7 +121,9 @@ class MediaSuite:
 def make_media(cfg: MediaConfig | None = None) -> MediaSuite:
     cfg = cfg or load_media_config()
     tts: TTS = OpenAITTS(cfg) if cfg.tts.get("provider") == "openai" else _require_fake("tts", cfg.tts, FakeTTS(cfg))
-    img: ImageGen = OpenAIImage(cfg) if cfg.image.get("provider") == "openai" else _require_fake("image", cfg.image, FakeImage(cfg))
+    img: ImageGen = (
+        OpenAIImage(cfg) if cfg.image.get("provider") == "openai" else _require_fake("image", cfg.image, FakeImage(cfg))
+    )
     vp = cfg.video.get("provider")
     vid: VideoAssembler = FFmpegAssembler() if vp == "ffmpeg" else _require_fake("video", cfg.video, FakeVideo())
     return MediaSuite(tts=tts, image=img, video=vid, cfg=cfg)
@@ -121,13 +142,16 @@ def estimate_duration(text: str) -> float:
 # ---------- provider giả (offline) ----------
 
 _PNG_1x1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
 
 
 def _solid_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
     """PNG đơn sắc hợp lệ (để ffmpeg thật cũng ghép được ảnh giả)."""
+
     def chunk(tag: bytes, data: bytes) -> bytes:
         return len(data).to_bytes(4, "big") + tag + data + zlib.crc32(tag + data).to_bytes(4, "big")
+
     row = b"\x00" + bytes(rgb) * width
     raw = row * height
     ihdr = width.to_bytes(4, "big") + height.to_bytes(4, "big") + b"\x08\x02\x00\x00\x00"
@@ -141,11 +165,24 @@ class FakeTTS:
     def synthesize(self, text: str, voice: dict[str, Any], out: Path) -> MediaResult:
         out.parent.mkdir(parents=True, exist_ok=True)
         # WAV im lặng đúng thời lượng ước lượng để ffmpeg thật cũng chạy được với asset giả
-        dur = estimate_duration(text); rate = 8000; n = int(dur * rate)
+        dur = estimate_duration(text)
+        rate = 8000
+        n = int(dur * rate)
         data = b"\x00" * n
-        hdr = (b"RIFF" + (36 + n).to_bytes(4, "little") + b"WAVEfmt " + (16).to_bytes(4, "little") + (1).to_bytes(2, "little")
-               + (1).to_bytes(2, "little") + rate.to_bytes(4, "little") + rate.to_bytes(4, "little") + (1).to_bytes(2, "little")
-               + (8).to_bytes(2, "little") + b"data" + n.to_bytes(4, "little"))
+        hdr = (
+            b"RIFF"
+            + (36 + n).to_bytes(4, "little")
+            + b"WAVEfmt "
+            + (16).to_bytes(4, "little")
+            + (1).to_bytes(2, "little")
+            + (1).to_bytes(2, "little")
+            + rate.to_bytes(4, "little")
+            + rate.to_bytes(4, "little")
+            + (1).to_bytes(2, "little")
+            + (8).to_bytes(2, "little")
+            + b"data"
+            + n.to_bytes(4, "little")
+        )
         out.write_bytes(hdr + data)
         return MediaResult(out, "fake", "fake-tts", dur)
 
@@ -166,12 +203,17 @@ class FakeVideo:
     def assemble(self, segments: list[tuple[Path, Path, float]], out: Path, fps: int, resolution: str) -> MediaResult:
         out.parent.mkdir(parents=True, exist_ok=True)
         manifest = [{"image": str(i), "audio": str(a), "duration_s": d} for i, a, d in segments]
-        out.write_text(json.dumps({"fake_mp4": True, "fps": fps, "resolution": resolution, "segments": manifest},
-                                  ensure_ascii=False), encoding="utf-8")
+        out.write_text(
+            json.dumps(
+                {"fake_mp4": True, "fps": fps, "resolution": resolution, "segments": manifest}, ensure_ascii=False
+            ),
+            encoding="utf-8",
+        )
         return MediaResult(out, "fake", "fake-video", round(sum(d for _, _, d in segments), 2))
 
 
 # ---------- provider OpenAI-compatible ----------
+
 
 class _HTTP:
     def __init__(self, section: dict[str, Any], api_key: str | None, timeout: float = 300.0):
@@ -179,9 +221,14 @@ class _HTTP:
         self.api_key, self.timeout = api_key, timeout
 
     def post(self, path: str, body: dict[str, Any]) -> bytes:
-        req = urllib.request.Request(f"{self.base_url}{path}", data=json.dumps(body).encode("utf-8"),
-                                     headers={"Content-Type": "application/json",
-                                              **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {})})
+        req = urllib.request.Request(
+            f"{self.base_url}{path}",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}),
+            },
+        )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 return r.read()
@@ -193,38 +240,56 @@ class _HTTP:
 
 class OpenAITTS:
     """POST /audio/speech {model, voice, input} → mp3."""
+
     def __init__(self, cfg: MediaConfig):
-        self.cfg = cfg; self.http = _HTTP(cfg.tts, cfg.api_key)
+        self.cfg = cfg
+        self.http = _HTTP(cfg.tts, cfg.api_key)
         self.model = str(cfg.tts.get("model") or "gpt-4o-mini-tts")
 
     def synthesize(self, text: str, voice: dict[str, Any], out: Path) -> MediaResult:
         out.parent.mkdir(parents=True, exist_ok=True)
-        body = {"model": self.model, "voice": voice.get("voice_id") or self.cfg.tts.get("voice", "alloy"), "input": text,
-                "response_format": "mp3"}
+        body = {
+            "model": self.model,
+            "voice": voice.get("voice_id") or self.cfg.tts.get("voice", "alloy"),
+            "input": text,
+            "response_format": "mp3",
+        }
         out.with_suffix(".mp3").write_bytes(self.http.post("/audio/speech", body))
         return MediaResult(out.with_suffix(".mp3"), "openai", self.model, estimate_duration(text))
 
 
 class OpenAIImage:
     """POST /images/generations {model, prompt, size, n=1} → b64_json (hoặc url)."""
+
     def __init__(self, cfg: MediaConfig):
-        self.cfg = cfg; self.http = _HTTP(cfg.image, cfg.api_key)
+        self.cfg = cfg
+        self.http = _HTTP(cfg.image, cfg.api_key)
         self.model = str(cfg.image.get("model") or "gpt-image-1")
 
     def generate(self, prompt: str, size: str, out: Path) -> MediaResult:
         out.parent.mkdir(parents=True, exist_ok=True)
-        data = json.loads(self.http.post("/images/generations", {"model": self.model, "prompt": prompt, "size": size, "n": 1}))
+        data = json.loads(
+            self.http.post("/images/generations", {"model": self.model, "prompt": prompt, "size": size, "n": 1})
+        )
         item = (data.get("data") or [{}])[0]
         if item.get("b64_json"):
             out.write_bytes(base64.b64decode(item["b64_json"]))
         elif item.get("url"):
-            with urllib.request.urlopen(item["url"], timeout=120) as r: out.write_bytes(r.read())
+            try:
+                url = check_url(
+                    item["url"]
+                )  # URL do server trả về = dữ liệu không tin cậy: cùng ranh giới với web_fetch
+            except ToolError as e:
+                raise MediaError(f"URL ảnh bị chặn: {e}") from e
+            with urllib.request.urlopen(url, timeout=120) as r:
+                out.write_bytes(r.read())
         else:
             raise MediaError("phản hồi ảnh không có b64_json/url")
         return MediaResult(out, "openai", self.model)
 
 
 # ---------- ghép video bằng ffmpeg ----------
+
 
 def _concat_quote(p: Path) -> str:
     return p.as_posix().replace("'", "'\\''")
@@ -248,9 +313,32 @@ class FFmpegAssembler:
         parts: list[Path] = []
         for i, (img, audio, dur) in enumerate(segments):
             seg = out.parent / f"{out.stem}_seg{i:03d}.mp4"
-            self._run(["-loop", "1", "-framerate", str(fps), "-i", str(img), "-i", str(audio), "-t", f"{dur:.2f}",
-                       "-vf", f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-                       "-c:v", "libx264", "-tune", "stillimage", "-c:a", "aac", "-ar", "44100", "-shortest", str(seg)])
+            self._run(
+                [
+                    "-loop",
+                    "1",
+                    "-framerate",
+                    str(fps),
+                    "-i",
+                    str(img),
+                    "-i",
+                    str(audio),
+                    "-t",
+                    f"{dur:.2f}",
+                    "-vf",
+                    f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+                    "-c:v",
+                    "libx264",
+                    "-tune",
+                    "stillimage",
+                    "-c:a",
+                    "aac",
+                    "-ar",
+                    "44100",
+                    "-shortest",
+                    str(seg),
+                ]
+            )
             parts.append(seg)
         lst = out.parent / f"{out.stem}_concat.txt"
         # ffmpeg concat: đường dẫn trong nháy đơn, dấu ' trong tên file phải viết thành '\'' (đóng, escape, mở lại)

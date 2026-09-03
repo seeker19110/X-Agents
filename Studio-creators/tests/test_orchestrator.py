@@ -295,3 +295,61 @@ def test_many_route_counts_tokens_once(tmp_path):
     o.run()
     produced = [e.payload["tokens"] for e in bus.replay("audit-log") if e.payload["action"] == "produced:reply-drafts"]
     assert len(produced) == 2 and sum(produced) == 1300  # một lần gọi model = 1300 token, không nhân đôi
+
+
+def test_publish_cli_only_accepts_human_input_topics(tmp_path, capsys):
+    from studio.orchestrator import HUMAN_TOPICS, main
+    db = tmp_path / "s.sqlite"; f = tmp_path / "x.json"
+    f.write_text(json.dumps({"actor": "human", "action": "gate.decide", "evidence": json.dumps({"subject_id": "PUB-V1", "decision": "approve", "by": "x"})}), encoding="utf-8")
+    assert main(["--db", str(db), "publish", "audit-log", str(f)]) == 2
+    err = capsys.readouterr().err; assert "audit-log" in err and "gate_cli" in err
+    assert main(["--db", str(db), "publish", "scripts", str(f)]) == 2
+    f.write_text(json.dumps(CHANNEL), encoding="utf-8")
+    assert main(["--db", str(db), "publish", "channel-briefs", str(f), "--actor", "human:owner"]) == 0
+    assert HUMAN_TOPICS == {"channel-briefs", "publish-events", "performance-snapshots", "audience-comments"}
+    bus = SQLiteBus(db); assert [e.topic for e in bus.replay()] == ["channel-briefs"]; bus.close()
+
+
+def test_publish_checklist_shows_final_video_thumbnail_title_and_cli_full(tmp_path, capsys):
+    from studio.gate_cli import format_checklist
+    from studio.gate_cli import main as gate_main
+    bus, o = _to_publish_gate(tmp_path)
+    req = o.gate.pending["PUB-CH1-V1"]
+    final = next(a for a in reversed([e.payload for e in bus.replay("media-assets", "CH1-V1")]) if a["kind"] == "final_video")
+    assert f"final_video:{final['path']}" in req.checklist and any(c.startswith("thumbnail:") and c.endswith("A.png") for c in req.checklist)
+    assert any(c.startswith("title:AI dựng video") for c in req.checklist) and req.triggered_by == "human:owner"  # người duyệt plan
+    # reply: checklist giữ nguyên văn; `list` cắt 80 ký tự trừ khi --full
+    long = "x" * 100
+    assert format_checklist([long]) == "x" * 80 + "…" and format_checklist([long], full=True) == long and format_checklist(["ab"]) == "ab"
+    db = tmp_path / "g.sqlite"; b = SQLiteBus(db)
+    from studio.gate_cli import PersistentGate
+    PersistentGate(b).request(GateRequest(kind="replies", subject_id="REP-V1-1", created_by="community-manager", checklist=[f"c1: {long}"],
+                                          triggered_by="human:mod")); b.close()
+    assert gate_main(["--db", str(db), "list"]) == 0
+    out = capsys.readouterr().out; assert "…" in out and long not in out and "trigger=human:mod" in out
+    assert gate_main(["--db", str(db), "list", "--full"]) == 0 and long in capsys.readouterr().out
+
+
+def test_tick_periodic_sync_pulls_metrics_and_comments_once_per_interval(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    from studio.platform import Comment
+    bus, o = _to_publish_gate(tmp_path)
+    o.sync_every = 60
+    o.gate.decide("PUB-CH1-V1", "approve", by="human:editor"); o.run()
+    assert o.desk.state["CH1-V1"] == "scheduled"
+    o.platform.comments["fake-0001"] = [Comment("c1", "hay quá", "an", 1, "2026-09-02T00:00:00Z")]
+    t0 = datetime(2026, 9, 3, 12, 0, tzinfo=UTC)
+    o.tick(t0)
+    snaps = list(bus.replay("performance-snapshots", "CH1-V1")); cms = list(bus.replay("audience-comments", "CH1-V1"))
+    assert len(snaps) == 1 and len(cms) == 1 and cms[0].actor == "adapter:youtube" and [c["comment_id"] for c in cms[0].payload["comments"]] == ["c1"]
+    ticks = [json.loads(e.payload["evidence"]) for e in bus.replay("audit-log") if e.payload["action"] == "sync.tick"]
+    assert ticks == [{"video_id": "CH1-V1", "platform": "fake", "snapshot_event": snaps[0].event_id, "comments": 1}]
+    assert "REP-CH1-V1-1" in o.gate.pending  # bình luận kéo về đi tiếp vào community-manager → gate replies
+    o.tick(t0 + timedelta(seconds=30))  # chưa tới hạn → không kéo lại
+    assert len(list(bus.replay("performance-snapshots", "CH1-V1"))) == 1
+    o.tick(t0 + timedelta(seconds=61))  # tới hạn: kéo lại; c1 đã có trên bus → không phát lô mới
+    assert len(list(bus.replay("performance-snapshots", "CH1-V1"))) == 2 and len(list(bus.replay("audience-comments", "CH1-V1"))) == 1
+    o.sync_every = 0; o.tick(t0 + timedelta(hours=1)); assert len(list(bus.replay("performance-snapshots", "CH1-V1"))) == 2
+    o.platform.fail.add("snapshot"); o.sync_every = 60; o.tick(t0 + timedelta(hours=2))
+    assert any(e.payload["action"] == "sync.failed" for e in bus.replay("audit-log"))

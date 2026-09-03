@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +47,7 @@ from .events import (
     can_transition,
 )
 from .gate_cli import PersistentGate, rollback_target
-from .gates import GateRequest
+from .gates import GateRequest, gate_approvers
 from .llm import LLMError, ModelClient
 from .media import MediaError, MediaSuite
 from .platform import Platform, PlatformError, UploadResult, make_platform
@@ -56,8 +57,14 @@ from .renderer import ACTOR as RENDERER
 from .renderer import Renderer
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
 from .supervisor import Supervisor
+from .youtube import sync_comments, sync_metrics
 
 ACTOR = "orchestrator"
+# Topic con người / adapter được nạp tay qua CLI `publish` (README, architecture.md). audit-log (quyết định gate) và các
+# topic do agent sinh KHÔNG nạp tay được — gate đi qua gate_cli, còn lại là việc của agent/code.
+HUMAN_TOPICS = frozenset({"channel-briefs", "publish-events", "performance-snapshots", "audience-comments"})
+SYNC_EVERY_ENV = "STUDIO_SYNC_EVERY"  # giây giữa hai lần kéo số liệu/bình luận cho video đã lên lịch/đăng; 0 = tắt
+SYNC_STATES = frozenset({"scheduled", "published"})
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
 CONTROL_TOPICS = frozenset({"audit-log", "shared-context", "supervisor-actions"})
 REVIEW_AGENT = {"fact": "fact-checker", "rights": "rights-checker", "quality": "quality-reviewer"}
@@ -242,18 +249,21 @@ class StepResult:
 class Orchestrator:
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
                  max_retries: int = 3, media: MediaSuite | None = None, out_dir: Path | None = None,
-                 platform: Platform | None = None):
+                 platform: Platform | None = None, sync_every: int | None = None):
         self.bus = bus
         self.agents = agents or load_agents()
         bad = check_routes(self.agents)
         if bad: raise ValueError("ROUTES lệch front matter: " + "; ".join(bad))
         self.blackboard = Blackboard(bus)
-        self.gate = PersistentGate(bus)
+        self.renderer = Renderer(bus, media, out_dir)
+        self.gate = PersistentGate(bus, approvers=gate_approvers(self.renderer.media.cfg))
         self.desk = ProductionDesk(bus, max_retries=max_retries)
         self.supervisor = Supervisor(bus, max_retries=max_retries)
         self.runner = AgentRunner(bus, client, self.agents, self.blackboard)
-        self.renderer = Renderer(bus, media, out_dir)
         self.platform: Platform = platform or make_platform(self.renderer.media.cfg)
+        self.sync_every = int(os.environ.get(SYNC_EVERY_ENV, "0") or 0) if sync_every is None else int(sync_every)
+        self.last_sync: dict[str, datetime] = {}  # video_id → lần kéo gần nhất (chỉ trong bộ nhớ; mở lại là kéo ngay)
+        self.triggers: dict[str, str] = {}       # video_id → người duyệt plan chứa video (ghi vào gate publish)
         self.processed: set[str] = set()
         self.paused: set[str] = set()
         self.plans: dict[str, dict[str, Any]] = {}
@@ -278,7 +288,7 @@ class Orchestrator:
                 elif a["action"] == "plan.proposed": self.plans[d["plan_id"]] = d
                 elif a["action"] == "replies.proposed": self.reply_batches[d["batch_id"]] = d["drafts"]
                 elif a["action"] == "gate.decide" and d.get("decision") == "approve" and d["subject_id"] in self.plans:
-                    approved.append((d["subject_id"], env.event_id))
+                    approved.append((d["subject_id"], env.event_id)); self._remember_trigger(d["subject_id"], str(d.get("by")))
             elif env.topic == "supervisor-actions": self._track_pause(env)
             elif env.topic == "shared-context": self.blackboard._on(env)
             elif env.topic == "metadata-packages":
@@ -344,6 +354,7 @@ class Orchestrator:
     def tick(self, now: datetime | None = None) -> list[StepResult]:
         if hasattr(self.bus, "poll"): self.bus.poll()
         results = self.run()
+        self._sync(now)
         remind, overdue = self.gate.due(now)
         for sid in [*remind, *overdue]:
             self._audit(f"gate.{'overdue' if sid in overdue else 'remind'}", {"subject_id": sid}, once=f"gate:{sid}")
@@ -360,6 +371,24 @@ class Orchestrator:
         self.supervisor.check_timeouts(now, active=active)
         results += self.run()
         return results
+
+    def _sync(self, now: datetime | None = None) -> None:
+        """Kéo số liệu + bình luận thật cho video đã lên lịch/đăng, mỗi `sync_every` giây một lần (0 = tắt).
+        Event sinh ra (performance-snapshots, audience-comments) đi vào queue như khi nạp tay; lỗi adapter chỉ ghi audit."""
+        if self.sync_every <= 0: return
+        now = now or datetime.now(UTC)
+        for vid, st in list(self.desk.state.items()):
+            if st not in SYNC_STATES or vid in self.paused: continue
+            last = self.last_sync.get(vid)
+            if last is not None and (now - last).total_seconds() < self.sync_every: continue
+            self.last_sync[vid] = now
+            try:
+                snap = sync_metrics(self.bus, self.platform, vid)
+                cm = sync_comments(self.bus, self.platform, vid, since=last.isoformat() if last else None)
+                self._audit("sync.tick", {"video_id": vid, "platform": self.platform.name, "snapshot_event": snap.event_id,
+                                          "comments": len(cm.payload["comments"]) if cm else 0}, video_id=vid)
+            except (PlatformError, OSError) as e:
+                self._audit("sync.failed", {"video_id": vid, "error": str(e)[:300]}, video_id=vid)
 
     def watch(self, interval: float = 5.0, max_ticks: int | None = None) -> None:
         n = 0
@@ -505,6 +534,10 @@ class Orchestrator:
                                       checklist=[f"{b['video_id']}: {b['working_title']} ({b.get('format')}, est {b.get('estimate_tokens')} tok)" for b in g.payloads]))
         res.actions.append(f"plan→gate:{pid}")
 
+    def _remember_trigger(self, pid: str, by: str) -> None:
+        for b in self.plans.get(pid, {}).get("briefs", []):
+            if b.get("video_id"): self.triggers[str(b["video_id"])] = by
+
     def _dispatch_plan(self, pid: str, replaying: bool = False) -> None:
         plan = self.plans.get(pid)
         if not plan or plan.get("dispatched"): return
@@ -515,8 +548,14 @@ class Orchestrator:
     # ---------- gate publish / replies ----------
 
     def _publish_checklist(self, vid: str) -> list[str]:
+        """Người duyệt thấy ngay thứ sẽ lên nền tảng: file video cuối, thumbnail đã chọn, tiêu đề — cùng review + preflight."""
         rep = self.preflights.get(vid, PreflightReport())
-        return [f"review:{s}:{r.verdict}" for s, r in sorted(self.desk.reviews[vid].items())] + rep.checklist()
+        final = next((a for a in reversed(_assets_of(self, vid)) if a["kind"] == "final_video"), None)
+        meta = _latest_payload(self, "metadata-packages", vid) or {}
+        thumb = self._chosen_thumbnail(vid)
+        facts = [f"final_video:{final['path']}" if final else "final_video:(chưa có)",
+                 f"thumbnail:{thumb}" if thumb else "thumbnail:(chưa có)", f"title:{meta.get('title', '(chưa có)')}"]
+        return [f"review:{s}:{r.verdict}" for s, r in sorted(self.desk.reviews[vid].items())] + rep.checklist() + facts
 
     def _maybe_request_publish(self, vid: str, res: StepResult) -> None:
         sid = f"PUB-{vid}"
@@ -524,7 +563,8 @@ class Orchestrator:
         key = f"publish:{vid}:{self.desk.briefs[vid].retry}"
         if key in self.once: return
         self._remember(key)
-        self.gate.request(GateRequest(kind="publish", subject_id=sid, created_by="desk", checklist=self._publish_checklist(vid)))
+        self.gate.request(GateRequest(kind="publish", subject_id=sid, created_by="desk", checklist=self._publish_checklist(vid),
+                                      triggered_by=self.triggers.get(vid)))
         res.actions.append(f"gate:publish:{sid}")
 
     def _collect_replies(self, env: Envelope, res: StepResult) -> None:
@@ -534,8 +574,10 @@ class Orchestrator:
         if not drafts: return
         self.reply_batches[bid] = drafts
         self._audit("replies.proposed", {"batch_id": bid, "video_id": vid, "drafts": drafts}, video_id=vid)
+        src = self.latest("audience-comments", vid)  # người nạp lô bình luận (nếu là người) → triggered_by
         self.gate.request(GateRequest(kind="replies", subject_id=bid, created_by="community-manager",
-                                      checklist=[f"{d['comment_id']}{' [cần người]' if d.get('requires_human') else ''}: {d['reply'][:80]}" for d in drafts]))
+                                      triggered_by=src.actor if src and src.actor.startswith("human") else None,
+                                      checklist=[f"{d['comment_id']}{' [cần người]' if d.get('requires_human') else ''}: {d['reply']}" for d in drafts]))
         res.actions.append(f"gate:replies:{bid}")
         # các event reply-drafts cùng lô coi như đã xử lý
         for e in list(self.queue):
@@ -544,7 +586,8 @@ class Orchestrator:
     def _on_gate_decision(self, env: Envelope, res: StepResult) -> None:
         d = _evidence(env.payload); sid, dec, reason = d["subject_id"], d.get("decision"), d.get("reason", "")
         if sid in self.plans:
-            if dec == "approve": self._dispatch_plan(sid); res.actions.append(f"dispatch:{sid}")
+            if dec == "approve":
+                self._remember_trigger(sid, str(d.get("by"))); self._dispatch_plan(sid); res.actions.append(f"dispatch:{sid}")
             return
         if sid.startswith("PUB-"):
             vid = sid[4:]
@@ -684,7 +727,7 @@ class Orchestrator:
         dr = draft_env.payload; vid = dr["video_id"]; cid = dr["comment_id"]
         p, g = self._decide(REPLY_ROUTE, draft_env, res, {"approved_by": approved_by})
         if p is None: return
-        p.update(kind="reply")
+        p.update(kind="reply", comment_id=cid)  # comment_id để `sync-comments` biết bình luận đã trả lời
         if p.get("status") not in {"scheduled", "published"}:
             self._emit(REPLY_ROUTE, draft_env, p, g, res); return
         try:
@@ -749,6 +792,11 @@ def main(argv: list[str] | None = None) -> int:
     from .sqlite_bus import SQLiteBus
     bus = SQLiteBus(ns.db)
     if ns.cmd == "publish":
+        if ns.topic not in HUMAN_TOPICS:
+            print(f"lỗi: `publish` chỉ nhận topic do người/adapter nạp: {', '.join(sorted(HUMAN_TOPICS))}. "
+                  f"Topic `{ns.topic}` không nạp tay được" + (" — quyết định gate đi qua `studio.gate_cli`." if ns.topic == "audit-log" else "."),
+                  file=sys.stderr)
+            return 2
         payload = json.loads(ns.json_file.read_text(encoding="utf-8"))
         env = bus.publish(Envelope(topic=ns.topic, key=ns.key or key_for(ns.topic, payload, "-"), actor=ns.actor, payload=payload))
         print(f"published {env.topic} key={env.key} event={env.event_id}"); return 0

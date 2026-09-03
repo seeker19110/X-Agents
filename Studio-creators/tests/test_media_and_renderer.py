@@ -108,3 +108,15 @@ def test_ids_used_in_paths_must_be_safe():
     with pytest.raises(ValidationError): ThumbnailVariant(variant_id="A/..", prompt="p", overlay_text="t")
     with pytest.raises(ValidationError): VideoBrief(video_id="CH1/V1", channel_id="c", working_title="t", pillar="p", angle="a", audience="u")
     assert SceneManifest(video_id="CH1-V1_final", scenes=[]).video_id == "CH1-V1_final"
+
+
+def test_openai_image_url_goes_through_url_boundary(tmp_path, monkeypatch):
+    """URL trong phản hồi ảnh là dữ liệu không tin cậy: 127.0.0.1/169.254… bị chặn, không mở kết nối."""
+    import json
+
+    from studio.media import OpenAIImage
+    monkeypatch.setattr("studio.media.urllib.request.urlopen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("không được gọi")))
+    gen = OpenAIImage(MediaConfig(api_key="k", image={"provider": "openai", "base_url": "https://api.example.org/v1"}))
+    gen.http.post = lambda path, body: json.dumps({"data": [{"url": "http://169.254.169.254/latest/meta-data"}]}).encode()  # type: ignore[method-assign]
+    with pytest.raises(MediaError, match="URL ảnh bị chặn"):
+        gen.generate("p", "1024x1024", tmp_path / "a.png")

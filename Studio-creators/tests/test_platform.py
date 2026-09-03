@@ -296,3 +296,24 @@ def test_youtube_retries_5xx_429_and_network_with_backoff_but_not_403(tmp_path):
     assert ei.value.reason == "insufficientPermissions" and len(http.calls) == 1 and len(slept) == 2
     http = FakeHTTP().on("POST", f"{API_URL}/comments", (403, {}, {"error": {"message": "Quota", "errors": [{"reason": "quotaExceeded"}]}}))
     with pytest.raises(PlatformError, match=r"quota \(quotaExceeded\)"): YouTubePlatform(_store(tmp_path), http, lambda: NOW).reply("c", "x")
+
+
+def test_sync_comments_skips_seen_and_replied_and_since_compares_datetimes():
+    from studio.platform import Comment, parse_ts
+    from studio.youtube import seen_comment_ids
+    assert parse_ts("2026-09-01T00:00:00Z") == datetime(2026, 9, 1, tzinfo=UTC) and parse_ts("2026-09-01T00:00:00") == datetime(2026, 9, 1, tzinfo=UTC)
+    assert parse_ts("rác") is None and parse_ts(None) is None
+    bus = InMemoryBus(); p = FakePlatform()
+    p.comments["fake-0001"] = [Comment("c1", "a", "x", 0, "2026-09-01T00:00:00Z"), Comment("c2", "b", "y", 0, "2026-09-02T00:00:00.000Z"),
+                               Comment("c3", "c", "z", 0, "2026-08-01T00:00:00+00:00")]
+    # `since` với múi giờ khác / độ chính xác khác: so bằng datetime chứ không so chuỗi
+    assert [c.comment_id for c in p.list_comments("fake-0001", since="2026-09-01T02:00:00+02:00")] == ["c1", "c2"]
+    bus.publish(Envelope(topic="audience-comments", key="V1", actor="human", payload={"video_id": "V1", "comments": [{"comment_id": "c1", "text": "a"}]}))
+    bus.publish(Envelope(topic="publish-events", key="V1", actor="publisher", payload={"video_id": "V1", "kind": "reply", "status": "published",
+                                                                                      "platform_ref": "reply:r3", "comment_id": "c3"}))
+    assert seen_comment_ids(bus, "V1") == {"c1", "c3"}
+    env = sync_comments(bus, p, "V1", ref="fake-0001")
+    assert [c["comment_id"] for c in env.payload["comments"]] == ["c2"]
+    ev = json.loads(next(e.payload["evidence"] for e in bus.replay("audit-log") if e.payload["action"] == "platform.comments"))
+    assert ev["count"] == 1 and ev["skipped"] == 2
+    assert sync_comments(bus, p, "V1", ref="fake-0001") is None  # kéo lại: tất cả đã thấy
