@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -178,7 +179,7 @@ def test_openai_compat_falls_back_only_when_400_names_the_feature(monkeypatch):
 # ---------- 8. SQLite bus: WAL, không bỏ sót event tiến trình khác, handler lỗi không làm mất event ----------
 
 def _other_process(db, action):
-    subprocess.run(["python", "-c", "import sys; sys.path.insert(0, 'src');"
+    subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, 'src');"
                     "from company.sqlite_bus import SQLiteBus; from company.events import Envelope;"
                     f"SQLiteBus({str(db)!r}).publish(Envelope(topic='audit-log', key='x', actor='x', payload={{'actor': 'x', 'action': {action!r}}}))"],
                    check=True, cwd=os.getcwd())

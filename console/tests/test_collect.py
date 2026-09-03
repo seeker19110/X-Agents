@@ -11,6 +11,7 @@ from studio.events import AuditLog as StudioAudit
 from studio.events import Envelope as StudioEnvelope
 from studio.sqlite_bus import SQLiteBus as StudioSQLiteBus
 
+import console.collect as collect_mod
 from conftest import gate_decide
 from console.collect import COMPANY, STUDIO, collect
 
@@ -97,7 +98,14 @@ def test_gate_mang_du_kien_va_checklist(company_db: Path, studio_db: Path) -> No
     assert [item for item, _ in pub["cl"]] == ["review:fact:pass", "thumbnail"]
 
 
-def test_gateway_chet_khong_lam_hong_trang(company_db: Path, studio_db: Path) -> None:
+@pytest.fixture()
+def khong_co_llm_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Máy chạy test có thể có sẵn `llm.yaml` của một trong hai công ty; khi đó collect() lấy backend từ đó và
+    không bao giờ hỏi gateway. Ép nhánh gateway để test đúng thứ nó định test."""
+    monkeypatch.setattr(collect_mod, "_routing_status", lambda: None)
+
+
+def test_gateway_chet_khong_lam_hong_trang(company_db: Path, studio_db: Path, khong_co_llm_yaml: None) -> None:
     start = datetime.now(UTC)
     s = collect(company_db, studio_db, gateway_url=DEAD_GATEWAY)
     assert s["backends"] == []
@@ -114,6 +122,6 @@ def test_doc_khong_ghi_vao_db(company_db: Path, studio_db: Path) -> None:
 
 
 @pytest.mark.parametrize("token", [None])
-def test_token_gateway_khong_bat_buoc(company_db: Path, studio_db: Path, token: Path | None) -> None:
+def test_token_gateway_khong_bat_buoc(company_db: Path, studio_db: Path, token: Path | None, khong_co_llm_yaml: None) -> None:
     s = collect(company_db, studio_db, gateway_token_file=token, gateway_url=DEAD_GATEWAY)
     assert s["backends"] == []

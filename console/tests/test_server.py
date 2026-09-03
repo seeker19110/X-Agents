@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import stat
 import sys
 import threading
@@ -297,6 +298,10 @@ def test_static_va_chan_di_ra_ngoai(make_console, fake_modules) -> None:
 
 # --- token file ------------------------------------------------------------
 
+POSIX_ONLY = pytest.mark.skipif(os.name != "posix", reason="quyền 0600 chỉ có nghĩa trên POSIX; Windows luôn báo 0666")
+
+
+@POSIX_ONLY
 def test_file_token_tao_voi_quyen_0600(tmp_path: Path) -> None:
     path = tmp_path / ".console-token"
     token = srv.generate_token()
@@ -305,6 +310,7 @@ def test_file_token_tao_voi_quyen_0600(tmp_path: Path) -> None:
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+@POSIX_ONLY
 def test_file_token_ghi_de_van_giu_0600(tmp_path: Path) -> None:
     path = tmp_path / ".console-token"
     path.write_text("cu", encoding="utf-8")
