@@ -1,4 +1,4 @@
-.PHONY: test cov lint types fix demo golden gate eval eval-record eval-replay run watch status report metrics
+.PHONY: test cov lint types fix demo golden gate eval eval-record eval-replay run watch status report metrics assetscan assetbudget
 test:
 	uv run pytest -q
 cov:
@@ -16,6 +16,10 @@ golden:
 	UPDATE_GOLDEN=1 uv run pytest -q tests/test_golden_agents.py
 gate:
 	PYTHONPATH=src uv run python -m company.gate_cli list
+assetscan:     # quét tài sản prompt của cả hai công ty (ADR-0022); miễn trừ ở assetscan-waivers.txt
+	PYTHONPATH=src uv run python -m company.assetscan scan . ../Studio-creators
+assetbudget:   # prompt tĩnh chiếm bao nhiêu phần ngân sách token của từng agent
+	PYTHONPATH=src uv run python -m company.assetscan budget . ../Studio-creators
 eval:
 	PYTHONPATH=src uv run python -m company.evals $(AGENT)
 eval-record:   # chạy model thật, lưu evals/recordings/$(AGENT).json — bắt buộc sau khi đổi prompt/skill (ADR-0010)
