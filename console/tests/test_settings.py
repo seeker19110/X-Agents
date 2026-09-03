@@ -108,3 +108,63 @@ def test_no_op_update_does_not_rewrite_the_file(llm):
     result = settings.update_settings(llm)
     assert result["changes"] == [] and result["backup"] is None
     assert llm.read_text(encoding="utf-8") == before   # giữ nguyên chú thích, không dump lại YAML
+
+
+# ---------- CLI `python -m console models` ----------
+
+def _cli(monkeypatch, llm_path, argv):
+    from console import __main__ as cli
+
+    monkeypatch.setattr(settings, "DEFAULT_LLM_YAML", {"software-company": llm_path})
+    monkeypatch.setattr(settings, "gateway_catalog", lambda *a, **k: ["claude-sonnet-4-6"])
+    return cli.main(["models", *argv])
+
+
+def test_cli_lists_without_touching_the_file(llm, monkeypatch, capsys):
+    before = llm.read_text(encoding="utf-8")
+    assert _cli(monkeypatch, llm, []) == 0
+    out = capsys.readouterr().out
+    assert "antigravity" in out and "claude-sub" in out
+    assert "gateway không có" in out or "⚠" in out      # model không nằm trong catalog được nêu rõ
+    assert llm.read_text(encoding="utf-8") == before
+
+
+def test_cli_set_and_prefer(llm, monkeypatch, capsys):
+    code = _cli(monkeypatch, llm, ["--company", "software-company",
+                                   "--set", "antigravity.standard=gemini-3.7-flash-low",
+                                   "--prefer", "light=antigravity"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "antigravity.standard → gemini-3.7-flash-low" in out and "ưu tiên light → antigravity" in out
+    data = yaml.safe_load(llm.read_text(encoding="utf-8"))
+    assert data["routing"]["prefer"]["light"] == "antigravity"
+
+
+def test_cli_rejects_bad_usage(llm, monkeypatch, capsys):
+    assert _cli(monkeypatch, llm, ["--set", "antigravity.standard=x"]) == 1          # thiếu --company
+    assert "Cần --company" in capsys.readouterr().out
+    assert _cli(monkeypatch, llm, ["--company", "sai", "--set", "a.b=c"]) == 1
+    assert _cli(monkeypatch, llm, ["--company", "software-company", "--set", "thieu-dau-bang"]) == 1
+    assert "BACKEND.TIER=MODEL" in capsys.readouterr().out
+    assert _cli(monkeypatch, llm, ["--company", "software-company", "--prefer", "sai-dinh-dang"]) == 1
+    assert "TIER=BACKEND" in capsys.readouterr().out
+
+
+def test_cli_reports_settings_error_without_traceback(llm, monkeypatch, capsys):
+    assert _cli(monkeypatch, llm, ["--company", "software-company", "--disable", "khong-co"]) == 1
+    assert "không có backend" in capsys.readouterr().out
+
+
+def test_cli_says_nothing_changed_when_value_is_the_same(llm, monkeypatch, capsys):
+    assert _cli(monkeypatch, llm, ["--company", "software-company", "--enable", "antigravity"]) == 0
+    assert "Không có gì thay đổi" in capsys.readouterr().out
+
+
+def test_cli_shows_missing_file_and_empty_catalog(tmp_path, monkeypatch, capsys):
+    from console import __main__ as cli
+
+    monkeypatch.setattr(settings, "DEFAULT_LLM_YAML", {"software-company": tmp_path / "khong-co.yaml"})
+    monkeypatch.setattr(settings, "gateway_catalog", lambda *a, **k: [])
+    assert cli.main(["models"]) == 0
+    out = capsys.readouterr().out
+    assert "không có" in out and "gateway không chạy" in out
