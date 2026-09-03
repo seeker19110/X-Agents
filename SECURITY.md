@@ -49,6 +49,12 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
 - **Trần quyền theo agent**: mỗi agent chỉ được đọc/ghi những topic đã khai trong registry; ghi sai topic là lỗi
   chạy, không phải cảnh báo.
 
+Danh tính `--by` khi duyệt gate hay publish (`gate_cli`, lệnh publish) chỉ là **chuỗi gõ tay trên CLI, không được
+xác thực**: ai có shell trên máy đó đều ghi được tên người khác. Quy tắc "bốn mắt" (người duyệt khác người tạo) vì vậy
+là kiểm soát *quy trình* trên một máy tin cậy duy nhất, không phải ranh giới xác thực. Nếu gate được đưa lên giao diện
+web hoặc dùng chung nhiều người, nó cần xác thực thật (đăng nhập, phiên, audit theo danh tính đã xác minh) trước khi
+tin vào `--by`.
+
 Gateway lắng nghe `127.0.0.1:8100` và **không có xác thực người dùng**. Đừng bind nó ra địa chỉ công khai; muốn
 dùng từ máy khác thì đi qua SSH tunnel.
 

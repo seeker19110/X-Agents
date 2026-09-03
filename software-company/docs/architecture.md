@@ -20,23 +20,26 @@
 
 ## Topic
 
+Cột Consumer được test đối chiếu với `ROUTES` trong `orchestrator.py` (`tests/test_security_review_fixes.py`): agent có route
+phải có mặt; agent được liệt kê mà không có route phải ghi `(chỉ đọc)`.
+
 | Topic | Producer | Consumer | Key |
 |-------|----------|----------|-----|
 | research-requests | human / support-docs / account-manager | intake | project_id |
 | research-findings | intake, researcher | synthesizer, researcher | project_id |
-| requirements-draft | synthesizer | risk, clarifier, researcher | project_id |
+| requirements-draft | synthesizer | risk, clarifier, researcher (chỉ đọc) | project_id |
 | clarification-questions | clarifier | human gate | project_id |
-| clarification-answers | human gate | intake | project_id |
-| approved-specs | spec-writer → human gate `spec` | security-engineer (threat model), delivery-lead (plan), account-manager | project_id |
+| clarification-answers | human gate | clarifier (hỏi lại khi trả lời thiếu), spec-writer (khi đủ) | project_id |
+| approved-specs | spec-writer → human gate `spec` | không có route trong `ROUTES`: security-engineer (threat model, `THREAT_ROUTE`), delivery-lead (plan, `PLAN_INPUTS`), account-manager (chỉ đọc) | project_id |
 | tasks | delivery-lead | engineering (6 agent) | ticket_id |
 | pull-requests | engineering | reviewer, qa-debugger, security-engineer (khi risk_tags) | ticket_id |
 | review-results | reviewer, qa-debugger, security-engineer | delivery-lead | ticket_id (hoặc release_id cho QA staging) |
 | release-candidates | delivery-lead | release-engineer, security-engineer | release_id |
-| release-events | release-engineer | delivery-lead, qa-debugger (staging), support-docs, account-manager (production), human gate | release_id |
-| incidents | support-docs | delivery-lead | incident_id |
+| release-events | release-engineer | delivery-lead, qa-debugger (staging), support-docs (production), account-manager (chỉ đọc), human gate | release_id |
+| incidents | support-docs | delivery-lead (plan khi root_cause_class code/ops/design), support-docs (→ research-requests khi requirement) | incident_id |
 | external-feedback | human (khách, người dùng) | support-docs, account-manager | project_id |
 | change-requests | account-manager | delivery-lead, intake | change_id |
-| acceptance-results | account-manager | delivery-lead | release_id |
+| acceptance-results | account-manager | delivery-lead, account-manager (→ change-requests khi verdict conditional) | release_id |
 | shared-context | theo namespace | tất cả | namespace |
 | audit-log | tất cả | supervisor | actor |
 | supervisor-actions | supervisor | tất cả | target |

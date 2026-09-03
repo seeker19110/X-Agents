@@ -164,7 +164,10 @@ class AgentRunner:
         return self.pricing.cost(c) if self.pricing is not None else (0.0, False)
 
     def _complete(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any],
-                  messages: list[dict[str, Any]] | None = None, tools: ToolBox | None = None) -> Completion:
+                  messages: list[dict[str, Any]] | None = None, tools: ToolBox | None = None,
+                  tokens: int = 0, cost: float = 0.0) -> Completion:
+        """`tokens`/`cost`: đã đốt ở các lượt trước của vòng tool — lỗi giữa chừng thì audit `llm_error` mang theo,
+        supervisor mới trừ đúng ngân sách (không thì token của các lượt trước biến mất khỏi sổ)."""
         drain = getattr(self.client, "drain_retries", None)
         try:
             c = self.client.complete(system=spec.system_prompt(), user=user, schema=schema, model_tier=spec.model_tier,
@@ -172,7 +175,7 @@ class AgentRunner:
         except LLMError as e:
             if drain and (notes := drain()):
                 self._audit(spec, "llm_retry", inp, evidence=json.dumps({"attempts": len(notes), "notes": notes}, ensure_ascii=False))
-            self._audit(spec, "llm_error", inp, evidence=f"{type(e).__name__}: {str(e)[:500]}")
+            self._audit(spec, "llm_error", inp, evidence=f"{type(e).__name__}: {str(e)[:500]}", tokens=tokens, cost=cost)
             raise
         if drain and (notes := drain()):
             self._audit(spec, "llm_retry", inp, evidence=json.dumps({"attempts": len(notes), "notes": notes}, ensure_ascii=False))
@@ -187,7 +190,8 @@ class AgentRunner:
         total, turn, usd, c = 0, 0, 0.0, None
         while turn < max_turns:
             turn += 1
-            c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools); total += c.tokens; usd += self._cost(c)[0]
+            c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools, tokens=total, cost=usd)
+            total += c.tokens; usd += self._cost(c)[0]
             if budget is not None and total > budget:
                 self._audit(spec, "budget_exhausted", inp, tokens=total, cost=usd,
                             evidence=f"{total} > {budget} token sau {turn} lượt; tool={dump_calls(tools)}")
@@ -206,7 +210,8 @@ class AgentRunner:
                 for t in c.tool_calls:
                     msgs.append({"role": "tool", "tool_call_id": t.id, "content": "lỗi: hết lượt tool, không chạy"})
             msgs.append({"role": "user", "content": "Hết lượt tool. Trả về DUY NHẤT JSON cuối cùng ngay; phần chưa xong nêu rõ trong summary."})
-            c = self._complete(spec, inp, user, schema, messages=msgs); total += c.tokens; usd += self._cost(c)[0]; turn += 1
+            c = self._complete(spec, inp, user, schema, messages=msgs, tokens=total, cost=usd)
+            total += c.tokens; usd += self._cost(c)[0]; turn += 1
         urls = [x["args"]["url"] for x in tools.calls if x["name"] == "fetch_url" and x["ok"]]
         self._audit(spec, "tools_used", inp, evidence=json.dumps({"turns": turn, "calls": tools.summary(), **({"urls": urls} if urls else {})},
                                                                  ensure_ascii=False))
@@ -299,6 +304,8 @@ class AgentRunner:
         model có khai gì ở các trường này cũng bị thay. Reviewer/QA đọc diff thật, không đọc lời kể."""
         spec = self.agents[agent_id]
         ws.create()
+        if ws.reset():  # lần chạy trước lỗi giữa chừng để lại file dở: dọn về HEAD, không để lần này commit luôn rác đó
+            self._audit(spec, "workspace_reset", inp, evidence=f"worktree {ws.branch} còn thay đổi chưa commit từ lần trước; đã bỏ")
         tools = WorkspaceTools(ws, allow_write=True).toolbox()
         g = self.generate(agent_id, inp, "pull-requests", tools=tools, max_turns=max_turns, budget=budget)
         if not ws.dirty():  # so với HEAD của branch: lần làm lại mà ghi y hệt lần trước cũng là "không sửa gì"

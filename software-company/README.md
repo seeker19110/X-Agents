@@ -31,7 +31,7 @@ research-requests → approved-specs → tasks (depends_on/priority) → pull-re
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0019); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0021); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt từng agent (có version), nhóm theo khối
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
                nạp hai mức — đầy đủ cho agent chủ quản, rút gọn (quy trình + checklist) cho agent tuân thủ (ADR-0008)
@@ -48,7 +48,7 @@ src/company/   events, bus, sqlite_bus, registry, delivery, supervisor, gates, g
 examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--relay/--resume/--auto-escalate), relay_client.py
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 20 agent, mỗi agent ≥ 2 ca; recordings/ = phản hồi model đã ghi
-tests/         pytest 312 ca / 16 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh tích
+tests/         pytest 314 ca / 16 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh tích
                hợp, routing, runner/persistence, tools/agentic, schema consistency, golden 20 agent); coverage fail_under=90
 ```
 
@@ -121,7 +121,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-02)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0019; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0021; 20 system prompt có version; 45 skill có version; 14 template; checklist 4 gate + escalation.
 - 18 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   delivery-lead (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate 3 → production → nghiệm thu),
@@ -198,7 +198,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   research → ticket → code → review → release → nghiệm thu bằng client giả, model thật (`--real`) hoặc relay qua file
   (`--relay DIR`, `examples/relay_client.py`: một phiên Claude Code khác trả lời `<n>.req.json`); `--resume` chạy tiếp.
   Phát hiện F13–F19 từ mô phỏng đều đã sửa (bảng trong báo cáo).
-- Test: 312 ca pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
+- Test: 314 ca pytest gồm golden 20 agent (`tests/golden/`), runner với client giả, bus SQLite, gate, worktree, tool boundary,
   vòng tool, orchestrator với repo git thật, eval ghi/phát lại, adapter tool-use (server HTTP giả), guard, cắt ngữ cảnh,
   artifact store, retry, bảng giá, tool web (fetcher giả), song song, metrics, comment/takeover, routing nhiều backend,
   release flow và replay; ruff + mypy sạch, coverage ≥ 90% (`graph.py` không tính).
@@ -211,14 +211,16 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   hoặc bản ghi ở phiên bản prompt cũ thì đỏ.
 - **Bốn human gate là gate thật**: spec, plan, release và nghiệm thu của khách (`acceptance`, ADR-0017) — cùng hạn 24h,
   nhắc ở 12h, four-eyes, và quá hạn thì supervisor escalate chứ không im lặng.
+- **Cắt blackboard theo vai trò + trần prompt theo agent** (ADR-0020): `context_namespace_read` / `max_input_chars` trong
+  front matter; runner cắt payload/blackboard theo `context.py` nên reviewer/QA/security không còn nhận toàn văn blackboard.
 - **Lỗi tạm thời của provider** (429, 5xx, đứt mạng) được thử lại có backoff; `Refused` và 4xx thì không. Anthropic
   có timeout nên một request treo không giữ luôn cả orchestrator.
 
 ### Chưa có
 - **Bản ghi eval bằng model thật**: cơ chế và cổng `--strict` đã có (`evals/recordings/REQUIRED.txt`), nhưng
   `evals/recordings/` còn trống nên danh sách bắt buộc chưa có tên nào. Chạy `make eval-record` rồi thêm id vào file.
-- **Cắt blackboard theo vai trò + trần prompt theo agent** (ADR-0020, `context_namespace_read` / `max_input_chars` trong front
-  matter): đang làm trên nhánh `feat/context-by-role`, chưa merge; hiện reviewer/QA/security vẫn nhận toàn văn blackboard.
+  Vì thư mục còn trống, `eval-replay --strict` hiện KHÔNG bảo vệ gì cả — nó chỉ có răng sau khi bản ghi được tạo bằng
+  model thật.
 - **Deploy thật**: release-engineer vẫn mô phỏng; chưa đẩy `company/integration` lên `main`/tag phiên bản; xung đột
   giải quyết bằng làm lại trên nền mới, chưa rebase tự động. Chưa dựng **CI/CD cho sản phẩm của khách** (CI của chính
   repo này thì có). **Kafka/Redis** thay SQLite khi chạy nhiều máy (song song mới ở mức thread trong một tiến trình).
