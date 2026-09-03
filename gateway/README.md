@@ -41,6 +41,35 @@ make setup        # ghi ../software-company/llm.yaml: provider openai, base_url 
 make fix          # ruff --fix
 ```
 
+### Cổng 8100 đã có người giữ
+
+Bridge của [Plugin-For-Hermes](https://github.com/donghanhcungban/Plugin-For-Hermes) cũng nghe ở `127.0.0.1:8100`.
+Xem ai đang giữ cổng:
+
+```bash
+curl -s http://127.0.0.1:8100/health     # gateway: {"service":"gateway"} — bridge Hermes: {"bridge":"antigravity"}
+```
+
+Hai proxy chạy **song song** được, chỉ cần khác cổng:
+
+```bash
+python -m gateway start --port 8101
+python -m gateway status --port 8101              # xác nhận ONLINE và số tài khoản sẵn sàng
+python -m gateway models --port 8101              # đối chiếu llm.yaml với ĐÚNG cổng đó
+```
+
+Rồi trỏ `base_url` của các công ty vào cổng mới — sửa tay trong `llm.yaml`, hoặc qua trang cài đặt của
+`console`. Lưu ý `python -m gateway models` mặc định đối chiếu backend trỏ vào `127.0.0.1:8100`; chạy sai
+cổng thì nó báo "không có backend nào trỏ vào gateway" chứ không phải cấu hình sai.
+
+Hai proxy đọc **file token riêng** (`$XAGENTS_HOME/auth/antigravity_tokens.json` với gateway, `~/.hermes/auth/…`
+với bridge) tuy định dạng giống nhau — copy file sang là dùng được cùng bộ tài khoản. Nhưng khi đó:
+
+- **Quota là chung** vì cùng tài khoản Google: hai proxy cùng bắn thì cùng ăn 429.
+- **Cooldown thì KHÔNG chung**: proxy này ghi cooldown vào file của nó, proxy kia không biết và vẫn thử tiếp
+  tài khoản vừa hết quota. Nếu muốn dùng nặng cả hai, cho chúng dùng chung một file token
+  (`XAGENTS_HOME`/`HERMES_HOME` trỏ về cùng chỗ) hoặc chia mỗi proxy một tập tài khoản riêng.
+
 Không có `make`: `PYTHONPATH=src uv run python -m gateway <lệnh>`. OAuth loopback dùng cổng cố định `127.0.0.1:51121`
 (`/oauth-callback`), chờ tối đa 300s; máy VPS không có trình duyệt thì đăng nhập ở máy cá nhân rồi copy file token.
 
@@ -62,7 +91,7 @@ Hoặc chỉ dùng biến môi trường, không cần `llm.yaml`:
 COMPANY_LLM_PROVIDER=openai
 COMPANY_LLM_BASE_URL=http://127.0.0.1:8100/v1
 COMPANY_MODEL_STRONG=claude-sonnet-4-6
-COMPANY_MODEL_STANDARD=gemini-3.6-flash-medium
+COMPANY_MODEL_STANDARD=gemini-3.8-flash-medium
 ```
 
 Lệnh khác: `python -m gateway reset [EMAIL]` (xóa cooldown), `python -m gateway logout EMAIL`, `python -m gateway stop`.
@@ -104,6 +133,8 @@ python -m gateway models --probe-cli    # gọi thử backend claude-code/codex 
 - Token: `$XAGENTS_HOME/auth/antigravity_tokens.json` (mặc định `~/.x-agents/`), quyền 600, ghi nguyên tử. Không commit.
 - PID/log: `~/.x-agents/gateway/gateway.pid`, `~/.x-agents/logs/gateway.log`.
 - `GATEWAY_STRICT_MODELS` (mặc định `1`): `0` để model lạ rơi về `gemini-3-flash-agent` thay vì trả 400.
+- `GATEWAY_ANTIGRAVITY_CLIENT_VERSION` (mặc định `2026.9.1`): phiên bản client khai với Code Assist; khai quá cũ
+  thì server giấu model mới bằng cách trả 404.
 - `GATEWAY_HOST`, `GATEWAY_PORT`; `GATEWAY_ANTIGRAVITY_CLIENT_ID/SECRET/PROJECT_ID` ghi đè OAuth client (hiếm khi cần).
   `.env.example` chỉ là tài liệu: gateway không đọc file `.env`, phải export biến trong shell.
 
