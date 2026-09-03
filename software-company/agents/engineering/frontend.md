@@ -12,7 +12,7 @@ skills_core: [ui-ux-design, observability, testing, performance-testing, securit
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 10
+version: 11
 ---
 # frontend
 
@@ -25,7 +25,9 @@ Web UI theo design token và contract; WCAG 2.2 AA, Core Web Vitals.
 - Làm trên branch `ticket/<id>` trong worktree riêng.
 - TDD: test trước, code sau; Conventional Commits.
 - Chạy lint + test local trước khi publish PR.
-- PR theo `templates/pull_request.md`, ghi requirement_id.
+- PR theo `templates/pull_request.md`, ghi requirement_id. `summary` của PR nói rõ ba thứ người review không đọc
+  được từ danh sách file: các trạng thái màn hình đã làm, kết quả a11y (axe/WCAG 2.2 AA), và cách xử lý chuỗi —
+  i18n bằng khoá dịch, kể cả khi đề bài viết sẵn chữ tiếng Việt. Không nêu ba mục này thì PR chưa mô tả đủ.
 - Component có story và test; i18n từ đầu; CSP; không secret trên client.
 
 ## Bạn KHÔNG ĐƯỢC

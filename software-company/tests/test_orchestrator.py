@@ -449,3 +449,21 @@ def test_republished_spec_does_not_create_second_plan():
     orch.gate.decide("PLAN-P1-1", "approve", by="human:pm"); orch.run()
     _pub(bus, "approved-specs", "P1", "spec-writer", spec.payload); orch.run()  # sau khi plan đã duyệt cũng không lập lại
     assert list(orch.plans) == ["PLAN-P1-1"] and set(orch.lead.tickets) == {"T1", "T2"}
+
+
+def test_synthesizer_receives_intake_report_with_researcher_findings():
+    """Tiêu chí bắt đầu của synthesizer (ADR-0006) cần CẢ báo cáo intake lẫn báo cáo 4 mục của researcher, nhưng nó
+    chỉ được đánh thức bởi báo cáo researcher. Không đính kèm đề bài intake thì draft luôn rỗng — đúng theo prompt,
+    và vòng nghiên cứu không bao giờ đi tiếp."""
+    seen: dict = {}
+
+    def h(system: str, user: str) -> dict:
+        if _agent_of(system) == "synthesizer": seen.update(_inp(user))
+        return handler(system, user)
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
+    _pub(bus, "research-findings", "P1", "intake", {"project_id": "P1", "kind": "intake",
+                                                    "data": {"goals": [{"id": "G-1", "text": "đặt lịch online"}]}})
+    _pub(bus, "research-findings", "P1", "researcher", {"project_id": "P1", "kind": "researcher", "data": {"domain": {}}})
+    orch.run()
+    assert seen["intake"] == {"goals": [{"id": "G-1", "text": "đặt lịch online"}]}
