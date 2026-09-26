@@ -60,7 +60,7 @@ Lỗi của từng lock gộp vào `licenses_error` dạng `"<lock>: <lý do>"`.
   Quét file LICENSE là nhận dạng văn bản, không phải đọc metadata — chưa làm. `replace` trong `go.mod` không áp.
 - Cargo: `--offline` cần crate đã tải về máy; chưa có thì license `NOASSERTION` kèm lỗi của `cargo`.
 - Gói có trong lock nhưng không cài trên máy này (chỉ dành cho OS khác) → `NOASSERTION`, `installed=false`.
-- DAST **không** thuộc ADR này. RC có ticket `risk_tags` auth vẫn có thể bị chặn vì thiếu DAST.
+- DAST **không** thuộc ADR này — xem ADR-0047 (DAST tối thiểu cùng chỗ, và lệnh `recheck` chấm lại RC cũ).
 
 ## Phương án đã loại
 

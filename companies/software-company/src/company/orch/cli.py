@@ -44,14 +44,14 @@ def _fmt(r: StepResult) -> str:
 
 
 def _sandbox_for(cmd: str) -> Sandbox | None:
-    """ADR-0035: chỉ hai lệnh CHẠY mã của khách (`run` gọi agent kỹ thuật và smoke, `redeploy` chạy lại lượt
-    staging) mới đọc cấu hình sandbox. Các lệnh còn lại là việc của người và của code (status/report/show/
+    """ADR-0035: chỉ ba lệnh CHẠY mã của khách (`run` gọi agent kỹ thuật và smoke, `redeploy` chạy lại lượt
+    staging, `recheck` dựng lại SBOM/DAST trên cây RC) mới đọc cấu hình sandbox. Các lệnh còn lại là việc của người và của code (status/report/show/
     comment/takeover) — dựng sandbox ở đó chỉ tổ làm `COMPANY_SANDBOX=container` trên máy không có docker ném
     `SandboxError` cho một lệnh không chạy gì. `None` = `Orchestrator` tự dùng `SubprocessSandbox`.
 
     Fail-closed vẫn nguyên: `run` trên máy khai `container` mà thiếu binary thì ném ngay tại đây, trước khi có
     một lượt agent nào chạy — không bao giờ âm thầm tụt về subprocess."""
-    if cmd not in {"run", "redeploy"}:
+    if cmd not in {"run", "redeploy", "recheck"}:
         return None
     from ..llm import load_config
     from ..sandbox import sandbox_from_config
@@ -99,6 +99,9 @@ def _parser() -> argparse.ArgumentParser:
     tk.add_argument("ticket_id"); tk.add_argument("--by", required=True); tk.add_argument("--message")
     rd = sub.add_parser("redeploy", help="chạy lại lượt staging cho một release-candidate đang kẹt (sau khi sửa lỗi hạ tầng)")
     rd.add_argument("release_id"); rd.add_argument("--by", required=True)
+    rk = sub.add_parser("recheck", help="ADR-0047: chấm lại release-check của security cho một RC với bằng chứng "
+                                        "máy dựng mới (SBOM/license/DAST); giữ waiver đã có")
+    rk.add_argument("release_id"); rk.add_argument("--by", required=True, help="human:<tên> hoặc reviewer:<id>")
     sub.add_parser("status"); sub.add_parser("report", help="sprint report: estimate vs actual, chi phí, hành động supervisor")
     ru = sub.add_parser("rulings", help="sổ Ruling (ADR-0030): quyết định agent tự đưa ra thay vì chờ người, kèm 'sai thì mất gì'")
     ru.add_argument("--project"); ru.add_argument("--ticket")
@@ -133,10 +136,10 @@ def main(argv: list[str] | None = None) -> int:
         return bus_cmd(bus, ns)
     from ..llm import FakeClient, make_client
     from ..orchestrator import Orchestrator
-    # `run` và `redeploy` GỌI MODEL (redeploy chạy lại lượt staging của release-engineer) nên cần client thật;
+    # `run`, `redeploy`, `recheck` GỌI MODEL (lượt staging của release-engineer, lượt security) nên cần client thật;
     # status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
     # Thiếu `redeploy` ở đây thì lệnh chạy bằng FakeClient và chết "FakeClient hết câu trả lời" — đo được 2026-09-06.
-    orch = Orchestrator(bus, make_client() if ns.cmd in {"run", "redeploy"} else FakeClient(), repo=ns.repo, base=ns.base,
+    orch = Orchestrator(bus, make_client() if ns.cmd in {"run", "redeploy", "recheck"} else FakeClient(), repo=ns.repo, base=ns.base,
                         integration=ns.integration, workers=ns.workers,
                         web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
                         deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch,

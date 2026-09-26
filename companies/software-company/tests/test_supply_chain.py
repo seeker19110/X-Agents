@@ -298,7 +298,7 @@ def test_loi_khai_supply_chain_va_sbom_ref_cua_model_bi_bo(tmp_path, monkeypatch
                 **out,
                 "verdict": "block",
                 "sbom_ref": "tu-khai",
-                "evidence": {"supply_chain": {"components": 999, "verified_by": "security"}, "dast": "giữ"},
+                "evidence": {"supply_chain": {"components": 999, "verified_by": "security"}, "khac": "giữ"},
             }
         return out
 
@@ -306,7 +306,7 @@ def test_loi_khai_supply_chain_va_sbom_ref_cua_model_bi_bo(tmp_path, monkeypatch
     bus, orch = _orch(tmp_path, _repo(tmp_path), h)
     orch.run()
     sec = _security(bus)[-1]
-    assert sec["evidence"]["supply_chain"]["components"] == 4 and sec["evidence"]["dast"] == "giữ"
+    assert sec["evidence"]["supply_chain"]["components"] == 4 and sec["evidence"]["khac"] == "giữ"
     assert sec["sbom_ref"].startswith("sha256:")
     assert sec["verdict"] == "block", "ADR-0046 §3: máy đưa số, không ghi đè verdict"
     assert "supply_chain.claimed_ignored" in [e.payload["action"] for e in bus.replay(topic="audit-log")]
