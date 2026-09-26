@@ -37,10 +37,28 @@ người khác" của ADR-0044.
    `smoke.unverified`. `uv run` hỏng (thiếu `uv`, sandbox tắt mạng chưa có venv) → vẫn có danh sách thành phần,
    license `NOASSERTION`, `licenses_error` nói vì sao.
 
+## Bổ sung 2026-09-27 — lock file ngoài uv
+
+Bản đầu chỉ đọc `uv.lock`; dự án Node/Go/Rust ra `unverified` và security chặn như trước. Nay `supply_chain.evidence`
+đọc bốn loại lock ở **gốc cây RC và thư mục con một tầng** (monorepo `frontend/`, `backend/`; bỏ thư mục ẩn,
+`node_modules`, `target`, `vendor`), gộp theo `purl`, ghi `lock` của từng dòng và `source = "uv.lock+frontend/…"`:
+
+| Lock | Thành phần | License |
+|---|---|---|
+| `uv.lock` | như trên | metadata gói đã cài, `uv run --frozen` trong sandbox |
+| `package-lock.json` v2/v3 | `packages` dưới `node_modules/` (bỏ gốc, `link`) | trường `license` npm tự ghi vào lock; thiếu thì `package.json` trong `node_modules` — không chạy gì |
+| `Cargo.lock` | gói có `source` (không có là crate của workspace) | `cargo metadata --locked --offline` trong sandbox; `/` là cú pháp OR cũ Cargo còn chấp nhận nên đổi thành ` OR ` |
+| `go.mod` | các dòng `require` (Go ≥ 1.17 ghi đủ gián tiếp) | không có nguồn: `NOASSERTION`, `licenses_error` nói vì sao |
+
+Lỗi của từng lock gộp vào `licenses_error` dạng `"<lock>: <lý do>"`.
+
 ## Cái giá đã biết
 
-- Chỉ đọc `uv.lock`. Dự án Node/Go/Rust ra `unverified` — không hỏng gì, nhưng security vẫn sẽ chặn như trước
-  ở các dự án đó. Thêm lock file khác là việc của một PR riêng khi có dự án thật cần.
+- Không đọc `yarn.lock`, `pnpm-lock.yaml`, `package-lock.json` v1, `poetry.lock`, `requirements*.txt`. Dự án chỉ có
+  các lock đó vẫn ra `unverified` — thêm khi có dự án thật cần.
+- Go: có SBOM nhưng license toàn `NOASSERTION` (module Go không khai license); security vẫn có thể chặn vì license.
+  Quét file LICENSE là nhận dạng văn bản, không phải đọc metadata — chưa làm. `replace` trong `go.mod` không áp.
+- Cargo: `--offline` cần crate đã tải về máy; chưa có thì license `NOASSERTION` kèm lỗi của `cargo`.
 - Gói có trong lock nhưng không cài trên máy này (chỉ dành cho OS khác) → `NOASSERTION`, `installed=false`.
 - DAST **không** thuộc ADR này. RC có ticket `risk_tags` auth vẫn có thể bị chặn vì thiếu DAST.
 

@@ -1,8 +1,10 @@
 """ADR-0046: bằng chứng chuỗi cung ứng (SBOM + license) của một cây RC, do orchestrator sinh — không phải lời khai.
 
-Thành phần đọc từ `uv.lock` bằng `tomllib` (không chạy gì). License đọc từ metadata gói đã cài trong môi trường của
-KHÁCH (`uv run --frozen`, ADR-0044) qua sandbox (ADR-0035). Chuẩn hoá sang SPDX chỉ khi không mơ hồ; còn lại là
-`NOASSERTION` kèm chuỗi gốc — không đoán. Không kết luận hợp lệ hay không: đó là chính sách của dự án.
+Thành phần đọc từ lock file (không chạy gì): `uv.lock`, `package-lock.json` v2/v3, `Cargo.lock`, `go.mod` — ở gốc cây
+RC và thư mục con một tầng. License: uv từ metadata gói đã cài trong môi trường của KHÁCH (`uv run --frozen`,
+ADR-0044), Cargo từ `cargo metadata --offline`, cả hai qua sandbox (ADR-0035); npm từ chính lock + `node_modules`;
+Go không có nguồn nào nên `NOASSERTION`. Chuẩn hoá sang SPDX chỉ khi không mơ hồ; còn lại là `NOASSERTION` kèm
+chuỗi gốc — không đoán. Không kết luận hợp lệ hay không: đó là chính sách của dự án.
 """
 
 from __future__ import annotations
@@ -96,15 +98,8 @@ def components(root: Path) -> list[dict[str, str]] | None:
     return out
 
 
-def installed_licenses(root: Path, sandbox: Any) -> tuple[dict[str, str], str | None]:
-    """License gốc của mọi gói đã cài trong môi trường của khách. Lỗi → ({}, lý do), không ném."""
-    spec = RunSpec(
-        argv=["uv", "run", "--frozen", "--", "python", "-c", _SCRIPT],
-        cwd=root,
-        env=clean_env(),
-        timeout=600.0,
-        max_output=2_000_000,
-    )
+def _json_run(sandbox: Any, spec: RunSpec) -> tuple[dict[str, Any], str | None]:
+    """Chạy `spec` trong sandbox, đọc stdout là một object JSON. Lỗi → ({}, lý do), không ném."""
     try:
         r = sandbox.run(spec)
     except OSError as e:
@@ -115,26 +110,153 @@ def installed_licenses(root: Path, sandbox: Any) -> tuple[dict[str, str], str | 
         data = json.loads(r.stdout)
     except ValueError:
         return {}, f"stdout không phải JSON: {r.stdout.strip()[:200]}"
-    return {str(k): str(v) for k, v in data.items()}, None
+    return data, None
 
 
-def evidence(root: Path, sandbox: Any, sha: str) -> dict[str, Any]:
-    """Bằng chứng `evidence.supply_chain` của cây RC `root` (ADR-0046 §1, §4)."""
-    comps = components(root)
-    if comps is None:
-        return unverified("cây RC không có `uv.lock` — ADR-0046 chỉ đọc lock của uv")
-    lic, err = installed_licenses(root, sandbox)
+def installed_licenses(root: Path, sandbox: Any) -> tuple[dict[str, str], str | None]:
+    """License gốc của mọi gói đã cài trong môi trường của khách. Lỗi → ({}, lý do), không ném."""
+    spec = RunSpec(
+        argv=["uv", "run", "--frozen", "--", "python", "-c", _SCRIPT],
+        cwd=root,
+        env=clean_env(),
+        timeout=600.0,
+        max_output=2_000_000,
+    )
+    data, err = _json_run(sandbox, spec)
+    return {str(k): str(v) for k, v in data.items()}, err
+
+
+Rows = tuple[list[dict[str, Any]], str | None]
+
+
+def _uv(d: Path, sandbox: Any) -> Rows:
+    lic, err = installed_licenses(d, sandbox)
     rows = []
-    for c in comps:
+    for c in components(d) or []:
         raw = lic.get(c["name"])
+        rows.append({**c, "raw": raw or "", "installed": (raw is not None) if err is None else None})
+    return rows, err
+
+
+def _npm_license(v: Any) -> str:
+    """`license` của package.json: chuỗi, hoặc dạng cũ `{type: ...}`."""
+    if isinstance(v, dict):
+        v = v.get("type")
+    return v.strip() if isinstance(v, str) else ""
+
+
+def _npm(d: Path, sandbox: Any) -> Rows:
+    """`package-lock.json` v2/v3 (`packages`): npm tự ghi `license` của từng gói; thiếu thì đọc `package.json` đã cài
+    trong `node_modules`. Không chạy gì. Gói gốc (`""`), workspace (`link`) và đường không nằm dưới `node_modules/`
+    (mã của chính dự án) không tính."""
+    pkgs = json.loads((d / "package-lock.json").read_text(encoding="utf-8")).get("packages")
+    if not isinstance(pkgs, dict):
+        return [], "lockfileVersion 1 (không có `packages`) — chỉ đọc lock npm v2/v3"
+    rows = []
+    for path, e in pkgs.items():
+        if "node_modules/" not in path or not isinstance(e, dict) or e.get("link") or not e.get("version"):
+            continue
+        name, version = str(e.get("name") or path.rsplit("node_modules/", 1)[1]), str(e["version"])
+        pj = d / path / "package.json"
+        raw = _npm_license(e.get("license"))
+        if not raw and pj.is_file():
+            raw = _npm_license(json.loads(pj.read_text(encoding="utf-8")).get("license"))
+        purl = f"pkg:npm/{name.replace('@', '%40', 1)}@{version}"
+        rows.append({"name": name, "version": version, "purl": purl, "raw": raw, "installed": pj.is_file()})
+    return rows, None
+
+
+def _cargo(d: Path, sandbox: Any) -> Rows:
+    """`Cargo.lock` (gói có `source`; không có là crate của chính workspace). License từ `cargo metadata --locked
+    --offline` trong sandbox: crates.io bắt khai biểu thức SPDX; `/` là cú pháp OR cũ Cargo còn chấp nhận."""
+    data = tomllib.loads((d / "Cargo.lock").read_text(encoding="utf-8"))
+    comps = [(str(p.get("name", "")), str(p.get("version", ""))) for p in data.get("package", []) if p.get("source")]
+    spec = RunSpec(
+        argv=["cargo", "metadata", "--format-version", "1", "--locked", "--offline"],
+        cwd=d,
+        env=clean_env(),
+        timeout=600.0,
+        max_output=30_000_000,
+    )
+    lic, err = _json_run(sandbox, spec)
+    got = {f"{p.get('name')}@{p.get('version')}": str(p.get("license") or "") for p in lic.get("packages") or []}
+    rows = []
+    for name, version in comps:
+        raw = got.get(f"{name}@{version}")
         rows.append(
             {
-                **c,
-                "license": spdx_of(raw or ""),
+                "name": name,
+                "version": version,
+                "purl": f"pkg:cargo/{name}@{version}",
                 "raw": raw or "",
+                "spdx": spdx_of((raw or "").replace("/", " OR ")),
                 "installed": (raw is not None) if err is None else None,
             }
         )
+    return rows, err
+
+
+def _go(d: Path, sandbox: Any) -> Rows:
+    """`go.mod` (Go ≥ 1.17 ghi đủ phụ thuộc gián tiếp). Module Go không khai license trong metadata: mọi gói
+    `NOASSERTION`, `licenses_error` nói vì sao — không đoán từ file LICENSE."""
+    rows, block = [], False
+    for line in (d / "go.mod").read_text(encoding="utf-8").splitlines():
+        s = line.split("//", 1)[0].strip()
+        if s == "require (":
+            block = True
+            continue
+        if block and s == ")":
+            block = False
+            continue
+        parts = s.split()
+        if s.startswith("require ") and len(parts) == 3:
+            parts = parts[1:]
+        elif not block or len(parts) != 2:
+            continue
+        rows.append(
+            {
+                "name": parts[0],
+                "version": parts[1],
+                "purl": f"pkg:golang/{parts[0]}@{parts[1]}",
+                "raw": "",
+                "installed": None,
+            }
+        )
+    return rows, "module Go không khai license trong metadata; chưa quét file LICENSE của module"
+
+
+# Lock file → cách đọc. Thứ tự này là thứ tự trong SBOM.
+_READERS = (("uv.lock", _uv), ("package-lock.json", _npm), ("Cargo.lock", _cargo), ("go.mod", _go))
+_SKIP_DIRS = frozenset({"node_modules", "target", "vendor"})
+
+
+def _dirs(root: Path) -> list[Path]:
+    """Gốc cây RC + một tầng thư mục con (monorepo `frontend/`, `backend/`), bỏ thư mục ẩn và thư mục phụ thuộc."""
+    subs = [p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".") and p.name not in _SKIP_DIRS]
+    return [root, *sorted(subs)]
+
+
+def evidence(root: Path, sandbox: Any, sha: str) -> dict[str, Any]:
+    """Bằng chứng `evidence.supply_chain` của cây RC `root` (ADR-0046 §1, §4 và phần bổ sung)."""
+    by_purl: dict[str, dict[str, Any]] = {}
+    sources, errs = [], []
+    for d in _dirs(root):
+        for fname, read in _READERS:
+            if not (d / fname).is_file():
+                continue
+            rel = (d / fname).relative_to(root).as_posix()
+            got, err = read(d, sandbox)
+            sources.append(rel)
+            if err is not None:
+                errs.append(f"{rel}: {err}")
+            for r in got:
+                by_purl.setdefault(r["purl"], {**r, "license": r.pop("spdx", None) or spdx_of(r["raw"]), "lock": rel})
+    if not sources:
+        return unverified(
+            "cây RC không có lock file nào đọc được (uv.lock, package-lock.json, Cargo.lock, go.mod) ở gốc hay "
+            "thư mục con một tầng"
+        )
+    rows = list(by_purl.values())
     sbom = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
@@ -153,12 +275,14 @@ def evidence(root: Path, sandbox: Any, sha: str) -> dict[str, Any]:
     digest = hashlib.sha256(json.dumps(sbom, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
     ev: dict[str, Any] = {
         "verified_by": VERIFIED_BY,
-        "source": "uv.lock",
+        "source": "+".join(sources),
         "sha": sha,
         "components": len(rows),
         "licenses": dict(Counter(r["license"] for r in rows)),
         "noassertion": [
-            {k: r[k] for k in ("name", "version", "raw", "installed")} for r in rows if r["license"] == NOASSERTION
+            {k: r[k] for k in ("name", "version", "raw", "installed", "lock")}
+            for r in rows
+            if r["license"] == NOASSERTION
         ],
         "copyleft": [
             {k: r[k] for k in ("name", "version", "license", "raw")}
@@ -168,6 +292,6 @@ def evidence(root: Path, sandbox: Any, sha: str) -> dict[str, Any]:
         "sbom_ref": f"sha256:{digest}",
         "sbom": sbom,
     }
-    if err is not None:
-        ev["licenses_error"] = err
+    if errs:
+        ev["licenses_error"] = "; ".join(errs)
     return ev
