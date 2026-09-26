@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ..bus import REVIEWER_PREFIX
 from ..delivery import DONE_STATES
 from ..events import Envelope
 from ..gate_risk import request_gate
@@ -17,7 +18,7 @@ from ..github_pr import PrRecord, open_pr
 from ..roles import ROLE
 from ..workspace import Integration, WorkspaceError
 from .fsm import Transition
-from .routes import PROD_ROUTE, STAGING_ROUTE, Route
+from .routes import PROD_ROUTE, RELEASE_CHECK_ROUTE, STAGING_ROUTE, Route
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -198,6 +199,29 @@ def redeploy(o: Orchestrator, release_id: str, by: str) -> Envelope:
     res = StepResult(rc.event_id, rc.topic, rc.key)
     o._recall(ROLE.OPS, rc)
     o._call(ROLE.OPS, rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
+    return rc
+
+def recheck(o: Orchestrator, release_id: str, by: str) -> Envelope:
+    """Chấm lại release-check của security cho một RC đã có, với bằng chứng máy dựng MỚI (ADR-0047 §5) — dùng
+    sau khi bản vá bằng chứng (SBOM/license ADR-0046, DAST ADR-0047) merge. Cùng lý do tồn tại với `redeploy`:
+    RC chỉ được xử lý một lần, nên RC cũ bị chặn không có đường nào được chấm lại (CAMPUS-UNI REL-007,
+    2026-09-27). Chỉ lượt security; staging là việc của `redeploy`.
+
+    Không đụng quyết định đã có: waiver (`release_waived`) giữ nguyên; review mới thay review cũ trong
+    `release_reviews` nên người ký Gate 3 thấy verdict/finding mới. `reviewer:` được gọi như người: chấm lại
+    là yêu cầu một lượt model, không phải ký gate."""
+    from ..orchestrator import StepResult  # nhập lười: như `redeploy`
+    if not by.startswith(("human:", REVIEWER_PREFIX)): raise ValueError("by phải là human:<tên> hoặc reviewer:<id>")
+    rc = o.latest("release-candidates", release_id)
+    if rc is None: raise ValueError(f"không có release-candidate {release_id}")
+    if release_id in o.void_releases: raise ValueError(f"{release_id}: RC đã bị huỷ, không chấm lại")
+    if release_id in o.delivered: raise ValueError(f"{release_id}: RC đã giao, chấm lại không đổi được gì")
+    if not o.lead.release_needs_security(release_id):
+        raise ValueError(f"{release_id}: RC không cần security (không ticket nào có risk_tags)")
+    o._audit("release.recheck", {"release_id": release_id, "by": by}, actor=by, project_id=o.project_for(rc))
+    res = StepResult(rc.event_id, rc.topic, rc.key)
+    o._recall(ROLE.SECURITY, rc)
+    o._call(ROLE.SECURITY, rc, RELEASE_CHECK_ROUTE, res)
     return rc
 
 def _check_paused_releases(o: Orchestrator) -> None:

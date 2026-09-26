@@ -324,6 +324,7 @@ class Orchestrator:
     _deliver = release_fsm._deliver
     _rollback_delivery = release_fsm._rollback_delivery
     redeploy = release_fsm.redeploy
+    recheck = release_fsm.recheck
     _check_paused_releases = release_fsm._check_paused_releases
     _superseded_release = release_fsm._superseded_release
     _release_paused = release_fsm._release_paused

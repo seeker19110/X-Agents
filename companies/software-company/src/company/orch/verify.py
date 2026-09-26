@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .. import supply_chain
+from .. import dast, supply_chain
 from ..deploy import DeployError, project_name
 from ..events import Envelope
 from ..gate_risk import request_gate
@@ -248,35 +248,44 @@ def verdict_with_run(o: Orchestrator, agent: str, env: Envelope, p: dict[str, An
 
 def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope, str | None]:
     """Bằng chứng do ORCHESTRATOR chạy trước lượt chấm, đưa vào input để agent dẫn — không phải lời khai của model:
-    smoke trước QA hồi quy (ADR-0029 mục "regression-staging"), SBOM + license trước release-check của security
-    (ADR-0046: `release-candidates` không mang gì, security được dặn không đoán nên trước đây chặn mọi RC —
-    CAMPUS-UNI REL-004, REL-007). Trả input mới và tên bằng chứng để `evidence_after` đối chiếu đúng thứ đã đưa."""
+    smoke trước QA hồi quy (ADR-0029 mục "regression-staging"), SBOM + license + DAST tối thiểu trước release-check
+    của security (ADR-0046/0047: `release-candidates` không mang gì, security được dặn không đoán nên trước đây chặn
+    mọi RC — CAMPUS-UNI REL-004, REL-007). Trả input mới và tên bằng chứng để `evidence_after` đối chiếu đúng thứ
+    đã đưa (`supply_chain` là cặp supply_chain + dast của release-check)."""
     if r.topic_out != "review-results" or inp.topic not in {"release-events", "release-candidates"}: return inp, None
     if inp.topic == "release-events":
         if r.tools != "ro": return inp, None
-        kind, ev = "run", regression_run(o, inp)
+        kind, ev = "run", {"run": regression_run(o, inp)}
     else:
-        rid = str(inp.payload.get("release_id") or inp.key)
+        rid, pid = str(inp.payload.get("release_id") or inp.key), o.project_for(inp)
         integ = o._integration_of_release(inp)
-        kind, ev = "supply_chain", (unverified("không có worktree tích hợp (dự án chạy không repo)")
-                                    if integ is None or not integ.path.exists() else
-                                    supply_chain.evidence(_release_root(o, rid, integ), o.sandbox,
-                                                          sha=o.release_sha.get(rid) or integ.sha()))
-        # audit không kèm toàn văn SBOM: nó đi trong `review-results`
-        o._audit("supply_chain.run", {"release_id": rid, **{k: v for k, v in ev.items() if k != "sbom"}},
-                 project_id=o.project_for(inp))
-    return inp.model_copy(update={"payload": {**inp.payload, "evidence": {**_dict_of(inp.payload.get("evidence")), kind: ev}}}), kind
+        if integ is None or not integ.path.exists():
+            ev = dict.fromkeys(("supply_chain", "dast"), unverified("không có worktree tích hợp (dự án chạy không repo)"))
+        else:
+            root, sha = _release_root(o, rid, integ), o.release_sha.get(rid) or integ.sha()
+            spec = o.latest("approved-specs", pid) if pid else None
+            ev = {"supply_chain": supply_chain.evidence(root, o.sandbox, sha=sha),
+                  "dast": dast.evidence(root, spec.payload if spec is not None else None, o.sandbox,
+                                        o.blackboard.content("api-contract", pid), sha)}
+        # audit không kèm toàn văn SBOM / checks: chúng đi trong `review-results`
+        for action, ev1, big in (("supply_chain.run", ev["supply_chain"], "sbom"), ("dast.run", ev["dast"], "checks")):
+            o._audit(action, {"release_id": rid, **{k: v for k, v in ev1.items() if k != big}}, project_id=pid)
+        kind = "supply_chain"
+    return inp.model_copy(update={"payload": {**inp.payload, "evidence": {**_dict_of(inp.payload.get("evidence")), **ev}}}), kind
 
 
 def evidence_after(o: Orchestrator, agent: str, inp: Envelope, p: dict[str, Any], kind: str | None) -> dict[str, Any]:
     """Sau lượt: bằng chứng của orchestrator ghi đè mọi bản model tự khai. Smoke hỏng hạ verdict (`verdict_with_run`);
-    SBOM thì KHÔNG (ADR-0046 §3) — license hợp lệ hay không là chính sách của dự án, máy chỉ đưa số."""
+    SBOM và DAST thì KHÔNG (ADR-0046 §3, ADR-0047 §3) — license hợp lệ hay thiếu CSP có chặn không là chính sách
+    của dự án, máy chỉ đưa số. `dast_summary` là lời đọc của model, giữ nguyên."""
     if kind is None: return p
-    ev = _dict_of(inp.payload.get("evidence"))[kind]
+    mine = _dict_of(inp.payload.get("evidence"))
+    ev = mine[kind]
     if kind == "run": return verdict_with_run(o, agent, inp, p, ev)
     ev_p = _dict_of(p.get("evidence"))
     claimed = {k: v for k, v in (("supply_chain", ev_p.get("supply_chain")), ("sbom_ref", p.get("sbom_ref"))) if v is not None}
-    if claimed:
-        o._audit("supply_chain.claimed_ignored", {"release_id": str(inp.payload.get("release_id") or inp.key),
-                                                  "claimed": claimed}, actor=agent, project_id=o.project_for(inp))
-    return {**p, "evidence": {**ev_p, "supply_chain": ev}, "sbom_ref": ev.get("sbom_ref")}
+    rid = str(inp.payload.get("release_id") or inp.key)
+    for action, c in (("supply_chain.claimed_ignored", claimed or None), ("dast.claimed_ignored", ev_p.get("dast"))):
+        if c is not None:
+            o._audit(action, {"release_id": rid, "claimed": c}, actor=agent, project_id=o.project_for(inp))
+    return {**p, "evidence": {**ev_p, "supply_chain": ev, "dast": mine["dast"]}, "sbom_ref": ev.get("sbom_ref")}

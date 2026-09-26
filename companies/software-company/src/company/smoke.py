@@ -18,6 +18,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -101,7 +102,8 @@ def _probe(url: str) -> int | None:
         return None
 
 
-def run_smoke(root: Path, rt: Runtime, sandbox: Any = None) -> dict[str, Any]:
+def run_smoke(root: Path, rt: Runtime, sandbox: Any = None,
+              probe: Callable[[str], None] | None = None) -> dict[str, Any]:
     """Khởi động `rt.command` trong `root`, poll `http://127.0.0.1:<port><path>` tới khi có phản hồi hoặc hết
     `timeout_s`, rồi giết tiến trình. Trả về bằng chứng: lệnh thật đã chạy, cổng, mã HTTP, thời gian, mã thoát nếu
     tiến trình chết trước khi trả lời, đuôi stderr để người đọc hiểu vì sao, và `sandbox` — TÊN lớp bảo vệ đã
@@ -110,7 +112,10 @@ def run_smoke(root: Path, rt: Runtime, sandbox: Any = None) -> dict[str, Any]:
 
     Đây là điểm gọi rủi ro nhất trong ba điểm của ADR-0035: `rt.command` do spec-writer viết (người ký ở Gate 1),
     và không như lint/test, nó phải MỞ mạng để probe được — nên `RunSpec(network=True, port=port)`: backend
-    container mở đúng một cổng loopback thay vì tắt mạng."""
+    container mở đúng một cổng loopback thay vì tắt mạng.
+
+    `probe(base_url)` (ADR-0047, DAST): gọi khi sản phẩm vừa trả lời đúng health, TRƯỚC khi bị giết — để đo thêm
+    trên chính tiến trình đang chạy thay vì khởi động lần hai."""
     from .sandbox import RunSpec, SubprocessSandbox
     sb = sandbox if sandbox is not None else SubprocessSandbox()
     port = rt.port or free_port()
@@ -137,6 +142,8 @@ def run_smoke(root: Path, rt: Runtime, sandbox: Any = None) -> dict[str, Any]:
             if st is not None:
                 out["http_status"] = st
                 out["ok"] = st == rt.expect_status
+                if out["ok"] and probe is not None:
+                    probe(f"http://127.0.0.1:{port}")
                 break
             time.sleep(0.25)
         else:

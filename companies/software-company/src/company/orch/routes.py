@@ -152,6 +152,8 @@ def phase_for(r: Route, spec: AgentSpec, inp: Envelope) -> str | None:
 
 
 STAGING_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="staging", phase="deploy")
+# release-check của security: tách hằng để `recheck` (ADR-0047 §5) gọi lại ĐÚNG dòng này, không dựng tay
+RELEASE_CHECK_ROUTE = Route("release-candidates", ROLE.SECURITY, "review-results", _release_needs_security)
 ROUTES: tuple[Route, ...] = (
     # ADR-0037 PR-5e — khối nghiên cứu: MỘT agent `product`, bốn pha, cùng chuỗi cũ trừ một mắt xích.
     # intake → research → spec (draft đã kèm `risks`) → intake (câu hỏi) → (người trả lời) → spec (PRD).
@@ -190,7 +192,7 @@ ROUTES: tuple[Route, ...] = (
     Route("pull-requests", ROLE.SECURITY, "review-results", _needs_security, enrich=_with_diff, tools="ro"),
     # vận hành: RC → staging (+ security DAST/license khi có risk) → QA hồi quy; production đi qua gate 3 (PROD_ROUTE)
     STAGING_ROUTE,
-    Route("release-candidates", ROLE.SECURITY, "review-results", _release_needs_security),
+    RELEASE_CHECK_ROUTE,
     Route("release-events", ROLE.QA, "review-results", _deployed("staging"), tools="ro", phase="review"),  # tool trên worktree tích hợp
     Route("release-events", ROLE.OPS, CONTEXT_ONLY, _deployed("production"), phase="docs"),  # docs, release notes, runbook
     # khách và hậu release

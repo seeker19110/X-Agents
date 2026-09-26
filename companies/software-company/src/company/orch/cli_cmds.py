@@ -146,6 +146,17 @@ def redeploy(orch: Orchestrator, ns: argparse.Namespace) -> int:
     return _with_lease(ns.db, body)
 
 
+def recheck(orch: Orchestrator, ns: argparse.Namespace) -> int:
+    def body() -> int:
+        try:
+            rc = orch.recheck(ns.release_id, ns.by)
+            print(f"{rc.key}: đã chấm lại release-check của security (by={ns.by})")
+        except ValueError as e:
+            print(str(e), file=sys.stderr); return 2
+        return 0
+    return _with_lease(ns.db, body)
+
+
 def run(orch: Orchestrator, ns: argparse.Namespace) -> int:
     """`run` là lệnh duy nhất chạy vòng lặp. `--watch` + mã nguồn đổi → `ReloadRequested` → khởi động lại tiến
     trình bằng `execv` SAU khi đã trả lease (tiến trình mới phải lấy được nó)."""
@@ -182,5 +193,6 @@ def run(orch: Orchestrator, ns: argparse.Namespace) -> int:
 
 ORCH_CMDS: dict[str, Callable[[Any, Any], int]] = {
     "status": status, "report": report, "rulings": rulings, "show": show,
-    "comment": comment_or_takeover, "takeover": comment_or_takeover, "redeploy": redeploy, "run": run,
+    "comment": comment_or_takeover, "takeover": comment_or_takeover, "redeploy": redeploy, "recheck": recheck,
+    "run": run,
 }

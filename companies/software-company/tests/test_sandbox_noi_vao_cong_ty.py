@@ -254,7 +254,7 @@ def test_cli_lenh_cua_nguoi_khong_dung_sandbox_theo_cau_hinh(cmd, monkeypatch):
     assert _sandbox_for(cmd) is None
 
 
-@pytest.mark.parametrize("cmd", ["run", "redeploy"])
+@pytest.mark.parametrize("cmd", ["run", "redeploy", "recheck"])  # recheck: DAST + uv run trên cây RC (ADR-0047)
 def test_cli_lenh_chay_ma_khach_fail_closed(cmd, monkeypatch):
     monkeypatch.setenv("COMPANY_SANDBOX", "container")
     monkeypatch.setenv("COMPANY_SANDBOX_RUNTIME", "docker-khong-co-that-xyz")

@@ -69,6 +69,9 @@ EXEMPT_LINES: dict[tuple[str, str], str] = {
     ("orch/routes.py", '"incidents": _field("root_cause_class", "code", "ops", "design"),'):
         "`\"ops\"` ở đây là GIÁ TRỊ enum `root_cause_class` của incidents.json (code/ops/design/…), không phải "
         "id agent — trùng chữ tình cờ từ PR-5b (`ROLE.OPS` mới là `\"ops\"`)",
+    ("dast.py", 'OAS_SECURITY = "security"  # khoá Security Requirement của OpenAPI, không phải agent'):
+        "`security` là khoá Security Requirement của OpenAPI (op đăng nhập công khai khai `security: []`, ADR-0047), "
+        "không phải agent `security` — trùng chữ tình cờ với `ROLE.SECURITY`",
 }
 
 
