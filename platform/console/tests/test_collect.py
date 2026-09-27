@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -386,7 +387,9 @@ def test_replay_ticket_cu_assignee_stack_khong_lam_chet_collect(company_db: Path
             }
         )
     )
-    with sqlite3.connect(company_db) as db:
+    # `with sqlite3.connect(...)` chỉ commit chứ không đóng kết nối — thiếu `closing()` là ResourceWarning nổ ở
+    # một test khác lúc GC chạy (B7 của audit 2026-09-27; cùng họ với `test_review_fixes_2026_09.py` của company).
+    with closing(sqlite3.connect(company_db)) as db, db:
         db.execute(
             "INSERT INTO events(event_id, topic, key, actor, ts, body) VALUES (?,?,?,?,?,?)",
             ("ev-cu-999", "tasks", "TCK-999", "delivery-lead", body["ts"], json.dumps(body)),
