@@ -449,3 +449,16 @@ def test_bo_qua_pha_author_phai_noi_ra_chu_khong_im(tmp_path: Path) -> None:
     assert len(khoa) == len(set(khoa)), f"khoá `once` phải mang thế hệ retry nên không được trùng: {khoa}"
     assert len(khoa) == len(vet), "một vết cho mỗi thế hệ, không hơn"
     assert all(k.startswith("test-author-bo-qua:T1:") for k in khoa), khoa
+
+
+def test_worktree_hong_o_phan_vung_test_de_lai_audit_mot_lan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Audit 2026-09-22 → 2026-09-27 (B6): `_test_scope_ok` nuốt lỗi dựng worktree không để lại dấu vết — ticket lặng
+    lẽ đi đường cũ, người trực không biết vì sao qa không viết test trước. Nuốt thì được (fail closed, ca ngay trên),
+    im thì không: một audit mang lỗi thật, một lần cho mỗi (ticket, lỗi) vì mỗi nhịp watch gọi lại."""
+    from company import orchestrator as orch_mod
+    bus, orch = _orch(tmp_path, test_author=True)
+    monkeypatch.setattr(TicketWorkspace, "create", lambda self: (_ for _ in ()).throw(OSError("đĩa đầy")))
+    assert orch_mod._test_scope_ok(orch, "T1") is False
+    assert orch_mod._test_scope_ok(orch, "T1") is False
+    rec = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "test_scope.worktree_failed"]
+    assert len(rec) == 1 and rec[0]["ticket_id"] == "T1" and "OSError: đĩa đầy" in rec[0]["evidence"]
