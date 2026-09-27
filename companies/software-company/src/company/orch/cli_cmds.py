@@ -8,7 +8,8 @@ dựng `Orchestrator` (đắt: cần client thật cho `run`/`redeploy`) hiện 
   một file bus của máy khác không đòi SDK hay API key.
 * **Nhóm orchestrator** (`ORCH_CMDS`) cần đối tượng đã dựng.
 
-Mỗi hàm trả **mã thoát** đúng như đường cũ: 0 xong, 2 lỗi của người dùng (in ra stderr), 3 không lấy được lease.
+Mỗi hàm trả **mã thoát** đúng như đường cũ: 0 xong, 1 lượt model của lệnh lỗi (`redeploy`/`recheck`), 2 lỗi của
+người dùng (in ra stderr), 3 không lấy được lease.
 """
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ from ..workspace import WorkspaceError
 if TYPE_CHECKING:
     import argparse
 
-    from ..orchestrator import Orchestrator
+    from ..orchestrator import Orchestrator, StepResult
     from ..sqlite_bus import SQLiteBus
 
 
@@ -135,13 +136,22 @@ def _with_lease(db: Path, body: Callable[[], int]) -> int:
         lease.release()  # trả lease TRƯỚC khi exec: tiến trình mới phải lấy được lease
 
 
+def _step_failed(res: StepResult, what: str) -> bool:
+    """Lượt model của lệnh vận hành LỖI thì nói ra và thoát 1 — trước đây CLI in "đã chạy lại" và thoát 0 cả khi
+    `_call` ghi `error:`/`transient:`, script vận hành không phân biệt được (audit 2026-09-27 B1)."""
+    loi = [a for a in res.actions if a.startswith(("error:", "handler_error:", "transient:"))]
+    if loi: print(f"{res.key}: {what} lỗi — {'; '.join(loi)}", file=sys.stderr)
+    return bool(loi)
+
+
 def redeploy(orch: Orchestrator, ns: argparse.Namespace) -> int:
     def body() -> int:
         try:
-            rc = orch.redeploy(ns.release_id, ns.by)
-            print(f"{rc.key}: đã chạy lại lượt staging (by={ns.by})")
+            res = orch.redeploy(ns.release_id, ns.by)
         except ValueError as e:
             print(str(e), file=sys.stderr); return 2
+        if _step_failed(res, "lượt staging"): return 1
+        print(f"{res.key}: đã chạy lại lượt staging (by={ns.by})")
         return 0
     return _with_lease(ns.db, body)
 
@@ -149,10 +159,11 @@ def redeploy(orch: Orchestrator, ns: argparse.Namespace) -> int:
 def recheck(orch: Orchestrator, ns: argparse.Namespace) -> int:
     def body() -> int:
         try:
-            rc = orch.recheck(ns.release_id, ns.by)
-            print(f"{rc.key}: đã chấm lại release-check của security (by={ns.by})")
+            res = orch.recheck(ns.release_id, ns.by)
         except ValueError as e:
             print(str(e), file=sys.stderr); return 2
+        if _step_failed(res, "lượt security"): return 1
+        print(f"{res.key}: đã chấm lại release-check của security (by={ns.by})")
         return 0
     return _with_lease(ns.db, body)
 

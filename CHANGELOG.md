@@ -13,6 +13,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(audit): **Đợt 0 của audit 2026-09-27 — `recheck`/`redeploy` thoát 1 khi lượt model lỗi, lệnh không tạo bus ở sai thư mục, `pr-policy` đòi `(#số PR)`** (#362). Báo cáo `docs/reports/2026-09-27-audit.md`. B1: hai lệnh vận hành trả `StepResult`, CLI in lỗi và thoát 1 khi lượt có `error:`/`transient:` (trước đây luôn "đã chạy lại", thoát 0). B3: `missing_bus` — chỉ `run`/`publish` (gate_cli: `request`) được mở bus chưa có; lệnh khác thoát 2 và chỉ đường `companies/software-company/`. C1: `scripts/pr_changelog_check.py` bắt dòng thêm của CHANGELOG mang đúng `(#n)` mà `drift-check` tìm sau merge (main đỏ ở #353, #357). `.gitignore` bắt `-wal`/`-shm`/`.lock`. Sửa chín chỗ tài liệu lệch mã (dãy ADR, số test gateway/company, "bốn package", đường dẫn keeper, K3 đã xong); sổ "Việc để lại" của `TASK-PACK.md` thêm việc treo mới và trạng thái ADR Proposed.
 - docs(core): **đối chiếu 15 repo agent với runtime X-Agents** — ghim các tên nguồn đã đổi, bản đồ tính năng/checkpoint/gate/eval/sandbox/MCP đang có và contract để mở adapter khi có ticket thật; không thêm SDK song song (`docs/reports/2026-09-27-agent-frameworks.md`) (#361).
 
 - docs(company): **kết quả chấm lại REL-007 bằng DAST thật** — `recheck` chạy trên CAMPUS-UNI bằng mã `main`: DAST dựng sản phẩm trên cổng trống, đo 24 lần đăng nhập sai đều 401 không 429/`Retry-After`, thiếu CSP; security vẫn `block` nhưng vì T-01 (High) đo được, không còn vì thiếu bằng chứng. Ghi ở `docs/sessions/2026-09-27.md` (#360).

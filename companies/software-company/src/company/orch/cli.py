@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 COMPANY_ROOT = Path(__file__).resolve().parents[3]  # thư mục software-company (như registry.ROOT)
 SOURCE_GLOBS = ("src/company/**/*.py", "agents/**/*.md", "skills/**/*.md", "gates/*.md", "llm.yaml")
+# Chỉ hai lệnh được bắt đầu một bus mới; mọi lệnh khác trên đường chưa có file là chạy sai thư mục (audit B3).
+NEW_BUS_CMDS = frozenset({"run", "publish"})
 
 
 def source_fingerprint(root: Path | None = None) -> tuple[int, str]:
@@ -128,7 +130,9 @@ def main(argv: list[str] | None = None) -> int:
     ns = _parser().parse_args(argv)
     for stream in (sys.stdout, sys.stderr):  # Windows console cp1252
         if hasattr(stream, "reconfigure"): stream.reconfigure(encoding="utf-8")
-    from ..sqlite_bus import SQLiteBus
+    from ..sqlite_bus import SQLiteBus, missing_bus
+    if ns.cmd not in NEW_BUS_CMDS and (loi := missing_bus(ns.db)):
+        print(loi, file=sys.stderr); return 2
     bus = SQLiteBus(ns.db)
     # Hai nhóm lệnh, ranh giới là chỗ dựng `Orchestrator` (đắt: `run`/`redeploy` cần client thật). Nhóm bus chạy
     # TRƯỚC nên `metrics`/`trace`/`publish` trên file bus của máy khác không đòi SDK hay API key.

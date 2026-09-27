@@ -963,7 +963,7 @@ def test_cli_publish_thieu_key_bao_loi_ro(tmp_path, capsys):
 
 def test_cli_decide_change_khong_co_change_request_bao_loi_ro(tmp_path, capsys):
     """`decide-change` cho `change_id` chưa từng publish → lỗi rõ, mã 2, không sập KeyError."""
-    db = str(tmp_path / "c.sqlite")
+    db = str(tmp_path / "c.sqlite"); SQLiteBus(db).close()
     assert orch_main(["--db", db, "decide-change", "CR-KHONG-CO", "accepted", "--by", "human:po"]) == 2
     assert "không có change-request CR-KHONG-CO" in capsys.readouterr().err
 
@@ -1224,7 +1224,7 @@ def test_spec_writer_refuses_without_requirements_draft():
 
 def test_cli_read_only_commands_do_not_need_model(tmp_path, capsys, monkeypatch):
     """F5: status/report/show là lệnh của người xem; không được crash vì thiếu SDK hay API key."""
-    db = str(tmp_path / "c.sqlite")
+    db = str(tmp_path / "c.sqlite"); SQLiteBus(db).close()
     monkeypatch.setenv("COMPANY_LLM_PROVIDER", "anthropic"); monkeypatch.delenv("COMPANY_LLM_API_KEY", raising=False)
     import company.orchestrator as om
     monkeypatch.setattr(om, "load_agents", load_agents)
@@ -1345,3 +1345,19 @@ def test_tick_tu_gom_ticket_approved_con_sot_thanh_release():
     assert orch.lead.releases, "phải có release-candidate mới được tạo"
     rid = orch.lead.releases[-1]
     assert T1["ticket_id"] in orch.lead.release_tickets[rid]
+
+
+def test_cli_khong_tao_bus_moi_khi_sai_thu_muc(tmp_path, capsys, monkeypatch):
+    """Audit 2026-09-27 B3: `--db` mặc định là `company.sqlite` theo cwd. Chạy `status` ở gốc hub TẠO một bus rỗng mới
+    và in mọi chỉ số 0 — nhìn như công ty không có gì (`TRAPS.md` §4); gốc repo mang bộ `-shm/-wal/.lock` mới lúc
+    2026-09-26 17:49. Chỉ `run`/`publish` được bắt đầu một bus mới; mọi lệnh khác cần bus đã có."""
+    monkeypatch.chdir(tmp_path)
+    lenh = (["status"], ["report"], ["metrics"], ["diagnose"], ["rulings"], ["trace", "T1"], ["show", "prd"],
+            ["decide-change", "CR-1", "accepted", "--by", "human:po"], ["comment", "T1", "--by", "human:x", "--text", "t"],
+            ["takeover", "T1", "--by", "human:x"], ["redeploy", "REL-1", "--by", "human:x"],
+            ["recheck", "REL-1", "--by", "human:x"])
+    for cmd in lenh:
+        assert orch_main(cmd) == 2, cmd
+        err = capsys.readouterr().err
+        assert "company.sqlite" in err and "companies/software-company" in err, cmd
+    assert not (tmp_path / "company.sqlite").exists()

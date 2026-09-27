@@ -180,7 +180,9 @@ def main(argv: list[str] | None = None) -> int:
     ns = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")  # Windows console cp1252
 
-    from .sqlite_bus import SQLiteBus
+    from .sqlite_bus import SQLiteBus, missing_bus
+    if ns.cmd != "request" and (loi := missing_bus(ns.db)):  # chỉ `request` được bắt đầu bus mới (audit B3)
+        print(loi, file=sys.stderr); return 2
     bus = SQLiteBus(ns.db); gate = PersistentGate(bus, approvers=gate_approvers())
     if ns.cmd == "list":
         remind, overdue = gate.due()

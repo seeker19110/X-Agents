@@ -216,6 +216,8 @@ def test_loi_push_khi_rollback_duoc_ghi_audit(tmp_path):
 
 def test_cli_diagnose_in_json(tmp_path, capsys):
     from company.orchestrator import main as orch_main
+    from company.sqlite_bus import SQLiteBus
+    SQLiteBus(tmp_path / "c.sqlite").close()
     assert orch_main(["--db", str(tmp_path / "c.sqlite"), "diagnose", "--top", "5"]) == 0
     import json
     out = json.loads(capsys.readouterr().out)

@@ -134,3 +134,25 @@ def test_cli_recheck_dung_client_that_va_lease(tmp_path, capsys, monkeypatch):
     finally:
         SB._alive = that
         (tmp_path / "c.sqlite.lock").unlink(missing_ok=True)
+
+
+def test_cli_recheck_luot_security_loi_thi_ma_thoat_khac_0(tmp_path, capsys, monkeypatch):
+    """Audit 2026-09-27 B1: `recheck` in "đã chấm lại" và thoát 0 cả khi lượt security LỖI — `StepResult` của
+    `_call` bị vứt, người vận hành tưởng RC đã có verdict mới trong khi không review nào được ghi."""
+    from company.llm import LLMError
+
+    def hong(system, user):
+        if _agent_of(system) == "security":
+            raise LLMError("model sập giữa lượt")
+        return handler(system, user)
+
+    monkeypatch.setattr("company.llm.make_client", lambda *a, **k: FakeClient(handler=hong))
+    monkeypatch.setattr("company.delivery.DeliveryLead.release_needs_security", lambda self, rid: True)
+    bus, _orch = _setup(tmp_path)
+    db = str(tmp_path / "c.sqlite")
+    bus.close()
+
+    assert orch_main(["--db", db, "recheck", "REL-001", "--by", "human:lead"]) == 1
+    cap = capsys.readouterr()
+    assert "đã chấm lại" not in cap.out
+    assert "model sập giữa lượt" in cap.err

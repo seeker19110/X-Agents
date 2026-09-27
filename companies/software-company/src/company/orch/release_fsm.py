@@ -179,7 +179,7 @@ def _rollback_delivery(o: Orchestrator, env: Envelope, res: StepResult) -> None:
                     project_id=o.project_for(env))
     res.actions.append(f"rolled_back:{rid}" + (f"({','.join(r.problems)})" if r.problems else ""))
 
-def redeploy(o: Orchestrator, release_id: str, by: str) -> Envelope:
+def redeploy(o: Orchestrator, release_id: str, by: str) -> StepResult:
     """Chạy lại lượt STAGING cho một release-candidate đã có — dùng khi dây chuyền từng kẹt vì lỗi hạ tầng và
     RC nằm lại giữa đường.
 
@@ -199,9 +199,9 @@ def redeploy(o: Orchestrator, release_id: str, by: str) -> Envelope:
     res = StepResult(rc.event_id, rc.topic, rc.key)
     o._recall(ROLE.OPS, rc)
     o._call(ROLE.OPS, rc, STAGING_ROUTE, res)  # cùng route như lượt đầu, chỉ khác là do người gọi
-    return rc
+    return res  # CLI đọc `actions` để thoát khác 0 khi lượt lỗi (audit 2026-09-27 B1)
 
-def recheck(o: Orchestrator, release_id: str, by: str) -> Envelope:
+def recheck(o: Orchestrator, release_id: str, by: str) -> StepResult:
     """Chấm lại release-check của security cho một RC đã có, với bằng chứng máy dựng MỚI (ADR-0047 §5) — dùng
     sau khi bản vá bằng chứng (SBOM/license ADR-0046, DAST ADR-0047) merge. Cùng lý do tồn tại với `redeploy`:
     RC chỉ được xử lý một lần, nên RC cũ bị chặn không có đường nào được chấm lại (CAMPUS-UNI REL-007,
@@ -222,7 +222,7 @@ def recheck(o: Orchestrator, release_id: str, by: str) -> Envelope:
     res = StepResult(rc.event_id, rc.topic, rc.key)
     o._recall(ROLE.SECURITY, rc)
     o._call(ROLE.SECURITY, rc, RELEASE_CHECK_ROUTE, res)
-    return rc
+    return res  # như `redeploy`
 
 def _check_paused_releases(o: Orchestrator) -> None:
     """Quét mọi RC mà release-event CUỐI là `pending_human` và không gate nào chờ → mở gate escalation. Cần vì
