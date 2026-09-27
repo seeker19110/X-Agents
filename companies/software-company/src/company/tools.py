@@ -126,6 +126,12 @@ class WorkspaceTools:
             if ".." in rel.parts: continue
             # symlink có thể trỏ ra ngoài worktree (hoặc vào .git/): không liệt kê, không đọc
             if p.is_symlink() or not p.is_file() or set(rel.parts) & SKIP_DIRS or _is_secret(rel.parts): continue
+            # glob có thể đi qua symlink ở THƯ MỤC CHA; file lá không phải symlink vẫn cần cùng chốt như read_file.
+            try:
+                p = self._path(rel.as_posix())
+            except ToolError:
+                continue
+            if set(p.relative_to(self.root).parts) & SKIP_DIRS: continue
             yield p, rel
 
     # ---------- tool ----------

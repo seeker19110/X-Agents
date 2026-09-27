@@ -115,7 +115,7 @@ TRAN_SKIP = {                        # skip/xfail trong tests/ của từng pack
     "platform/xagents-core": 0,
     "platform/gateway": 3,
     "platform/console": 1,
-    "companies/software-company": 2,
+    "companies/software-company": 3,  # thêm ca symlink thư mục: chỉ skip khi OS không cấp quyền tạo symlink
     "companies/keeper": 0,
 }
 TRAN_OMIT = 2                        # dòng `omit` trong pyproject.toml của các package

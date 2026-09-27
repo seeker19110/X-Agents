@@ -569,9 +569,29 @@ def test_db_fingerprint_chap_nhan_file_chua_co(tmp_path: Path) -> None:
     """Công ty chưa chạy lần nào là trạng thái hợp lệ; lúc file xuất hiện thì vân tay phải đổi."""
     missing = tmp_path / "chua-co.sqlite"
     before = srv.db_fingerprint([missing, None])
-    assert before == "-|-"
+    assert before == "-|-|-"  # DB + WAL chưa có, và một nguồn None
     missing.write_bytes(b"x")
     assert srv.db_fingerprint([missing, None]) != before
+
+
+def test_db_fingerprint_sees_committed_wal_before_checkpoint(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "bus.sqlite"
+    db = sqlite3.connect(path)
+    try:
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA wal_autocheckpoint=0")
+        db.execute("CREATE TABLE events (value TEXT)")
+        db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        before = srv.db_fingerprint([path, None])
+        stat = path.stat()
+        db.execute("INSERT INTO events VALUES ('new event')")
+        db.commit()
+        assert (path.stat().st_mtime_ns, path.stat().st_size) == (stat.st_mtime_ns, stat.st_size)
+        assert srv.db_fingerprint([path, None]) != before
+    finally:
+        db.close()
 
 
 def test_sse_frame_dung_dinh_dang() -> None:

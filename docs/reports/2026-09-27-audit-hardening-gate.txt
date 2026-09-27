@@ -1,0 +1,174 @@
+[dev-task] companies/software-company: uv run ruff check src tests
+All checks passed!
+[dev-task] platform/gateway: uv run ruff check src tests
+All checks passed!
+[dev-task] platform/console: uv run ruff check src tests
+All checks passed!
+[dev-task] platform/xagents-core: uv run ruff check src tests
+All checks passed!
+[dev-task] companies/keeper: uv run ruff check src tests
+All checks passed!
+[dev-task] companies/software-company: uv run mypy src/company --ignore-missing-imports
+Success: no issues found in 65 source files
+[dev-task] platform/gateway: uv run mypy src/gateway --ignore-missing-imports
+Success: no issues found in 6 source files
+[dev-task] platform/console: uv run mypy src/console --ignore-missing-imports
+Success: no issues found in 12 source files
+[dev-task] platform/xagents-core: uv run mypy src/xagents_core
+Success: no issues found in 22 source files
+[dev-task] companies/keeper: uv run mypy src/keeper --ignore-missing-imports
+Success: no issues found in 29 source files
+[dev-task] companies/software-company: uv run pytest -q -n auto --cov --cov-report=term-missing
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 14%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 47%]
+........................................................................ [ 50%]
+........................................................................ [ 54%]
+........................................................................ [ 58%]
+........................................................................ [ 61%]
+........................................................................ [ 65%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 83%]
+........................................................................ [ 87%]
+........................................................................ [ 90%]
+........................................................................ [ 94%]
+........................................................................ [ 98%]
+....................................                                     [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.14-final-0 _______________
+
+Name    Stmts   Miss Branch BrPart  Cover   Missing
+---------------------------------------------------
+TOTAL    8350      0   2738      0   100%
+
+64 files skipped due to complete coverage.
+Required test coverage of 100.0% reached. Total coverage: 100.00%
+1980 passed in 109.67s (0:01:49)
+[dev-task] platform/gateway: uv run pytest -q --cov --cov-report=term-missing
+........................................................................ [ 26%]
+........................................................................ [ 52%]
+........................................................................ [ 78%]
+..........................................................               [100%]
+=============================== warnings summary ===============================
+tests/test_x_manage_coverage.py::test_dunder_main_guard_calls_main_and_exits
+  <frozen runpy>:128: RuntimeWarning: 'gateway.manage' found in sys.modules after import of package 'gateway', but prior to execution of 'gateway.manage'; this may result in unpredictable behaviour
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.14-final-0 _______________
+
+Name    Stmts   Miss  Cover   Missing
+-------------------------------------
+TOTAL    1636      0   100%
+
+5 files skipped due to complete coverage.
+Required test coverage of 100.0% reached. Total coverage: 100.00%
+274 passed, 1 warning in 9.64s
+[dev-task] platform/console: uv run pytest -q --cov --cov-report=term-missing
+........................................................................ [ 14%]
+........................................................................ [ 28%]
+........................................................................ [ 42%]
+........................................................................ [ 56%]
+........................................................................ [ 70%]
+........................................................................ [ 84%]
+........................................................................ [ 98%]
+..........                                                               [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.14-final-0 _______________
+
+Name                       Stmts   Miss  Cover   Missing
+--------------------------------------------------------
+src/console/__init__.py        0      0   100%
+src/console/__main__.py      160      0   100%
+src/console/brief.py          24      0   100%
+src/console/collect.py       405      0   100%
+src/console/decide.py         55      0   100%
+src/console/engine.py        144      0   100%
+src/console/git_truth.py      17      0   100%
+src/console/quality.py        40      0   100%
+src/console/server.py        444      0   100%
+src/console/settings.py      134      0   100%
+src/console/submit.py         48      0   100%
+src/console/truth.py         278      0   100%
+--------------------------------------------------------
+TOTAL                       1749      0   100%
+Required test coverage of 100.0% reached. Total coverage: 100.00%
+514 passed in 61.97s (0:01:01)
+[dev-task] platform/xagents-core: uv run pytest -q --cov --cov-report=term-missing
+........................................................................ [ 12%]
+........................................................................ [ 24%]
+........................................................................ [ 36%]
+........................................................................ [ 48%]
+........................................................................ [ 60%]
+........................................................................ [ 72%]
+........................................................................ [ 84%]
+........................................................................ [ 96%]
+..................                                                       [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.14-final-0 _______________
+
+Name                               Stmts   Miss Branch BrPart  Cover   Missing
+------------------------------------------------------------------------------
+src/xagents_core/__init__.py           4      0      0      0   100%
+src/xagents_core/blackboard.py        72      0     14      0   100%
+src/xagents_core/bus.py              116      0     40      0   100%
+src/xagents_core/config.py            43      0      0      0   100%
+src/xagents_core/context.py          128      0     40      0   100%
+src/xagents_core/evals.py            234      0     72      0   100%
+src/xagents_core/events.py            44      0      2      0   100%
+src/xagents_core/execution.py        331      0     78      0   100%
+src/xagents_core/gate_cli.py          79      0     40      0   100%
+src/xagents_core/gates.py             58      0     14      0   100%
+src/xagents_core/guard.py             75      0     24      0   100%
+src/xagents_core/llm.py              563      0    178      0   100%
+src/xagents_core/observe.py           73      0      8      0   100%
+src/xagents_core/registry.py         112      0     32      0   100%
+src/xagents_core/routing.py          154      0     44      0   100%
+src/xagents_core/runner.py           114      0     18      0   100%
+src/xagents_core/sandbox.py          160      0     26      0   100%
+src/xagents_core/sqlite_bus.py       116      0     22      0   100%
+src/xagents_core/supervisor.py        72      0     26      0   100%
+src/xagents_core/ticket_model.py       6      0      0      0   100%
+src/xagents_core/tools.py             85      0     16      0   100%
+src/xagents_core/trace.py            117      0     50      0   100%
+------------------------------------------------------------------------------
+TOTAL                               2756      0    744      0   100%
+Required test coverage of 100.0% reached. Total coverage: 100.00%
+594 passed in 11.50s
+[dev-task] companies/keeper: uv run pytest -q --cov --cov-report=term-missing
+........................................................................ [ 12%]
+........................................................................ [ 24%]
+........................................................................ [ 37%]
+........................................................................ [ 49%]
+........................................................................ [ 61%]
+........................................................................ [ 74%]
+........................................................................ [ 86%]
+........................................................................ [ 98%]
+......                                                                   [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.14-final-0 _______________
+
+Name    Stmts   Miss Branch BrPart  Cover   Missing
+---------------------------------------------------
+TOTAL    1966      0    496      0   100%
+
+29 files skipped due to complete coverage.
+Required test coverage of 100.0% reached. Total coverage: 100.00%
+582 passed in 9.13s
+[dev-task] cổng XANH (lint + typecheck + test)

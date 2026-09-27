@@ -61,7 +61,14 @@ lenh_cho() {
   case "$1" in
     lint)      echo "uv run ruff check src tests" ;;
     format)    echo "uv run ruff format src tests" ;;
-    typecheck) echo "uv run mypy src/$(goi_module "$2") --ignore-missing-imports" ;;
+    typecheck)
+      # core-static cố ý không bỏ qua import thiếu; giữ đúng cùng mức kiểm với CI.
+      if [ "$2" = "core" ]; then
+        echo "uv run mypy src/$(goi_module "$2")"
+      else
+        echo "uv run mypy src/$(goi_module "$2") --ignore-missing-imports"
+      fi
+      ;;
     test)      goi_lenh_test "$2" ;;
     *)         return 1 ;;
   esac

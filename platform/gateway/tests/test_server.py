@@ -121,6 +121,27 @@ async def test_invalid_json_is_400(manager):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [None, [], "text", 7, True])
+async def test_non_object_json_is_400_without_upstream(manager, monkeypatch, payload):
+    refreshed = []
+
+    async def refresh(_self):
+        refreshed.append(True)
+
+    monkeypatch.setattr(GatewayServer, "_refresh_catalog", refresh)
+    stub = StubClient()
+    tc = await _client(manager, stub)
+    try:
+        response = await tc.post("/v1/chat/completions", data=json.dumps(payload),
+                                 headers={"Content-Type": "application/json"})
+        assert response.status == 400
+        assert (await response.json())["error"]["type"] == "invalid_request_error"
+        assert refreshed == [] and stub.bearers == []
+    finally:
+        await tc.close()
+
+
+@pytest.mark.asyncio
 async def test_stream_passthrough(manager):
     chunks = ['data: {"a": 1}\n\n', "data: [DONE]\n\n"]
     tc = await _client(manager, StubClient(stream_chunks=chunks))

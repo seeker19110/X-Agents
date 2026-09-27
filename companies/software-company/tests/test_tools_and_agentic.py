@@ -1276,3 +1276,22 @@ def test_glob_khong_thoat_khoi_worktree(tmp_path):
     for g in ("../*", "../**/*", "sub/../../*"):
         assert "SECRET_TOKEN" not in wt.search("SECRET", g), g
         assert "hang-xom" not in wt.list_files(".", g), g
+
+
+@pytest.mark.parametrize("destination", ["outside", ".git", ".aws", "nested/.git", ".venv"])
+@pytest.mark.parametrize("operation", ["search", "list_files"])
+def test_glob_rechecks_resolved_symlink_parent(tmp_path, destination, operation):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = tmp_path / "outside" if destination == "outside" else root / destination
+    target.mkdir(parents=True)
+    (target / "private.txt").write_text("PRIVATE_MARKER", encoding="utf-8")
+    try:
+        (root / "alias").symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink privileges unavailable")
+    wt = WorkspaceTools(root)
+    if operation == "search":
+        assert "PRIVATE_MARKER" not in wt.search("PRIVATE_MARKER", "alias/*.txt")
+    else:
+        assert "private.txt" not in wt.list_files(glob="alias/*.txt")

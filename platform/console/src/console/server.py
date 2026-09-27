@@ -134,14 +134,15 @@ def db_fingerprint(paths: Iterable[Path | None]) -> str:
     hai lần ghi sát nhau sẽ trùng dấu vân tay và trang đứng im dù bus đã đổi. Kèm `st_size` để
     bắt cả trường hợp hiếm là ghi đè đúng bằng nano-giây cũ. File chưa có (công ty chưa chạy lần
     nào) là một trạng thái hợp lệ, không phải lỗi — nó có dấu vân tay riêng nên lúc file xuất
-    hiện, trang tự cập nhật."""
+    hiện, trang tự cập nhật. Theo dõi cả WAL: commit chưa checkpoint chỉ đổi `<db>-wal`, không đổi file chính."""
     parts: list[str] = []
     for path in paths:
-        try:
-            stat = path.stat() if path is not None else None
-        except OSError:
-            stat = None
-        parts.append("-" if stat is None else f"{stat.st_mtime_ns}:{stat.st_size}")
+        for component in (path, Path(str(path) + "-wal")) if path is not None else (None,):
+            try:
+                stat = component.stat() if component is not None else None
+            except OSError:
+                stat = None
+            parts.append("-" if stat is None else f"{stat.st_mtime_ns}:{stat.st_size}")
     return "|".join(parts)
 
 
