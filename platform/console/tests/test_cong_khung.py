@@ -120,6 +120,18 @@ def kho_main(tmp_path: Path) -> Path:
     return kho
 
 
+# Dạng gọn một dòng mà phần lớn repo dùng — `ruff format` tách nó thành hai dòng.
+GON = "a = 1; b = 2\n"
+
+
+def _file_da_commit(kho: Path, ten: str, noi_dung: str) -> Path:
+    f = kho / ten
+    f.write_text(noi_dung, encoding="utf-8")
+    _git(kho, "add", ten)
+    _git(kho, "commit", "-qm", "nen")
+    return f
+
+
 # --- scripts/dev-task.sh ----------------------------------------------------
 
 
@@ -192,9 +204,52 @@ def test_moi_thu_muc_goi_trong_dev_task_ton_tai_that() -> None:
         assert thu_muc in than, f"dev-task.sh không biết tới {thu_muc}"
 
 
-def test_dev_task_format_file_chi_dong_vao_file_python() -> None:
-    assert "ruff format" in _chay(DEV_TASK, "format-file", "a/b.py", DEV_TASK_DRY_RUN="1").stdout
-    assert "ruff format" not in _chay(DEV_TASK, "format-file", "a/b.md", DEV_TASK_DRY_RUN="1").stdout
+def test_dev_task_format_file_chi_dong_vao_file_python(kho_main: Path) -> None:
+    for ten in ("b.py", "b.md"):
+        (kho_main / ten).write_text(GON, encoding="utf-8")
+    assert "ruff format" in _chay(DEV_TASK, "format-file", str(kho_main / "b.py"), DEV_TASK_DRY_RUN="1").stdout
+    assert "ruff format" not in _chay(DEV_TASK, "format-file", str(kho_main / "b.md"), DEV_TASK_DRY_RUN="1").stdout
+
+
+# format-file chỉ format file VỐN ĐÃ SẠCH `ruff format` trước lần sửa. Phần lớn repo viết gọn một dòng
+# (`a = 1; b = 2`, `if x: return`) và CI chỉ chạy `ruff check`, không `ruff format --check` — format cả file sau
+# một lần Edit là diff phình cả trăm dòng không ai yêu cầu (luật cấm 7). Đo 2026-09-27: sửa 5 dòng
+# `orch/guards.py` thành +82, sửa 6 dòng `workspace.py` thành +212; 2026-09-26: `orch/gates_flow.py` 399 → 591
+# dòng, vượt trần 400 của `test_orch_khuon_loi.py`.
+
+
+def test_format_file_khong_dong_vao_file_chua_sach_format(kho_main: Path) -> None:
+    """Bản trong index chưa sạch `ruff format` → không format: sửa một dòng không được kéo theo cả file."""
+    f = _file_da_commit(kho_main, "gon.py", GON)
+    sau_sua = GON + "c = 3; d = 4\n"
+    f.write_text(sau_sua, encoding="utf-8")
+    kq = _chay(DEV_TASK, "format-file", str(f))
+    assert kq.returncode == 0, kq.stderr
+    assert f.read_text(encoding="utf-8") == sau_sua, "format-file định dạng lại cả file vốn chưa sạch"
+
+
+def test_format_file_van_format_file_von_sach(kho_main: Path) -> None:
+    """Chiều kia: file vốn sạch vẫn được giữ sạch — lần sửa lệch format thì hook sửa lại, như trước."""
+    f = _file_da_commit(kho_main, "sach.py", "a = 1\n")
+    f.write_text("a = 1\nb=2\n", encoding="utf-8")
+    assert _chay(DEV_TASK, "format-file", str(f)).returncode == 0
+    assert f.read_text(encoding="utf-8") == "a = 1\nb = 2\n"
+
+
+def test_format_file_van_format_file_moi_chua_track(kho_main: Path) -> None:
+    """File mới chưa track: cả file là của lần sửa này, format không đụng code của ai."""
+    f = kho_main / "moi.py"
+    f.write_text(GON, encoding="utf-8")
+    assert _chay(DEV_TASK, "format-file", str(f)).returncode == 0
+    assert f.read_text(encoding="utf-8") == "a = 1\nb = 2\n"
+
+
+def test_format_file_ngoai_repo_git_thi_bo_qua(tmp_path: Path) -> None:
+    """Không có git thì không biết bản trước khi sửa → không format: không chắc thì đừng đụng."""
+    f = tmp_path / "le.py"
+    f.write_text(GON, encoding="utf-8")
+    assert _chay(DEV_TASK, "format-file", str(f), GIT_CEILING_DIRECTORIES=str(tmp_path.parent)).returncode == 0
+    assert f.read_text(encoding="utf-8") == GON
 
 
 # --- .claude/hooks/block-dangerous-git.sh -----------------------------------
@@ -503,6 +558,16 @@ def test_auto_format_khong_bao_gio_can_luong() -> None:
             cwd=ROOT,
         )
         assert kq.returncode == 0, f"auto-format trả {kq.returncode} với payload {payload!r}"
+
+
+def test_auto_format_khong_lam_phinh_file_chua_sach(kho_main: Path) -> None:
+    """Đường thật của lỗi: Edit → hook PostToolUse → `dev-task.sh format-file`. Đo qua chính hook."""
+    f = _file_da_commit(kho_main, "gon.py", GON)
+    sau_sua = GON + "c = 3; d = 4\n"
+    f.write_text(sau_sua, encoding="utf-8")
+    kq = _chay(DINH_DANG, stdin=json.dumps({"tool_name": "Edit", "tool_input": {"file_path": str(f)}}))
+    assert kq.returncode == 0, kq.stderr
+    assert f.read_text(encoding="utf-8") == sau_sua, "hook auto-format định dạng lại cả file vốn chưa sạch"
 
 
 # --- .claude/settings.json --------------------------------------------------

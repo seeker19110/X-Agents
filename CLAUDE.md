@@ -32,8 +32,9 @@ Luật đầy đủ nằm ở `AGENTS.md` (nhập ở dòng đầu). Dưới đ�
 `.claude/settings.json` nối ba hook ở `.claude/hooks/` — bảng đầy đủ ở `AGENTS.md` §"Hàng rào thi hành". Tóm
 tắt: `block-dangerous-git.sh` chặn mọi thứ ghi vào `main` + `reset --hard` + `*--abort`; `pre-commit-gate.sh`
 chặn commit khi đứng trên `main`, staged có file cấm, diff hạ `fail_under`, hoặc cổng của gói bị đụng đỏ;
-`auto-format.sh` format file vừa sửa. Bị chặn → **sửa cho đúng luật**, đừng lách bằng `--no-verify`/
-`ALLOW_DANGEROUS_GIT=1` rồi im lặng; hook chặn oan thì sửa hook kèm test trong `test_cong_khung.py`.
+`auto-format.sh` format file vừa sửa nếu file vốn đã sạch `ruff format` (file gọn một dòng thì để nguyên).
+Bị chặn → **sửa cho đúng luật**, đừng lách bằng `--no-verify`/`ALLOW_DANGEROUS_GIT=1` rồi im lặng; hook chặn
+oan thì sửa hook kèm test trong `test_cong_khung.py`.
 
 ## Skill và trợ lý có sẵn trong repo
 

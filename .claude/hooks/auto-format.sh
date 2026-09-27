@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # auto-format.sh — hook PostToolUse (matcher: Edit|Write).
-# Sau khi sửa/tạo một file, format ĐÚNG file đó qua `scripts/dev-task.sh format-file`.
-# Vì sao: `ruff format` lệch là lỗi lint ở CI — bắt ngay lúc sửa rẻ hơn một vòng PR đỏ.
+# Sau khi sửa/tạo một file, format ĐÚNG file đó qua `scripts/dev-task.sh format-file` — và chỉ khi file vốn đã
+# sạch `ruff format` (hoặc là file mới): giữ file sạch cho sạch. CI KHÔNG chạy `ruff format --check`, phần lớn
+# repo cố ý viết gọn một dòng (`.pre-commit-config.yaml`), nên format cả file chưa sạch = diff phình (TRAPS.md §3).
 # Luôn exit 0: hook này không được cản luồng vì bất cứ lý do gì.
 #
 # Lấy từ `seeker19110/project-template` (`.claude/hooks/auto-format.sh`).
