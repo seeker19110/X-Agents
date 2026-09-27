@@ -7,7 +7,7 @@ từng package ở `<pkg>/CODEMAP.md`.
 
 | Muốn | Sửa | Rồi chạy |
 |---|---|---|
-| Thêm phụ thuộc Python | `<pkg>/pyproject.toml` → `uv lock` ở gốc (một lock cho cả bốn) | `uv sync`, CI `audit` |
+| Thêm phụ thuộc Python | `<pkg>/pyproject.toml` → `uv lock` ở gốc (một lock cho cả năm) | `uv sync`, CI `audit` |
 | Thêm job CI | `.github/workflows/ci.yml` + nối vào `needs` của job `quality` | mở PR để chạy thật, đọc thời gian job |
 | Đổi quy tắc tiêu đề PR | `.github/workflows/pr-policy.yml` (job `metadata`) | — |
 | Đổi bảo vệ nhánh `main` | ruleset trên GitHub **và** file đối chiếu trong `protection-guard` (ci.yml) | job `protection-guard` đối chiếu hai chiều |

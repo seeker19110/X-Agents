@@ -1,6 +1,6 @@
 # keeper — công ty con bảo trì
 
-Package thứ sáu của workspace X-Agents. Khách hàng số 0 và mặc định của nó là **chính repo này**.
+Một trong năm package của workspace X-Agents. Khách hàng số 0 và mặc định của nó là **chính repo này**.
 
 **Trạng thái: chạy được, chưa qua canary.** BT1–BT7 đã merge — package có mã thật, test riêng và ba lệnh CLI
 chạy được. Cái CHƯA có nằm ở cuối README này, đọc trước khi tin bất kỳ con số nào.
@@ -40,14 +40,14 @@ ra mười; khối `watch` một mình đã có ba. Con số cũ là lỗi đế
 ## Chạy
 
 ```bash
-cd keeper
+cd companies/keeper
 uv run pytest -q --cov                                    # test riêng của package
 
 # một vòng vá theo danh sách ticket — CHẠY KHÔ là mặc định của việc đọc, không chạm một byte nào
-uv run python -m keeper.cli run --tickets tickets.json --root ../Claude-Agents-wt-keeper --dry-run
+uv run python -m keeper.cli run --tickets tickets.json --root ../.. --dry-run
 
 # vòng lặp watch → triage → patch → verify → gate? → release (một nhịp rồi thoát)
-uv run python -m keeper.cli watch --db keeper.sqlite --repo .. --max-ticks 1
+uv run python -m keeper.cli watch --db keeper.sqlite --repo ../.. --max-ticks 1
 
 # sổ human gate: xem gate chờ, rồi đóng bằng quyết định của NGƯỜI
 uv run python -m keeper.cli gate --db keeper.sqlite list
@@ -55,7 +55,7 @@ uv run python -m keeper.cli gate --db keeper.sqlite approve KT-12 --by human:tru
 ```
 
 Hàng đợi ticket, ngân sách còn lại, sổ nợ quá hạn và gate chờ cũng đọc được ở tab **Công ty bảo trì** của
-console (`cd console && uv run python -m console`). Ô nào ghi *"chưa chạy lần nào"* là chưa chạy thật — tab đó
+console (`cd platform/console && uv run python -m console`). Ô nào ghi *"chưa chạy lần nào"* là chưa chạy thật — tab đó
 cố ý **không** hiện số 0.
 
 ## Eval prompt

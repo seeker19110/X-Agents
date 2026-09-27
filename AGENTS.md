@@ -19,7 +19,7 @@ một `uv.lock`, một `.venv` ở gốc):
 | `companies/software-company/` | `company` | công ty gia công phần mềm: yêu cầu → PRD → ticket → code thật trên worktree → review → release → khách ký |
 | `platform/gateway/` | `gateway` | proxy OpenAI-compatible xoay vòng tài khoản Google Antigravity |
 | `platform/console/` | `console` | trực ban hợp nhất: một trang web cục bộ nhìn công ty, duyệt gate tại chỗ |
-| `platform/xagents-core/` | `xagents_core` | lõi chung công ty dùng (bus, llm, runner, guard, gate) — đang xây theo bảy bước K3, xem `docs/adr/0001-loi-chung-xagents-core.md` |
+| `platform/xagents-core/` | `xagents_core` | lõi chung công ty dùng (bus, llm, runner, guard, gate) — dựng xong qua bảy bước K3 (#198), xem `docs/adr/0001-loi-chung-xagents-core.md` |
 | `companies/keeper/` | `keeper` | công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này |
 
 Nguyên tắc chung (chi tiết ở `ARCHITECTURE.md`): model quyết định – code hành động; prompt là code; guardrail có

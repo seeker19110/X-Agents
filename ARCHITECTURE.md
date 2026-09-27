@@ -77,7 +77,8 @@ Còn lại là lời khai — hữu ích, nhưng chỉ ký gate trên bằng ch�
 | software-company | `spec` → `release` → `acceptance` (+ `escalation`) | PRD; production; khách ký UAT (kế hoạch ticket do `_check_plan` chặn bằng code, không còn gate `plan` từ ADR-0037) |
 | keeper | `keeper` (chưa chạy — BT7) | patch rủi ro cao: semver major, chạm `xagents-core`/`agents`/`.github`, security ≥ high |
 
-Gate là thật: hạn 24h, nhắc 12h, quá hạn escalate, four-eyes. Mỗi gate của software-company có trợ lý kiểm duyệt
+Gate là thật: hạn 24h, nhắc 12h, quá hạn escalate, four-eyes (người duyệt ≠ người tạo; allowlist người duyệt
+`COMPANY_GATE_APPROVERS` mặc định tắt). Mỗi gate của software-company có trợ lý kiểm duyệt
 chỉ đọc `sc-gate-<kind>` và hồ sơ bằng chứng `gate_brief`.
 
 ## CI (`.github/workflows/ci.yml`)
@@ -106,4 +107,4 @@ software-company AI agent framework")**; `d4abda1` cùng ngày gỡ MEP-Agents. 
 | Thi hành một đề bài lớn từ đặc tả tới PR merge, một lệnh | `docs/KHUON-THI-HANH.md`, `/thi-hanh` |
 | Bốn lớp Prompt/Agent/Loop/Graph: hiện trạng, tám việc, gói việc, điều phối subagent, khuôn công ty mới | `docs/KIEN-TRUC-4-LOP.md` |
 | Bảo mật: bí mật, phòng thủ, báo lỗi | `SECURITY.md` |
-| Vì sao quyết định thế này | Bốn dãy ADR, mỗi dãy đánh số riêng từ 0001, không tiền tố: `docs/adr/` gốc (0001–0017, quyết định cấp repo/quy trình), `companies/software-company/docs/adr/` (0001–0039), `platform/console/docs/adr/` (0001–0004), `platform/gateway/docs/adr/` (0001–0004) |
+| Vì sao quyết định thế này | Bốn dãy ADR, mỗi dãy đánh số riêng từ 0001, không tiền tố: `docs/adr/` gốc (0001–0026, quyết định cấp repo/quy trình), `companies/software-company/docs/adr/` (0001–0047), `platform/console/docs/adr/` (0001–0004), `platform/gateway/docs/adr/` (0001–0004) |

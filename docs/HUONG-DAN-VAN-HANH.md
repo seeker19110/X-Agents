@@ -192,7 +192,7 @@ Windows: dùng Git Bash hoặc PowerShell đều được. Khi lệnh in tiếng
 git clone https://github.com/seeker19110/X-Agents.git
 cd X-Agents
 
-# cả repo là một uv workspace: một lệnh cài cả bốn package vào một .venv ở gốc
+# cả repo là một uv workspace: một lệnh cài cả năm package vào một .venv ở gốc
 uv sync
 ```
 
@@ -202,7 +202,7 @@ Cần SDK Anthropic (chỉ khi dùng provider `anthropic` có key): `uv sync --e
 Kiểm tra cài đặt bằng test offline (không gọi model, không cần key):
 
 ```bash
-make test        # cả bốn package; hoặc từng cái: cd companies/software-company && uv run pytest -q
+make test        # cả năm package; hoặc từng cái: cd companies/software-company && uv run pytest -q
 ```
 
 ## 3. Cấu hình model theo gói tài khoản
