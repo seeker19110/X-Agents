@@ -402,6 +402,79 @@ def test_cong_commit_van_chan_ha_nguong_trong_worktree(kho_worktree: tuple[Path,
     assert "fail_under" in kq.stderr
 
 
+def _dat_dev_task_gia(cay: Path, nhan: str, ma_thoat: int) -> None:
+    """`scripts/dev-task.sh` giả cho một cây: khai nó là bản của cây nào, và `CLAUDE_PROJECT_DIR` trỏ cây nào.
+
+    Cả hai đều phải là worktree: `dev-task.sh` thật lấy cây để `cd` từ `CLAUDE_PROJECT_DIR`, không từ vị trí của
+    chính nó — gọi đúng bản của worktree mà để biến trỏ checkout chính vẫn là chạy cổng trên code khác.
+    `nhan-cay.txt` không staged, nên không làm hook đổi gói phải chạy.
+    """
+    (cay / "nhan-cay.txt").write_text(nhan, encoding="utf-8")
+    s = cay / "scripts" / "dev-task.sh"
+    s.parent.mkdir(parents=True, exist_ok=True)
+    s.write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "dev-task-gia ban={nhan} du_an=$(cat "$CLAUDE_PROJECT_DIR/nhan-cay.txt" 2>/dev/null) $*" >&2\n'
+        f"exit {ma_thoat}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    s.chmod(0o755)
+
+
+def _stage_file_console(wt: Path) -> None:
+    f = wt / "platform" / "console" / "src" / "console" / "x.py"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("x = 1\n", encoding="utf-8")
+    _git(wt, "add", "platform/console/src/console/x.py")
+
+
+def test_cong_commit_chay_cong_tren_worktree_khong_phai_checkout_chinh(kho_worktree: tuple[Path, Path]) -> None:
+    """Phép 4 phải chạy `dev-task.sh gate` trên CÂY ĐANG COMMIT, không trên checkout chính.
+
+    Đo 2026-09-27 từ worktree `release-bang-chung`: hook đỏ với `uv trampoline failed to canonicalize script
+    path` ở `uv run mypy` — venv của checkout chính (Python 3.11, mypy.exe cũ), trong khi cùng cổng chạy thẳng
+    trong worktree xanh. Checkout chính đỏ vì lý do không dính gì tới diff → chặn oan.
+    """
+    chinh, wt = kho_worktree
+    _dat_dev_task_gia(chinh, "chinh", 1)
+    _dat_dev_task_gia(wt, "worktree", 0)
+    _stage_file_console(wt)
+    kq = _cong("git commit -m 'x'", wt, CLAUDE_PROJECT_DIR=str(chinh))
+    ra = kq.stdout + kq.stderr
+    assert kq.returncode == 0, f"cổng chạy trên checkout chính, chặn oan: {ra}"
+    assert "ban=worktree" in ra, f"không gọi dev-task.sh của worktree: {ra}"
+    assert "du_an=worktree" in ra, f"CLAUDE_PROJECT_DIR của dev-task.sh vẫn trỏ checkout chính: {ra}"
+    cay = subprocess.run(
+        ["git", "-C", str(wt), "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert f"(cây {cay})" in kq.stderr, f"hook không nói cổng chạy trên cây nào: {kq.stderr}"
+
+
+def test_cong_commit_van_chan_khi_worktree_do_du_checkout_chinh_xanh(kho_worktree: tuple[Path, Path]) -> None:
+    """Chiều nguy hiểm hơn của cùng lỗi: code của checkout chính xanh thì cổng xanh, dù code đang commit đỏ."""
+    chinh, wt = kho_worktree
+    _dat_dev_task_gia(chinh, "chinh", 0)
+    _dat_dev_task_gia(wt, "worktree", 1)
+    _stage_file_console(wt)
+    kq = _cong("git commit -m 'x'", wt, CLAUDE_PROJECT_DIR=str(chinh))
+    assert kq.returncode == 2, f"code worktree đỏ mà cổng cho qua nhờ code checkout chính: {kq.stdout + kq.stderr}"
+
+
+def test_cong_commit_worktree_thieu_dev_task_thi_lui_ve_root(kho_worktree: tuple[Path, Path]) -> None:
+    """Cây đang commit không có `scripts/dev-task.sh` (nhánh cũ, repo khác) → lùi về bản của `$ROOT`, như trước.
+
+    Không có lối lùi thì hook gọi một đường dẫn không tồn tại → 127 → chặn mọi commit ở cây đó.
+    """
+    chinh, wt = kho_worktree
+    _dat_dev_task_gia(chinh, "chinh", 0)
+    _stage_file_console(wt)
+    kq = _cong("git commit -m 'x'", wt, CLAUDE_PROJECT_DIR=str(chinh))
+    ra = kq.stdout + kq.stderr
+    assert kq.returncode == 0, f"thiếu dev-task.sh ở worktree mà không lùi về ROOT: {ra}"
+    assert "ban=chinh du_an=chinh" in ra, ra
+
+
 def test_cong_commit_lui_ve_root_khi_cwd_khong_phai_repo(kho_main: Path, tmp_path: Path) -> None:
     """`git rev-parse --show-toplevel` rỗng ngoài repo → phải lùi về `CLAUDE_PROJECT_DIR`, không buông cổng."""
     ngoai = tmp_path / "ngoai"

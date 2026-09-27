@@ -20,8 +20,8 @@ ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 # (checkout chính) và cây mà `git commit` sắp chạy trên đó thường là HAI thư mục khác nhau. Dùng chung một biến
 # cho hai nghĩa làm hàng rào hỏng cả hai chiều: phép 1 đọc nhánh của checkout chính (`main`) → chặn oan mọi
 # commit đúng luật; phép 2-4 đọc index của checkout chính (rỗng) → file cấm và `fail_under` bị buông.
-#   $ROOT → tìm script trong repo (worktree có bản sao riêng, nhưng bản chính luôn có).
-#   $CAY  → mọi phép kiểm đọc trạng thái git (nhánh, index, diff staged).
+#   $ROOT → chỗ lùi về khi cây đang commit không có `scripts/dev-task.sh`.
+#   $CAY  → mọi phép kiểm: đọc trạng thái git (nhánh, index, diff staged) VÀ cổng chất lượng của phép 4.
 # Lấy từ cwd của hook: đó là cwd của lệnh `git commit` sắp chạy. Ngoài repo (hoặc không lấy được) thì lùi về
 # $ROOT — lùi về chặt hơn là buông cổng.
 CAY="$(git rev-parse --show-toplevel 2>/dev/null)"
@@ -125,15 +125,22 @@ if [ -z "${can_chay// /}" ]; then
   echo "[pre-commit-gate] diff staged không đụng package nào → bỏ qua cổng chất lượng." >&2
   exit 0
 fi
-echo "[pre-commit-gate] chạy cổng cho gói: $can_chay" >&2
 
-if [ ! -x "$ROOT/scripts/dev-task.sh" ]; then
+# Cổng chạy trên $CAY, không trên $ROOT: `dev-task.sh` lấy cây để `cd` + venv từ `CLAUDE_PROJECT_DIR`, không từ
+# vị trí của chính nó — nên phải đổi CẢ đường dẫn script lẫn biến. Chạy trên checkout chính là chấm code khác
+# code đang commit: xanh khi worktree đỏ, đỏ vì venv chính hỏng (đo 2026-09-27, `TRAPS.md` §3). Cây không có
+# script (nhánh cũ, repo khác) thì lùi về $ROOT như trước.
+GOC_CONG="$CAY"
+[ -x "$GOC_CONG/scripts/dev-task.sh" ] || GOC_CONG="$ROOT"
+echo "[pre-commit-gate] chạy cổng cho gói: ${can_chay% } (cây $GOC_CONG)" >&2
+
+if [ ! -x "$GOC_CONG/scripts/dev-task.sh" ]; then
   echo "[pre-commit-gate] không thấy scripts/dev-task.sh → bỏ qua cổng chất lượng." >&2
   exit 0
 fi
 
 for g in $can_chay; do
-  "$ROOT/scripts/dev-task.sh" gate "$g" && continue
+  CLAUDE_PROJECT_DIR="$GOC_CONG" "$GOC_CONG/scripts/dev-task.sh" gate "$g" && continue
   echo "❌ Cổng ĐỎ ở gói '$g' (lint/typecheck/test). Sửa hết rồi commit lại — AGENTS.md luật bắt buộc 3." >&2
   echo "   Bỏ qua có chủ đích: thêm --no-verify vào lệnh git commit." >&2
   exit 2
