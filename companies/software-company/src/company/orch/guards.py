@@ -246,7 +246,10 @@ def _test_scope_ok(o: Orchestrator, tid: str) -> bool:
         return False
     try:
         ws.create()
-    except Exception:  # không dựng được worktree thì cứ đi đường cũ, `_engineer` sẽ báo lỗi thật
+    except Exception as ex:  # không dựng được worktree thì cứ đi đường cũ, `_engineer` báo lỗi thật — nhưng để lại dấu
+        err = f"{type(ex).__name__}: {ex}"[:200]
+        o._audit("test_scope.worktree_failed", {"ticket_id": tid, "error": err}, ticket_id=tid,
+                 once=f"test_scope.worktree_failed:{tid}:{err}")
         return False
     return bool(ws.stack().test_globs)
 

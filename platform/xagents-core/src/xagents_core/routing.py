@@ -7,8 +7,10 @@ Google Antigravity qua `../gateway` (xoay vòng tài khoản Google), ChatGPT/Co
 - Chọn backend theo `routing.prefer[tier]` (vd. tier `light` đi Antigravity miễn phí, `strong` đi Claude Max),
   còn lại theo thứ tự khai báo.
 - Backend hết quota / hết hạn mức ngày (429, 402, "usage limit", "RESOURCE_EXHAUSTED", "thử lại sau Ns"...) → nghỉ
-  `cooldown_s` (hoặc đúng số giây provider bảo) và lượt này đi backend kế. Lỗi mạng / 5xx → nghỉ ngắn
-  `transient_cooldown_s`. Lỗi NỘI DUNG (JSON hỏng, model từ chối) không phải lỗi backend → ném ra ngay, không xoay.
+  `cooldown_s` (hoặc đúng số giây provider bảo, hay tới mốc "resets 10:40pm" của CLI) và lượt này đi backend kế.
+  Lỗi mạng / 5xx → nghỉ ngắn `transient_cooldown_s`, nhân đôi mỗi lần liên tiếp trên cùng backend tới trần
+  `cooldown_s` (audit 2026-09-27 B5: backend chết 7 giờ bị hỏi lại mỗi phút, 447 lần). Lỗi NỘI DUNG (JSON hỏng,
+  model từ chối) không phải lỗi backend → ném ra ngay, không xoay.
 - Yêu cầu có `tools` chỉ đi backend hỗ trợ tool-use (CLI `claude -p` thì không).
 - Mọi backend đều nghỉ → `TransientError` kèm "sớm nhất Ns" để orchestrator hoãn event, không tính lỗi agent.
 - Mỗi lần xoay được ghi chú; runner lấy qua `drain_retries()` và ghi audit `llm_retry` như retry thường.
@@ -40,7 +42,9 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, tzinfo
 from typing import Any, cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .llm import Completion, LLMError, ModelClient, Refused, TransientError
 from .tools import ToolSpec
@@ -60,6 +64,7 @@ __all__ = [
     "is_missing_error",
     "is_quota_error",
     "plain",
+    "reset_clock_seconds",
     "retry_after_seconds",
 ]
 
@@ -75,6 +80,8 @@ AUTH_STATUS = frozenset({401, 403})
 RETRY_AFTER_PATTERNS = (re.compile(r"retry.?after[:\s]+(\d+)", re.IGNORECASE),
                         re.compile(r"thử lại sau(?: khoảng)?\s+(\d+)\s*s", re.IGNORECASE),
                         re.compile(r"resets? in\s+(\d+)\s*s", re.IGNORECASE))
+# `claude -p` hết session limit: "resets 10:40pm (Asia/Ho_Chi_Minh)" — giờ đồng hồ, múi trong ngoặc có thể bị cắt.
+RESET_CLOCK = re.compile(r"resets?\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)\b(?:\s*\(([^)\s]+)\))?", re.IGNORECASE)
 MISSING_PATTERNS = re.compile(r"không tìm thấy|\bnot found\b|\bno such file\b|chưa cấu hình model|chưa có tài khoản|pool trống",
                               re.IGNORECASE)
 
@@ -95,6 +102,29 @@ def retry_after_seconds(message: str) -> float | None:
         if m := pat.search(plain(message)):
             return float(m.group(1))
     return None
+
+
+def _zone(name: str) -> tzinfo | None:
+    """Múi IANA theo tên; Windows không có cơ sở dữ liệu múi (`tzdata` không phải dependency lõi) → None."""
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+
+
+def reset_clock_seconds(message: str, now: float) -> float | None:
+    """Số giây từ `now` tới mốc "resets 10:40pm (múi)", cộng một phút vì mốc chỉ tới phút. Múi lạ hoặc bị cắt → múi
+    của máy (CLI chạy trên chính máy này nên in mốc theo múi của nó). Mốc đã qua dưới một giờ là reset trễ vài giây
+    → một phút; qua lâu hơn là mốc của ngày mai."""
+    if not (m := RESET_CLOCK.search(plain(message))):
+        return None
+    zone = _zone(m.group(4)) if m.group(4) else None
+    here = datetime.fromtimestamp(now, zone) if zone else datetime.fromtimestamp(now).astimezone()
+    hour = int(m.group(1)) % 12 + (12 if m.group(3).lower() == "pm" else 0)
+    secs = (here.replace(hour=hour, minute=int(m.group(2) or 0), second=0, microsecond=0) - here).total_seconds()
+    if secs < -3600:
+        secs += timedelta(days=1).total_seconds()
+    return max(secs, 0.0) + 60.0
 
 
 def classified_text(e: BaseException) -> str:
@@ -129,6 +159,7 @@ class Backend:
     cooldown_reason: str = ""
     calls: int = 0
     failures: int = 0
+    transient_streak: int = 0   # lỗi vận chuyển liên tiếp; lượt thành công xoá
 
     def ready(self, now: float) -> bool:
         return now >= self.cooldown_until
@@ -195,10 +226,13 @@ class RoutingClient:
             secs = self.cooldown_s; kind = "xác thực"
         elif (ra := retry_after_seconds(classified_text(e))) is not None:
             secs = ra; kind = "hết quota"
+        elif (ra := reset_clock_seconds(classified_text(e), now)) is not None:
+            secs = ra; kind = "hết quota"
         elif is_quota_error(e):
             secs = self.cooldown_s; kind = "hết quota"
         else:
-            secs = self.transient_cooldown_s; kind = "lỗi vận chuyển"
+            b.transient_streak += 1; kind = "lỗi vận chuyển"
+            secs = min(self.transient_cooldown_s * 2 ** min(b.transient_streak - 1, 16), self.cooldown_s)
         b.failures += 1
         b.cooldown_until = now + secs
         b.cooldown_reason = f"{kind}: {msg[:120]}"
@@ -232,6 +266,7 @@ class RoutingClient:
                 if is_quota_error(e) or is_missing_error(e) or is_auth_error(e):
                     self._rest(b, e, now); continue
                 raise    # lỗi nội dung: việc của agent/supervisor, không phải của backend
+            b.transient_streak = 0
             if tried > 1 or b is not candidates[0]:
                 self.notes.append(f"đi backend {b.name} (model {c.model}) cho tier {model_tier}")
             return c

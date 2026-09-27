@@ -428,7 +428,11 @@ class Integration:
         if r.returncode == 0:
             return MergeResult(ok=True, sha=self.sha())
         conflicts = [x for x in _git(self.path, "diff", "--name-only", "--diff-filter=U").splitlines() if x]
-        subprocess.run(["git", "-C", str(self.path), *NO_HOOKS, "merge", "--abort"], capture_output=True, env=clean_env())
+        ab = subprocess.run(["git", "-C", str(self.path), *NO_HOOKS, "merge", "--abort"], capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", env=clean_env())
+        if conflicts and ab.returncode != 0:  # worktree tích hợp còn dở merge: lỗi môi trường, không phải xung đột
+            return MergeResult(ok=False, conflicts=[],
+                               error=f"merge --abort hỏng, worktree tích hợp còn dở merge: {ab.stderr.strip()[:200]}")
         if not conflicts:
             return MergeResult(ok=False, conflicts=[], error=r.stderr.strip()[:300])
         return MergeResult(ok=False, conflicts=conflicts)

@@ -45,6 +45,13 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+# Cảnh báo là lỗi, như company: `ResourceWarning: unclosed database` trôi trong log console từ audit 2026-09-22 tới
+# 2026-09-27 (B7) vì chỉ là một dòng "2 warnings". Ngoại lệ duy nhất: runpy cảnh báo khi test `__main__` chạy lại
+# module đã import — đúng thứ `test_main.py` cố ý làm.
+filterwarnings = [
+    "error",
+    "ignore:.*found in sys.modules after import of package.*:RuntimeWarning",
+]
 
 [tool.coverage.run]
 source = ["src/console"]

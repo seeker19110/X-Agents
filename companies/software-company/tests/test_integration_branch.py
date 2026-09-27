@@ -395,3 +395,31 @@ def test_git_khong_chet_khi_repo_khach_co_byte_khong_phai_utf8(tmp_path):
     ok, out = workspace._git_ok(repo, "show", "HEAD")
     assert ok and "bootstrap" in out
     assert "bootstrap" in (gate_brief._git(repo, "show", "HEAD") or "")
+
+
+def test_merge_abort_hong_sau_xung_dot_la_loi_moi_truong_khong_phai_xung_dot(tmp_path, monkeypatch):
+    """Audit 2026-09-22 → 2026-09-27 (B6): `Integration.merge` bỏ kết quả `merge --abort`. Abort hỏng sau xung đột
+    (một tiến trình git khác giữ index) để worktree tích hợp DỞ merge, mà người gọi vẫn nhận "xung đột" → xoá nhánh
+    ticket đã duyệt, đá về rework, và mọi merge sau hỏng vì "unmerged files". Đúng ra: lỗi môi trường
+    (`conflicts=[]`, `error`) để orchestrator giữ nhánh và escalate như mọi merge hỏng không vì xung đột."""
+    from pathlib import Path
+
+    import company.workspace as ws_mod
+
+    repo = _init_repo(tmp_path / "repo"); it = Integration(repo, base="main"); it.ensure()
+    a = TicketWorkspace(repo, "A", base=it.branch); a.create()
+    (a.path / "shared.py").write_text("X = 'a'\n", encoding="utf-8"); a.commit_all("feat(A): a")
+    b = TicketWorkspace(repo, "B", base=it.branch); b.create()
+    (b.path / "shared.py").write_text("X = 'b'\n", encoding="utf-8"); b.commit_all("feat(B): b")
+    assert it.merge(a.branch, "merge(A): a").ok
+    goc = ws_mod.subprocess.run
+
+    def khoa_index_dung_luc_abort(argv, **kw):
+        if "--abort" in argv:
+            (Path(_git(it.path, "rev-parse", "--absolute-git-dir")) / "index.lock").write_text("", encoding="utf-8")
+        return goc(argv, **kw)
+
+    monkeypatch.setattr(ws_mod.subprocess, "run", khoa_index_dung_luc_abort)
+    m = it.merge(b.branch, "merge(B): b")
+    assert not m.ok and not m.conflicts, "worktree tích hợp dở merge là lỗi môi trường, không phải xung đột của ticket"
+    assert "merge --abort" in m.error and "index.lock" in m.error
