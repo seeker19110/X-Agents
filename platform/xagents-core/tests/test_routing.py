@@ -24,6 +24,7 @@ from xagents_core.routing import (
     is_missing_error,
     is_quota_error,
     plain,
+    reset_clock_seconds,
     retry_after_seconds,
 )
 from xagents_core.tools import ToolSpec
@@ -273,3 +274,69 @@ def test_hen_gio_trong_chu_model_khong_thanh_thoi_gian_nghi():
     r = _router(Backend("a", _Client("a", [e])), Backend("b", _Client("b")), cooldown_s=3600)
     _call(r)
     assert r.status()[0]["cooldown_remaining"] == 3600
+
+
+# ---------- mốc reset dạng giờ đồng hồ, nghỉ lùi dần (audit 2026-09-27 B5) ----------
+
+def _luc(gio: int, phut: int = 0) -> float:
+    """Dấu thời gian của một giờ đồng hồ ĐỊA PHƯƠNG ngày 26/09/2026 — CLI in mốc reset theo múi của máy chạy nó."""
+    from datetime import datetime
+    return datetime(2026, 9, 26, gio, phut).timestamp()
+
+
+def test_moc_reset_gio_dong_ho_thanh_so_giay_toi_moc():
+    """`claude -p` hết session limit báo "resets 10:40pm (Asia/Ho_Chi_Minh)" — một GIỜ ĐỒNG HỒ, không phải số giây,
+    nên không mẫu `RETRY_AFTER_PATTERNS` nào đọc được: backend nghỉ `cooldown_s` rồi hỏi lại dù mốc còn xa. Mốc chỉ
+    tới phút nên cộng một phút; mốc vừa qua (reset thật trễ vài giây) là nghỉ một phút, không phải một ngày."""
+    assert reset_clock_seconds("You've hit your session limit · resets 10:40pm", _luc(20)) == 2 * 3600 + 40 * 60 + 60
+    assert reset_clock_seconds("resets 3:40am (Khong/Co_That)", _luc(20)) == 7 * 3600 + 40 * 60 + 60   # qua nửa đêm
+    assert reset_clock_seconds("resets 12am", _luc(23)) == 3600 + 60
+    assert reset_clock_seconds("resets 12pm", _luc(11)) == 3600 + 60
+    assert reset_clock_seconds("resets 10:40pm", _luc(22, 41)) == 60
+    assert reset_clock_seconds("resets in 12s", _luc(20)) is None and reset_clock_seconds("no hint", _luc(20)) is None
+
+
+def test_moc_reset_theo_mui_gio_ghi_trong_ngoac(monkeypatch):
+    """Múi trong ngoặc được dùng khi máy phân giải được nó; Windows không có cơ sở dữ liệu múi giờ (thêm gói `tzdata`
+    vào lõi là quyết định kiến trúc) nên tên lạ lùi về múi của máy — nơi CLI in ra mốc."""
+    from datetime import datetime, timedelta, timezone
+
+    import xagents_core.routing as routing
+    assert routing._zone("Khong/Co_That") is None
+    ict = timezone(timedelta(hours=7))
+    monkeypatch.setattr(routing, "_zone", lambda name: ict if name == "Asia/Ho_Chi_Minh" else None)
+    now = datetime(2026, 9, 26, 20, 0, tzinfo=ict).timestamp()
+    assert reset_clock_seconds("resets 10:40pm (Asia/Ho_Chi_Minh)", now) == 2 * 3600 + 40 * 60 + 60
+
+
+def test_session_limit_nghi_toi_moc_reset_khong_phai_mot_gio():
+    """Đo 26/09: `claude-sub` nghỉ 3600s 11 lần trong 7 giờ chờ mốc "resets 3:40am" — mỗi giờ một lượt gọi chắc
+    chắn 429. Lỗi CLI thật (`cli_exit_error`) phải cho backend nghỉ đúng tới mốc."""
+    import json
+
+    from xagents_core.llm import cli_exit_error
+    e = cli_exit_error(1, json.dumps({"subtype": "success", "is_error": True, "api_error_status": 429,
+                                      "result": "You've hit your session limit · resets 10:40pm (Khong/Co_That)"}), "")
+    r = _router(Backend("a", _Client("a", [e])), Backend("b", _Client("b")), cooldown_s=3600, clock=lambda: _luc(20))
+    _call(r)
+    assert r.status()[0]["cooldown_remaining"] == 2 * 3600 + 40 * 60 + 60
+
+
+def test_loi_van_chuyen_lien_tiep_nghi_lui_dan_toi_tran():
+    """Đo 26/09: antigravity từ chối kết nối suốt 7 giờ, mỗi lần nghỉ đúng `transient_cooldown_s` — 447 lần nghỉ
+    60s, cả công ty hỏi lại mỗi phút. Lỗi vận chuyển liên tiếp trên CÙNG backend nhân đôi thời gian nghỉ tới trần
+    `cooldown_s`; một lượt thành công xoá chuỗi."""
+    def chet():
+        return TransientError("lỗi mạng: [WinError 10061] connection refused")
+
+    a = _Client("a", [chet() for _ in range(6)])
+    r = _router(Backend("a", a), transient_cooldown_s=60, cooldown_s=600)
+    nghi = []
+    for _ in range(6):
+        with pytest.raises(TransientError): _call(r)
+        nghi.append(r.status()[0]["cooldown_remaining"]); r._t["now"] += nghi[-1]
+    assert nghi == [60, 120, 240, 480, 600, 600]
+    _call(r)
+    a.fail = [chet()]
+    with pytest.raises(TransientError): _call(r)
+    assert r.status()[0]["cooldown_remaining"] == 60
