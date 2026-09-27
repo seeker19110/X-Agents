@@ -148,6 +148,12 @@ def test_dev_task_thieu_task_bao_loi() -> None:
     assert _chay(DEV_TASK).returncode == 2
 
 
+def test_dev_task_entrypoint_is_executable_in_git() -> None:
+    result = subprocess.run(["git", "ls-files", "-s", "scripts/dev-task.sh"], cwd=ROOT,
+                            capture_output=True, text=True, check=True)
+    assert result.stdout.startswith("100755 "), "documented direct gate command needs executable Git mode"
+
+
 @pytest.mark.parametrize("goi", sorted(GOI))
 def test_dev_task_lint_dung_lenh_ci_cua_tung_goi(goi: str) -> None:
     """Lệnh in ra phải khớp AGENTS.md §3 — sai một chữ là cổng cục bộ khác cổng CI."""
@@ -163,7 +169,8 @@ def test_dev_task_typecheck_dung_module(goi: str) -> None:
     _, module = GOI[goi]
     kq = _chay(DEV_TASK, "typecheck", goi, DEV_TASK_DRY_RUN="1")
     assert kq.returncode == 0, kq.stderr
-    assert f"uv run mypy src/{module} --ignore-missing-imports" in kq.stdout
+    assert f"uv run mypy src/{module}" in kq.stdout
+    assert ("--ignore-missing-imports" in kq.stdout) == (goi != "core")
 
 
 @pytest.mark.parametrize("goi", sorted(GOI))

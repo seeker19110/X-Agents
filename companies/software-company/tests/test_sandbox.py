@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -119,7 +120,8 @@ def test_hop_dong_env_da_qua_clean_env(tmp_path, idx, monkeypatch):
 
 
 @pytest.mark.parametrize("idx", [0, 1])
-def test_hop_dong_spawn_handle(tmp_path, idx):
+def test_hop_dong_spawn_handle(tmp_path, idx, monkeypatch):
+    monkeypatch.setattr("xagents_core.sandbox._kill_tree", lambda p: p.kill())
     proc = FakeProc(codes=(None, 3))
     popen = FakePopen(proc)
     # runner giả: kill() của container còn gọi `docker rm -f <tên>` — test không được chạm docker thật.
@@ -137,7 +139,7 @@ def test_hop_dong_spawn_handle(tmp_path, idx):
 
 def test_subprocess_chay_that(tmp_path):
     sb = SubprocessSandbox()
-    r = sb.run(RunSpec(argv=["python", "-c", "print('hi')"], cwd=tmp_path, timeout=60))
+    r = sb.run(RunSpec(argv=[sys.executable, "-c", "print('hi')"], cwd=tmp_path, timeout=60))
     assert r.exit_code == 0 and "hi" in r.stdout and r.sandbox == "subprocess"
 
 

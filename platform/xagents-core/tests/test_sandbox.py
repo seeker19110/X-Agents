@@ -183,7 +183,17 @@ class _FakeProc:
     def communicate(self, timeout: float = 0) -> tuple[str, str]: return "", "loi cuoi"
 
 
-def test_spawn_tra_handle_poll_kill_stderr_cho_ca_hai_backend(tmp_path):
+def test_proc_handle_without_cleanup_kills_direct_process():
+    from xagents_core.sandbox import _ProcHandle
+
+    proc = _FakeProc()
+    handle = _ProcHandle(proc)
+    handle.kill()
+    assert proc.killed and handle.poll() == -9
+
+
+def test_spawn_tra_handle_poll_kill_stderr_cho_ca_hai_backend(tmp_path, monkeypatch):
+    monkeypatch.setattr("xagents_core.sandbox._kill_tree", lambda p: p.kill())
     proc = _FakeProc()
     h = SubprocessSandbox(popen=lambda *a, **k: proc).spawn(_spec(tmp_path))
     assert h.poll() is None
@@ -402,3 +412,57 @@ def test_subprocess_that_chay_xong_tra_exit_stdout_va_nhan_stdin(tmp_path):
     r = SubprocessSandbox().run(RunSpec(argv=[PY, "-c", "import sys; print(sys.stdin.read().upper())"], cwd=tmp_path,
                                         env=clean_env() | {"PYTHONIOENCODING": "utf-8"}, stdin="tiếng việt"))
     assert (r.exit_code, r.stdout.strip(), r.timed_out) == (0, "TIẾNG VIỆT", False)
+
+
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_spawn_kill_uses_tree_cleanup(tmp_path, monkeypatch, platform):
+    import xagents_core.sandbox as SB
+
+    monkeypatch.setattr(SB.sys, "platform", platform)
+    proc = _FakeProc()
+    spawned, killed = [], []
+
+    def popen(*args, **kwargs):
+        spawned.append(kwargs)
+        return proc
+
+    def kill_tree(p):
+        killed.append(p)
+        p.kill()
+
+    monkeypatch.setattr(SB, "_kill_tree", kill_tree)
+    handle = SubprocessSandbox(popen=popen).spawn(_spec(tmp_path))
+    handle.kill()
+    assert killed == [proc]
+    assert spawned[0].get("start_new_session", False) == (platform != "win32")
+    assert proc.killed
+
+
+def test_spawn_kill_stops_real_descendant(tmp_path):
+    import signal
+    import time
+
+    ready, survived = tmp_path / "ready", tmp_path / "survived"
+    child = (f"import os, pathlib, time; pathlib.Path({str(ready)!r}).write_text(str(os.getpid())); "
+             f"time.sleep(1); pathlib.Path({str(survived)!r}).write_text('alive')")
+    parent = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(30)"
+    handle = SubprocessSandbox().spawn(RunSpec(argv=[PY, "-c", parent], cwd=tmp_path))
+    pid = None
+    try:
+        deadline = time.monotonic() + 5
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.exists(), "child must start before checking termination"
+        pid = int(ready.read_text())
+        handle.kill()
+        handle.stderr_tail(100)
+        time.sleep(1.1)
+        assert not survived.exists(), "spawned descendants must stop with the parent"
+    finally:
+        handle.kill()
+        handle.stderr_tail(100)
+        if pid is not None:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass

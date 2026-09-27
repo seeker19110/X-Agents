@@ -295,6 +295,10 @@ class GatewayServer:
             return web.json_response(
                 {"error": {"message": f"JSON không hợp lệ: {e}", "type": "invalid_request_error"}}, status=400
             )
+        if not isinstance(payload, dict):
+            return web.json_response(
+                {"error": {"message": "body phải là JSON object", "type": "invalid_request_error"}}, status=400
+            )
         auth_header = request.headers.get("Authorization") or ""
         bearer = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
         if bearer in _DUMMY_BEARERS:

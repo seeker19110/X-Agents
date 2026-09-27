@@ -167,6 +167,13 @@ def _run_tree(argv: list[str], *, cwd: str, env: dict[str, str], input: str | No
     return subprocess.CompletedProcess(argv, proc.returncode, out, err)
 
 
+class _TreeHandle(_ProcHandle):
+    """Tiến trình nền có cùng ranh giới dừng cả cây như đường run()."""
+
+    def kill(self) -> None:
+        _kill_tree(self.proc)
+
+
 class SubprocessSandbox:
     """Hành vi hiện tại: tiến trình con của chính người vận hành, cô lập bằng cwd + env đã lọc khoá. Hết giờ thì
     giết cả cây tiến trình (`_run_tree`), không chỉ con trực tiếp."""
@@ -185,9 +192,10 @@ class SubprocessSandbox:
                       False, self.name)
 
     def spawn(self, spec: RunSpec) -> Handle:
-        return _ProcHandle(self._popen(spec.argv, cwd=str(spec.cwd), env=sanitize_env(spec.env),
+        extra: dict[str, Any] = {} if sys.platform == "win32" else {"start_new_session": True}
+        return _TreeHandle(self._popen(spec.argv, cwd=str(spec.cwd), env=sanitize_env(spec.env),
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
-                                       encoding="utf-8", errors="replace"))
+                                       encoding="utf-8", errors="replace", **extra))
 
 
 def _container_name() -> str:
