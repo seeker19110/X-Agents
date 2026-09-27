@@ -59,7 +59,7 @@ TOTAL    8350      0   2738      0   100%
 
 64 files skipped due to complete coverage.
 Required test coverage of 100.0% reached. Total coverage: 100.00%
-1980 passed in 109.67s (0:01:49)
+1980 passed in 108.36s (0:01:48)
 [dev-task] platform/gateway: uv run pytest -q --cov --cov-report=term-missing
 ........................................................................ [ 26%]
 ........................................................................ [ 52%]
@@ -79,7 +79,7 @@ TOTAL    1636      0   100%
 
 5 files skipped due to complete coverage.
 Required test coverage of 100.0% reached. Total coverage: 100.00%
-274 passed, 1 warning in 9.64s
+274 passed, 1 warning in 9.67s
 [dev-task] platform/console: uv run pytest -q --cov --cov-report=term-missing
 ........................................................................ [ 14%]
 ........................................................................ [ 28%]
@@ -109,7 +109,7 @@ src/console/truth.py         278      0   100%
 --------------------------------------------------------
 TOTAL                       1749      0   100%
 Required test coverage of 100.0% reached. Total coverage: 100.00%
-514 passed in 61.97s (0:01:01)
+514 passed in 61.55s (0:01:01)
 [dev-task] platform/xagents-core: uv run pytest -q --cov --cov-report=term-missing
 ........................................................................ [ 12%]
 ........................................................................ [ 24%]
@@ -150,7 +150,7 @@ src/xagents_core/trace.py            117      0     50      0   100%
 ------------------------------------------------------------------------------
 TOTAL                               2756      0    744      0   100%
 Required test coverage of 100.0% reached. Total coverage: 100.00%
-594 passed in 11.50s
+594 passed in 11.56s
 [dev-task] companies/keeper: uv run pytest -q --cov --cov-report=term-missing
 ........................................................................ [ 12%]
 ........................................................................ [ 24%]
@@ -170,5 +170,5 @@ TOTAL    1966      0    496      0   100%
 
 29 files skipped due to complete coverage.
 Required test coverage of 100.0% reached. Total coverage: 100.00%
-582 passed in 9.13s
+582 passed in 9.54s
 [dev-task] cổng XANH (lint + typecheck + test)

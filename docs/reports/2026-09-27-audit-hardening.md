@@ -92,5 +92,8 @@ Các mục còn lại không được tự đánh dấu xong vì bộ test của
 - Gateway/console chưa đo branch coverage; không gọi coverage dòng 100% là coverage nhánh 100%.
 - Không gọi API/model trả phí để tạo bản eval mới; không chỉnh trạng thái ADR thay người có thẩm quyền.
 
-Bản vá được chuẩn bị trong nhánh riêng. `SECURITY.md` yêu cầu không công khai lỗ hổng chưa được vá;
-repo là public, nên chưa đưa phát hiện H1 lên PR/issue công khai trong phiên chuẩn bị này.
+Chủ dự án đã cho phép xuất bản bản vá công khai và merge ngày 2026-09-27. Toàn bộ bản sửa và test hồi quy
+đi cùng báo cáo trong PR #365; chỉ squash merge sau CI xanh. Cổng toàn repo, eval/check offline,
+pip-audit và gitleaks được chạy lại ở lượt triển khai: kết quả test giữ nguyên, 760 commit được quét
+không có secret. Output đính kèm được cập nhật theo lần chạy này. Kết quả merge và CI sau merge
+được xác nhận từ trạng thái GitHub của PR #365, không suy từ cổng local.
