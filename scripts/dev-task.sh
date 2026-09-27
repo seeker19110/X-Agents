@@ -87,6 +87,25 @@ goi_can_chay() {
   if [ -z "$1" ] || [ "$1" = "all" ]; then echo "$GOI_LIST"; else echo "$1"; fi
 }
 
+nen_format() {
+  # $1 = file .py vừa sửa. 0 = nên format; 1 = không, lý do in ra stdout.
+  # Chỉ format file VỐN ĐÃ SẠCH `ruff format` (bản trong index) hoặc file mới chưa track. Phần lớn repo viết gọn
+  # một dòng (`a = 1; b = 2`, `if x: return`) và CI chỉ `ruff check`, không `ruff format --check` — format cả
+  # file sau một lần Edit là diff phình cả trăm dòng không ai yêu cầu (luật cấm 7, `TRAPS.md` §3).
+  # Không chắc (ngoài repo, git lỗi) thì không format: bỏ sót format rẻ, phình diff đắt.
+  local p="$1" thu_muc ten
+  case "$p" in /*|[A-Za-z]:*) ;; *) p="$ROOT/$p" ;; esac   # đường tương đối tính từ ROOT, như lệnh ruff
+  [ -f "$p" ] || { echo "không thấy file"; return 1; }
+  # Git hỏi từ thư mục CHỨA file, không từ ROOT: ROOT có thể là checkout chính khi file nằm ở worktree.
+  thu_muc="$(dirname "$p")"; ten="$(basename "$p")"
+  git -C "$thu_muc" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "ngoài repo git"; return 1; }
+  git -C "$thu_muc" ls-files --error-unmatch -- "$ten" >/dev/null 2>&1 || return 0   # chưa track = file mới
+  # `--stdin-filename` để ruff lấy đúng cấu hình của gói (line-length 120); thiếu nó thì file sạch cũng thành bẩn.
+  git -C "$thu_muc" show ":./$ten" 2>/dev/null \
+    | ( cd "$ROOT" && uv run ruff format --check --stdin-filename "$p" - ) >/dev/null 2>&1 \
+    || { echo "bản trong index chưa sạch ruff format"; return 1; }
+}
+
 chay_task() {
   # $1 = task, $2 = tham số gói. Đỏ ở gói nào thì dừng ngay ở gói đó.
   local task="$1" goi
@@ -106,6 +125,12 @@ case "$TASK" in
     [ -n "$ARG" ] || { log "format-file cần đường dẫn"; exit 2; }
     case "$ARG" in
       *.py)
+        # Phép quyết định chỉ đọc (git show + ruff --check) nên dry-run vẫn chạy nó: in đúng việc sẽ làm.
+        if ! ly_do="$(nen_format "$ARG")"; then
+          if [ "${DEV_TASK_DRY_RUN:-0}" = "1" ]; then printf 'bo qua %s: %s\n' "$ARG" "$ly_do"
+          else log "bỏ qua format $ARG: $ly_do"; fi
+          exit 0
+        fi
         if [ "${DEV_TASK_DRY_RUN:-0}" = "1" ]; then printf 'uv run ruff format %s\n' "$ARG"; exit 0; fi
         ( cd "$ROOT" && uv run ruff format "$ARG" >/dev/null 2>&1 ) || true
         ;;
