@@ -319,3 +319,15 @@ def test_ban_sao_luat_khong_thieu_phan_tu_danh_sach(ten: str) -> None:
     assert not thieu, (
         f"{ten} chép lại danh sách của AGENTS.md nhưng thiếu: {thieu}. Bản sao trôi là bản sao nguy hiểm — "
         f"thêm cho đủ, hoặc bỏ hẳn bản chép và chỉ trỏ về AGENTS.md.")
+
+
+@pytest.mark.parametrize("ten", ["company.sqlite-wal", "company.sqlite-shm", "company.sqlite.lock",
+                                 "companies/keeper/x.sqlite-wal", "platform/console/c.sqlite.lock"])
+def test_file_anh_em_cua_bus_bi_gitignore(ten):
+    """Audit 2026-09-27 (H): bus chạy WAL (`xagents_core/sqlite_bus.py`) nên mỗi `*.sqlite` có hai file anh em
+    `-wal`/`-shm`, cộng `.lock` của lease. `.gitignore` bắt `*.sqlite` mà không bắt ba đuôi đó → chạy nhầm một lệnh
+    ở gốc là `git status` bẩn, và `git add -A` là commit một mảnh bus (luật cấm 3)."""
+    import subprocess
+
+    r = subprocess.run(["git", "check-ignore", "-q", "--no-index", ten], cwd=ROOT, capture_output=True)
+    assert r.returncode == 0, f"{ten} chưa bị .gitignore bắt"

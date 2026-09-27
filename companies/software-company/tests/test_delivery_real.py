@@ -241,7 +241,7 @@ def test_deliver_ghi_van_de_va_loi_push_vao_audit(tmp_path):
 
 
 def test_cli_co_co_deliver(tmp_path, capsys):
-    repo = _init_repo(tmp_path / "repo"); db = str(tmp_path / "c.sqlite")
+    repo = _init_repo(tmp_path / "repo"); db = str(tmp_path / "c.sqlite"); SQLiteBus(db).close()
     assert orch_main(["--db", db, "--repo", str(repo), "--deliver", "--push-remote", "origin", "--release-branch", "rel", "status"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["delivery"] == {}
@@ -426,6 +426,6 @@ def test_orchestrator_pr_loi_gh_va_bo_qua_khi_thieu_push_remote(tmp_path, monkey
 
 
 def test_cli_co_co_deliver_pr(tmp_path, capsys):
-    repo = _init_repo(tmp_path / "repo"); db = str(tmp_path / "c.sqlite")
+    repo = _init_repo(tmp_path / "repo"); db = str(tmp_path / "c.sqlite"); SQLiteBus(db).close()
     assert orch_main(["--db", db, "--repo", str(repo), "--deliver", "--push-remote", "origin", "--deliver-pr", "status"]) == 0
     assert json.loads(capsys.readouterr().out)["delivery"] == {}

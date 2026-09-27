@@ -32,17 +32,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: PR phải có dòng CHANGELOG.md (nhãn no-changelog để miễn)
+      # Audit 2026-09-27 C1: bước cũ chỉ kiểm CHANGELOG CÓ ĐỔI, nên quên điền `(#n)` chỉ lộ ở drift-check SAU
+      # merge (main đỏ ở #353, #357). Script kiểm dòng THÊM mang đúng `(#<số PR này>)` — chuỗi drift-check tìm.
+      - name: PR phải có dòng CHANGELOG.md mang (#số PR) (nhãn no-changelog để miễn)
         env:
           BASE: ${{ github.event.pull_request.base.ref }}
+          PR: ${{ github.event.pull_request.number }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: |
-          case ",$LABELS," in *,no-changelog,*) echo "miễn theo nhãn no-changelog"; exit 0;; esac
-          git fetch -q origin "$BASE"
-          if git diff --quiet "origin/$BASE...HEAD" -- CHANGELOG.md; then
-            echo "PR không đổi CHANGELOG.md. Thêm một dòng ở 'Chưa phát hành' (AGENTS.md luật bắt buộc 9), hoặc gắn nhãn no-changelog." >&2
-            exit 1
-          fi
+        run: python3 scripts/pr_changelog_check.py
       # K8.3 kịch bản B. Đặc tả gốc viết "ADR-0037"; ở repo này ADR tách máy trạng thái là **ADR-0034**
       # (chính ADR-0034 §"Hệ quả" đã ghi lại chỗ lệch số này) — không có file 0037, dùng số đúng.
       # Chỉ soi PR `fix(` : `refactor(` là việc tách module theo đúng ADR, còn `fix(` là sửa HÀNH VI của máy

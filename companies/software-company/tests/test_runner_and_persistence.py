@@ -407,6 +407,18 @@ def test_gate_cli_request_bao_loi_thieu_subject_id_hoac_checklist(tmp_path, caps
     assert "cần --checklist" in capsys.readouterr().err
 
 
+def test_gate_cli_khong_tao_bus_moi_khi_sai_thu_muc(tmp_path, capsys, monkeypatch):
+    """Audit 2026-09-27 B3: `gate_cli list` ở sai thư mục tạo `company.sqlite` rỗng và in "(không có gate chờ)" —
+    người trực tưởng không có gì phải quyết. Quyết định trên bus chưa có cũng không bao giờ đúng (không gate nào
+    chờ). Chỉ `request` được bắt đầu một bus mới."""
+    monkeypatch.chdir(tmp_path)
+    for cmd in (["list"], ["approve", "SPEC-1", "--by", "human:po", "--reason", "đủ lý do để duyệt spec này"]):
+        assert gate_main(cmd) == 2, cmd
+        err = capsys.readouterr().err
+        assert "company.sqlite" in err and "companies/software-company" in err, cmd
+    assert not (tmp_path / "company.sqlite").exists()
+
+
 # ---------- workspace git worktree ----------
 
 def _init_repo(path: Path) -> Path:

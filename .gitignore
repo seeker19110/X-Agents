@@ -32,6 +32,10 @@ companies/software-company/demo-out/
 # SQLite tạm do test sinh
 *.sqlite
 *.sqlite-journal
+# bus chạy WAL: hai file anh em + lease (audit 2026-09-27)
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite.lock
 
 *.sqlite*.bak*
 

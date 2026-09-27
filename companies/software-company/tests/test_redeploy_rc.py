@@ -97,3 +97,24 @@ def test_cli_redeploy(tmp_path, capsys, monkeypatch):
     finally:
         SB._alive = that
         (tmp_path / "c.sqlite.lock").unlink(missing_ok=True)
+
+
+def test_cli_redeploy_luot_staging_loi_thi_ma_thoat_khac_0(tmp_path, capsys, monkeypatch):
+    """Audit 2026-09-27 B1: `redeploy` in "đã chạy lại" và thoát 0 cả khi lượt staging LỖI — `StepResult` của
+    `_call` bị vứt, script vận hành không phân biệt được chạy lại thành công với chạy lại hỏng."""
+    from company.llm import LLMError
+    from test_orchestrator import _agent_of
+
+    def hong(system, user):
+        if _agent_of(system) == "ops":
+            raise LLMError("model sập giữa lượt")
+        return handler(system, user)
+
+    monkeypatch.setattr("company.llm.make_client", lambda *a, **k: FakeClient(handler=hong))
+    bus, _client, _orch = _setup(tmp_path)
+    db = str(tmp_path / "c.sqlite"); bus.close()
+
+    assert orch_main(["--db", db, "redeploy", "REL-001", "--by", "human:lead"]) == 1
+    cap = capsys.readouterr()
+    assert "đã chạy lại" not in cap.out
+    assert "model sập giữa lượt" in cap.err

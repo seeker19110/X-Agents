@@ -329,6 +329,7 @@ def test_cli_orchestrator_nhan_quality_trust_va_cap_lookup_tu_bus(tmp_path, monk
     monkeypatch.setitem(cli_cmds.ORCH_CMDS, "status", lambda o, ns: seen.setdefault("o", o) and 0)
     trust = tmp_path / "trust.json"
     trust.write_text("{}", encoding="utf-8")
+    SQLiteBus(tmp_path / "c.sqlite").close()
     assert cli.main(["--db", str(tmp_path / "c.sqlite"), "--quality-trust", str(trust), "status"]) == 0
     assert seen["o"].quality_trust == trust
     seen.clear()
