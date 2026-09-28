@@ -24,6 +24,7 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
+from typing import Any
 
 from console.server import (
     DEFAULT_COMPANY_DB,
@@ -143,13 +144,11 @@ def start_gateway() -> int:
     return subprocess.run([sys.executable, "-m", "gateway", "start"], check=False).returncode
 
 
-def _utf8_stdio(*streams: object) -> None:
+def _utf8_stdio(*streams: Any) -> None:
     """Console Windows mặc định cp1252 không in được tiếng Việt: đổi sang UTF-8 những stream cho đổi."""
     for stream in streams:
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is not None:
-            with contextlib.suppress(Exception):
-                reconfigure(encoding="utf-8", errors="replace")
+        with contextlib.suppress(Exception):  # không có `reconfigure` (StringIO, None) hay đổi hỏng: bỏ qua
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -594,6 +594,18 @@ def test_build_request_drops_empty_system_and_empty_messages():
     assert inner["contents"] == [{"role": "user", "parts": [{"text": "hi"}, {"text": "nữa"}]}]
 
 
+def test_build_request_joins_system_messages_skipping_empty_ones():
+    # Message system rỗng nằm giữa hai message có chữ không để lại dòng trống trong systemInstruction.
+    payload = {"messages": [
+        {"role": "system", "content": "a"},
+        {"role": "system", "content": ""},
+        {"role": "system", "content": "b"},
+        {"role": "user", "content": "hi"},
+    ]}
+    inner = gw.build_code_assist_request(payload, "p")["request"]
+    assert inner["systemInstruction"]["parts"] == [{"text": "a\nb"}]
+
+
 def test_build_request_tool_result_without_tool_call_id_has_no_id():
     payload = {"messages": [{"role": "user", "content": "hi"}, {"role": "tool", "content": "kết quả"}]}
     contents = gw.build_code_assist_request(payload, "p")["request"]["contents"]
