@@ -13,6 +13,16 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(audit): **dọn "Việc để lại" của audit hoàn thiện theo tiêu chí đơn giản + chất lượng** (chủ dự án giao
+  phiên chính quyết, 2026-09-28). Gỡ ba lớp phòng thủ thừa của F-E: `if text:` ở gateway `client.py` (bộ lọc lúc nối
+  `systemInstruction` đã lo, test mới ghim ca message system rỗng nằm giữa) và `getattr` + so `None` ở `_utf8_stdio`
+  của gateway `manage.py` lẫn console `__main__.py` (còn một `contextlib.suppress`); giữ `if not cfg.backends:
+  continue` ở console vì nó nói ý định. Hai test đổi `os.name` **toàn cục** (gateway `test_account_pool.py`, core
+  `test_sandbox.py`) nay chỉ đổi `os` của module được test — đổi toàn cục thì test đỏ sập `INTERNALERROR` không in
+  tên ca; test nhánh posix giờ kiểm `chmod` 0600 thật sự được gọi (trước đó bỏ `chmod` vẫn xanh). Rà họ: chỉ
+  `os.name` phá báo cáo của pytest, các kiểu vá toàn cục khác trong repo đo vẫn đỏ sạch. ADR gốc 0019, 0026 và
+  company 0045 thành Accepted; docstring `xagents_core` hết tả K3.0 và studio. Bảng quyết định ở
+  `docs/reports/2026-09-27-audit-hoan-thien.md` §4 (#367).
 - fix(audit): **audit hoàn thiện trên main #365 — lối quyết định của người không còn nhận `by` không phải người;
   tắt backend đang được ưu tiên không còn để `routing.prefer` trỏ vào nó; cả năm gói phủ 100% nhánh**. F-A:
   `gate_cli approve|reject|reopen`, quyết gate qua console (cả gate keeper) và `orchestrator decide-change` trả lỗi

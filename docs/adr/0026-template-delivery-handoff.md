@@ -1,6 +1,7 @@
 # ADR-0026: Trao đổi delivery bằng policy native, không sao chép authority
 
-Ngày: 2026-09-26. Trạng thái: Proposed for review; triển khai opt-in trong PR #353.
+Ngày: 2026-09-26. Trạng thái: **Accepted** 2026-09-28; triển khai opt-in trong PR #353.
+Chủ dự án giao phiên chính chốt các ADR mà mã đã merge, theo tiêu chí đơn giản + chất lượng.
 Quyết định phạm vi được ghi trước khi viết mã trong feature spec của phiên này.
 Đây là adapter dữ liệu bổ sung ADR-0018/0021, không thay execution kernel hay gate.
 

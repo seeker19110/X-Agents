@@ -155,9 +155,18 @@ def test_container_tren_windows_env_qua_dong_lenh_va_noi_thang_trong_ten(tmp_pat
 
 
 def test_container_mac_dinh_chon_duong_env_theo_he_dieu_hanh(monkeypatch):
-    monkeypatch.setattr(os, "name", "nt")
+    # Chỉ `xagents_core.sandbox` thấy `os.name` giả: đổi `os.name` toàn cục thì test đỏ không báo được lỗi —
+    # pytest dựng `Path` khi in báo cáo và sập `INTERNALERROR: cannot instantiate 'WindowsPath'`.
+    class OsGia:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def __getattr__(self, attr: str) -> Any:
+            return getattr(os, attr)
+
+    monkeypatch.setattr("xagents_core.sandbox.os", OsGia("nt"))
     assert ContainerSandbox("docker", "img:1").env_via_stdin is False
-    monkeypatch.setattr(os, "name", "posix")
+    monkeypatch.setattr("xagents_core.sandbox.os", OsGia("posix"))
     assert ContainerSandbox("docker", "img:1").env_via_stdin is True
 
 

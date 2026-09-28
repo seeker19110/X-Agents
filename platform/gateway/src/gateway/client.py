@@ -600,9 +600,7 @@ def build_code_assist_request(openai_payload: dict[str, Any], project_id: str) -
             continue
         role = str(msg.get("role") or "user")
         if role == "system":
-            text = _coerce_content_to_text(msg.get("content"))
-            if text:
-                system_parts.append(text)
+            system_parts.append(_coerce_content_to_text(msg.get("content")))
             continue
         if role in {"tool", "function"}:
             # Kết quả tool → functionResponse thật (id khớp functionCall phía trên); cắt ở trần lớn có đánh dấu.

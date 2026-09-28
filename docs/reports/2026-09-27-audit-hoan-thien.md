@@ -179,12 +179,37 @@ Kết quả: sổ `CHUA_PHU_NHANH` rỗng, cả năm gói `branch = true`; gatew
 
 ## 4. Việc để lại
 
-| Việc | Vì sao chưa làm ở đây |
-|---|---|
-| A7: ghi lại bản ghi eval (company 13–20 ngày; keeper 6/10 agent chưa có bộ ca) | `make eval-record` cần model thật (luật cấm 4 và CONTRIBUTING §3) |
-| B2, B4, S2, O1–O4 và A3.1–A3.5 của `docs/reports/2026-09-27-audit.md` | cần đo trên bus vận hành thật hoặc người quyết (ADR/`agents/`) |
-| ADR Proposed mà mã đã merge (gốc 0019, 0026; company 0045) | đổi trạng thái ADR là quyết định của người |
-| `xagents_core/__init__.py:3` còn tả K3.0 ("còn rỗng có chủ ý", nhắc `studio` đã gỡ) | docstring của gói lõi, không có cổng canh; nên viết lại cùng lần chạm lõi kế tiếp thay vì một PR riêng |
-| Marker skip dùng chung qua `conftest`/import chưa được `TRAN_SKIP` đếm | trần ghi bằng `no-ky-thuat` ở `test_cong_repo.py`; hôm nay không có chỗ nào dùng kiểu đó |
-| Bốn lớp phòng thủ thừa lộ ra qua đột biến (F-E) | không phải lỗi; xoá hay giữ là chuyện phong cách, luật cấm 7 |
-| `gateway/tests/test_account_pool.py::test_atomic_write_takes_posix_chmod_branch` (có từ trước) đổi `os.name` **toàn cục** thành `posix` — cùng họ với test Windows đã viết lại ở F-E | trên Linux là phép gán không đổi gì; trên Windows chỉ vỡ báo cáo khi chính test đỏ (pathlib của pytest, như ca đã gặp ở F-E) — chưa đo trên Windows thật; code cạnh bên, luật cấm 7 |
+Ngày 2026-09-28 chủ dự án giao phiên chính quyết từng dòng theo tiêu chí **đơn giản + chất lượng**. Cột cuối là
+quyết định; phần làm được nằm trong #367.
+
+| Việc | Vì sao chưa làm ở đây | Quyết định 2026-09-28 |
+|---|---|---|
+| A7: ghi lại bản ghi eval (company 13–20 ngày; keeper 6/10 agent chưa có bộ ca) | `make eval-record` cần model thật (luật cấm 4 và CONTRIBUTING §3) | **Để lại** — bản ghi phải ghi lại khi đổi agent hoặc model; ghi lại chỉ vì nó cũ là tốn model trả phí mà không thêm bằng chứng |
+| B2, B4, S2, O1–O4 và A3.1–A3.5 của `docs/reports/2026-09-27-audit.md` | cần đo trên bus vận hành thật hoặc người quyết (ADR/`agents/`) | **Để lại** — vẫn cần bus vận hành thật; A3.x đụng `agents/` nên phải qua bảy bước CONTRIBUTING §3 với model thật |
+| ADR Proposed mà mã đã merge (gốc 0019, 0026; company 0045) | đổi trạng thái ADR là quyết định của người | **Đã làm** — ba ADR thành Accepted 2026-09-28, ghi rõ ai giao quyết. Gốc 0023 (chờ container runtime) và 0010 (chưa cài) giữ Proposed vì đúng với mã |
+| `xagents_core/__init__.py:3` còn tả K3.0 ("còn rỗng có chủ ý", nhắc `studio` đã gỡ) | docstring của gói lõi, không có cổng canh; nên viết lại cùng lần chạm lõi kế tiếp thay vì một PR riêng | **Đã làm** — tả đúng hiện trạng: `company` và `keeper` dùng, K3 xong (#198), studio tách repo ở #259; luật 3 giữ lại vì `routing.py` còn dẫn tới nó. Cùng họ: docstring `tests/test_config.py` ("Package còn rỗng") |
+| Marker skip dùng chung qua `conftest`/import chưa được `TRAN_SKIP` đếm | trần ghi bằng `no-ky-thuat` ở `test_cong_repo.py`; hôm nay không có chỗ nào dùng kiểu đó | **Giữ** — trần đã ghi và kiểm được; đếm trước một dạng chưa ai dùng là thêm mã không có ca thật |
+| Bốn lớp phòng thủ thừa lộ ra qua đột biến (F-E) | không phải lỗi; xoá hay giữ là chuyện phong cách, luật cấm 7 | **Gỡ ba, giữ một** — gỡ `if text:` ở gateway `client.py` (bộ lọc lúc nối `systemInstruction` đã lo; test mới ghim ca message system rỗng nằm giữa) và `getattr` + so `None` ở `_utf8_stdio` của gateway `manage.py` lẫn console `__main__.py` (còn một `contextlib.suppress`); giữ `if not cfg.backends: continue` ở console `collect._routing_status` vì nó nói ý định |
+| `gateway/tests/test_account_pool.py::test_atomic_write_takes_posix_chmod_branch` (có từ trước) đổi `os.name` **toàn cục** thành `posix` — cùng họ với test Windows đã viết lại ở F-E | trên Linux là phép gán không đổi gì; trên Windows chỉ vỡ báo cáo khi chính test đỏ (pathlib của pytest, như ca đã gặp ở F-E) — chưa đo trên Windows thật; code cạnh bên, luật cấm 7 | **Đã làm**, kèm một ca cùng họ ở core — xem mục dưới |
+
+### Rà họ: test đổi thuộc tính toàn cục mà pytest cần lúc báo lỗi (luật bắt buộc 5)
+
+Câu hỏi rút từ lỗi: *test nào đổi một thuộc tính toàn cục mà chính pytest đọc khi in báo cáo cho test đỏ?* Đổi
+`os.name` toàn cục thì `Path(...)` của pytest chọn nhầm lớp (`WindowsPath` trên Linux): test đỏ thành
+`INTERNALERROR`, phiên dừng, không in tên ca, và bản vá không được trả lại.
+
+- **`os.name`: hai chỗ, cả hai đã viết lại** để chỉ `os` của module được test thấy tên giả (một proxy chuyển mọi
+  thứ khác cho `os` thật): gateway `test_account_pool.py` (hai test posix/Windows) và core
+  `test_sandbox.py::test_container_mac_dinh_chon_duong_env_theo_he_dieu_hanh`. Đo với đột biến `env_via_stdin`
+  luôn `True`: test core cũ ra 107 dòng `INTERNALERROR` (`repr_failure` → `cannot instantiate 'WindowsPath'`),
+  không dòng nào có tên ca; test mới ra `AssertionError: assert True is False` đúng tên ca. Test gateway nhánh
+  posix cũ chỉ kiểm file tồn tại, nên bỏ `chmod` vẫn xanh; test mới kiểm `chmod(…, 0o600)` được gọi (đột biến →
+  `assert [] == [384]`), còn chiều Windows đỏ khi `chmod` chạy cả trên `nt`.
+- **An toàn, đã đo bằng test đỏ cố ý** (Linux, Python 3.11, pytest 9.1.1, chạy thường lẫn `-n 2`): `sys.platform`
+  (win32/linux/darwin), `delattr(os, "getuid"/"getgid")`, `os.environ = {}`, `os.replace`/`os.kill`/`os.execv`
+  giả, `sys.argv`/`stdin`/`stdout` giả — mọi ca báo đỏ sạch, đúng tên. Đối chứng `os.name = "nt"`: `INTERNALERROR`.
+  Các kiểu vá này có ở core `test_sandbox.py`/`test_sqlite_bus.py`, gateway `test_x_manage_coverage.py`/
+  `test_manage.py`/`test_account_pool.py`, company `test_sandbox.py`/`test_mcp_bridge.py`/`test_auto_reload.py`
+  và các test `--help` qua `sys.argv`.
+- **Chưa đo trên Windows thật.** pathlib chọn lớp theo `os.name` chứ không theo `sys.platform`, nên chiều ngược
+  (Windows giả `linux`) không đi qua cùng cơ chế.

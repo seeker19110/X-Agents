@@ -192,7 +192,7 @@ Triển khai VPS: copy file token từ máy cá nhân lên, chạy `make start`;
 
 ```bash
 make lint
-make test        # 297 ca (Windows skip 3: 2 quyền file POSIX + 1 `/proc` chỉ có trên Linux), không gọi mạng: httpx MockTransport + aiohttp TestClient
+make test        # 298 ca (Windows skip 3: 2 quyền file POSIX + 1 `/proc` chỉ có trên Linux), không gọi mạng: httpx MockTransport + aiohttp TestClient
 ```
 
 ## Tài liệu

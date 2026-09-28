@@ -1,4 +1,4 @@
-"""K3.0 — khung `xagents-core`. Package còn rỗng, nên test ở đây canh ba thứ mà bảy bước sau xây LÊN TRÊN:
+"""Có từ K3.0, lúc `xagents-core` còn là khung rỗng: test ở đây canh ba thứ mà bảy bước K3.1–K3.7 xây LÊN TRÊN:
 `CoreConfig` bất biến, đường dẫn suy ra từ `root` (không từ `__file__` của core), và tên biến môi trường đi qua
 một chỗ duy nhất.
 

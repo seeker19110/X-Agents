@@ -1,6 +1,7 @@
 # ADR-0019: lưu quyết định chất lượng và trạng thái trong một giao dịch
 
-Ngày: 2026-09-25. Trạng thái: Proposed trong PR #335, mở rộng ADR-0018 theo yêu cầu chủ dự án.
+Ngày: 2026-09-25. Trạng thái: **Accepted** 2026-09-28, code trong PR #335; mở rộng ADR-0018 theo yêu cầu chủ dự án.
+Chủ dự án giao phiên chính chốt các ADR mà mã đã merge, theo tiêu chí đơn giản + chất lượng.
 
 ## Hiện trạng và mục tiêu
 

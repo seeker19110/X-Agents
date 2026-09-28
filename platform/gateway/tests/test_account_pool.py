@@ -320,31 +320,34 @@ def test_atomic_write_chmods_tmp_file_on_posix(manager):
     assert stat.S_IMODE(manager.token_file.stat().st_mode) == 0o600
 
 
+class _OsGia:
+    """`os` chỉ `gateway.auth` thấy: `name` giả, ghi lại lời gọi `chmod`, mọi thứ khác chuyển cho `os` thật.
+    Đổi `os.name` toàn cục thì pathlib của chính pytest vỡ (`cannot instantiate 'WindowsPath'`) đúng lúc test đỏ
+    cần in báo cáo."""
+
+    def __init__(self, name):
+        self.name = name
+        self.chmod_calls = []
+
+    def chmod(self, *a, **kw):
+        self.chmod_calls.append(a)
+
+    def __getattr__(self, attr):
+        return getattr(os, attr)
+
+
 def test_atomic_write_takes_posix_chmod_branch(manager, monkeypatch):
-    # Forcer nhánh `if os.name != "nt": os.chmod(...)` để chạy cả trên Windows CI —
-    # os.chmod vẫn hoạt động trên Windows (chỉ giới hạn hơn), không lỗi.
-    monkeypatch.setattr(gw_auth.os, "name", "posix")
+    # Ép nhánh `if os.name != "nt": os.chmod(...)` chạy cả trên Windows CI.
+    fake_os = _OsGia("posix")
+    monkeypatch.setattr(gw_auth, "os", fake_os)
     manager.save_credentials(_creds("a"))
     assert manager.token_file.is_file()
+    assert [mode for _, mode in fake_os.chmod_calls] == [stat.S_IRUSR | stat.S_IWUSR]
 
 
 def test_atomic_write_skips_chmod_on_windows(manager, monkeypatch):
     # Chiều ngược lại, chạy được cả trên Linux CI: trên Windows `os.chmod` chỉ bật/tắt cờ read-only, không gọi.
-    # Chỉ `gateway.auth` thấy `os.name == "nt"`: đổi `os.name` toàn cục thì pathlib của chính pytest vỡ
-    # (`cannot instantiate 'WindowsPath'`) đúng lúc test đỏ cần in báo cáo.
-    class OsWindows:
-        name = "nt"
-
-        def __init__(self):
-            self.chmod_calls = []
-
-        def chmod(self, *a, **kw):
-            self.chmod_calls.append(a)
-
-        def __getattr__(self, attr):
-            return getattr(os, attr)
-
-    fake_os = OsWindows()
+    fake_os = _OsGia("nt")
     monkeypatch.setattr(gw_auth, "os", fake_os)
     manager._atomic_write(manager.token_file, {"a": 1})
     assert json.loads(manager.token_file.read_text(encoding="utf-8")) == {"a": 1}
