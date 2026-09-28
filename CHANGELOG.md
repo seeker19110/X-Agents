@@ -6,7 +6,12 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- docs(khung): **quy trình một lệnh cổng, tài liệu khớp code, cổng canh tài liệu đang sống**. Quy trình:
+- fix(khung): **ba hook Claude Code sống lại trên Linux/macOS; quy trình một lệnh cổng; tài liệu khớp code, có cổng
+  canh**. Hook: `.claude/hooks/*.sh` mode `100644` (commit từ Windows), `settings.json` gọi thẳng đường dẫn nên `sh`
+  trả 126 "Permission denied" — Claude Code coi là lỗi không chặn, cả ba hàng rào chết im lặng ngoài Windows (đo trên
+  phiên cloud Linux: commit 40 file đụng năm gói qua trong 6 giây, cổng năm gói mất 5 phút). Nay `100755`;
+  `test_cong_khung.py` canh mode của mọi hook khai trong `settings.json` — đỏ với ba hook `100644`, xanh sau
+  `chmod +x`. Cùng họ H6 của #365 (lần đó chỉ sửa `dev-task.sh`), ghi ở `TRAPS.md` §3. Quy trình:
   `scripts/dev-task.sh gate <gói>` là lệnh cổng duy nhất trong `CONTRIBUTING.md`, `docs/QUY-TRINH-GIT.md`,
   `README.md` và năm `CLAUDE.md` package (`make test` ở gốc không đo coverage — xanh ở đó chưa chắc xanh CI); mẫu PR
   mang nguyên văn khối BÁO CÁO XÁC THỰC của `AGENTS.md` và ô CHANGELOG `(#n)`; `QUY-TRINH-GIT` §5 kể đủ bốn bước

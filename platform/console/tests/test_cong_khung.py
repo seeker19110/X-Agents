@@ -590,6 +590,21 @@ def test_moi_hook_khai_trong_settings_ton_tai_that() -> None:
         assert (ROOT / duong_dan).is_file(), f"settings.json trỏ vào hook không tồn tại: {duong_dan}"
 
 
+def test_moi_hook_khai_trong_settings_co_bit_thuc_thi_trong_git() -> None:
+    """Claude Code gọi THẲNG đường dẫn trong `command`, không qua `bash <file>` như `_chay` ở file này. Thiếu bit
+    thực thi thì trên Linux/macOS lệnh trả 126 "Permission denied" — Claude Code coi là lỗi không chặn và cho lệnh đi
+    tiếp: cổng chết im lặng. Đo 2026-09-28 trên phiên cloud Linux: cả ba hook mode 100644 (commit từ Windows, nơi
+    không có bit thực thi), `git commit` 40 file đụng năm gói xong trong 6 giây — riêng cổng năm gói mất 5 phút.
+    Cùng họ `test_dev_task_entrypoint_is_executable_in_git` (#365), lần đó chỉ sửa `dev-task.sh`."""
+    cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    duong = sorted({h["command"].replace("${CLAUDE_PROJECT_DIR}/", "").split()[0]
+                    for nhom in cfg.get("hooks", {}).values() for muc in nhom for h in muc["hooks"]})
+    kq = subprocess.run(["git", "ls-files", "-s", "--", *duong], cwd=ROOT, capture_output=True, text=True, check=True)
+    mode = {dong.split("\t", 1)[1]: dong.split(" ", 1)[0] for dong in kq.stdout.splitlines()}
+    thieu = [d for d in duong if mode.get(d) != "100755"]
+    assert not thieu, f"hook khai trong settings.json thiếu bit thực thi trong git (cần 100755): {thieu}"
+
+
 def test_moi_hook_deu_co_test_trong_file_nay() -> None:
     """Thêm hook mà quên test = thêm một cổng không ai biết nó còn sống không."""
     than = Path(__file__).read_text(encoding="utf-8")
