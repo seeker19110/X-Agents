@@ -2,13 +2,14 @@
 
 Một trong năm package của workspace X-Agents. Khách hàng số 0 và mặc định của nó là **chính repo này**.
 
-**Trạng thái: chạy được, chưa qua canary.** BT1–BT7 đã merge — package có mã thật, test riêng và ba lệnh CLI
-chạy được. Cái CHƯA có nằm ở cuối README này, đọc trước khi tin bất kỳ con số nào.
+**Trạng thái: chạy được, chưa qua canary.** BT1–BT7 đã merge — package có mã thật, test riêng và CLI
+`keeper.cli` (`run`, `watch`, `gate`, `drift`, `publish`) chạy được. Cái CHƯA có nằm ở cuối README này, đọc trước
+khi tin bất kỳ con số nào.
 
 - Quyết định: [`docs/adr/0006-cong-ty-bao-tri-keeper.md`](../../docs/adr/0006-cong-ty-bao-tri-keeper.md)
 - Đặc tả triển khai, PR theo PR: [`docs/DAC-TA-KEEPER.md`](docs/DAC-TA-KEEPER.md) (BT0–BT8)
 - Trạng thái từng gói BT (một chỗ duy nhất): [`../../docs/thi-hanh/keeper.md`](../../docs/thi-hanh/keeper.md) §B
-- Vận hành: [`../../docs/HUONG-DAN-VAN-HANH.md`](../../docs/HUONG-DAN-VAN-HANH.md) §7
+- Vận hành: [`../../docs/HUONG-DAN-VAN-HANH.md`](../../docs/HUONG-DAN-VAN-HANH.md) §6
 
 ## Nó làm gì
 
@@ -52,6 +53,13 @@ uv run python -m keeper.cli watch --db keeper.sqlite --repo ../.. --max-ticks 1
 # sổ human gate: xem gate chờ, rồi đóng bằng quyết định của NGƯỜI
 uv run python -m keeper.cli gate --db keeper.sqlite list
 uv run python -m keeper.cli gate --db keeper.sqlite approve KT-12 --by human:truc-ban --reason "bằng chứng đủ"
+
+# drift: bản dẫn xuất/golden lệch nguồn, PR đã merge thiếu dòng CHANGELOG — thuần cục bộ, như job CI drift-check
+uv run python -m keeper.cli drift --repo ../..
+
+# biến ý định mở PR (`pr.intent`) của MỘT ticket thành PR thật: git push + gh pr create (BT8 canary);
+# patch phải commit sẵn trong worktree của ticket — lệnh tự mở lại worktree đó từ --repo
+uv run python -m keeper.cli publish --db keeper.sqlite --repo ../.. <ticket_id>
 ```
 
 Hàng đợi ticket, ngân sách còn lại, sổ nợ quá hạn và gate chờ cũng đọc được ở tab **Công ty bảo trì** của
@@ -82,7 +90,7 @@ ghi lại eval thì job CI `keeper-eval-replay` đỏ — đó là răng của l
 
 Hai biến môi trường: `KEEPER_MAX_PR_PER_WEEK` (trần PR bảo trì mỗi tuần, mặc định 5) và
 `KEEPER_GATE_APPROVERS` (danh sách người duyệt gate). Không đặt biến thứ hai thì allowlist TẮT — four-eyes vẫn
-còn, nhưng bất kỳ ai khác người tạo gate cũng ký được. Chi tiết ở `HUONG-DAN-VAN-HANH.md` §7.4.
+còn, nhưng bất kỳ ai khác người tạo gate cũng ký được. Chi tiết ở `HUONG-DAN-VAN-HANH.md` §6.4.
 
 ## Cái gì CHƯA có
 
@@ -92,8 +100,11 @@ này đã tự bảo trì được repo:
 - **6/10 agent chưa có bộ ca eval.** Hạ tầng đã dựng và bốn agent phán xét đã có bản ghi thật (mục *Eval
   prompt* ở trên), nhưng `dependency-scout`, `health-monitor`, `drift-detector`, `patcher`, `refactorer`,
   `regression-guard` thì chưa — có chủ ý, không phải bỏ quên.
-- **Canary chưa chạy.** Nghiệm thu của BT8 là một chu kỳ thật trên chính X-Agents: `keeper` tự mở đúng một PR
-  bảo trì có bằng chứng đo hai chiều, và PR đó merge. Chưa xảy ra.
-- **`open_pr()` chưa gọi `gh pr create`.** Ở BT7 "mở PR" nghĩa là soạn `release-notes` + ghi `pr.intent` vào
-  `audit-log`; `github.py` được xây thuần chỉ đọc (bất biến I1). Đường ghi hẹp cho canary còn là một quyết định
-  chưa chốt.
+- **Canary chưa qua.** Nghiệm thu của BT8 là một chu kỳ thật trên chính X-Agents: `keeper` tự mở đúng một PR
+  bảo trì có bằng chứng đo hai chiều, và PR đó merge. Đã thử hai lần, chưa lần nào tới PR: 2026-09-12 repo sạch
+  đúng loại lỗi keeper vá được; 2026-09-13 chạy thật tới ngay trước `publish` trên tín hiệu thật `pr-280` rồi dừng
+  đúng ở cổng ngân sách I3 vì PR #246 đang mở. #246 đã merge — lần thứ ba chờ người chạy và người merge
+  (`docs/TASK-PACK.md`, sổ "Việc để lại").
+- **Vòng `watch` không tự mở PR.** `open_pr()` chỉ soạn `release-notes` + ghi `pr.intent` vào `audit-log`;
+  `github.py` thuần chỉ đọc (bất biến I1). Đường ghi hẹp đã chốt là `publish.py` (`git push` nhánh ticket +
+  `gh pr create`), nhưng chỉ chạy khi người/script gọi `keeper.cli publish <ticket_id>`.

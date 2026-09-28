@@ -29,6 +29,7 @@
 | Ai được publish topic nào | bảng `TOPIC_PRODUCERS`/`HUMAN_TOPICS` ở `core.py`; cơ chế ở `platform/xagents-core/src/xagents_core/bus.py` `_check_publish` | `tests/test_bus.py`, `platform/xagents-core/tests/test_bus.py` |
 | Bus bền vững trên đĩa (ghi, `poll` giữa tiến trình, `replay`, `latest`, `Lease`) | `platform/xagents-core/src/xagents_core/sqlite_bus.py` từ K3.5c — `src/company/sqlite_bus.py` chỉ còn lớp con mỏng ghép bus company + bus đĩa của core; tên file mặc định ở `CORE.db_name` | `platform/xagents-core/tests/test_sqlite_bus.py`, `tests/test_bus.py` |
 | Trạng thái ticket và chuyển đổi | `TicketState`, `TRANSITIONS` trong `events.py`; máy trạng thái `src/company/delivery.py` | `tests/test_delivery_and_gates.py` |
+| Event nào gọi hàm xử lý nào trong `process()`, trước hay sau vòng `ROUTES` | bảng `TICKET_TRANSITIONS` (`orch/ticket_fsm.py`) / `RELEASE_TRANSITIONS` (`orch/release_fsm.py`) — mỗi nhánh một dòng `Transition`; khung `Transition`/`step()` ở `orch/fsm.py` (ADR-0034). Bảng chỉ chọn hàm, không tự đổi `lead.state` | `tests/test_orch_bang_chuyen.py`, `tests/test_orch_khuon_loi.py` |
 | Review nào bắt buộc cho ticket | `DeliveryLead.required_reviews` (`delivery.py`); `RISK_TAGS` trong `events.py` | `tests/test_release_flow.py` |
 | Checklist human gate | `gates/checklists.md` → nguồn bằng chứng `src/company/gate_checklists.py` → `make subagents` | `tests/test_gate_brief.py`, `test_subagents.py` |
 | Gate: hạn, nhắc, four-eyes, allowlist | Cơ chế chung ở `platform/xagents-core/src/xagents_core/gates.py` + `gate_cli.py` (K3.7); `src/company/gates.py` chỉ còn `GateKind`/`Decision` + `COMPANY_GATE_APPROVERS` (mặc định KHÔNG đặt = chỉ four-eyes như trước), bền qua restart: `gate_cli.PersistentGate` | `tests/test_gate_trust.py`, `platform/xagents-core/tests/test_gates.py`, `platform/xagents-core/tests/test_gate_cli.py` |
@@ -56,13 +57,26 @@
 | Bậc rủi ro gate / cổng tự qua khi rủi ro thấp | `gate_risk.py` (`RISK_RULES`, `GateRiskContext`, `context_of`, `request_gate`); cờ `COMPANY_GATE_AUTOAPPROVE` |
 | Identity của lượt do ROUTE quyết, không phải model khai: `source`, `ticket_id` (đầu vào thuộc ticket), `action`/`actor` của đầu ra `audit-log`; `_rehydrate` chỉ tin người ghi thật | `orch/review_source.py`; `orchestrator.py` (`output.subject_overridden`, `output.action_overridden`); `orch/routes.py` (`TICKET_TOPICS`, `CR_IMPACT_ACTION`); `orch/rehydrate.py::TRUSTED_WRITERS` | `tests/test_source_tu_route.py`, `test_identity_tu_route.py`, `test_audit_gia_mao.py`, `test_chu_ky_khach_chi_nguoi.py` |
 | Sàn chất lượng tự duyệt release/nghiệm thu (ADR-0043): điều kiện sàn, thu bằng chứng, mức nâng theo dự án | `quality_floor.py` (`floor_gaps` thuần, `collect_evidence`, `project_bar`, `parse_bar`); nơi gọi `delivery.py::_quality_evidence`, `orch/gates_flow.py::_open_acceptance_gate`; đóng ticket khi máy nghiệm thu `DeliveryLead.close_accepted` + `acceptance.auto` (`_rehydrate`); `gate_cli --quality-bar` | `tests/test_quality_floor.py`, `test_quality_bar.py`, `test_quality_collect.py`, `test_gate_risk_quality.py`, `test_tu_duyet_e2e.py` |
-| Merge vào nhánh tích hợp, xung đột | `Integration.merge`; `_integrate`, `_integrate_approved` (orchestrator) |
+| Merge vào nhánh tích hợp, xung đột | `Integration.merge`; `orch/release_fsm.py::_integrate`, `orch/worktree_flow.py::integrate_approved`/`merge_ticket` (gán làm method của `Orchestrator`) |
+| Repo theo dự án, worktree mỗi ticket, lượt agent kỹ thuật (`engineer`, `author_tests`), `takeover` | `orch/worktree_flow.py` (tách khỏi `orchestrator.py` theo ADR-0034; `_merge_lock` ở lại `Orchestrator.__init__` vì khoá theo tiến trình) |
 | Giao hàng: tag `v<version>`, nhánh `company/release`, push, rollback | `Integration.deliver` / `rollback_delivery`; `_deliver` / `_rollback_delivery` (orchestrator); ADR-0027 |
 | PR thật cho khách review trước UAT (`--deliver-pr`): mở/dùng lại, không merge; lý do bỏ qua/lỗi | `github_pr.open_pr` (+ `github_slug`, `_gh`); `orch/release_fsm.py::_delivery_pr` → trường `pr` trong `delivery.done`, audit `delivery.pr_*`; `Integration.remote_url/base_branch`; mục `acceptance.pr-giao-hang` (`gate_brief`, `gate_checklists`); ADR-0038 | `tests/test_delivery_real.py` §ADR-0038, `test_gate_brief.py::test_acceptance_pr_giao_hang…` |
 | Tool agent được cấp, allowlist `run`, khoá đường dẫn, lọc env | `src/company/tools.py`; `SECRET_ENV`/`clean_env` ở `platform/xagents-core/src/xagents_core/sandbox.py` (K3.2, `workspace.py` nhập lại), `NO_HOOKS` trong `workspace.py` |
 | Vùng ghi của `qa[author]` vs `builder` (ADR-0028) | `Stack.test_globs` (`stacks.py`); phân quyền trong `tools.py`; lượt mù ở `runner.py` |
 | Chống prompt injection | Bảng mẫu + lọc: `platform/xagents-core/src/xagents_core/guard.py` (K3.4, chung hai công ty). CHÍNH SÁCH của company — topic nào ngoài/dẫn xuất, trường nào không tin cậy — ở `src/company/core.py` (`CORE`); `src/company/guard.py` chỉ còn là shim gắn `CORE`. Gọi từ `runner.py`, `web.py`, `supervisor.py`, `mcp_bridge.py`; `assetscan.py` quét file prompt bằng `guard.COMPILED` | `tests/test_adr0012.py`, `platform/xagents-core/tests/test_guard.py` |
 | Hạn mức ngữ cảnh, cắt | `src/company/context.py` |
+
+## Hợp đồng chất lượng sản phẩm (ADR gốc 0018/0021, `../../docs/PRODUCT-EXCELLENCE.md`)
+
+| Muốn | Sửa | Test đối chiếu |
+|---|---|---|
+| Profile dự án → hợp đồng check, ký/xác minh biên nhận bằng chứng, chấm | `src/company/product_quality.py` (`ProjectProfile`, `compile_contract`, `sign_evidence`, `verify_receipt`, `assess`; CLI `python -m company.product_quality schema/plan/verify`) — lớp chấm fail-closed, KHÔNG chạy test, KHÔNG thay `HumanGate` | `tests/test_product_quality.py`, `test_receipt_signature.py` |
+| Nối hợp đồng vào kernel thi hành (`xagents_core.execution`) | `src/company/quality_execution.py` (`compile_execution`, `evaluate_result` thuần, `commit_quality_result`; CLI `python -m company.quality_execution plan/register/status/commit`) — không scheduler/state machine thứ hai | `tests/test_quality_execution.py`, `test_quality_commit.py` |
+| Orchestrator ghim profile lúc ký spec, chiếu `lead.state` sang journal, mở `quality:accept` | `orch/quality_flow.py` (`note_profile`, `sync_quality` gọi ở cuối `scheduler._mark`, `TrustedDriver`, `submit_quality`) — không đụng `TICKET_TRANSITIONS`/`RELEASE_TRANSITIONS` | `tests/test_quality_flow.py`, `test_quality_flow_reopen.py` |
+| Gap R6 của sàn chất lượng cho một release (chỉ đọc journal) | `orch/quality_release.py` (`runs_for_release`, `release_quality`) — tách khỏi `quality_flow` vì trần 400 dòng của `orch/` | `tests/test_quality_floor_r6.py` |
+| Điều kiện Ready/Done/Complete của hợp đồng giao hàng | `src/company/delivery_contract.py` (`ready_gaps`, `delivery_gaps`, giao thức `ApprovalLookup`; thiếu lookup ⇒ fail-closed) | `tests/test_delivery_contract.py` |
+| Ai đã duyệt spec (lookup thật cho pha Ready, đọc bus) | `src/company/spec_approval.py` (`BusApprovalLookup`) — tin `env.actor` của gate `SPEC-<pid>`, không tin lời khai `approved_by` trong profile | `tests/test_spec_approval.py` |
+| Cầu nối projects-template (chuẩn bị ≠ duyệt) | `src/company/template_handoff.py` (`prepare_handoff`, `policy_document`; CLI `python -m company.template_handoff policy/prepare`) — không lệnh, không mạng, không ghi file | `tests/test_template_handoff.py` |
 
 ## Model và chi phí
 
@@ -86,6 +100,7 @@
 | Quét tài sản prompt, ngân sách prompt tĩnh | `src/company/assetscan.py` (ADR-0022) |
 | Tool web cho `product` pha research | `src/company/web.py` |
 | Mô phỏng cả công ty offline | `src/company/demo.py`, `examples/donghanhcungban_demo.py`, `examples/relay_client.py` |
+| Nối agent thành đồ thị LangGraph (tùy chọn) | `src/company/graph.py` (`research_order`, `build_graph`) — extra `[graph]`; không nơi nào trong `src/` gọi, `omit` khỏi coverage vì CI không cài `langgraph` |
 | Yêu cầu mẫu để publish | `examples/yeu-cau-mau-web-app.json` |
 
 ## Tài liệu phải sửa kèm

@@ -7,9 +7,9 @@ xoay vòng nhiều tài khoản Google. Hai công ty trỏ `base_url` vào đây
 ## Chạy ở đâu
 
 ```bash
-cd gateway
-uv run pytest -q --cov && uv run ruff check src tests && uv run mypy src/gateway --ignore-missing-imports
-uv run python -m gateway login | start | stop | status | models | setup | reset | logout
+scripts/dev-task.sh gate gateway   # ở GỐC repo: ruff + mypy + pytest --cov, khớp đúng ci.yml
+cd platform/gateway
+uv run python -m gateway login | start | stop | status | ready | models | setup | reset | logout
 ```
 
 `status` exit 1 khi server tắt **hoặc** 0 tài khoản sẵn sàng (`manage.py:196`) — dùng được trong script, nhưng mã
@@ -41,7 +41,7 @@ test>` thấy đỏ đúng lý do, rồi mới viết code trong `src/gateway/` 
 | thông điệp 429 "thử lại sau" / dòng log `lần thử i/n` | kiểm `xagents-core/src/xagents_core/routing.py` (một bản cho cả hai công ty từ K3.3d) và test `tests/test_failover.py:355-397` |
 | endpoint mới, trường mới trong `/auth/status` | `server.py` + mục "Endpoint" `README.md` + bảng lộ dữ liệu ADR-0003 §2 + test HTTP giả |
 | cổng, host, vòng đời daemon | `server.py:37-38`, `manage.py:91-161` + ADR-0002 |
-| chỗ lưu token, quyền file | `auth.py:81-96,220-235` + ADR-0003 §1 + `../SECURITY.md` "Mô hình bí mật" |
+| chỗ lưu token, quyền file | `auth.py:81-96,220-235` + ADR-0003 §1 + `../../SECURITY.md` "Mô hình bí mật" |
 
 ## Không bao giờ
 

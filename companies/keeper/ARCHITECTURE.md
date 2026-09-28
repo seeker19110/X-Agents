@@ -55,17 +55,18 @@ chung của phiên khác.
 
 ## Ranh giới với phần còn lại của hub
 
-- **Vào**: `xagents_core` (bus, gate, runner, guard — 25 file import, đo 2026-09-12); không nhận việc từ
-  `platform/console` qua đường ghi (console chỉ đọc bus của keeper).
+- **Vào**: `xagents_core` (bus, gate, runner, guard — 15 file trong `src/` import, đo 2026-09-28); không nhận
+  việc từ `platform/console` qua đường ghi (console chỉ đọc bus của keeper).
 - **Ra**: GitHub API qua `gh` CLI — đọc (`GitHubReader`, mọi nơi khác) và GHI (`publish.py`, chỉ `git push`
   nhánh của ticket + `gh pr create`, không gì khác); model qua `llm.py` (mặc định provider `fake`, offline —
   chạy model thật cần `llm.yaml` riêng, tiền tố env `KEEPER_*`).
 - **Đĩa**: `company.sqlite`-kiểu bus SQLite riêng của keeper; worktree riêng mỗi ticket dưới thư mục tạm, không
   đụng checkout chính.
-- **Test**: 553 ca (`uv run pytest --collect-only -q`, đo 2026-09-12); `branch = true` + `fail_under = 100` đã
-  bật — một trong hai package đầu tiên đạt mốc này cùng `xagents-core`.
+- **Test**: số ca hiện tại ở dòng keeper trong `README.md` gốc (có cổng canh); `branch = true` +
+  `fail_under = 100` đã bật — một trong hai package đầu tiên đạt mốc này cùng `xagents-core`.
 - **ADR**: không có `docs/adr/` riêng trong package; ADR duy nhất liên quan là `docs/adr/0006-cong-ty-bao-tri-
   keeper.md` ở gốc repo. Đặc tả chi tiết (bất biến, lộ trình BT1–BT8) ở `docs/DAC-TA-KEEPER.md`.
 
-Trạng thái: BT1–BT7 đã merge, package có mã thật chạy được. BT8 (canary — một chu kỳ thật, người merge PR đầu
-tiên keeper tự mở) là điều kiện cuối trước khi mở cho repo khách ngoài X-Agents.
+Trạng thái: BT1–BT7 đã merge, package có mã thật chạy được; phần console + tài liệu của BT8 đã merge (#223).
+Còn lại của BT8 là canary — một chu kỳ thật, người merge PR đầu tiên keeper tự mở (hai lần thử, xem `README.md`
+§"Cái gì CHƯA có") — điều kiện cuối trước khi mở cho repo khách ngoài X-Agents.

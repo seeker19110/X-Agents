@@ -15,8 +15,10 @@ Hợp đồng nội bộ giữa các lớp (hình dạng dữ liệu, route, has
 | Duyệt / từ chối gate, kiểm lý do, four-eyes | `src/console/decide.py` | gọi `HumanGate` của công ty; không tự dựng event |
 | Form giao việc (yêu cầu phần mềm + repo, trả lời làm rõ) | `src/console/submit.py` | publish qua `SQLiteBus` công ty → JSON Schema kiểm |
 | Xem/đổi model, backend, `prefer`, tắt backend | `src/console/settings.py`; CLI `python -m console models` | ghi `llm.yaml` giữ `.bak`; "tắt phải tắt thật" |
+| Bật/tắt động cơ (`orchestrator run --watch`) của từng xưởng từ trang | `src/console/engine.py`; route `POST /api/engine` | `argv` chốt cứng trong `SPECS`, không nhận tham số client; động cơ chết cùng console (ADR-0004) |
+| Cờ dòng lệnh (`--allow-*`, `--with-gateway`, `--open`), lệnh con `models` | `src/console/__main__.py` | cờ quyết định server nhận POST nào; `--with-gateway` bật gateway như tiến trình con, không `import gateway` |
 | Route HTTP, SSE `/api/stream`, token phiên, cờ `--allow-*`, `--i-know` | `src/console/server.py` | 403 khi không có cờ |
-| Giao diện, màn, ngăn kéo, tìm/lọc, phím tắt, PWA, hash `#/<màn>/gate/<id>` | `src/console/static/index.html` | một file, không framework; SW chỉ cache icon |
-| Tab Hướng dẫn, "Điền yêu cầu mẫu" | `index.html`; mẫu lấy từ `software-company/examples/yeu-cau-mau-web-app.json` | giữ hai bản khớp |
-| Kiến trúc | `docs/adr/` 0001–0003 | 0003: mỗi ô trả lời một câu hỏi, ô rỗng là ô xám |
+| Giao diện, màn, ngăn kéo, tìm/lọc, phím tắt, PWA, hash `#/<màn>/gate/<id>` | `src/console/static/index.html` + `static/js/*.js` | ES module nhập trong `main.js`, không framework, không build step; SW chỉ cache icon |
+| Tab Hướng dẫn, "Điền yêu cầu mẫu" | `index.html`; mẫu lấy từ `companies/software-company/examples/yeu-cau-mau-web-app.json` | giữ hai bản khớp |
+| Kiến trúc | `docs/adr/` 0001–0004 | 0003: mỗi ô trả lời một câu hỏi, ô rỗng là ô xám; 0004: động cơ bật từ console |
 | Bẫy hiển thị | `TRAPS.md` | 10 chỗ đã đánh lừa người trực |

@@ -1,6 +1,6 @@
 # TRAPS.md — bẫy riêng của gateway
 
-Gateway là nơi khuôn 1 (`../TRAPS.md`: *chế độ hỏng không tự khai báo*) cắn nhiều nhất, vì nó đứng giữa hai bên đều
+Gateway là nơi khuôn 1 (`../../TRAPS.md`: *chế độ hỏng không tự khai báo*) cắn nhiều nhất, vì nó đứng giữa hai bên đều
 không nhìn thấy nhau. Mỗi dòng dưới đây có test hoặc đoạn code làm chốt chặn; không có thì ghi "chưa".
 
 ## Bẫy vận hành
@@ -35,7 +35,7 @@ không nhìn thấy nhau. Mỗi dòng dưới đây có test hoặc đoạn code
 |---|---|---|
 | Test quyền file 0600/0700 bị skip trên Windows | `@pytest.mark.skipif(os.name == "nt", reason="chmod POSIX")` (`tests/test_account_pool.py:205,301`) → 3 skip trong `pytest -q` là bình thường | Nhánh `os.chmod` vẫn được phủ bằng monkeypatch `os.name="posix"` (`tests/test_account_pool.py:307-312`) — đừng xoá test đó để "gọn" |
 | Console cp1252 in tiếng Việt lỗi | `manage.py:464-469` tự `reconfigure(utf-8)`, nhưng pytest thì không | `PYTHONIOENCODING=utf-8` khi chạy test |
-| Coverage `fail_under = 100` thiếu dòng POSIX trên Windows | `../AGENTS.md` luật bắt buộc 3 | CI Linux mới là số thật |
+| Coverage `fail_under = 100` thiếu dòng POSIX trên Windows | `../../AGENTS.md` luật bắt buộc 3 | CI Linux mới là số thật |
 | `os.replace` trả `[WinError 5] Access is denied` khi Defender/indexer giữ file đích một khoảnh khắc; `_update_account_fields` nuốt lỗi nên cooldown, `last_used_at`, token vừa refresh **mất im lặng** | 2026-09-22: 1/8 lượt chạy cả bộ đỏ ở `test_round_robin_*` + `test_mark_unavailable_*`, chạy lẻ luôn xanh; log bắt được có dòng `Không ghi được token file … WinError 5`. CI Linux không bao giờ thấy | `_atomic_write` thử lại `REPLACE_ATTEMPTS` lần khi `PermissionError`, nghỉ tăng dần (`tests/test_account_pool.py` `test_atomic_write_retries_transient_permission_error`). Test LRU đỏ "chỉ trên máy tôi" → tìm dòng `Không ghi được` trong captured log trước khi gọi là chập chờn |
 
 ## Cách rà

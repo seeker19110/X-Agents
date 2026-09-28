@@ -1,7 +1,8 @@
 # CODEMAP.md — xagents-core: muốn đổi X thì sửa ở đâu
 
-16 module trong `src/xagents_core/`, không phân thư mục con. Mỗi module có docstring đầu file giải thích "vì
-sao" — CODEMAP này trỏ tới đúng chỗ đọc, không diễn giải lại nội dung docstring.
+Module trong `src/xagents_core/` không phân thư mục con; mỗi module có tên trong bảng dưới (cổng
+`platform/console/tests/test_cong_tai_lieu.py` đỏ khi thêm module mà quên dòng ở đây). Mỗi module có docstring đầu
+file giải thích "vì sao" — CODEMAP này trỏ tới đúng chỗ đọc, không diễn giải lại nội dung docstring.
 
 | Muốn | Sửa | Kiểm |
 |---|---|---|
@@ -25,7 +26,9 @@ sao" — CODEMAP này trỏ tới đúng chỗ đọc, không diễn giải lạ
 | Cơ chế chung supervisor | `Budget`/`_act_once`/`escalate_gate`/`debt_table` (`supervisor.py`, ADR-0032) — `_act` là điểm trừu tượng cho lớp con | `tests/test_supervisor.py` |
 | Khung tool có ranh giới tin cậy | `tools.py` (ADR-0007/0010) — tool tự kiểm tham số, lỗi trả CHUỖI cho model | `tests/test_tools.py` |
 | Hình dạng chung "việc có ngân sách" | `Budgeted` — `Protocol`, không phải lớp cha (`ticket_model.py`) | — |
+| Kernel thi hành bền: contract, DAG, biên nhận bằng chứng, journal | `execution.py` (ADR gốc 0017) — `RunSpec`/`TaskSpec`, `apply_event`, `EvidenceReceipt`, `ExecutionJournal` (SQLite append-only, replay được); không biết company/ticket/gate/model | `tests/test_execution*.py` (4 file: lõi, nguyên tử, khởi tạo, mở lại) |
 
-Ai import gì (đo 2026-09-12, đếm file có `import xagents_core`): `companies/software-company` 27 file,
-`companies/keeper` 25 file, `platform/console` 1 file, `platform/gateway` 0 file. Sửa bất kỳ module nào ở đây,
-chạy lại test của **cả hai công ty**, không chỉ `platform/xagents-core/tests/`.
+Ai import gì (đo 2026-09-28, đếm file `*.py` trong `src/` có dòng `from xagents_core`/`import xagents_core`):
+`companies/software-company` 27 file, `companies/keeper` 15 file, `platform/console` 3 file, `platform/gateway` 0
+file. Sửa bất kỳ module nào ở đây, chạy lại test của **cả hai công ty và console** (`scripts/dev-task.sh gate
+all`), không chỉ `platform/xagents-core/tests/`.

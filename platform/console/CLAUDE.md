@@ -7,8 +7,8 @@ schema. Không framework, không CDN, không phụ thuộc ngoài hai công ty.
 ## Chạy ở đâu
 
 ```bash
-cd console
-uv run pytest -q --cov && uv run ruff check src tests && uv run mypy src/console --ignore-missing-imports
+scripts/dev-task.sh gate console                  # ở GỐC repo: ruff + mypy + pytest --cov, khớp đúng ci.yml
+cd platform/console
 uv run python -m console                          # chỉ đọc; terminal in địa chỉ kèm token phiên
 uv run python -m console --allow-decide --allow-submit --allow-config --allow-engine
 uv run python -m console models --company software-company --set antigravity.standard=<model>
@@ -44,6 +44,6 @@ tính — có `tests/test_es_module.py` canh việc nhập module, viết test c
 | quyết định gate | `src/console/decide.py` — gọi `HumanGate` công ty; lý do ≥ 20 ký tự |
 | form giao việc | `src/console/submit.py` — payload theo schema topic của công ty |
 | bật/tắt động cơ | `src/console/engine.py` — `argv` chốt cứng trong `SPECS`, KHÔNG nhận tham số client; route `POST /api/engine` (ADR-0004) |
-| giao diện | `src/console/static/index.html` (HTML + CSS) và `static/js/*.js` (15 ES module, K7.1 — không build step). Thêm màn mới: HTML + một module + **nhập nó trong `main.js`** (không nhập = không bao giờ chạy, `tests/test_es_module.py` canh). Gán vào biến nhập từ module khác thì phải qua setter. Route hash `#/<màn>/gate/<id>`… trong `API.md` |
+| giao diện | `src/console/static/index.html` (HTML + CSS) và `static/js/*.js` (ES module, K7.1 — không build step). Thêm màn mới: HTML + một module + **nhập nó trong `main.js`** (không nhập = không bao giờ chạy, `tests/test_es_module.py` canh). Gán vào biến nhập từ module khác thì phải qua setter. Route hash `#/<màn>/gate/<id>`… trong `API.md` |
 | đổi hợp đồng giữa lớp | `API.md` cùng PR |
 | kiến trúc | `docs/adr/` (0001–0004) |

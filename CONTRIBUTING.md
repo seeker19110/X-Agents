@@ -30,15 +30,22 @@ Không có `[project.scripts]`: mọi entry point đều là `python -m <package
 
 ## 2. Cổng chất lượng
 
-Chạy trước khi mở PR — ở gốc cho cả năm, hoặc trong thư mục đã sửa:
+Chạy trước khi push — **một lệnh** ở gốc, cho gói đã sửa hoặc cả năm:
 
 ```bash
-make lint && make test      # gốc: lặp qua cả năm package
+scripts/dev-task.sh gate <gói>    # gói: company | gateway | console | core | keeper | all (bỏ trống = all)
 ```
 
-`software-company` có bộ target: `test`, `cov`, `lint` (ruff + mypy), `types`, `fix`,
-`golden`, `eval`, `eval-record`, `eval-replay`, `demo`, `run`, `status`. `gateway`, `console` và `keeper` có `test`, `cov`,
-`lint`, `types`, `fix` cùng nghĩa. `xagents-core` có `test`, `cov`, `lint`, `types`, `fix`. Makefile gốc có `sync`, `test`, `cov`, `lint`, `types`, `fix`, `build`, `clean`.
+Script giữ lệnh khớp đúng `ci.yml` (`ruff check src tests` → `mypy src/<module>` → `pytest -q --cov`, riêng
+software-company thêm `-n auto`), nên không phải nhớ biến thể của từng package; `DEV_TASK_DRY_RUN=1` in lệnh mà
+không chạy. Claude Code còn chạy nó tự động trước mỗi commit cho gói bị đụng (`.claude/hooks/pre-commit-gate.sh`).
+`make lint && make test` ở gốc vẫn dùng được, nhưng `make test` **không** đo coverage — xanh ở đó chưa chắc xanh CI.
+
+Mỗi package có `Makefile` với `test`, `cov`, `lint`, `types`, `fix`; target riêng: software-company (`golden`,
+`eval`, `eval-record`, `eval-replay`, `eval-thresholds`, `assetscan`, `assetbudget`, `subagents`, `gate-brief`,
+`run`, `status`…), keeper (`golden`, `eval`, `eval-record`, `eval-replay`), gateway (`start`, `stop`, `status`,
+`login`, `setup`, `models`, `ready`), console (`run`, `open`, `decide`). Makefile gốc: `sync`, `test`, `cov`,
+`lint`, `types`, `fix`, `build`, `clean`.
 
 Muốn các cổng nhẹ (ruff, gitleaks, YAML, khoảng trắng thừa) chạy tự động trước mỗi commit, cài pre-commit một lần
 ở gốc repo:
@@ -52,9 +59,9 @@ Cấu hình ở `.pre-commit-config.yaml`; `pre-commit run --all-files` chạy t
 Không có `make` (Windows): mở `Makefile` và chạy dòng `uv run` tương ứng — dùng được nguyên văn trong PowerShell
 (vd. `uv run python -m company.demo`), không cần đặt biến môi trường nào.
 
-CI (`.github/workflows/ci.yml`) chạy đúng những cổng đó, thêm `audit` (pip-audit + gitleaks trên cả lịch sử) và
-`golden-check`. Job tổng hợp tên `quality` là required status check của `main` — **thêm job con mới thì phải nối
-vào `needs` của nó**, nếu không kết quả của job đó không được tính.
+CI chạy đúng những cổng đó cộng eval replay, golden, drift, audit, asset-scan — bảng đủ job ở
+[`ARCHITECTURE.md`](ARCHITECTURE.md) §CI. Job tổng hợp tên `quality` là required status check của `main` — **thêm
+job con mới thì phải nối vào `needs` của nó**, nếu không kết quả của job đó không được tính.
 
 Ngưỡng coverage nằm trong `pyproject.toml`: `fail_under = 100` ở **cả năm** package (software-company,
 gateway, console, xagents-core, keeper). Nó đặt ở mức đang đạt được để chặn tụt lùi — nâng lên
@@ -78,6 +85,7 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    | Đường | Khi nào | Lệnh |
    |---|---|---|
    | Máy cá nhân | bạn có API key trên máy | `make eval-record AGENT=<id>` (thêm `--jobs 3` cho `AGENT=all`) |
+   | GitHub Actions | **không** có key trên máy, hoặc muốn ghi cả bộ | Actions → **eval-record** → Run workflow |
 
    **Điểm chấm dao động, và `--runs N` là chỗ duy nhất đo được nó.** Phát lại (`--replay`) là *tất định*: khoá
    là `hash(system, user)` và giá trị là `text` đã ghi, nên chạy lại trăm lần ra đúng một số. Dao động sinh ra
@@ -89,7 +97,6 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
    `score` là số đo **độ ổn định lúc ghi**, không phải nhãn pass/fail của câu trả lời được lưu — `text` giữ lần
    chạy cuối, và replay vẫn chấm chính câu trả lời ấy bằng `check`. Nó **giảm** rủi ro đọc nhầm một lần đỏ thành
    hồi quy; nó không **loại bỏ** dao động.
-   | GitHub Actions | **không** có key trên máy, hoặc muốn ghi cả bộ | Actions → **eval-record** → Run workflow |
 
    Workflow `eval-record` nhận `package` (`company`), `agents` (`all` hoặc danh sách), `provider`
    (`anthropic`/`openai`), `jobs`; đọc key từ Secrets `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` và tên model từ
@@ -111,12 +118,14 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
 6. Nhồi thêm skill vào một agent thì chạy **`make assetbudget`**: prompt tĩnh vượt 50% `budget_tokens_per_task`
    của chính agent đó là đỏ — nâng ngân sách có chủ đích, hoặc bớt skill.
 7. **`make subagents`** (trong `companies/software-company/`) rồi commit `.claude/agents/`: trợ lý kiểm duyệt `sc-*` là bản dẫn xuất
-   một chiều từ `agents/`, `skills/` và `gates/checklists.md`; CI `subagents-check` và pre-commit đỏ khi bản trên đĩa lệch
-   nguồn. Sửa mục "Người tự kiểm thêm" trong `gates/checklists.md` thì khai nguồn bằng chứng cho nó ở
+   một chiều từ `agents/`, `skills/` và `gates/checklists.md`; CI (bước `company.subagents check` trong job
+   `golden-check`) và pre-commit đỏ khi bản trên đĩa lệch nguồn. Sửa mục "Người tự kiểm thêm" trong `gates/checklists.md` thì khai nguồn bằng chứng cho nó ở
    `src/company/gate_checklists.py` trước, nếu không parser gãy.
 
-Ca eval chấm không đạt **không** làm CI đỏ (đó là tín hiệu chất lượng cho vòng sau); chỉ bản ghi thiếu hoặc lệch
-mới đỏ.
+Ở software-company, một ca eval chấm không đạt **không** làm CI đỏ (đó là tín hiệu chất lượng cho vòng sau;
+`--fail-on-score` để bật khi muốn); CI chỉ đỏ khi bản ghi thiếu, lệch phiên bản prompt, hoặc điểm của agent có
+trong `evals/thresholds.yaml` tụt dưới sàn. keeper chặt hơn: bất kỳ ca nào không chạy được (`errored`) cũng đỏ
+(chính sách ở `companies/keeper/src/keeper/evals.py`).
 
 ## 4. Thay đổi kiến trúc → ADR trước
 

@@ -50,7 +50,7 @@ Phím tắt: `/` tìm, `1`–`8` nhảy màn (theo thứ tự ở thanh bên), `
 ## Chạy nhanh
 
 ```bash
-cd console
+cd platform/console
 uv sync
 uv run python -m console          # mặc định 127.0.0.1:8200, chế độ chỉ đọc
 ```

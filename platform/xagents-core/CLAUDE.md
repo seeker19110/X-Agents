@@ -2,17 +2,17 @@
 
 Package `xagents_core`. Lõi chung mà `companies/software-company` và `companies/keeper` import thay vì tự fork:
 bus sự kiện, client LLM, runner, chống prompt injection, human gate, blackboard, sandbox, quan sát được (span).
-16 module, `docs/adr/0001-loi-chung-xagents-core.md` (gốc repo) là ADR khai sinh. Package này **không có `docs/`
-riêng** — tri thức "vì sao" nằm trong docstring đầu mỗi module, đọc ở đó trước khi hỏi.
+Danh sách module ở `CODEMAP.md` (có cổng canh); `docs/adr/0001-loi-chung-xagents-core.md` (gốc repo) là ADR khai
+sinh. Package này **không có `docs/` riêng** — tri thức "vì sao" nằm trong docstring đầu mỗi module, đọc ở đó trước
+khi hỏi.
 
 ## Chạy ở đâu
 
 ```bash
-cd platform/xagents-core
-uv run pytest -q --cov && uv run ruff check src tests && uv run mypy src/xagents_core --strict
+scripts/dev-task.sh gate core      # ở GỐC repo: ruff + mypy (strict lấy từ pyproject) + pytest --cov, khớp ci.yml
 ```
 
-Không có CLI/daemon riêng — package chỉ là thư viện, không có `python -m xagents_core`.
+Không có CLI/daemon riêng — package chỉ là thư viện, không có `__main__.py` hay module nào chạy bằng `-m`.
 
 ## TDD ở package này
 

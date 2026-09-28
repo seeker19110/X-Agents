@@ -63,8 +63,8 @@ không cần Claude Code; subagent chạy được cả khi hồ sơ chưa sinh 
 ### 4.1 CLI
 
 ```
-python -m company.subagents build [--out ../.claude/agents] [--only sc-qa]
-python -m company.subagents check [--out ../.claude/agents]     # exit 1 nếu lệch, in diff thống nhất
+python -m company.subagents build [--out ../../.claude/agents] [--only sc-qa]
+python -m company.subagents check [--out ../../.claude/agents]     # exit 1 nếu lệch, in diff thống nhất
 python -m company.subagents list                                # id nguồn -> file đích, version
 ```
 

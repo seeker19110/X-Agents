@@ -96,7 +96,7 @@ Gateway lắng nghe `127.0.0.1:1123` và **không có xác thực người dùng
 dùng từ máy khác thì đi qua SSH tunnel.
 
 Vì không có xác thực, hai header là toàn bộ hàng rào giữa pool tài khoản Google và một trang web bất kỳ người dùng
-đang mở (`guard_middleware` trong `platform/gateway/server.py`, đối xứng với `platform/console/server.py::_guard`):
+đang mở (`guard_middleware` trong `platform/gateway/src/gateway/server.py`, đối xứng với `platform/console/src/console/server.py::_guard`):
 
 - `Host` không phải loopback → **404** (không xác nhận có server ở đây). Chặn DNS rebinding: trình duyệt gửi tên
   miền kẻ tấn công điều khiển dù bản ghi A của nó trỏ về 127.0.0.1.

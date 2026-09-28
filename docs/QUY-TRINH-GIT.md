@@ -1,8 +1,9 @@
 # Quy trình làm việc với Git — X-Agents
 
 Áp từ quy trình của dự án `donghanh` (`CONTRIBUTING.md`, `docs/DEVELOPMENT_WORKFLOW.md`,
-`CLAUDE.md` mục 11), rút gọn cho repo này: repo tài liệu + Python (`companies/software-company/`),
-làm việc chủ yếu một mình cùng AI, cổng chất lượng là `make lint` + `make test`.
+`CLAUDE.md` mục 11), rút gọn cho repo này: năm package Python trong một uv workspace (`companies/`,
+`platform/`), làm việc chủ yếu một mình cùng AI, cổng chất lượng là `scripts/dev-task.sh gate <gói>` — một lệnh, khớp đúng `ci.yml`
+(`gói`: `company|gateway|console|core|keeper|all`).
 
 Luồng chuẩn: **Ý tưởng → Đặc tả → Nhánh → PR → CI/Review → Merge (squash) → Quan sát**.
 
@@ -24,7 +25,7 @@ test, hoặc nguồn chính thống có ngày truy cập.
 
 ## 2b. Nhiều phiên cùng lúc: mỗi phiên một worktree
 
-Một clone chỉ có **một** HEAD. Hai phiên agent cùng mở `C:\Users\liend\Claude-Agents` là hai tiến trình
+Một clone chỉ có **một** HEAD. Hai phiên agent cùng mở một thư mục clone là hai tiến trình
 lần lượt `git checkout` đè lên nhau, và commit của phiên này rơi vào nhánh của phiên kia — không lệnh nào
 báo lỗi.
 
@@ -42,7 +43,8 @@ Kết quả: nhánh của A rỗng (`gh pr create` báo *No commits between main
 commit chưa qua PR. Phải `git branch -f` hai lần mới trả về đúng chỗ. Không có xung đột, không có cảnh báo —
 chỉ có commit nằm sai nhánh.
 
-**Quy tắc: phiên nào không phải phiên đầu tiên thì làm trong worktree riêng.**
+**Quy tắc: phiên nào không phải phiên đầu tiên thì làm trong worktree riêng.** Harness có tool worktree riêng
+(Claude Code: `EnterWorktree`) thì dùng nó trước — nó lo cả đặt chỗ, tạo nhánh và dọn dẹp; không có thì tự tạo:
 
 ```bash
 git worktree add -b <loại>/<slug> ../Claude-Agents-wt-<slug> origin/main
@@ -75,7 +77,7 @@ bước **mở/merge PR**, để loại hoàn toàn xung đột nền do hai nh�
   PR mới**. Tiếp tục code trên worktree của mình, chờ đến khi PR kia merge xong rồi mới mở.
 - **Ngay khi PR trước merge xong, trước khi mở PR của mình**: `git fetch origin` rồi
   `git rebase origin/main` trên nhánh của mình (không merge `main` vào — rebase, giữ lịch sử thẳng).
-  Giải conflict lúc rebase nếu có, chạy lại `make lint` + `make test` sau rebase (§4/§7 vẫn áp).
+  Giải conflict lúc rebase nếu có, chạy lại `scripts/dev-task.sh gate <gói>` sau rebase (§4/§7 vẫn áp).
 - Rồi mới `gh pr create` + bật auto-merge như thường (§5).
 - Nếu rebase xung đột nhiều/phức tạp → dừng, báo người dùng, đừng tự ý bỏ qua bằng merge thường hay
   `--no-verify`.
@@ -90,8 +92,8 @@ khoá bước `gh pr create` (và merge), không khoá code hay commit — cứ 
 viết code, chạy test, **commit tại chỗ** như bình thường. Chỉ giữ lại đúng hai việc cho tới khi PR trước
 merge: (1) đừng `gh pr create` một PR thứ hai, (2) đừng push nhánh đó lên remote nếu commit sẽ phải viết
 lại do rebase — an toàn nhất là commit cục bộ, `push` sau khi đã rebase. Ngay khi PR trước merge: `git fetch
-origin` + `git rebase origin/main` trên nhánh việc kế tiếp (giữ lại các commit đã có), chạy lại `make lint`
-+ `make test`, rồi mới `push` + `gh pr create`.
+origin` + `git rebase origin/main` trên nhánh việc kế tiếp (giữ lại các commit đã có), chạy lại
+`scripts/dev-task.sh gate <gói>`, rồi mới `push` + `gh pr create`.
 
 ## 2d. Việc lớn: một nhánh cho cả hạng mục, PR nháp sớm, mỗi task một commit (ADR-0012)
 
@@ -141,8 +143,8 @@ yêu cầu → phân tích hiện trạng → chốt yêu cầu → đặc tả 
 | Thay đổi | Bằng chứng tối thiểu |
 | --- | --- |
 | Tài liệu thuần (`*.md`, docs) | Đọc lại diff, `git diff --check` |
-| Prompt agent / skill / template | `make test` (golden 21 agent bắt được thay đổi prompt) |
-| Code `src/company/**` | `make lint` + `make test`, thêm test cho hành vi mới |
+| Prompt agent / skill / template | Đủ 7 bước `CONTRIBUTING.md` §3 (golden, eval-record, assetscan, assetbudget, subagents) + `scripts/dev-task.sh gate <gói>` |
+| Code `src/**` của bất kỳ package nào | `scripts/dev-task.sh gate <gói>` (ruff + mypy + pytest coverage 100); test đỏ viết trước (`AGENTS.md` luật bắt buộc 4) |
 | Schema topic / hợp đồng event | Các cổng trên + ADR + kiểm test nhất quán registry↔events |
 | Đổi cổng CI | Chạy thật trên PR đó rồi đọc thời gian từng job, không đoán |
 | Thêm/đổi phụ thuộc (`pyproject.toml`, `uv.lock`) | Job `dependency-review` (`.github/workflows/dependency-review.yml`) tự chạy trên PR, chặn khi thêm mới có CVE mức `high`+ — không thay `pip-audit` trong `quality` (soi toàn bộ resolve mỗi lần), chỉ chặn sớm hơn ở đúng PR gây ra thay đổi |
@@ -158,7 +160,8 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
      sửa — dẫn chiếu chết ở ADR, session log, CHANGELOG cũ vẫn được phép còn (đó là bản ghi lịch sử), nhưng
      dẫn chiếu ở tài liệu **đang sống** (README, ARCHITECTURE, CODEMAP, `.claude/`, `.gitattributes`) phải sửa.
    - `docs/thi-hanh/<mã>.md` hoặc bảng theo dõi liên quan (nếu có) đã cập nhật cột "khi nào" chưa.
-   - Dòng CHANGELOG ở "Chưa phát hành" đã có cho đúng thay đổi này chưa (cổng `metadata` đỏ nếu thiếu).
+   - Dòng CHANGELOG ở "Chưa phát hành" đã có cho đúng thay đổi này chưa, và mang `(#<số PR>)` sau khi tạo PR
+     (cổng `metadata` đỏ nếu thiếu dòng hoặc thiếu số).
    - `git status` sạch (không sót file định thêm mà quên `git add`, không sót file tạm không định commit).
    - `git diff --check` sạch trên **toàn diff** so với `main`, không chỉ file vừa sửa gần nhất.
    - `gh pr list --state open` — còn PR khác mở thì làm theo §2c, không tạo PR mới.
@@ -171,12 +174,16 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
    ```
    Bẫy: scope chỉ nhận chữ thường — `fix(skillTiering)` trượt, `fix(skills)` đạt.
 
-   Cổng `metadata` còn ba bước nữa, đọc trước khi viết thân PR:
-   - **Dòng CHANGELOG** ở mục "Chưa phát hành" (nhãn `no-changelog` để miễn) — đỏ nếu thiếu.
+   Cổng `metadata` (`.github/workflows/pr-policy.yml`) còn bốn bước nữa, đọc trước khi viết thân PR:
+   - **Dòng CHANGELOG** thêm vào mục "Chưa phát hành" phải mang `(#<số PR này>)` (`scripts/pr_changelog_check.py`;
+     nhãn `no-changelog` để miễn) — đỏ nếu thiếu dòng hoặc thiếu số. Số chỉ có sau `gh pr create`: tạo PR rồi
+     commit dòng có số vào chính PR đó (`AGENTS.md` luật bắt buộc 10).
    - **PR `fix(` chạm `companies/software-company/src/company/orchestrator.py` hoặc `orch/` phải dẫn `ADR-0034`**
      trong thân, nói rõ đụng bảng chuyển nào (K8.3). `refactor(` không bị soi: tách module là làm ĐÚNG
      theo ADR, còn `fix(` là sửa hành vi máy trạng thái — chỗ dễ lặng lẽ phá bảng chuyển nhất. Đặc tả
-     gốc viết "ADR-0037"; repo này không có file đó, ADR tách máy trạng thái là **0034**.
+     gốc viết "ADR-0037"; ADR-0037 của repo là việc khác (gộp agent), ADR tách máy trạng thái là **0034**.
+   - **Mục "Definition of Done" và "BÁO CÁO XÁC THỰC" của thân PR không còn ô `- [ ]`**
+     (`scripts/pr_dod_check.py`; ô ghi rõ `(sau merge)` được miễn). Sửa thân PR là bước này chạy lại.
    - **Nhật ký phiên `docs/sessions/<ngày UTC>.md`** — chỉ **cảnh báo**, không chặn merge (K8.4): nhật ký
      là việc cuối phiên, không phải việc mỗi PR.
 2. **Tạo PR ở trạng thái ready trước khi bật auto-merge.** GitHub từ chối bật auto-merge trên PR nháp. Việc
@@ -210,7 +217,7 @@ Merge sạch (không xung đột) thì **không** chạy lại toàn bộ cổng
 ## 6. Definition of Done
 
 - Thay đổi khớp đặc tả/ADR; điểm lệch được ghi rõ.
-- Test mới chứng minh hành vi; `make lint` và `make test` xanh.
+- Test mới chứng minh hành vi (đỏ trước, xanh sau); `scripts/dev-task.sh gate <gói>` xanh.
 - Đã tự đọc lại diff; chỉ gồm thay đổi thuộc phạm vi.
 - Không secret, không debug log, không file sinh tự động lọt vào.
 - Tài liệu (`README.md`, `docs/`, ADR) cập nhật theo thay đổi.

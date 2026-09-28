@@ -46,9 +46,11 @@ def test_so_adr_khop_dia() -> None:
 # Dòng treo từ 2026-09-07 trong `docs/TASK-PACK.md`: cổng cũ chỉ canh software-company, nên dãy ADR của
 # console lệch (README ghi 0001–0003 khi đĩa có 4) sống được 5 ngày mà không gì đỏ. Repo có BỐN dãy ADR cùng
 # đánh số từ 0001, canh một dãy là bỏ ba.
+# `[^\n]*?` chứ không `.*?` + `re.S`: đo 2026-09-28, dòng gateway KHÔNG khai dãy ADR nào mà phép vẫn xanh — nó trượt
+# xuống dòng console bên dưới và mượn "ADR 0001–0004" của console (hai dãy tình cờ cùng dài). Phải đọc trong đúng dòng.
 DAY_ADR = {
-    "platform/console": r"\[`platform/console/`\].*?ADR (\d{4})–(\d{4})",
-    "platform/gateway": r"\[`platform/gateway/`\].*?ADR (\d{4})–(\d{4})",
+    "platform/console": r"\[`platform/console/`\][^\n]*?ADR (\d{4})–(\d{4})",
+    "platform/gateway": r"\[`platform/gateway/`\][^\n]*?ADR (\d{4})–(\d{4})",
 }
 
 
