@@ -36,7 +36,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   tách ô): 6 hàng mất chữ ở `CODEMAP.md` software-company, `TRAPS.md`, `dac-ta-tro-ly-kiem-duyet.md`; ba đột biến bộ
   lọc đều đỏ. `CONTRIBUTING` §3: `make eval-record AGENT=all --jobs 3` thật ra chạy `--jobs 1` (cờ của `make`) →
   `JOBS=3`; `eval-record.yml` ghi vì sao chỉ nhận `company`. Docstring `console/submit.py` hết trỏ
-  `studio.orchestrator`, `KIEN-TRUC-4-LOP.md` trỏ đúng `loops.js`.
+  `studio.orchestrator`, `KIEN-TRUC-4-LOP.md` trỏ đúng `loops.js` (#368).
 - refactor(audit): **dọn "Việc để lại" của audit hoàn thiện theo tiêu chí đơn giản + chất lượng** (chủ dự án giao
   phiên chính quyết, 2026-09-28). Gỡ ba lớp phòng thủ thừa của F-E: `if text:` ở gateway `client.py` (bộ lọc lúc nối
   `systemInstruction` đã lo, test mới ghim ca message system rỗng nằm giữa) và `getattr` + so `None` ở `_utf8_stdio`
