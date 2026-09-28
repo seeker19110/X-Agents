@@ -70,6 +70,19 @@ def _git(repo: Path, *args: str, timeout: int = 120) -> str:
     return r.stdout.strip()
 
 
+def repo_root(path: Path) -> Path:
+    """Gốc cây git chứa `path`; `path` nguyên trạng khi nó không nằm trong repo git nào.
+
+    Lệnh CLI nhận một đường dẫn repo rồi dùng nó cho HAI việc: chạy `git` (tự dò lên gốc) và ghép đường dẫn file
+    (không dò). Trỏ vào thư mục con là hai việc lệch nhau — `drift` báo tín hiệu giả, `run` ghi lạc chỗ,
+    `publish` tìm worktree sai chỗ hoặc dựng worktree mới ngay trong checkout chung (đo 2026-09-28). Quy về gốc
+    một lần ở cửa vào thì hết lệch."""
+    try:
+        return Path(_git(path, "rev-parse", "--show-toplevel"))
+    except WorktreeError:
+        return path
+
+
 def slug(ticket_id: str) -> str:
     """Mã ticket (`KEEP:0:dependency:pydantic`) → mảnh dùng được cho tên thư mục và tên nhánh."""
     out = _SLUG_BAD.sub("-", ticket_id).strip("-")

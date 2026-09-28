@@ -24,7 +24,7 @@ from .drift import scan
 from .events import Ticket
 from .gates import GateKind
 from .patcher import HUMAN_ONLY_SEGMENTS, fix_docs
-from .worktree import SharedCheckoutRefused
+from .worktree import SharedCheckoutRefused, repo_root
 
 Operation = str
 DERIVED_HINTS = ("tests/golden", ".claude/agents", "golden")
@@ -63,7 +63,7 @@ def _load(path: Path) -> list[Ticket]:
 
 
 def _run(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = repo_root(Path(args.root).resolve())
     try:
         tickets = _load(Path(args.tickets))
     except (ValidationError, ValueError, OSError) as e:
@@ -119,7 +119,7 @@ def _publish(args: argparse.Namespace) -> int:
     from .publish import PublishError
     from .worktree import open_worktree
 
-    repo = Path(args.repo).resolve()
+    repo = repo_root(Path(args.repo).resolve())
     orc = KeeperOrchestrator(Path(args.db), repo, GitHubReader(repo))
     wt = open_worktree(args.ticket_id, repo=repo)
     try:
@@ -193,7 +193,7 @@ def _drift(args: argparse.Namespace) -> int:
     Bộ dò đã có từ BT-keeper và phủ 100% test, nhưng KHÔNG workflow nào gọi nó, nên ba PR (#192, #208, #209)
     merge thiếu dòng CHANGELOG mà không cổng nào đỏ — công cụ tự soi chỉ có giá trị khi có thứ chạy nó.
     Thoát khác 0 khi còn tín hiệu, để CI dùng trực tiếp."""
-    repo = Path(args.repo)
+    repo = repo_root(Path(args.repo))
     signals = scan(
         claude_agents_dir=repo / ".claude" / "agents",
         golden_agents_dir=repo / "companies" / "software-company" / "tests" / "golden" / "agents",
@@ -248,7 +248,9 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--reason", default="", help="lý do — người sau đọc bản ghi này, không đọc được đầu bạn")
     gate.set_defaults(func=_gate)
     drift_p = sub.add_parser("drift", help="so bản dẫn xuất/golden/CHANGELOG với nguồn (thuần cục bộ)")
-    drift_p.add_argument("--repo", default=".", help="gốc repo cần soi (mặc định thư mục hiện tại)")
+    drift_p.add_argument("--repo", default=".",
+                         help="repo cần soi, thư mục nào trong repo cũng được — lệnh tự lên gốc git "
+                              "(mặc định thư mục hiện tại)")
     drift_p.set_defaults(func=_drift)
     args = parser.parse_args(argv)
     return int(args.func(args))

@@ -110,6 +110,39 @@ def test_publish_qua_cli_tao_pr_that_in_ra_url(
     assert "PR #9" in out and "pull/9" in out
 
 
+def test_publish_qua_cli_repo_la_thu_muc_con_van_tim_dung_worktree(
+    monkeypatch: pytest.MonkeyPatch, repo: Path, remote: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--repo` là thư mục con: worktree của ticket nằm cạnh GỐC repo, không cạnh thư mục con. Trước đây vị trí
+    worktree tính từ `--repo` nguyên văn (`repo.parent / ...`) trong khi `git worktree` tự dò lên gốc — lệnh
+    tìm worktree sai chỗ rồi `worktree add` lại đúng nhánh đang checkout ở worktree thật."""
+    tid = _ticket_du_cong(repo)
+    wt = open_worktree(tid, repo=repo)
+    _commit_dong_changelog(wt.path, tid)
+    con = repo / "docs"
+    con.mkdir()
+    spy = _RunSpy(script=[(0, "https://github.com/o/r/pull/9\n", "")], calls=[])
+    monkeypatch.setattr(publish_mod.subprocess, "run", spy)
+
+    code = main(["publish", "--db", str(repo.parent / "keeper.sqlite"), "--repo", str(con), tid])
+
+    assert code == 0
+    assert "PR #9" in capsys.readouterr().out
+
+
+def test_publish_qua_cli_repo_la_thu_muc_con_khong_ghi_gi_vao_checkout_chung(repo: Path) -> None:
+    """I1: nhánh ticket chưa có thì `open_worktree` dựng worktree MỚI — trước đây ở `<thư mục con>.parent`, tức
+    ngay TRONG checkout chung (thư mục lạ mà `drift-detector` quét phải ở vòng sau), trước cả khi biết ticket có
+    release-notes hay không."""
+    con = repo / "docs"
+    con.mkdir()
+
+    code = main(["publish", "--db", str(repo.parent / "keeper.sqlite"), "--repo", str(con), "KEEP:khong-co"])
+
+    assert code == 2
+    assert _git(repo, "status", "--porcelain", "--untracked-files=all") == ""
+
+
 def test_publish_qua_cli_lan_hai_bao_da_publish(
     monkeypatch: pytest.MonkeyPatch, repo: Path, remote: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

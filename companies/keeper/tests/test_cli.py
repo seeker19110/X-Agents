@@ -9,11 +9,13 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
 from keeper.cli import Plan, main, plan_for
+from keeper.drift import CHANGELOG_RULE_CUTOFF
 from keeper.events import Signal, Ticket
 
 
@@ -154,6 +156,18 @@ def test_chieu_nguoc_cung_lenh_do_tren_worktree_phu_thi_GHI_THAT(root: Path, tmp
     assert "T-doc" in (root / "CHANGELOG.md").read_text(encoding="utf-8")
 
 
+def test_run_root_la_thu_muc_con_cua_worktree_ghi_tu_goc_worktree(root: Path, tmp_path: Path):
+    """`--root` trỏ vào thư mục con của worktree phụ: đường dẫn trong ticket là đường dẫn repo, nên patch phải
+    rơi vào đúng chỗ tính từ GỐC worktree. Chốt `refuse_shared_checkout` hỏi git (git tự dò lên gốc, nên qua) —
+    file thì trước đây ghép từ `--root` nguyên văn, và lệnh ghi một `CHANGELOG.md` lạc vào thư mục con."""
+    f = tmp_path / "t3.json"
+    f.write_text(json.dumps([_ticket("T-doc", "CHANGELOG.md")]), encoding="utf-8")
+    con = root / "docs" / "sessions"
+    assert main(["run", "--tickets", str(f), "--root", str(con)]) == 0
+    assert "T-doc" in (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert not (con / "CHANGELOG.md").exists()
+
+
 # ---------- CHẶN-4: đường cho NGƯỜI duyệt gate (`keeper gate`) ----------
 
 @pytest.fixture
@@ -283,3 +297,26 @@ def test_drift_co_tin_hieu_thi_thoat_1_va_in_ra(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert "DRIFT sc-foo.md" in out
     assert "1 tín hiệu lệch" in out
+
+
+def test_drift_tu_thu_muc_con_ra_dung_ket_qua_nhu_o_goc(tmp_path: Path, capsys):
+    """`--repo` là thư mục con (mặc định `.` khi đứng ở `companies/keeper`) phải soi đúng repo như ở gốc.
+
+    Trước đây `git log` tự dò lên gốc còn mọi đường dẫn file ghép từ `--repo` nguyên văn. Đo 2026-09-28 từ
+    `companies/keeper`: 200 tín hiệu "thiếu dòng CHANGELOG" giả, còn ba phép kia lặng lẽ không soi gì. Ca này
+    có đủ hai chiều hỏng: một lệch THẬT chỉ phép (a) thấy (mất nó là âm tính giả) và một PR ĐÃ có
+    dòng CHANGELOG (báo thiếu là dương tính giả)."""
+    repo = _repo_sach(tmp_path)
+    (repo / ".claude" / "agents" / "sc-foo.md").write_text(
+        "<!-- SINH TỰ ĐỘNG từ agents/supervision/foo.md version=1 -->\n", encoding="utf-8")
+    (repo / "CHANGELOG.md").write_text("# Changelog\n\n- feat: x (#7)\n", encoding="utf-8")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "add", "-A")
+    ngay = (CHANGELOG_RULE_CUTOFF + timedelta(days=1)).isoformat()
+    _git(repo, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "feat: x (#7)", "--date", ngay)
+
+    assert main(["drift", "--repo", str(repo)]) == 1
+    o_goc = capsys.readouterr().out
+    assert "DRIFT sc-foo.md" in o_goc and "pr-7" not in o_goc
+    assert main(["drift", "--repo", str(repo / "companies" / "software-company")]) == 1
+    assert capsys.readouterr().out == o_goc
