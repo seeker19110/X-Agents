@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- docs(sessions): **nhật ký 2026-09-28 ghi #367, #368, #369 đã merge và diễn biến CI của #369**. Ba dòng "Đang
+- docs(sessions): **nhật ký 2026-09-28 ghi #367, #368, #369 đã merge và diễn biến CI của #369** (#370). Ba dòng "Đang
   mở" chỉ nối đuôi `main@<sha>` và run CI trên `main` sau merge, không sửa chữ đã ghi. CI của #369 đo lại từ log
   job: `console-unit (ubuntu-latest, 3.11)` và `eval-replay` đỏ ở `uv sync --locked` vì PyPI trả 503, trước khi
   test nào chạy; `metadata` đỏ tới khi thân PR tick ô DoD dòng CHANGELOG — cổng đọc thân PR từ payload sự kiện,
