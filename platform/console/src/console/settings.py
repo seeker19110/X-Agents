@@ -111,11 +111,10 @@ def _atomic_write(path: Path, data: dict[str, Any]) -> None:
     # tmp và .bak tạo theo umask (thường 0644); `os.replace` thì mang quyền của tmp sang — llm.yaml 0600 (có khoá)
     # sẽ thành đọc-được-cho-mọi-người. Giữ đúng quyền của file gốc cho cả hai.
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
-    backup = path.with_suffix(path.suffix + ".bak")
-    if path.exists():
+    if mode is not None:   # chưa có file gốc thì không có gì để sao lưu
+        backup = path.with_suffix(path.suffix + ".bak")
         backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-        if mode is not None:
-            os.chmod(backup, mode)
+        os.chmod(backup, mode)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
     if mode is not None:
@@ -214,5 +213,8 @@ def update_settings(
         routing.pop("prefer", None)
     if routing:
         data["routing"] = routing
+    else:
+        # `routing` là BẢN SAO: rỗng mà để nguyên thì file giữ `routing` cũ — `prefer` trỏ vào backend vừa tắt.
+        data.pop("routing", None)
     _atomic_write(path, data)
     return {"ok": True, "changes": changes, "path": str(path), "backup": str(path) + ".bak"}

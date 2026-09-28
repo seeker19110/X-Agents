@@ -58,8 +58,9 @@ vào `needs` của nó**, nếu không kết quả của job đó không đượ
 
 Ngưỡng coverage nằm trong `pyproject.toml`: `fail_under = 100` ở **cả năm** package (software-company,
 gateway, console, xagents-core, keeper). Nó đặt ở mức đang đạt được để chặn tụt lùi — nâng lên
-khi coverage thật tăng, đừng hạ xuống để PR qua cổng. Lưu ý: 100 này là phủ **dòng**; không package nào bật
-`branch = true`, nên nhánh chưa được cổng nào chặn (đo 2026-09-09: 198/4966 nhánh chưa phủ).
+khi coverage thật tăng, đừng hạ xuống để PR qua cổng. 100 này là phủ **dòng VÀ nhánh**: cả năm package bật
+`branch = true` (gateway và console bật sau cùng, audit 2026-09-27/28 #366; đo 2026-09-09 còn 198/4966 nhánh chưa
+phủ). Sổ `CHUA_PHU_NHANH` trong `platform/console/tests/test_cong_repo.py` canh việc một package lặng lẽ tắt nó.
 
 ## 3. Sửa `agents/` hoặc `skills/` — checklist bắt buộc
 

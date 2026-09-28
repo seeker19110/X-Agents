@@ -534,13 +534,17 @@ def cmd_models(args: argparse.Namespace) -> int:
     return 1 if (problems or dead) else 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    # Console Windows mặc định cp1252 không in được tiếng Việt.
-    for stream in (sys.stdout, sys.stderr):
+def _utf8_stdio(*streams: Any) -> None:
+    """Console Windows mặc định cp1252 không in được tiếng Việt: đổi sang UTF-8 những stream cho đổi."""
+    for stream in streams:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
             with contextlib.suppress(Exception):
                 reconfigure(encoding="utf-8", errors="replace")
+
+
+def main(argv: list[str] | None = None) -> int:
+    _utf8_stdio(sys.stdout, sys.stderr)
     parser = argparse.ArgumentParser(prog="gateway", description="Proxy xoay vòng tài khoản Antigravity")
     sub = parser.add_subparsers(dest="action", required=True)
 

@@ -56,7 +56,9 @@ tính giả** — "ba package" ở `README.md:134` nghĩa là *ba trong số cá
   đã **lỗi thời** từ 2026-09-12; sửa nó là việc của phiên audit kế tiếp, ghi ở "Việc để lại".
 - Sau PR này, ba trong bốn lối thoát khỏi `fail_under = 100` có trần, và độ sâu của chính `fail_under` có sổ.
 - Khoảng cách thật còn lại: `gateway` và `console` bật `branch = true`. Sổ mới làm việc đó **nhìn thấy được**
-  thay vì nằm trong một comment ở `companies/keeper/pyproject.toml`.
+  thay vì nằm trong một comment ở `companies/keeper/pyproject.toml`. **Đã đóng 2026-09-28 (#366)**: cả hai bật,
+  sổ `CHUA_PHU_NHANH` rỗng; `# pragma: no branch` được đếm chung trần `TRAN_PRAGMA`
+  (`docs/reports/2026-09-27-audit-hoan-thien.md` F-C, F-E).
 
 ## Liên quan
 

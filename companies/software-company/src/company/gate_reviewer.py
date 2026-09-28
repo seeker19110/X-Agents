@@ -300,8 +300,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"khoá bí mật: {path}\nregistry: {ns.registry or registry_path()}")
         return 0
     from .gate_cli import PersistentGate  # nhập lười: gate_cli nhập module này cho nhánh tin cậy
-    from .sqlite_bus import SQLiteBus
+    from .sqlite_bus import SQLiteBus, missing_bus
 
+    if loi := missing_bus(ns.db):  # họ B3: quyết gate cần bus ĐÃ CÓ — không để lại bus rỗng ở sai thư mục
+        print(loi, file=sys.stderr)
+        return 2
     bus = SQLiteBus(ns.db)
     try:
         key = ns.key or DEFAULT_KEY_DIR / f"{_principal(ns.id).removeprefix(PREFIX)}.pem"

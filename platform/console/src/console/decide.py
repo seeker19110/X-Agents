@@ -13,6 +13,7 @@ from company import gate_cli as company_gate_cli
 from company.gates import Decision as CompanyDecision
 from company.gates import gate_approvers as company_gate_approvers
 from company.sqlite_bus import SQLiteBus as CompanyBus
+from xagents_core.bus import is_human
 
 COMPANY = "software-company"
 KEEPER = "keeper"
@@ -66,6 +67,13 @@ def decide(company_db: Path | None, keeper_db: Path | None = None, *,
         raise ValueError("thiếu subject_id")
     if not by.strip():
         raise ValueError("thiếu người duyệt (`by`)")
+    if not is_human(by):
+        # Audit 2026-09-27 (F-A): ô "Bạn là" là chữ tự do. `by` không hình người thì bản ghi hoặc bị ACL bus của
+        # company chặn bằng `PermissionDenied` (không phải `PermissionError` ⇒ HTTP 500), hoặc lọt bus (`reviewer:*`,
+        # `orchestrator`, mọi tên ở keeper) rồi bị `trusted_decision` bỏ ở mọi tiến trình khác — trả `ok` mà gate
+        # vẫn chờ. Reviewer có chữ ký đi `company.gate_reviewer`, không qua console.
+        raise ValueError(f"người duyệt {by!r} không phải người (`human` / `human:<tên>`) — "
+                         "console chỉ ghi quyết định của người")
     if db is None or not Path(db).exists():
         raise GateError(f"chưa có file DB của {xuong}: {db or '(chưa cấu hình)'}")
 

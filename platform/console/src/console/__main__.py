@@ -143,13 +143,17 @@ def start_gateway() -> int:
     return subprocess.run([sys.executable, "-m", "gateway", "start"], check=False).returncode
 
 
-def main(argv: list[str] | None = None) -> int:
-    # Console Windows mặc định cp1252 không in được tiếng Việt.
-    for stream in (sys.stdout, sys.stderr):
+def _utf8_stdio(*streams: object) -> None:
+    """Console Windows mặc định cp1252 không in được tiếng Việt: đổi sang UTF-8 những stream cho đổi."""
+    for stream in streams:
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
             with contextlib.suppress(Exception):
                 reconfigure(encoding="utf-8", errors="replace")
+
+
+def main(argv: list[str] | None = None) -> int:
+    _utf8_stdio(sys.stdout, sys.stderr)
     if argv is None:
         argv = sys.argv[1:]
     if argv and argv[0] == "models":

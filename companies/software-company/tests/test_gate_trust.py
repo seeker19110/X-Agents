@@ -150,6 +150,37 @@ def test_cli_request_bao_loi_quyen_thay_vi_traceback(tmp_path, capsys):
     assert rc == 3 and "không có quyền tạo gate" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("by", ["reviewer:x", "orchestrator", "pm"])
+def test_cli_quyet_gate_voi_by_khong_phai_nguoi_bao_loi_va_gate_van_cho(tmp_path, capsys, by):
+    """`gate_cli <quyết định> --by` là đường của NGƯỜI (audit 2026-09-27, F-A). Trước bản vá: `reviewer:x` (không
+    chữ ký) và `orchestrator` (gate không phải `UAT-*`) in "approve by …" rồi thoát 0, nhưng mọi tiến trình khác
+    bỏ bản ghi (`_trusted` → None) nên gate vẫn chờ; `pm` (quên tiền tố `human:`) nổ traceback `PermissionDenied`
+    từ ACL bus. Keeper CLI chặn đúng chỗ này từ đầu (`keeper/cli.py` `_gate`)."""
+    from company.gate_cli import main as gate_main
+    from company.sqlite_bus import SQLiteBus
+
+    db = tmp_path / "c.sqlite"
+    assert gate_main(["--db", str(db), "request", "release", "REL-1", "--by", "delivery-lead", "--checklist", "t"]) == 0
+    assert gate_main(["--db", str(db), "approve", "REL-1", "--by", by, "--reason", "ok"]) == 3
+    assert "không phải người" in capsys.readouterr().err
+    bus = SQLiteBus(db)
+    try:
+        assert "REL-1" in PersistentGate(bus).pending
+        assert not any(e.payload.get("action") == "gate.decide" for e in bus.replay(topic="audit-log"))
+    finally:
+        bus.close()
+
+
+def test_cli_four_eyes_van_ap_khi_nguoi_tu_duyet_gate_minh_mo(tmp_path, capsys):
+    """Sau chốt F-A, `by` tới được `gate.decide` luôn là người — four-eyes của người vẫn trả 3 kèm lý do."""
+    from company.gate_cli import main as gate_main
+
+    db = str(tmp_path / "c.sqlite")
+    assert gate_main(["--db", db, "request", "release", "REL-1", "--by", "human:lead", "--checklist", "t"]) == 0
+    assert gate_main(["--db", db, "approve", "REL-1", "--by", "human:lead", "--reason", "tự duyệt"]) == 3
+    assert "four-eyes" in capsys.readouterr().err
+
+
 def test_gate_cu_do_vai_truoc_adr_0037_tao_van_dung_lai_duoc():
     """Đo trên `company.sqlite` thật (18293 event, 2026-09-09): 33 gate `gate.request` mang actor cũ
     `release-engineer`/`account-manager`/`spec-writer`. Allowlist ADR-0008 mà bỏ nhóm này thì mỗi lần mở bus,

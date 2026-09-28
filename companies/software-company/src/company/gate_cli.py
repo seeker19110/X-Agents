@@ -203,6 +203,12 @@ def main(argv: list[str] | None = None) -> int:
         except PermissionError as e:
             print(str(e), file=sys.stderr); return 3
         print(f"requested {ns.kind} {ns.subject_id}"); return 0
+    # Đường của NGƯỜI (audit 2026-09-27, F-A): `by` không hình người thì bản ghi hoặc bị ACL bus chặn (traceback),
+    # hoặc lọt bus (`reviewer:*`, `orchestrator`) rồi bị `_trusted` bỏ ở mọi tiến trình khác — in "approve" mà gate
+    # vẫn chờ. Chặn TRƯỚC `_pin_profile` (bước đầu có ghi đĩa); cùng chốt với `keeper gate` (`keeper/cli.py`).
+    if not is_human(ns.by):
+        print(f"{ns.by} không phải người (`human` / `human:<tên>`) — gate_cli chỉ ghi quyết định của người; reviewer "
+              "có chữ ký dùng `python -m company.gate_reviewer decide` (ADR gốc 0024)", file=sys.stderr); return 3
     bar: dict[str, str] | None = None
     if ns.quality_bar:
         # Kiểm TRƯỚC khi ký: mức nâng hỏng thì spec chưa ký — không để một chữ ký spec đi kèm mức nâng không ghi được.

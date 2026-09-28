@@ -192,12 +192,12 @@ Triển khai VPS: copy file token từ máy cá nhân lên, chạy `make start`;
 
 ```bash
 make lint
-make test        # 274 ca (271 chạy, 3 skip quyền file POSIX trên Windows), không gọi mạng: httpx MockTransport + aiohttp TestClient
+make test        # 297 ca (Windows skip 3: 2 quyền file POSIX + 1 `/proc` chỉ có trên Linux), không gọi mạng: httpx MockTransport + aiohttp TestClient
 ```
 
 ## Tài liệu
 
-Bộ khung 4 file cùng cấu trúc với ba package kia, cộng ADR:
+Bộ khung 4 file cùng cấu trúc với bốn package kia, cộng ADR:
 
 | File | Trả lời câu gì |
 |---|---|

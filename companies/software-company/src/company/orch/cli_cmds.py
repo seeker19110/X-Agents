@@ -44,6 +44,8 @@ def publish(bus: SQLiteBus, ns: argparse.Namespace) -> int:
 
 def decide_change(bus: SQLiteBus, ns: argparse.Namespace) -> int:
     from ..orchestrator import _evidence
+    if not is_human(ns.by):  # quyết định của khách (audit 2026-09-27 F-A): `--by ops` lọt ACL bus, vai khác nổ traceback
+        print(f"--by phải là người (human:<tên>), không phải {ns.by!r}", file=sys.stderr); return 2
     cr = next(reversed(list(bus.replay(topic="change-requests", key=ns.change_id))), None)
     if cr is None: print(f"không có change-request {ns.change_id}", file=sys.stderr); return 2
     impact = next((_evidence(e.payload) for e in reversed(list(bus.replay(topic="audit-log")))

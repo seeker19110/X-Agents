@@ -13,7 +13,7 @@ thêm OTel làm dep bắt buộc là nâng core lên 4 dep cho một tính năng
 và lùi về `NullSink` khi thiếu gói (quyết định 4).
 
 **Vì sao `sink=None` phải yield `None` chứ không phải một `Span` bị vứt đi.** Mặc định tắt là điều kiện để ghép
-span vào đường nóng của cả sáu package mà không phải bọc mỗi chỗ ghép bằng một cờ cấu hình riêng (quyết định 5).
+span vào đường nóng của mọi package mà không phải bọc mỗi chỗ ghép bằng một cờ cấu hình riêng (quyết định 5).
 "Tắt" ở đây nghĩa là **không cấp phát, không đọc đồng hồ, không gọi sink** — nên chỗ gọi phải chịu được `None`
 (`if sp is not None: sp.attrs[...] = ...`). Test `test_sink_none_la_no_op_that_su` chứng minh bằng cách cho
 `_now_ns` ném ngoại lệ; một bản "vẫn tạo Span rồi bỏ" sẽ đỏ ở đó.

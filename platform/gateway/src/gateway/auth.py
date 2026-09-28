@@ -233,14 +233,13 @@ class AntigravityAuthManager:
                 json.dump(data, f, indent=2)
             if os.name != "nt":
                 os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)
-            for attempt in range(1, REPLACE_ATTEMPTS + 1):
+            for attempt in range(1, REPLACE_ATTEMPTS):
                 try:
                     os.replace(tmp_path, path)
-                    break
+                    return
                 except PermissionError:
-                    if attempt == REPLACE_ATTEMPTS:
-                        raise
                     time.sleep(REPLACE_BACKOFF_SECONDS * attempt)
+            os.replace(tmp_path, path)  # lần thử cuối: vẫn bị khoá thì lỗi đi ra `except` dưới, file tạm được dọn
         except Exception:
             with contextlib.suppress(OSError):
                 tmp_path.unlink(missing_ok=True)

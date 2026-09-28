@@ -164,6 +164,46 @@ def test_no_op_update_does_not_rewrite_the_file(llm):
     assert llm.read_text(encoding="utf-8") == before   # giữ nguyên chú thích, không dump lại YAML
 
 
+
+def test_tat_backend_uu_tien_khi_routing_chi_co_prefer_khong_de_lai_prefer_cu(tmp_path, monkeypatch):
+    """Audit 2026-09-28 (#366), lộ ra khi bật phủ nhánh: `routing` chỉ có `prefer` → bỏ mục trỏ vào backend vừa
+    tắt làm `routing` rỗng, mà `if routing:` bỏ qua phép gán nên file vẫn ghi bản `routing` CŨ — `prefer` trỏ
+    vào backend đã tắt (router chọn hụt), trong khi `changes` báo "bỏ ưu tiên"."""
+    monkeypatch.setattr(settings, "gateway_catalog", lambda *a, **k: [])
+    path = tmp_path / "llm.yaml"
+    path.write_text(
+        "backends:\n"
+        "  - {name: a, provider: openai, models: {standard: m1}}\n"
+        "  - {name: b, provider: openai, models: {standard: m2}}\n"
+        "routing:\n"
+        "  prefer: {standard: b}\n",
+        encoding="utf-8",
+    )
+    result = settings.update_settings(path, disable=["b"])
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "bỏ ưu tiên standard (backend đã tắt)" in result["changes"]
+    assert "prefer" not in (data.get("routing") or {})
+    assert settings.read_settings({"c": path})["companies"]["c"]["prefer"] == {}
+
+
+def test_tat_backend_da_tat_la_khong_doi_gi(llm):
+    """Tắt lại một backend đã nằm trong `disabled_backends`: không đổi gì, không ghi lại file (giữ chú thích)."""
+    settings.update_settings(llm, disable=["antigravity"])
+    before = llm.read_text(encoding="utf-8")
+    result = settings.update_settings(llm, disable=["antigravity"])
+    assert result["changes"] == [] and result["backup"] is None
+    assert llm.read_text(encoding="utf-8") == before
+
+
+def test_ghi_nguyen_tu_file_chua_co_khong_tao_bak(tmp_path):
+    """`_atomic_write` lên đường dẫn chưa có file (llm.yaml bị xoá giữa lúc đọc và lúc ghi): ghi mới, không
+    để `.bak` rỗng giả làm bản sao lưu, không sót file `.tmp`."""
+    path = tmp_path / "llm.yaml"
+    settings._atomic_write(path, {"backends": []})
+    assert yaml.safe_load(path.read_text(encoding="utf-8")) == {"backends": []}
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["llm.yaml"]
+
+
 # ---------- CLI `python -m console models` ----------
 
 def _cli(monkeypatch, llm_path, argv):

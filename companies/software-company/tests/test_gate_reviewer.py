@@ -332,6 +332,19 @@ def test_cli_init_key_roi_decide_tren_bus_that(tmp_path, monkeypatch, capsys):
     assert "T1" in capsys.readouterr().err
 
 
+def test_cli_decide_khong_tao_bus_moi_khi_sai_duong_dan(tmp_path, monkeypatch, capsys):
+    """Họ lỗi B3 (audit 2026-09-27, F-B): `decide` chỉ quyết gate trên bus ĐÃ CÓ. Trước bản vá, `--db` trỏ chỗ chưa có
+    file (mặc định `company.sqlite` theo cwd) thì `SQLiteBus` tạo một bus rỗng ở đó rồi mới từ chối — file lạ ấy
+    làm `gate_cli list` chạy sau ở cùng thư mục in "không có gate chờ" thay vì báo sai thư mục."""
+    monkeypatch.setenv(gr.FLAG_ENV, "1")
+    db, b = tmp_path / "company.sqlite", tmp_path / "b.json"
+    b.write_text("{}", encoding="utf-8")
+    argv = ["--db", str(db), "decide", "T1", "--id", "doc-lap", "--reason", LY_DO, "--brief", str(b)]
+    assert gr.main(argv) == 2
+    assert not db.exists()
+    assert "chưa có file bus" in capsys.readouterr().err
+
+
 # ---------- đường hỏng: không tin, không ghi ----------
 
 

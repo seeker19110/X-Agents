@@ -393,7 +393,7 @@ def test_gate_cli_roundtrip(tmp_path, capsys):
     assert gate_main(["--db", db, "request", "spec", "SPEC-1", "--by", "product", "--checklist", "prd,ac"]) == 0
     assert gate_main(["--db", db, "list"]) == 0
     assert "SPEC-1" in capsys.readouterr().out
-    assert gate_main(["--db", db, "approve", "SPEC-1", "--by", "product"]) == 3, "four-eyes"
+    assert gate_main(["--db", db, "approve", "SPEC-1", "--by", "product"]) == 3, "vai tạo gate không phải người (F-A)"
     assert gate_main(["--db", db, "approve", "SPEC-1", "--by", "human:po", "--reason", "ok"]) == 0
     assert gate_main(["--db", db, "approve", "SPEC-1", "--by", "human:po"]) == 2, "không còn chờ"
     assert PersistentGate(SQLiteBus(db)).is_approved("SPEC-1")

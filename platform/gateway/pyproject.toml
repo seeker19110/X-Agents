@@ -47,9 +47,11 @@ warn_unused_ignores = true
 [tool.coverage.run]
 source = ["src/gateway"]
 omit = ["src/gateway/__main__.py"]   # chỉ gọi main(); chạy bằng process thật, không đo được trong pytest
+# Phủ nhánh (`docs/TASK-PACK.md` A6): bật ở audit 2026-09-27 (#366) sau khi phủ 27 nhánh còn thiếu.
+branch = true
 
 [tool.coverage.report]
-# Cả năm package phủ 100% dòng (gateway đo DÒNG, không đo nhánh): ngưỡng bằng đúng mức đạt được, nên mất một dòng phủ là CI đỏ.
+# Cả năm package phủ 100% dòng + nhánh: ngưỡng bằng đúng mức đạt được, nên mất một dòng hay một nhánh là CI đỏ.
 # Nhánh phụ thuộc nền tảng (os.name == "nt", AF_INET6) được test bằng cách thay socket/ctypes, không bằng môi trường.
 fail_under = 100
 show_missing = true
