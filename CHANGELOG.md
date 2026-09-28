@@ -13,7 +13,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   ticket chưa có, dựng worktree mới ngay trong checkout chung (I1). `worktree.repo_root()`
   (`git rev-parse --show-toplevel`; không phải repo git thì giữ nguyên) ở cửa vào cả ba lệnh. Bốn test mới đỏ trên
   code cũ → xanh; đột biến từng dòng về bản cũ → đúng test của dòng đó đỏ. Rà họ: `watch` an toàn;
-  `scout.scan`/`health.scan` tiềm ẩn, chưa có chỗ gọi — ghi ở `companies/keeper/TRAPS.md`.
+  `scout.scan`/`health.scan` tiềm ẩn, chưa có chỗ gọi — ghi ở `companies/keeper/TRAPS.md` (#369).
 - fix(khung): **ba hook Claude Code sống lại trên Linux/macOS và hết lọt cổng; quy trình một lệnh cổng; tài liệu
   khớp code, có cổng canh; core lọc cấu hình LLM của keeper khỏi lệnh con**. Hook: `.claude/hooks/*.sh` mode `100644` (commit từ Windows), `settings.json` gọi thẳng đường dẫn nên `sh`
   trả 126 "Permission denied" — Claude Code coi là lỗi không chặn, cả ba hàng rào chết im lặng ngoài Windows (đo trên
