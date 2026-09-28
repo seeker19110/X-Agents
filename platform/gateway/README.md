@@ -32,14 +32,14 @@ Stream chỉ xoay tài khoản **trước** chunk đầu tiên; `finish_reason` 
 ## Dùng nhanh
 
 ```bash
-cd gateway
+cd platform/gateway
 uv sync
 make login        # mở trình duyệt, đăng nhập Google; chạy lại để thêm tài khoản thứ 2, 3...   (login --no-browser: chỉ in URL, không mở trình duyệt)
 make start        # daemon tại 127.0.0.1:1123   (start --foreground/-f chạy tiền cảnh; --host/--port)
 make ready        # exit 0 nếu máy đã đăng nhập >= 1 tài khoản, exit 2 nếu chưa — `make llm` của hai công ty gác bằng lệnh này
 make status       # server + từng tài khoản: sẵn sàng / cooldown / hạn token; exit 1 nếu server tắt hoặc 0 tài khoản sẵn sàng
 make models       # model gateway hỗ trợ + đối chiếu llm.yaml (thêm --probe để gọi thử upstream)
-make setup        # ghi ../software-company/llm.yaml: provider openai, base_url trỏ gateway (--target, --strong, --standard)
+make setup        # ghi ../../companies/software-company/llm.yaml: provider openai, base_url trỏ gateway (--target, --strong, --standard)
 make fix          # ruff --fix
 ```
 
@@ -123,7 +123,7 @@ Không có `make`: `uv run python -m gateway <lệnh>`. OAuth loopback dùng c�
 (`/oauth-callback`), chờ tối đa 300s; máy VPS không có trình duyệt thì đăng nhập ở máy cá nhân rồi copy file token.
 
 `setup` chỉ ghi dạng **một provider** (`provider: openai`, `base_url`, `models.strong/standard`, `max_tokens`), không có tier
-`light` và không có `backends:`. Nếu `llm.yaml` đã dùng `backends:` (nhiều gói, xem `../docs/HUONG-DAN-VAN-HANH.md` §3.2) thì các
+`light` và không có `backends:`. Nếu `llm.yaml` đã dùng `backends:` (nhiều gói, xem `../../docs/HUONG-DAN-VAN-HANH.md` §3.2) thì các
 khoá `setup` ghi ra bị bỏ qua — khi đó khai gateway là một backend `antigravity` thay vì chạy `setup`.
 
 Rồi ở `software-company`:
@@ -207,7 +207,7 @@ Bộ khung 4 file cùng cấu trúc với bốn package kia, cộng ADR:
 | `ARCHITECTURE.md` | bản đồ bốn file nguồn, ranh giới vào/ra/đĩa với phần còn lại của hub |
 | `docs/adr/0001-xoay-vong-tai-khoan.md` | vì sao thứ tự tài khoản là bearer-rồi-LRU, hạn mức nghỉ theo mã lỗi, không retry |
 | `docs/adr/0002-giu-cong-va-daemon.md` | vì sao cổng 1123 loopback, daemon tách tiến trình, PID file + healthcheck thay lock |
-| `docs/adr/0003-ranh-gioi-bao-mat.md` | token nằm đâu, quyền 0600, cái gì được ra log/HTTP, ranh giới với `../SECURITY.md` |
+| `docs/adr/0003-ranh-gioi-bao-mat.md` | token nằm đâu, quyền 0600, cái gì được ra log/HTTP, ranh giới với `../../SECURITY.md` |
 | `docs/adr/0004-ranh-gioi-dieu-khoan.md` | vì sao repo KHÔNG hứa dùng nhiều tài khoản là hợp lệ, vì sao không cảnh báo lúc chạy, ai chịu rủi ro |
 
 Mọi số và tên trong các file trên dẫn `file:dòng` — đổi code thì đổi tài liệu cùng PR.

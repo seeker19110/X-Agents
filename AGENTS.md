@@ -170,7 +170,7 @@ Luật cấm 1, 3, 6 và luật bắt buộc 3 ở trên **có cơ chế chặn*
 | Hook | Chặn gì |
 |---|---|
 | `block-dangerous-git.sh` | `git push` (kể cả force) vào `main`/`master`; `reset --hard`; `merge\|rebase\|cherry-pick --abort` |
-| `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · diff hạ `fail_under` · cổng của gói bị đụng đỏ |
+| `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · diff hạ `fail_under` · cổng đỏ ở gói bị đụng, gói import nó, hoặc console (luôn chạy, kể cả commit chỉ sửa tài liệu) |
 | `auto-format.sh` | (không chặn) format file vừa sửa qua `dev-task.sh format-file` — chỉ khi bản trong index vốn đã sạch `ruff format` hoặc file mới chưa track |
 
 Đường thoát tường minh: `ALLOW_DANGEROUS_GIT=1`, hoặc `--no-verify` trong lệnh commit — dùng thì **phải nói rõ

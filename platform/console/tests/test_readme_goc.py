@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -46,9 +47,11 @@ def test_so_adr_khop_dia() -> None:
 # Dòng treo từ 2026-09-07 trong `docs/TASK-PACK.md`: cổng cũ chỉ canh software-company, nên dãy ADR của
 # console lệch (README ghi 0001–0003 khi đĩa có 4) sống được 5 ngày mà không gì đỏ. Repo có BỐN dãy ADR cùng
 # đánh số từ 0001, canh một dãy là bỏ ba.
+# `[^\n]*?` chứ không `.*?` + `re.S`: đo 2026-09-28, dòng gateway KHÔNG khai dãy ADR nào mà phép vẫn xanh — nó trượt
+# xuống dòng console bên dưới và mượn "ADR 0001–0004" của console (hai dãy tình cờ cùng dài). Phải đọc trong đúng dòng.
 DAY_ADR = {
-    "platform/console": r"\[`platform/console/`\].*?ADR (\d{4})–(\d{4})",
-    "platform/gateway": r"\[`platform/gateway/`\].*?ADR (\d{4})–(\d{4})",
+    "platform/console": r"\[`platform/console/`\][^\n]*?ADR (\d{4})–(\d{4})",
+    "platform/gateway": r"\[`platform/gateway/`\][^\n]*?ADR (\d{4})–(\d{4})",
 }
 
 
@@ -109,6 +112,25 @@ def test_so_test_trong_readme_khop_dia() -> None:
         + repr(lech)
         + " — sửa README trong CÙNG PR làm số đổi, đừng để lại cho phiên audit."
     )
+
+
+def test_fail_under_trong_readme_khop_pyproject() -> None:
+    """Dòng `fail_under` của README gốc khớp `pyproject.toml` từng gói — đo 2026-09-05 nó ghi 90 cho công ty khi
+    pyproject đã nâng lên 98.
+
+    Dời từ `test_review_fixes_2026_09.py` của software-company (2026-09-28): test ở company đọc README gốc thì commit
+    chỉ sửa README không chạy nó, vì hook chạy cổng gói bị đụng + console (`test_cong_khung.py` `TEST_DOC_NGOAI_GOI`).
+    """
+    dong = next((ln for ln in ROOT_README.read_text(encoding="utf-8").splitlines() if "`fail_under`" in ln), "")
+    m = re.search(r"`fail_under` ([\d /]+) cho ([\w\- /]+)", dong)
+    assert m, "README gốc phải ghi '`fail_under` a / b / … cho <gói> / <gói> …' trên một dòng"
+    khai = [int(x) for x in m.group(1).split("/")]
+    goi = [p.strip() for p in m.group(2).split(" / ")]  # tên gói có `/` (ADR-0011) → tách theo " / ", không "/"
+    assert len(khai) == len(goi), f"{len(khai)} ngưỡng nhưng {len(goi)} gói"
+    for so, ten in zip(khai, goi, strict=True):
+        cfg = tomllib.loads((ROOT / ten / "pyproject.toml").read_text(encoding="utf-8"))
+        that = cfg["tool"]["coverage"]["report"]["fail_under"]
+        assert so == that, f"README gốc ghi fail_under của {ten} là {so}, pyproject.toml nói {that}"
 
 
 # Dòng mở/đóng conflict của git — `=======` không đủ (bảng Markdown, gạch dưới tiêu đề Setext đều hợp lệ).

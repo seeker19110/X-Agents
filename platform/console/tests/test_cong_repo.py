@@ -214,28 +214,8 @@ def test_agents_md_khong_khai_khong_ve_bo_khung_package() -> None:
         f"Hoặc thêm file cho đủ, hoặc sửa câu khai cho đúng thực tế — không để câu sai nằm trong file luật.")
 
 
-PACKAGE_CLAUDE_MD = ("platform/gateway", "platform/console", "platform/xagents-core",
-                     "companies/software-company", "companies/keeper")
-_DAN_CHIEU_GOC = re.compile(r"(?:\.\./)+(AGENTS|TRAPS|CONTRIBUTING|CODEMAP|ARCHITECTURE)\.md")
-
-
-@pytest.mark.parametrize("pkg", PACKAGE_CLAUDE_MD)
-def test_claude_md_package_tro_dung_root_khong_lech_mot_cap(pkg: str) -> None:
-    """Ba `CLAUDE.md` cấp package (gateway/console/software-company) đều mở đầu "bổ sung `../AGENTS.md`" — số
-    dấu `../` đúng cho layout PHẲNG trước ADR-0011. Sau khi package dời vào `platform/`/`companies/` (#262),
-    một cấp `../` chỉ ra tới thư mục CHA (`platform/`), không tới gốc repo — dẫn chiếu chết y hệt lớp lỗi ở
-    `.pre-commit-config.yaml`/`CODEOWNERS`, chỉ khác là nằm trong văn xuôi backtick nên không cổng path-tồn-tại
-    chung nào bắt được. Đo 2026-09-12: cả ba file cùng mắc, sửa cùng lúc."""
-    text = (ROOT / pkg / "CLAUDE.md").read_text(encoding="utf-8")
-    hong = []
-    for m in _DAN_CHIEU_GOC.finditer(text):
-        cap = m.group(0).count("../")
-        duong = ROOT / pkg
-        for _ in range(cap):
-            duong = duong.parent
-        if not (duong / m.group(1)).with_suffix(".md").is_file():
-            hong.append(m.group(0))
-    assert not hong, f"{pkg}/CLAUDE.md dẫn chiếu chết (sai số cấp '../'): {hong}"
+# Dẫn chiếu `../` trong `CLAUDE.md` package (#275) nay canh chung với mọi tài liệu sống ở `test_cong_tai_lieu.py`:
+# cổng cũ chỉ đọc CLAUDE.md nên cùng họ lỗi sống tiếp ở TRAPS/README/ARCHITECTURE ngay bên cạnh.
 
 
 def test_moi_duong_dan_trong_codeowners_ton_tai() -> None:

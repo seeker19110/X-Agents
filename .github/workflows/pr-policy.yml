@@ -41,7 +41,7 @@ jobs:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: python3 scripts/pr_changelog_check.py
       # K8.3 kịch bản B. Đặc tả gốc viết "ADR-0037"; ở repo này ADR tách máy trạng thái là **ADR-0034**
-      # (chính ADR-0034 §"Hệ quả" đã ghi lại chỗ lệch số này) — không có file 0037, dùng số đúng.
+      # (chính ADR-0034 §"Hệ quả" đã ghi lại chỗ lệch số này). ADR-0037 của repo là việc khác (gộp agent), dùng 0034.
       # Chỉ soi PR `fix(` : `refactor(` là việc tách module theo đúng ADR, còn `fix(` là sửa HÀNH VI của máy
       # trạng thái — chỗ dễ lặng lẽ phá bảng chuyển nhất, và là chỗ người review cần biết đụng bảng nào.
       - name: PR `fix(` chạm orchestrator/orch phải dẫn ADR-0034

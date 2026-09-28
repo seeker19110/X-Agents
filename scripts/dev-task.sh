@@ -156,6 +156,8 @@ case "$TASK" in
     for buoc in lint typecheck test; do
       chay_task "$buoc" "$ARG" || { log "CỔNG ĐỎ ở bước: $buoc"; exit 1; }
     done
+    # Dry-run không chạy gì → không được báo XANH (luật cấm 8: chưa đo thì chưa được nói).
+    if [ "${DEV_TASK_DRY_RUN:-0}" = "1" ]; then log "dry-run: chỉ in lệnh, CHƯA chạy gì"; exit 0; fi
     log "cổng XANH (lint + typecheck + test)"
     exit 0
     ;;

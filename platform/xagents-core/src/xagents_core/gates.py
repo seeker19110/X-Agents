@@ -6,9 +6,9 @@ Cái KHÁC nhau là **vốn từ của miền**: `GateKind` của company là `s
 studio là `plan|publish|replies|escalation`; studio còn mang `triggered_by`. Nên `kind`/`decision` ở đây là
 `str` (lớp con thu hẹp thành Literal của mình, y như `Envelope.topic` ở K3.5a) và `GateRequest` là lớp cơ sở.
 
-`approvers()` tham số hoá TÊN BIẾN MÔI TRƯỜNG chứ không viết cứng `STUDIO_GATE_APPROVERS`: core không được
-biết tên công ty nào (ADR-0001 §2). Studio truyền `STUDIO_GATE_APPROVERS`, company truyền
-`COMPANY_GATE_APPROVERS`.
+`approvers()` tham số hoá TÊN BIẾN MÔI TRƯỜNG chứ không viết cứng tên nào: core không được biết tên công ty
+nào (ADR-0001 §2). Company truyền `COMPANY_GATE_APPROVERS`, keeper truyền `KEEPER_GATE_APPROVERS`
+(`CoreConfig.approvers_env`).
 """
 from __future__ import annotations
 

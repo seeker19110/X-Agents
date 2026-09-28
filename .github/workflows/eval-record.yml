@@ -7,6 +7,11 @@ name: eval-record
 # được bản ghi, và CI đỏ ở `eval-replay` mà họ không tự gỡ được.
 #
 # Chỉ chạy khi người có quyền bấm nút (`workflow_dispatch`) — KHÔNG chạy tự động mỗi PR: mỗi lượt là tiền thật.
+#
+# Chỉ `company`. Keeper ghi bằng `make eval-record AGENT=<id>` trong `companies/keeper`, trên máy có key: CLI eval
+# của nó khác ba chỗ, mà mỗi chỗ chỉ kiểm được bằng một lượt chạy thật (tốn tiền) — tiền tố `KEEPER_*` thay
+# `COMPANY_*`, không có `--jobs`, và `--record` thoát 1 khi có ca không đạt nên bước ghi đỏ trước khi kịp mở PR
+# (company thì không, K5.4). Nối keeper vào đây = sửa cả ba rồi ghi thật một lượt để chứng minh.
 
 on:
   workflow_dispatch:

@@ -4,15 +4,39 @@ Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Mỗi PR merge v�
 ngoặc, số PR ở cuối. Chi tiết và lý do nằm trong PR và ADR; ở đây chỉ trả lời "đã đổi gì, khi nào".
 Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là của sản phẩm khách, ADR-0027) — nhóm theo ngày.
 
-## Chưa phát hành — cầu nối template
-
-- feat(company): **cầu nối delivery hai chiều, offline và không cấp quyền**: xuất policy/schema từ native
-  DeliveryContract; kiểm bundle được pin độc lập, policy, toàn bộ AC và bytes spec trước khi trả contract.
-  Không đổi ApprovalLookup, receipt, journal, gate hay run đã đăng ký. Chi tiết và kết quả kiểm thử:
-  `docs/reports/2026-09-26-bidirectional-delivery-handoff.md` (#353).
-
 ## Chưa phát hành
 
+- fix(khung): **ba hook Claude Code sống lại trên Linux/macOS và hết lọt cổng; quy trình một lệnh cổng; tài liệu
+  khớp code, có cổng canh; core lọc cấu hình LLM của keeper khỏi lệnh con**. Hook: `.claude/hooks/*.sh` mode `100644` (commit từ Windows), `settings.json` gọi thẳng đường dẫn nên `sh`
+  trả 126 "Permission denied" — Claude Code coi là lỗi không chặn, cả ba hàng rào chết im lặng ngoài Windows (đo trên
+  phiên cloud Linux: commit 40 file đụng năm gói qua trong 6 giây, cổng năm gói mất 5 phút). Nay `100755`;
+  `test_cong_khung.py` canh mode của mọi hook khai trong `settings.json` — đỏ với ba hook `100644`, xanh sau
+  `chmod +x`. Cùng họ H6 của #365 (lần đó chỉ sửa `dev-task.sh`), ghi ở `TRAPS.md` §3. Quy trình:
+  `scripts/dev-task.sh gate <gói>` là lệnh cổng duy nhất trong `CONTRIBUTING.md`, `docs/QUY-TRINH-GIT.md`,
+  `README.md` và năm `CLAUDE.md` package (`make test` ở gốc không đo coverage — xanh ở đó chưa chắc xanh CI); mẫu PR
+  mang nguyên văn khối BÁO CÁO XÁC THỰC của `AGENTS.md` và ô CHANGELOG `(#n)`; `QUY-TRINH-GIT` §5 kể đủ bốn bước
+  của `metadata`; `CONTRIBUTING` §3 nói đúng khi nào eval đỏ (sàn `thresholds.yaml`; keeper đỏ cả ca `errored`).
+  `ARCHITECTURE.md` §CI kể đủ bốn workflow và 18 job (trước: 8/18), required check là `quality` + `metadata`. Cổng
+  mới `platform/console/tests/test_cong_tai_lieu.py` thay cổng `../` chỉ đọc `CLAUDE.md` của #275: link markdown và
+  dẫn chiếu `../` mở được, `cd` trỏ thư mục thật, `python -m` trỏ module chạy được, `CODEMAP.md` năm package gọi tên
+  mọi module, §CI kể đủ job, mẫu PR khớp `AGENTS.md`; `test_readme_goc` đọc dãy ADR trong đúng dòng (dòng gateway
+  từng mượn dãy của console). Sửa tài liệu lệch code: `python -m keeper …` (không có `__main__.py`) → `keeper.cli`,
+  `cd gateway`/`cd software-company` và `../TRAPS.md` sai cấp còn sót từ #262, 16 module thiếu trong CODEMAP, gate
+  `patch` và canary BT8 của keeper, tám màn + SSE của console, Studio và `STUDIO_*` đã rời repo, số file import
+  `xagents_core` đo lại (27/15/3). Đo hai chiều: cài lại bảy lỗi cũ → mỗi lỗi đỏ đúng một ca, gỡ ra → 12/12 xanh;
+  dòng gateway mất dãy ADR → regex mới đỏ, regex cũ xanh nhầm. Cổng pre-commit hết bốn lỗ (`TRAPS.md` §3): hook
+  chạy TRƯỚC lệnh nên `git add … && git commit` gõ một lần thì cả ba phép đọc index cũ; commit chỉ sửa tài liệu bỏ
+  qua mọi cổng; sửa core không chạy company/keeper; rename không kéo gói cũ. Nay lệnh tự stage thì xét cả thay đổi
+  chưa stage, cổng chạy gói bị đụng + gói import nó + console luôn, `--no-renames`; test dòng `fail_under` của README
+  dời từ software-company sang console. `DEV_TASK_DRY_RUN=1` hết in "cổng XANH" khi chưa chạy gì. Core:
+  `SECRET_ENV`/`cli_env` lọc `<PREFIX>_LLM_*` của mọi công ty theo hình (`sandbox.LLM_ENV`) thay bản liệt kê
+  `COMPANY_LLM|STUDIO_LLM` — `KEEPER_LLM_PROVIDER`/`KEEPER_LLM_BACKENDS` từng đi thẳng vào mọi lệnh con keeper chạy
+  bằng `clean_env()`; 5 ca đỏ → xanh, đột biến về bản liệt kê đỏ lại; core hết nhắc `STUDIO_*`/`studio/core.py` như
+  thứ đang có. Cổng tài liệu thêm "bảng không hàng nào thừa ô" (GitHub lặng lẽ bỏ ô thừa, `|` trong backtick cũng
+  tách ô): 6 hàng mất chữ ở `CODEMAP.md` software-company, `TRAPS.md`, `dac-ta-tro-ly-kiem-duyet.md`; ba đột biến bộ
+  lọc đều đỏ. `CONTRIBUTING` §3: `make eval-record AGENT=all --jobs 3` thật ra chạy `--jobs 1` (cờ của `make`) →
+  `JOBS=3`; `eval-record.yml` ghi vì sao chỉ nhận `company`. Docstring `console/submit.py` hết trỏ
+  `studio.orchestrator`, `KIEN-TRUC-4-LOP.md` trỏ đúng `loops.js` (#368).
 - refactor(audit): **dọn "Việc để lại" của audit hoàn thiện theo tiêu chí đơn giản + chất lượng** (chủ dự án giao
   phiên chính quyết, 2026-09-28). Gỡ ba lớp phòng thủ thừa của F-E: `if text:` ở gateway `client.py` (bộ lọc lúc nối
   `systemInstruction` đã lo, test mới ghim ca message system rỗng nằm giữa) và `getattr` + so `None` ở `_utf8_stdio`
@@ -48,6 +72,10 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 - fix(company): **ticket bị từ chối ở gate escalation vẫn `closed` sau khi mở lại bus** (#356). Khi chạy `close_escalated` đặt `closed`, nhưng `rehydrate` chỉ gọi `abandon` nên `ticket.blocked` cũ trong log thắng: ticket đã bỏ hiện `blocked`, chờ người duyệt lại. Test đỏ trước (`blocked` ≠ `closed`), đo hai chiều.
 - fix(company): **mở lại bus thì thi hành nốt lần duyệt escalation mà code trước #354 bỏ sót** (#355). Duyệt release / ticket `dispatched` khi event bị bỏ (`unhandled`) chưa được chạy lại và gate đã đóng: `rehydrate` coi lần duyệt đó là lệnh chạy lại chưa kịp chạy (khuôn `event.retried`, không ghi bus). Không phát lại khi dự án đã đi qua lần duyệt: release mà sau đó đã có RC mới (REL-003 duyệt 24/09, sau đó REL-004/005/007 — phát lại là deploy RC cũ đè staging), ticket đã đóng. Đo được 2026-09-26 trên CAMPUS-UNI: REL-007 duyệt 15:44, lượt QA hồi quy bị bỏ 13:42 nằm im, không gate, không watchdog. Test đỏ trước 5 ca, đo hai chiều.
 - fix(company): **duyệt escalation của ticket `dispatched` có event bị bỏ thì chạy lại đúng event `tasks` đó** (#354). Trước đây chỉ subject không phải ticket mới được `_retry_unhandled`; ticket mà lượt giao việc bị bỏ vì hoãn `transient:` quá trần chỉ được `resume` rồi nằm im tới watchdog "không hoạt động > 4h" mở gate mới cho cùng việc. Đo được 2026-09-26 trên CAMPUS-UNI: TCK-012/TCK-015 hết quota 13:13–13:43, duyệt 15:43, gate mở lại 15:48. Cùng họ ở nhánh release: duyệt escalation `REL-*` chỉ `_rerun_release` (ops `pending_human`), lượt QA hồi quy bị bỏ vì transient không ai chạy lại — REL-007 nằm im sau duyệt; nay thử thêm `_retry_unhandled`. Test đỏ trước 3 ca (ticket vẫn `dispatched` sau duyệt; cả khi restart giữa lỗi và duyệt; `unhandled[REL]` còn nguyên).
+- feat(company): **cầu nối delivery hai chiều, offline và không cấp quyền**: xuất policy/schema từ native
+  DeliveryContract; kiểm bundle được pin độc lập, policy, toàn bộ AC và bytes spec trước khi trả contract.
+  Không đổi ApprovalLookup, receipt, journal, gate hay run đã đăng ký. Chi tiết và kết quả kiểm thử:
+  `docs/reports/2026-09-26-bidirectional-delivery-handoff.md` (#353).
 - feat(claude): **auto-compact native ở cửa sổ 300000 token mỗi phiên, giữ trạng thái thi hành qua compact** (#352). `.claude/settings.json` bật `autoCompactEnabled` + `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `CLAUDE.md` thêm Compact Instructions, `docs/AUTO-COMPACT.md`, 7 test cấu hình offline ở console. Dòng này bổ sung vì `drift-check` đòi (bắt ở PR kế tiếp).
 
 - feat(company): **phiên chính quyết mọi gate trừ spec — phạm vi `rong` của reviewer có chữ ký** (#351). ADR gốc 0025 (Accepted, chủ dự án quyết 2026-09-26: *"phiên chính tự quyết định thay tôi làm hết mọi thứ, trừ duyệt spec ban đầu"*). `COMPANY_GATE_REVIEWER_SCOPE=rong`: reviewer `approve`/`reject` mọi gate — escalation (kể cả `REL-*`, nợ kiến trúc), release, acceptance — trừ `spec`, không trần; vẫn đường chữ ký Ed25519 của ADR gốc 0024, ký `reviewer:phien-chinh`, không bao giờ `human:*`. Nghiệm thu do reviewer duyệt đóng ticket như sàn ADR-0043 (`machine_acceptor`), khách ký khác `accepted` sau đó vẫn thắng. Bỏ biến = quay về S2, quyết định ngoài S2 thôi được tin khi replay. Test đỏ trước 8 ca + 1 ca vòng thật (ticket kẹt `released`); 7 đột biến đều bị giết.

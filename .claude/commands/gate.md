@@ -7,10 +7,12 @@ Mục tiêu: không bao giờ nói "xong" khi chưa có output lệnh vừa ch�
 
 ## Bước 1 — Xác định gói bị đụng (không chạy thừa, không chạy thiếu)
 
-`git status --short` + `git diff --cached --name-only`. Ánh xạ:
-`companies/software-company/`→`company` · `platform/gateway/`→`gateway` · `platform/console/`→`console` ·
-`platform/xagents-core/`→`core` · `companies/keeper/`→`keeper`.
-File ở **gốc** (`pyproject.toml`, `Makefile`, `.github/`) → `all`, không được chạy hẹp rồi báo xanh.
+`git status --short` + `git diff --cached --name-only`. Ánh xạ khớp `.claude/hooks/pre-commit-gate.sh`:
+`companies/software-company/`→`company` · `platform/gateway/`→`gateway` · `companies/keeper/`→`keeper` ·
+`platform/xagents-core/`→`core` + `company` + `keeper` (hai công ty import core) · `docs/integrations/`,
+`.claude/agents/`→`company` (test company đọc chúng). **Luôn thêm `console`**: nó giữ cổng cấp repo (README đếm
+test mọi gói, link tài liệu, hook, workflow, mẫu PR) — kể cả khi chỉ sửa tài liệu.
+File ở **gốc** không phải `.md` (`pyproject.toml`, `uv.lock`, `Makefile`) → `all`, không được chạy hẹp rồi báo xanh.
 
 ## Bước 2 — Chạy cổng, ĐỌC TOÀN BỘ output
 

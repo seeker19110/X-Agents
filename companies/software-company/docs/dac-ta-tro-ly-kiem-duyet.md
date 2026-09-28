@@ -63,8 +63,8 @@ không cần Claude Code; subagent chạy được cả khi hồ sơ chưa sinh 
 ### 4.1 CLI
 
 ```
-python -m company.subagents build [--out ../.claude/agents] [--only sc-qa]
-python -m company.subagents check [--out ../.claude/agents]     # exit 1 nếu lệch, in diff thống nhất
+python -m company.subagents build [--out ../../.claude/agents] [--only sc-qa]
+python -m company.subagents check [--out ../../.claude/agents]     # exit 1 nếu lệch, in diff thống nhất
 python -m company.subagents list                                # id nguồn -> file đích, version
 ```
 
@@ -191,7 +191,7 @@ và để trợ lý (phần C) đọc `facts` mà nhận xét. `verdict` **khôn
 |---|---|---|---|
 | NFR có số đo | `prd@latest` | Tách mục NFR, đếm dòng có ngưỡng/đơn vị (`ms`, `%`, `rps`, `p95`) | có |
 | Out-of-scope rõ | `prd` | Có heading "Out of scope"/"Ngoài phạm vi" và ≥ 1 mục | có |
-| PII đã phân loại; DPIA nếu cần | `prd`, `threat-model`, `RISK_TAGS` | Grep `pii|cá nhân|CCCD|email|số điện thoại` trong `prd`; đối chiếu có bảng phân loại dữ liệu; có ticket nào mang tag `pii` chưa | một phần → `unknown` kèm facts |
+| PII đã phân loại; DPIA nếu cần | `prd`, `threat-model`, `RISK_TAGS` | Grep `pii\|cá nhân\|CCCD\|email\|số điện thoại` trong `prd`; đối chiếu có bảng phân loại dữ liệu; có ticket nào mang tag `pii` chưa | một phần → `unknown` kèm facts |
 | Câu hỏi mở còn assumption đã ghi nhận | `clarification-questions` / `clarification-answers` | Đếm câu hỏi chưa có answer khớp `key` | có |
 
 ### 5.4 Nguồn bằng chứng — gate `plan`

@@ -65,7 +65,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng pha `intake` cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
-tests/         pytest 1988 ca / 107 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 1987 ca / 107 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng VÀ 100% nhánh, `branch = true` từ 2026-09-13)
@@ -85,7 +85,7 @@ và [`ADR gốc 0018`](../../docs/adr/0018-product-quality-execution-adapter.md)
 ## Chạy
 
 ```bash
-cd software-company
+cd companies/software-company
 uv sync                                   # tạo .venv từ pyproject.toml
 uv run pytest -q                          # hoặc: make test
 uv run python -m company.demo   # hoặc: make demo
@@ -99,7 +99,7 @@ uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng fail_under = 
 # Chạy model thật (provider bất kỳ). Cấu hình: cp llm.example.yaml llm.yaml rồi sửa, hoặc biến môi trường:
 #   COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://localhost:11434/v1 COMPANY_MODEL_STRONG=qwen2.5-coder:32b
 #   COMPANY_LLM_PROVIDER=anthropic COMPANY_MODEL_STRONG=claude-opus-5   (uv sync --extra anthropic)
-#   Qua gateway xoay vòng tài khoản Google Antigravity (../gateway: `make login && make start && make setup`
+#   Qua gateway xoay vòng tài khoản Google Antigravity (../../platform/gateway: `make login && make start && make setup`
 #   ghi sẵn llm.yaml): COMPANY_LLM_PROVIDER=openai COMPANY_LLM_BASE_URL=http://127.0.0.1:1123/v1 COMPANY_LLM_API_KEY=gateway-local
 #   Gói Claude Pro/Max trên máy (không key): COMPANY_LLM_PROVIDER=claude-code COMPANY_MODEL_STRONG=claude-opus-5
 #     mặc định không tool-use; muốn cả khối kỹ thuật chạy bằng gói này thì đặt `mcp_tools: true` (ADR-0024, giữ nguyên
@@ -111,7 +111,7 @@ uv run pytest -q --cov --cov-report=term  # make cov — ngưỡng fail_under = 
 #   models{strong,standard,light}, base_url, api_key | api_key_env, config_dir (CLAUDE_CONFIG_DIR / CODEX_HOME — nhiều tài
 #   khoản cùng gói), binary, effort, max_tokens, extra, supports_tools. COMPANY_LLM_BACKENDS=a,b lọc và sắp lại backend.
 #   Biến môi trường khác: COMPANY_LLM_RETRIES, COMPANY_MAX_INPUT_CHARS, COMPANY_BUDGET_USD, COMPANY_SEARCH_URL.
-#   Bảng agent → tier: ../docs/DIEU-PHOI-MODEL.md
+#   Bảng agent → tier: ../../docs/DIEU-PHOI-MODEL.md
 uv run python -m company.runner qa review-results input.json --db company.sqlite [--artifacts DIR]
 
 # Chạy tự động cả công ty (ADR-0007): orchestrator nối topic → agent → topic, dừng ở human gate / supervisor / khách
@@ -298,7 +298,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Sandbox container mặc định bật**: ba điểm chạy mã của khách (tool `run`, lint/test, lệnh khởi động smoke) đã
   đi qua `Sandbox` (ADR-0035) và `COMPANY_SANDBOX=container` cho mạng tắt + hạn mức, nhưng mặc định `auto` nên
   máy không có docker vẫn chạy `subprocess` — vẫn là mã của khách chạy bằng quyền người vận hành và thấy `HOME`.
-  `git` và CLI model không đi qua sandbox (lý do ở `../SECURITY.md`). Guard injection là lưới chắn theo mẫu,
+  `git` và CLI model không đi qua sandbox (lý do ở `../../SECURITY.md`). Guard injection là lưới chắn theo mẫu,
   không phải hàng rào.
 - **Thông báo** (email/chat/webhook) khi gate mở hay quá hạn; **giao diện UAT cho khách**; console chưa hiện hồ sơ
   `gate_brief` cạnh nút duyệt (mới có ở CLI và `/gate-brief`).

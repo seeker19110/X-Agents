@@ -280,8 +280,8 @@ Quy tắc cần nhớ:
 - Khối kỹ thuật của software-company (backend, frontend, mobile, database, platform, data) dùng tool-use, nên **tự bỏ
   qua backend `claude-code` và `codex`** và đi antigravity. Muốn code bằng Claude thì để `claude-sonnet-4-6` ở antigravity như trên.
 - Thiếu model cho một tier thì backend đó dùng `standard`, rồi `strong`.
-- Chỉ muốn một gói tạm thời: `COMPANY_LLM_BACKENDS=claude-sub` (hoặc `STUDIO_LLM_BACKENDS`) lọc và sắp lại thứ tự.
-- Đặt `COMPANY_LLM_PROVIDER` / `STUDIO_LLM_PROVIDER` bằng biến môi trường thì **bỏ qua `backends:`** (biến môi trường
+- Chỉ muốn một gói tạm thời: `COMPANY_LLM_BACKENDS=claude-sub` (keeper: `KEEPER_LLM_BACKENDS`) lọc và sắp lại thứ tự.
+- Đặt `COMPANY_LLM_PROVIDER` / `KEEPER_LLM_PROVIDER` bằng biến môi trường thì **bỏ qua `backends:`** (biến môi trường
   thắng file). Test và CI dùng cách này với `fake`.
 - Khoá backend ít dùng: `api_key_env` (tên biến chứa key thay vì ghi key vào file), `binary` (đường dẫn CLI `claude`/`codex`),
   `mcp_tools` + `mcp_max_turns` (ADR-0024) hoặc `cli_tools` + `cli_bash` (ADR-0023) cho backend `claude-code` — bật một trong hai thì khối kỹ thuật chạy được bằng gói Claude; `supports_tools` ép router coi backend CLI là có/không có tool-use (mặc định theo hai cờ trên), `max_tokens`,
@@ -413,7 +413,7 @@ Cách router chọn với cấu hình trên:
 Kiểm tra sau khi cấu hình: chạy đoạn ở 3.4. Muốn thử riêng một tài khoản, lọc bằng biến môi trường:
 
 ```bash
-STUDIO_LLM_BACKENDS=claude-2 uv run python -c "..."     # software-company: COMPANY_LLM_BACKENDS
+COMPANY_LLM_BACKENDS=claude-2 uv run python -c "..."    # keeper: KEEPER_LLM_BACKENDS
 ```
 
 Lưu ý:
@@ -677,21 +677,28 @@ nó đọc tín hiệu (dependabot, CI, trôi tài liệu), gom thành ticket b�
 có bằng chứng đo hai chiều. Nó **không có quyền ghi** ngoài nhánh/commit/PR của chính nó (bất biến I1,
 `companies/keeper/docs/DAC-TA-KEEPER.md` §0).
 
-### 7.1 Chạy một vòng
+### 6.1 Chạy một vòng
 
 ```bash
 cd companies/keeper
-uv run python -m keeper.cli run --tickets tickets.json --root ../Claude-Agents-wt-keeper --dry-run
-uv run python -m keeper.cli watch --db keeper.sqlite --repo .. --interval 300 --max-ticks 1
+uv run python -m keeper.cli run --tickets tickets.json --root <worktree phụ của keeper> --dry-run
+uv run python -m keeper.cli watch --db keeper.sqlite --repo ../.. --interval 300 --max-ticks 1
+uv run python -m keeper.cli drift --repo ../..
+uv run python -m keeper.cli publish --db keeper.sqlite --repo ../.. <ticket_id>
 ```
 
 - `run --dry-run` in **kế hoạch** (ticket → thao tác → file sẽ đụng) và không chạm một byte nào. Bỏ `--dry-run`
   là thi hành thật; `--root` **bắt buộc** và phải là một worktree PHỤ — `patcher` từ chối ghi vào checkout chung.
 - `watch` là vòng `watch → triage → patch → verify → gate? → release`. `--max-ticks 1` chạy đúng một nhịp rồi
   thoát (dùng khi muốn xem nó làm gì trước khi thả chạy dài). Bỏ `--max-ticks` là chạy mãi.
-- `--repo` là repo để hỏi `gh` (**chỉ đọc**; `companies/keeper/src/keeper/github.py` chặn mọi argv ghi bằng mã).
+- `drift` so bản dẫn xuất/golden với nguồn và tìm PR đã merge thiếu dòng CHANGELOG — thuần cục bộ, đúng phép kiểm
+  của job CI `drift-check`.
+- `publish` biến ý định mở PR (`pr.intent`) của MỘT ticket thành PR thật (`git push` + `gh pr create`); patch phải
+  commit sẵn trong worktree của ticket. `watch` không tự gọi nó.
+- `--repo` là gốc repo (`../..` khi đứng ở `companies/keeper/`). `watch` chỉ hỏi `gh` (**chỉ đọc**;
+  `companies/keeper/src/keeper/github.py` chặn mọi argv ghi bằng mã); đường ghi hẹp duy nhất là `publish.py`.
 
-### 7.2 Xem hàng đợi
+### 6.2 Xem hàng đợi
 
 ```bash
 uv run python -m keeper.cli gate --db keeper.sqlite list      # gate đang chờ người
@@ -700,7 +707,7 @@ uv run python -m keeper.cli gate --db keeper.sqlite list      # gate đang chờ
 Hàng đợi ticket, ngân sách còn lại, sổ nợ quá hạn và gate chờ đọc gọn hơn ở tab **Công ty bảo trì** của console
 (§8). Ô nào ghi *"chưa chạy lần nào"* thì đúng nghĩa đen là chưa chạy — nó **không** hiện số 0.
 
-### 7.3 Duyệt gate
+### 6.3 Duyệt gate
 
 ```bash
 uv run python -m keeper.cli gate --db keeper.sqlite approve KT-12 --by human:truc-ban --reason "bằng chứng hai chiều đủ"
@@ -713,7 +720,7 @@ không giá trị nào "mở lại" ticket; muốn `keeper` làm lại một vi�
 
 Duyệt trên console cũng đi đúng đường này (cùng `PersistentGate`, cùng four-eyes, cùng `audit-log`).
 
-### 7.4 Hai biến môi trường
+### 6.4 Hai biến môi trường
 
 | Biến | Mặc định | Nghĩa |
 |---|---|---|
@@ -728,14 +735,18 @@ export KEEPER_GATE_APPROVERS="human:truc-ban,human:cto"
 > **Không đặt `KEEPER_GATE_APPROVERS` KHÔNG có nghĩa là "không ai duyệt được".** Tập rỗng ở lớp gate nghĩa là
 > **allowlist tắt**: four-eyes vẫn còn (người duyệt phải khác người tạo gate), nhưng *bất kỳ ai khác người tạo*
 > cũng ký được. Đây là hành vi mặc định của lõi (`xagents_core.gates.approvers`), giống hệt
-> `COMPANY_GATE_APPROVERS` / `STUDIO_GATE_APPROVERS` — nhưng người vận hành phải biết, vì "chưa cấu hình" đọc
+> `COMPANY_GATE_APPROVERS` của software-company — nhưng người vận hành phải biết, vì "chưa cấu hình" đọc
 > như "chặt hơn" trong khi thực tế là "lỏng hơn". Muốn siết thì đặt biến.
 
-### 7.5 Chưa có gì ở đây
+### 6.5 Chưa có gì ở đây
 
-- `companies/keeper/evals/` chưa dựng: `make eval-record` cần model thật, nên bước đó **chờ người**.
-- Canary (một chu kỳ thật trên chính X-Agents, tự mở đúng một PR bảo trì có bằng chứng) **chưa chạy**.
-- `keeper` chưa có `llm.yaml` nào, nên nó không xuất hiện ở màn *Cài đặt model* của console.
+- Bộ ca eval mới có cho 4/10 agent (`triager`, `security-auditor`, `release-clerk`, `keeper-supervisor`); lý do sáu
+  agent còn lại chưa có nằm ở docstring `companies/keeper/src/keeper/evals.py`.
+- Canary BT8 (một chu kỳ thật trên chính X-Agents, tự mở đúng một PR bảo trì có bằng chứng, người merge) **chưa
+  qua**: hai lần thử đều dừng trước `publish` — chi tiết ở `companies/keeper/README.md` §"Cái gì CHƯA có".
+- Màn *Cài đặt model* của console chỉ khai `software-company` (`DEFAULT_LLM_YAML` trong
+  `platform/console/src/console/settings.py`); model của keeper sửa thẳng trong `companies/keeper/llm.yaml` (mẫu
+  `llm.example.yaml`; file thật không commit).
 
 ## 7. Vận hành gateway
 
@@ -797,12 +808,14 @@ Ba điều phải biết trước khi dựa vào nó:
 Mở đúng địa chỉ terminal in ra (có token phiên trong đó). Đường dẫn DB khác mặc định thì chỉ ra bằng
 `--company-db` / `--keeper-db`.
 
-Năm màn hình chính: **Trực ban** (hàng đợi gate của cả hai công ty xếp theo mức quá hạn, ô số event/token/PR chưa
-kiểm, chi phí 14 ngày theo tier, bảng gói tài khoản đang xoay), **Xưởng phần mềm** (bảng ticket, PR chờ review,
+Tám màn (phím `1`–`8`): **Trực ban** (giao hàng, quality contract, ô *Động cơ*, hàng đợi gate của cả hai công ty
+xếp theo mức quá hạn, việc máy đang làm, chi phí 14 ngày theo tier, gói tài khoản đang xoay, dòng sự kiện), **Phễu
+sản phẩm** (yêu cầu của khách đã đi tới đâu), **Xưởng phần mềm** (giao việc, release, bảng ticket, PR chờ review,
 kết quả review), **Công ty bảo trì** (hàng đợi ticket bảo trì, ngân sách còn lại, sổ nợ quá hạn, gate chờ — xem
 §6), **Chi phí & hạn mức** (trần dự án, ngân sách token từng ticket, chi phí theo agent, can thiệp của
-supervisor), **Nhật ký** (audit-log có bộ lọc). Trang tự làm mới 10 giây một lần, có nút tạm dừng, và ngưng làm
-mới khi ngăn kéo chi tiết đang mở.
+supervisor), **Nhật ký** (audit-log có bộ lọc), **Cài đặt model** (cần `--allow-config`), **Hướng dẫn**. Số liệu
+đẩy tức thì qua SSE (`/api/stream`); stream đứt thì lùi về hỏi lại 10 giây một lần. Có nút tạm dừng, và trang
+ngưng cập nhật khi ngăn kéo chi tiết đang mở.
 
 Cần biết khi vận hành:
 
@@ -812,7 +825,7 @@ Cần biết khi vận hành:
 - **Token sinh mỗi lần chạy**, ghi `platform/console/.console-token` (quyền 600, đã gitignore). Tắt server là token hết hiệu
   lực. Server chỉ bind loopback; `--host` khác bị từ chối khởi động.
 - **Quyết định đi qua đúng `HumanGate` của công ty**: four-eyes (người duyệt phải khác người tạo), allowlist
-  (`COMPANY_GATE_APPROVERS` / `STUDIO_GATE_APPROVERS` / `KEEPER_GATE_APPROVERS`) và `audit-log` vẫn áp như khi
+  (`COMPANY_GATE_APPROVERS` / `KEEPER_GATE_APPROVERS`) và `audit-log` vẫn áp như khi
   dùng `gate_cli` hay `keeper gate`. Ô "Bạn là" trên ngăn kéo chính là `--by`.
 - **Công ty chưa chạy bao giờ** (chưa có file DB) không phải lỗi: trang hiện trạng thái rỗng kèm lý do, không hiện
   số 0 giả. Tab *Công ty bảo trì* ghi thẳng **"chưa chạy lần nào"** vào mọi ô — kể cả ô "nợ quá hạn", vì một số 0
@@ -820,7 +833,7 @@ Cần biết khi vận hành:
   cùng và số liệu giữ nguyên lần đọc cuối.
 - Console **đọc** SQLite trong lúc orchestrator đang ghi, không khoá gì; số liệu trễ tối đa một nhịp làm mới.
 
-Chi tiết: [`../../platform/console/README.md`](../../platform/console/README.md), quyết định thiết kế ở `platform/console/docs/adr/0001-console-hop-nhat.md`.
+Chi tiết: [`platform/console/README.md`](../platform/console/README.md), quyết định thiết kế ở `platform/console/docs/adr/0001-console-hop-nhat.md`.
 
 ## 9. Theo dõi, chi phí, sự cố
 
@@ -831,7 +844,7 @@ SQLite; `status` / `report` / `metrics` đọc từ đó.
 |---|---|---|
 | `llm_retry` có ghi chú "backend X hết quota → nghỉ 3600s" | gói X cạn hạn mức, việc đã chuyển gói kế | không cần làm gì; muốn quay lại sớm thì restart tiến trình (trạng thái nghỉ nằm trong bộ nhớ) |
 | "backend antigravity thiếu: Chưa có tài khoản" | gateway chưa có tài khoản Google | `gateway login`; backend đã nghỉ trọn `cooldown_s` (1 giờ) nên restart tiến trình để dùng ngay |
-| "mọi backend đều đang nghỉ, thử lại sau Ns" | mọi gói cùng cạn | software-company hoãn event và tự thử lại ở nhịp sau; Studio ghi lỗi, chạy lại `run` sau |
+| "mọi backend đều đang nghỉ, thử lại sau Ns" | mọi gói cùng cạn | software-company hoãn event và tự thử lại ở nhịp sau |
 | `unpriced_calls` > 0 trong report | model không có dòng giá | thêm vào `prices:` (gói subscription: giá 0) |
 | supervisor `warn` 80% / `budget_cut` 100% | ticket hoặc dự án chạm ngân sách token/USD | xem `status`, tăng `budget_tokens` trong ticket hoặc `budget_usd`, rồi `resume` |
 | event `deferred: paused:...` | ticket bị supervisor pause hoặc chờ gate | duyệt gate hoặc resume qua `supervisor-actions` |

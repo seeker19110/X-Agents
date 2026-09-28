@@ -75,18 +75,43 @@ Còn lại là lời khai — hữu ích, nhưng chỉ ký gate trên bằng ch�
 | Công ty | Gate | Gác cái gì |
 |---|---|---|
 | software-company | `spec` → `release` → `acceptance` (+ `escalation`) | PRD; production; khách ký UAT (kế hoạch ticket do `_check_plan` chặn bằng code, không còn gate `plan` từ ADR-0037) |
-| keeper | `keeper` (chưa chạy — BT7) | patch rủi ro cao: semver major, chạm `xagents-core`/`agents`/`.github`, security ≥ high |
+| keeper | `patch` (BT7 đã merge: `KeeperOrchestrator.ensure_gate` là nơi gọi duy nhất; `release`/`escalation` khai trong `GateKind` nhưng chưa nơi nào mở; chưa qua chu kỳ thật — chờ canary BT8) | patch rủi ro cao: semver major, chạm `xagents-core`/`agents`/`.github`, security ≥ high |
 
 Gate là thật: hạn 24h, nhắc 12h, quá hạn escalate, four-eyes (người duyệt ≠ người tạo; allowlist người duyệt
 `COMPANY_GATE_APPROVERS` mặc định tắt). Mỗi gate của software-company có trợ lý kiểm duyệt
 chỉ đọc `sc-gate-<kind>` và hồ sơ bằng chứng `gate_brief`.
 
-## CI (`.github/workflows/ci.yml`)
+## CI (`.github/workflows/`)
 
-`static` · `unit` · `eval-replay` · `audit` (pip-audit + gitleaks cả lịch sử) ·
-`golden-check` (golden + subagents dẫn xuất khớp nguồn) · `gateway-*` · `console-*` · `keeper-*` ·
-`asset-scan` (ADR-0022) · `protection-guard` (ruleset file ↔ thật) · **`quality`** gom tất cả — required check của
-`main`, tên bất biến. `pr-policy.yml`: job `metadata` kiểm tiêu đề PR.
+Bốn workflow. Required check của `main` (`.github/rulesets/main.json`) là **`quality`** và **`metadata`** — tên bất
+biến, đổi tên là khoá cửa merge. Trên máy, `scripts/dev-task.sh gate <gói>` chạy đúng lệnh của cặp job
+`*-static`/`*-unit` của gói đó. Mục này có cổng (`platform/console/tests/test_cong_tai_lieu.py`): thêm workflow hay
+job mà không kể ở đây là `console-unit` đỏ.
+
+**`ci.yml`** — mỗi PR và mỗi push `main`; 18 job, `quality` (`if: always()`) gom 17 job còn lại. Ma trận `*-unit`
+và `unit`: ubuntu 3.11 + 3.13, windows 3.13; `core-static`/`keeper-static`: ubuntu + windows.
+
+| Gói | Job | Chạy gì |
+|---|---|---|
+| software-company | `static`, `unit`, `eval-replay`, `asset-scan` | ruff + mypy · pytest `-n auto` coverage 100 · `company.evals all --selftest` rồi `--replay --strict` · `assetscan scan` + `budget` (ADR-0022) |
+| gateway | `gateway-static`, `gateway-unit` | ruff + mypy · pytest coverage 100 |
+| console | `console-static`, `console-unit` | ruff + mypy · pytest coverage 100 — gồm cả các cổng của repo (`tests/test_cong_*.py`, `test_readme_goc.py`) |
+| xagents-core | `core-static`, `core-unit` | ruff + mypy (`strict = true` trong `pyproject.toml`) · pytest coverage 100 |
+| keeper | `keeper-static`, `keeper-unit`, `keeper-eval-replay`, `drift-check` | ruff + mypy · pytest coverage 100 · `keeper.evals all --replay --strict` · `keeper.cli drift --repo .` (ba phép so cục bộ: `sc-*` và golden lệch `version` nguồn, PR đã merge thiếu `(#n)` trong CHANGELOG) |
+| hai công ty | `golden-check` | golden agent sinh lại phải khớp bản đã commit (ma trận `software-company`, `keeper`); riêng software-company: `company.subagents check` (`.claude/agents/sc-*` khớp nguồn) |
+| toàn repo | `audit`, `protection-guard`, `quality` | pip-audit (một `uv.lock`) + gitleaks cả lịch sử · ruleset trong file ↔ ruleset thật, hai chiều · gom kết quả |
+
+**`pr-policy.yml`** — mỗi PR (kể cả sửa thân PR, gắn/gỡ nhãn); job `metadata`: tiêu đề Conventional Commits, scope
+một từ chữ thường · dòng thêm vào `CHANGELOG.md` mang `(#<số PR>)` (`scripts/pr_changelog_check.py`; nhãn
+`no-changelog` để miễn) · PR `fix(` chạm `orchestrator.py`/`orch/` phải dẫn ADR-0034 · mục Definition of Done và
+BÁO CÁO XÁC THỰC không còn `- [ ]` (`scripts/pr_dod_check.py`; ô ghi `(sau merge)` được miễn) · thiếu
+`docs/sessions/<hôm nay>.md` chỉ cảnh báo.
+
+**`dependency-review.yml`** — mỗi PR; job `dependency-review` chặn phụ thuộc mới có lỗ hổng mức `high` trở lên.
+Không phải required check.
+
+**`eval-record.yml`** — chạy tay (`workflow_dispatch`); job `record` ghi lại eval của `company` bằng model THẬT (tốn
+tiền) rồi mở PR với bản ghi mới — đường thay cho `make eval-record` khi máy không có khoá API.
 
 ## Lịch sử repo (đọc `git log` cho đúng)
 

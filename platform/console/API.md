@@ -315,4 +315,5 @@ Lọc, tìm, sắp xếp — hoàn toàn phía client trên dữ liệu đã có
 - Bảng ticket có chip lọc theo trạng thái kèm số đếm; chọn một trạng thái thì thu về một cột.
 - `<th data-k>` trong `<tr data-sort>` sắp xếp được, `data-t="n"` là cột số. Trạng thái sắp xếp nằm
   ở `aria-sort` nên đọc màn hình cũng biết.
-- Phím tắt: `/` vào ô tìm, `1`–`6` nhảy màn, `g` về Trực ban, `Esc` xoá ô tìm hoặc đóng ngăn kéo.
+- Phím tắt: `/` vào ô tìm, `1`–`8` nhảy màn (theo thứ tự `VIEWS` trong `static/js/router.js`), `g` về Trực ban,
+  `Esc` xoá ô tìm hoặc đóng ngăn kéo.

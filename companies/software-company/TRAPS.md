@@ -1,6 +1,6 @@
 # TRAPS.md — bẫy riêng của software-company
 
-Bốn khuôn lỗi chung và bẫy thao tác ở `../TRAPS.md`. Ở đây là chỗ cụ thể trong package này đã cắn người.
+Bốn khuôn lỗi chung và bẫy thao tác ở `../../TRAPS.md`. Ở đây là chỗ cụ thể trong package này đã cắn người.
 
 ## Orchestrator / vòng lặp
 
@@ -38,7 +38,7 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../TRAPS.md`. Ở đây là ch
 | `claude -p` từ chối schema union ≥ 2 kiểu | Lỗi trước khi gọi model (#56) | Chuyển thành `anyOf` cho `--json-schema` |
 | `claude -p` không tool cần > 1 lượt | `error_max_turns` ở effort low (#60, #62) | `CLI_NO_TOOL_TURNS = 6` |
 | Prompt tĩnh nuốt ngân sách | Skill nhồi > 50% `budget_tokens_per_task` | `make assetbudget` |
-| Sửa `checklists.md` không sinh lại subagent | `test_ban_dan_xuat_tren_dia_khop_nguon` đỏ | `make subagents`, commit `../.claude/agents/` |
+| Sửa `checklists.md` không sinh lại subagent | `test_ban_dan_xuat_tren_dia_khop_nguon` đỏ | `make subagents`, commit `../../.claude/agents/` |
 | **`phases:` chỉ cắt SKILL, không cắt THÂN prompt** | 2026-09-13 (#286): gộp `security` (file agent 3.344 byte) vào `qa` thành pha thứ ba. Front matter `phases:` nạp đúng skill của pha, nhưng **thân `.md` của agent thì mọi pha đều mang trọn** — prompt lượt `security` phình lên **44.450 ký tự**, và `claude -p` chết `error_max_structured_output_retries` (không sinh nổi JSON hợp lệ) ở ca threat-model; eval tụt 18/18 → 16/18 | Trước khi gộp hai agent thành một agent nhiều pha: `len(spec.system_prompt(pha))` cho từng pha, so với `max_input_chars` và với prompt của agent cũ. `make assetbudget` chỉ đo phần **skill tĩnh** nên nó vẫn xanh trong khi thân prompt đã gấp 13 lần — nó KHÔNG bắt được lớp lỗi này |
 | **Một agent hai pha thì lẫn đúng cái nhãn phân biệt hai pha** | 2026-09-13 (#286): sau khi gộp, model ở pha `security` khai `source: reviewer` **4/18 ca** (đo bằng model thật). `delivery.py` đếm review THEO NHÃN nên ticket rủi ro không bao giờ đủ review — nằm im, `status` không báo gì | Nhãn phân biệt lượt là **identity của lượt**, ROUTE biết chắc → để CODE điền (`orch/review_source.py::source_for`/`enforce_source`, audit `review.source_overridden`), đừng dặn trong prompt. Cùng họ với `env`/`release_id`/`ticket_id` ở bảng "Bằng chứng và lời khai" |
 | **Hai route cùng agent + cùng `topic_out` trên cùng event** | 2026-09-13 (#286): gộp xong, `qa[review]` và `qa[security]` cùng đọc `pull-requests` và cùng ghi `review-results`. Khoá `partial` là `"<agent>:<topic_out>"` (PR-5b) nên route thứ hai bị route thứ nhất nuốt → ticket rủi ro chỉ nhận 1 review, kẹt `waiting` | Đây là khuôn 3 của `../../TRAPS.md` (khoá chống-trùng nuốt lần hai HỢP LỆ) ở dạng mới. Thêm route cho một agent đã gộp → kiểm khoá `partial` có phân biệt được hai route trên CÙNG một event không; và nhớ `_rehydrate` dựng lại khoá đó từ bus, nơi **pha không nằm trong event** |

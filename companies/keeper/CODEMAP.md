@@ -1,6 +1,7 @@
 # CODEMAP.md — keeper: muốn đổi X thì sửa ở đâu
 
-27 module trong `src/keeper/`. Cột "Kiểm" trỏ test chính; `docs/DAC-TA-KEEPER.md` là đặc tả đầy đủ nếu cần hiểu
+Mỗi module trong `src/keeper/` có tên trong bảng dưới (cổng `platform/console/tests/test_cong_tai_lieu.py` đỏ khi
+thêm module mà quên dòng ở đây). Cột "Kiểm" trỏ test chính; `docs/DAC-TA-KEEPER.md` là đặc tả đầy đủ nếu cần hiểu
 sâu hơn bảng này.
 
 | Muốn | Sửa | Kiểm |
@@ -25,6 +26,9 @@ sâu hơn bảng này.
 | Gate của keeper | `gates.py` — bọc `HumanGate`/`PersistentGate` của lõi | `tests/test_gates.py` |
 | Client model (offline mặc định) | `llm.py` — tiền tố env `KEEPER_*`, provider mặc định `fake` | `tests/test_llm.py` |
 | Runner một agent | `runner.py` — nạp AgentSpec → build prompt (envelope+blackboard) → gọi model → ép JSON → publish → audit | `tests/test_runner.py` |
+| Nạp danh sách agent | `registry.load_agents()` — `AgentSpec` của lõi (không lớp con riêng); `check_owners=False` vì `keeper/skills/` chưa tồn tại | `tests/test_runner.py`, `tests/test_golden_agents.py` |
+| Blackboard giữa các agent | `blackboard.py` — lớp con mỏng của `xagents_core.blackboard`, `store=None`; chưa agent nào ghi namespace, tồn tại vì `EvalSuite.run_eval` dựng một cái cho mỗi ca | `tests/test_runner.py` |
+| Eval prompt: ghi/phát lại, ngưỡng điểm | `evals.py` — `python -m keeper.evals <agent>` (hoặc `all`), `--record` (model thật) / `--replay --strict` (CI); đỏ khi BẤT KỲ ca nào `errored`, cộng `evals/thresholds.yaml` gác điểm; bộ ca `evals/<agent>.yaml` chỉ 4/10 agent (lý do trong docstring) | `tests/test_evals.py` |
 | Bus/envelope riêng của keeper | `bus.py` (`KeeperBus`/`KeeperMemoryBus`), `events.py` (`Topic`, `PAYLOAD_MODELS`, `NAMESPACE_OWNERS`) | `tests/test_bus.py`, `tests/test_events.py` |
 | Cấu hình gốc/tên công ty | `core.py` — `CORE = CoreConfig(prefix="KEEPER", ...)`, MỘT chỗ duy nhất | `tests/test_core.py` |
 | Test không chạm mạng thật | `fakes.FakeGitHub` — JSON cố định, mọi test dùng | — |

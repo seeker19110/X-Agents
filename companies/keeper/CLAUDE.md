@@ -7,12 +7,15 @@ chứng đo hai chiều → PR; khách hàng số 0 là chính repo X-Agents nà
 ## Chạy ở đâu
 
 ```bash
+scripts/dev-task.sh gate keeper             # ở GỐC repo: ruff + mypy + pytest --cov, khớp đúng ci.yml
 cd companies/keeper
-uv run pytest -q --cov && uv run ruff check src tests && uv run mypy src/keeper --ignore-missing-imports
-uv run python -m keeper run --dry-run       # mặc định: in kế hoạch, không chạm file nào
-uv run python -m keeper watch --db <path> --repo <path> --interval N
-uv run python -m keeper publish --db <path> --repo <path> <ticket_id>   # push + gh pr create THẬT (BT8)
+uv run python -m keeper.cli run --tickets <file.json> --root <worktree phụ> --dry-run   # chỉ in kế hoạch
+uv run python -m keeper.cli watch --db <path> --repo <path> --interval N
+uv run python -m keeper.cli drift --repo ../..                   # thuần cục bộ, cùng phép kiểm job CI drift-check
+uv run python -m keeper.cli publish --db <path> --repo <path> <ticket_id>   # push + gh pr create THẬT (BT8)
 ```
+
+Package không có `__main__.py`: mọi lệnh đi qua `keeper.cli` (hoặc `keeper.evals` cho eval).
 
 **`watch` chưa tự động gọi `publish`** — vòng lặp mới nối `triage`+ghi ý định PR (`pr.intent`); scout chưa
 nối vào `tick()`, patch cần `keeper run`/người commit tay. `publish` là bước NGƯỜI/script gọi sau khi patch đã

@@ -38,8 +38,8 @@ Google Code Assist: daily-cloudcode-pa (chính) / cloudcode-pa (dự phòng) —
   `client.py:30-31`). Không có đích nào khác.
 - **Đĩa**: `$XAGENTS_HOME` (`~/.x-agents`): `auth/antigravity_tokens.json`, `gateway/gateway.pid`, `logs/gateway.log`
   (`auth.py:81-96`, `server.py:42-49`). Không ghi vào cây repo trừ `setup` ghi `llm.yaml` theo yêu cầu.
-- **Test**: không mạng; `httpx.MockTransport` + `aiohttp TestClient` + monkeypatch `urllib`; 216 ca (213 chạy, 3 skip
-  quyền file POSIX trên Windows).
+- **Test**: không mạng; `httpx.MockTransport` + `aiohttp TestClient` + monkeypatch `urllib`; số ca hiện tại ở dòng
+  gateway trong `README.md` gốc (có cổng canh) — vài ca quyền file POSIX tự skip trên Windows.
 
 Nguồn gốc: mang từ `donghanhcungban/Plugin-For-Hermes` (`bridge/`), bỏ phần gắn với Hermes Agent. Lịch sử thay
-đổi: `../CHANGELOG.md` (scope `gateway`).
+đổi: `../../CHANGELOG.md` (scope `gateway`).

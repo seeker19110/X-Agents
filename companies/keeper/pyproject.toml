@@ -39,7 +39,7 @@ source = ["src/keeper"]
 branch = true
 
 [tool.coverage.report]
-# Cả năm package phủ 100% dòng (keeper, software-company và xagents-core phủ thêm 100% nhánh): ngưỡng bằng đúng mức đạt được, nên mất một dòng phủ là CI đỏ.
+# Cả năm package phủ 100% dòng VÀ nhánh (`branch = true` ở cả năm từ #366): ngưỡng bằng đúng mức đạt được, nên mất một dòng phủ là CI đỏ.
 # Nhánh phụ thuộc nền tảng (os.name == "nt", AF_INET6) được test bằng cách thay socket/ctypes, không bằng môi trường.
 fail_under = 100
 show_missing = true

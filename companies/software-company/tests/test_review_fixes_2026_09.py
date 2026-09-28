@@ -422,40 +422,6 @@ def _count_cases() -> int:
     return sum(len(re.findall(r"^def test_", p.read_text(encoding="utf-8"), re.M)) for p in root.glob("*.py"))
 
 
-def test_readme_goc_khop_nguong_coverage_va_so_test():
-    """README gốc là bảng số liệu của cả hub, và nó cũng trôi dạt: đo ngày 2026-09-05 nó ghi `fail_under` của
-    công ty là 90 (pyproject đã nâng lên 98), gateway 206 test (thật 216).
-
-    Ngưỡng coverage kiểm được CHÍNH XÁC vì nó nằm trong `pyproject.toml`; số test thì chặn khoảng như test trên
-    (hàm test ≤ số ghi ≤ gấp đôi) vì test tham số hoá làm số ca lớn hơn số hàm.
-    """
-    import re
-    import tomllib
-    from pathlib import Path
-    hub = Path(__file__).resolve().parents[3]
-    readme = (hub / "README.md").read_text(encoding="utf-8")
-
-    row = next(ln for ln in readme.splitlines() if "`fail_under`" in ln)
-    m = re.search(r"`fail_under` ([\d /]+) cho ([\w\- /]+)", row)
-    assert m, "README gốc phải ghi '`fail_under` a / b / ... cho <package> / <package>...'"
-    claimed = [int(x) for x in m.group(1).split("/")]
-    # tên package là đường dẫn có `/` từ ADR-0011 → tách theo " / ", không theo "/"
-    packages = [p.strip() for p in m.group(2).split(" / ")]
-    assert len(claimed) == len(packages), f"{len(claimed)} ngưỡng nhưng {len(packages)} package"
-    for want, name in zip(claimed, packages, strict=True):
-        cfg = tomllib.loads((hub / name / "pyproject.toml").read_text(encoding="utf-8"))
-        real = cfg["tool"]["coverage"]["report"]["fail_under"]
-        assert want == real, f"README gốc ghi fail_under của {name} là {want}, pyproject.toml nói {real}"
-
-    for pkg, prefix in (("companies/software-company", "| [`companies/software-company/`]"),):
-        row = next(ln for ln in readme.splitlines() if ln.startswith(prefix))
-        m = re.search(r"(\d+) test \|$", row)
-        assert m, f"dòng {pkg} trong README gốc phải kết thúc bằng '<N> test |'"
-        funcs = sum(len(re.findall(r"^def test_", p.read_text(encoding="utf-8"), re.M))
-                    for p in (hub / pkg / "tests").glob("*.py"))
-        assert funcs <= int(m.group(1)) <= funcs * 2, f"README gốc ghi {m.group(1)} test cho {pkg}, có {funcs} hàm test"
-
-
 def test_reviewer_va_security_co_tool_chi_doc_khi_cham_pr():
     """Diff dài hơn max_input_chars bị cắt giữa; không có tool thì agent BLOCK vì 'diff không có trong đầu vào'
     (TCK-CR-DEV-001-02, 2026-09-06). Cả ba nguồn review PR phải đọc được worktree."""

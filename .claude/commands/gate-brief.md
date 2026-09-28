@@ -13,7 +13,7 @@ hoặc `<project_id>` cho gate escalation) và tuỳ chọn `--db`, `--repo`. Kh
 Làm đúng thứ tự sau, trong phiên chính (không giao bước 1 cho subagent):
 
 1. Sinh hồ sơ bằng lệnh CHỈ ĐỌC của công ty (mở SQLite `mode=ro`, không ghi bus):
-   `cd software-company && uv run python -m company.gate_brief $ARGUMENTS`
+   `cd companies/software-company && uv run python -m company.gate_brief $ARGUMENTS`
    Lệnh in hồ sơ Markdown ra stdout và ghi `company.artifacts/<project>/gate-brief/<subject>.{md,json}`. Exit 2 nghĩa là
    subject không nằm trong hàng đợi gate (xem `uv run python -m company.gate_cli list`); gate đã đóng thì thêm `--closed`.
    Với gate `acceptance` (`UAT-REL-xxx`) LUÔN truyền `--repo <repo khách>`: hồ sơ tự khởi động sản phẩm theo `runtime`
@@ -39,4 +39,4 @@ Câu hỏi tôi không trả lời được: <danh sách>
 ```
 
 4. In bản tóm rồi DỪNG. Câu cuối cố định, không thêm nhận xét:
-   `Không có khuyến nghị duyệt. Lệnh ký: cd software-company && uv run python -m company.gate_cli <approve|request_changes|reject|hold|rollback> <subject> --by human:<bạn> --reason "..."`
+   `Không có khuyến nghị duyệt. Lệnh ký: cd companies/software-company && uv run python -m company.gate_cli <approve|request_changes|reject|hold|rollback> <subject> --by human:<bạn> --reason "..."`

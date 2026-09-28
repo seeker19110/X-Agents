@@ -8,8 +8,8 @@ trên git worktree của repo khách, giao hàng bằng tag + nhánh `company/re
 Mọi lệnh **trong thư mục này** (gốc hub có `company.sqlite` rỗng → `status` nhìn như không có gì):
 
 ```bash
-uv run pytest -q -n auto --cov            # đúng lệnh CI; Windows thiếu 2 dòng POSIX là bình thường
-uv run ruff check src tests && uv run mypy src/company --ignore-missing-imports
+../../scripts/dev-task.sh gate company   # ruff + mypy + pytest -n auto --cov, khớp đúng ci.yml
+                                         # (Windows thiếu 2 dòng POSIX trong coverage là bình thường)
 uv run python -m company.orchestrator status | diagnose | metrics
 uv run python -m company.orchestrator --repo <repo khách> run --watch     # tự khởi động lại khi mã đổi
 uv run python -m company.gate_cli list | approve <subject> --by human:<tên> --reason "<root_cause — decision — hint>"

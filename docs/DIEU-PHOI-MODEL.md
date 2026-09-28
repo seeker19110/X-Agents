@@ -11,7 +11,7 @@ Quyết định kiến trúc: `companies/software-company/docs/adr/0019-subscrip
 |---|---|---|---|
 | **Claude Pro/Max** | provider `claude-code`: CLI `claude -p` đã `claude login` trên máy | Opus / Sonnet / Haiku theo gói | Suy luận và code tốt nhất; hạn mức theo cửa sổ 5 giờ + tuần; `effort` → `--effort` (ADR-0026); tool-use bật bằng `mcp_tools: true` (ADR-0024, tool của công ty qua cầu MCP — giữ nguyên sandbox `tools.py`) hoặc `cli_tools: true` (ADR-0023, CLI tự cầm tool của nó); không bật thì backend này không nhận việc có tool. Nhiều tài khoản Claude trên một máy: mỗi tài khoản một backend với `config_dir` riêng (`CLAUDE_CONFIG_DIR`) |
 | **ChatGPT Plus/Pro** | provider `codex`: Codex CLI `codex exec --json` đã `codex login` (app Codex trên Windows đi kèm CLI, tự tìm trong `%LOCALAPPDATA%/OpenAI/Codex/bin`) | GPT theo gói (vd. `gpt-5.6-terra`); `effort` → `model_reasoning_effort` | Structured output qua `--output-schema`; sandbox read-only trong thư mục rỗng; **không tool-use** của công ty. Nhiều tài khoản ChatGPT: mỗi tài khoản một backend với `config_dir` riêng (`CODEX_HOME`) |
-| **Google Antigravity** | provider `openai` → `../../platform/gateway` (`http://127.0.0.1:1123/v1`), xoay vòng nhiều tài khoản Google | `gemini-3.7-flash` (+`-medium`/`-low`), `gemini-3.6-flash`, `gemini-3.1-pro`, `claude-sonnet-4-6` (alias khác map về 4 model upstream này, xem `platform/gateway/README.md`) | Miễn phí theo quota từng tài khoản; gateway tự đổi tài khoản, hết cả pool thì trả 429 kèm "thử lại sau khoảng Ns"; có tool-use |
+| **Google Antigravity** | provider `openai` → `platform/gateway` (`http://127.0.0.1:1123/v1`), xoay vòng nhiều tài khoản Google | `gemini-3.7-flash` (+`-medium`/`-low`), `gemini-3.6-flash`, `gemini-3.1-pro`, `claude-sonnet-4-6` (alias khác map về 4 model upstream này, xem `platform/gateway/README.md`) | Miễn phí theo quota từng tài khoản; gateway tự đổi tài khoản, hết cả pool thì trả 429 kèm "thử lại sau khoảng Ns"; có tool-use |
 | **Model local** | provider `openai` → Ollama / vLLM / LM Studio | qwen3, llama, gemma... | Không bao giờ hết quota; chất lượng thấp hơn — lưới đỡ cuối cho việc nhẹ |
 | (API trả phí) | provider `anthropic` / `openai` với key | tuỳ | Vẫn hỗ trợ, nhưng không phải mặc định của hub |
 
@@ -94,8 +94,7 @@ model khác thì cho `claude-sonnet-4-6` qua Antigravity hoặc dùng provider `
   1 giờ) hoặc đúng số giây provider bảo; lượt đó đi backend kế.
 - Lỗi mạng / 5xx / timeout → nghỉ `transient_cooldown_s` (mặc định 60 s).
 - Lỗi nội dung (JSON hỏng, model từ chối) → ném ra ngay, không xoay: đó là việc của agent/supervisor.
-- Mọi backend đều nghỉ → lỗi "thử lại sau Ns"; software-company hoãn event (TransientError), Studio ghi audit và
-  supervisor thấy.
+- Mọi backend đều nghỉ → lỗi "thử lại sau Ns"; software-company hoãn event (TransientError) và thử lại ở nhịp sau.
 - Mỗi lần xoay được ghi vào audit `llm_retry` (qua `drain_retries()`), nên `report` cho thấy gói nào đang gánh việc.
 - `Completion.model` vẫn là tên model thật để bảng giá `prices` khớp; gói subscription thì giá 0 nhưng vẫn phải có
   dòng giá để không bị đếm là `unpriced`.

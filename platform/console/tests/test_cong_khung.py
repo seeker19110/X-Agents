@@ -11,12 +11,14 @@ các phép canh cấp gốc.
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -194,6 +196,15 @@ def test_dev_task_gate_chay_du_ba_cong_dung_thu_tu() -> None:
     vi_tri = [kq.stdout.find(x) for x in ("ruff check", "mypy", "pytest")]
     assert all(v >= 0 for v in vi_tri), f"gate thiếu bước: {kq.stdout}"
     assert vi_tri == sorted(vi_tri), f"gate sai thứ tự lint→typecheck→test: {kq.stdout}"
+
+
+def test_dev_task_gate_dry_run_khong_bao_xanh() -> None:
+    """Dry-run chỉ IN lệnh, không chạy gì — in "cổng XANH" lúc ấy là nói điều chưa đo (luật cấm 8): người lướt
+    log thấy chữ XANH sẽ tin cổng đã qua."""
+    kq = _chay(DEV_TASK, "gate", "console", DEV_TASK_DRY_RUN="1")
+    assert kq.returncode == 0, kq.stderr
+    assert "XANH" not in kq.stdout + kq.stderr, f"dry-run không chạy gì mà báo xanh: {kq.stderr}"
+    assert "dry-run" in kq.stderr, f"dry-run phải nói rõ là chưa chạy gì: {kq.stderr}"
 
 
 def test_dev_task_gate_khong_goi_chay_ca_nam_package() -> None:
@@ -412,6 +423,162 @@ def test_cong_commit_doi_file_goc_thi_chay_ca_workspace(kho_main: Path) -> None:
     assert "all" in _cong("git commit -m 'x'", kho_main).stderr
 
 
+def _goi_cong(kq: subprocess.CompletedProcess[str]) -> set[str]:
+    """Tập gói hook báo sẽ chạy cổng; rỗng khi nó bỏ qua cổng."""
+    m = re.search(r"chạy cổng cho gói: (.*?) \(cây", kq.stderr)
+    return set(m.group(1).split()) if m else set()
+
+
+def _tao(kho: Path, *ten: str) -> None:
+    for t in ten:
+        f = kho / t
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("x = 1\n", encoding="utf-8")
+
+
+def _stage(kho: Path, *ten: str) -> None:
+    _git(kho, "checkout", "-q", "-b", "worktree-thu")
+    _tao(kho, *ten)
+    _git(kho, "add", "-A")
+
+
+@pytest.mark.parametrize("ten", ["README.md", "docs/sessions/x.md", ".github/workflows/ci.yml", ".claude/hooks/x.sh",
+                                 "scripts/x.py", "companies/keeper/CLAUDE.md"])
+def test_cong_commit_file_khong_phai_ma_goi_van_chay_console(kho_main: Path, ten: str) -> None:
+    """Console giữ cổng cấp repo: link tài liệu, README đếm test của mọi gói, hook, workflow, mẫu PR. Trước đây commit
+    chỉ đụng tài liệu/`.github`/`.claude`/`scripts` bỏ qua MỌI cổng — đo 2026-09-28: gộp dòng `fail_under` của
+    README làm cổng đỏ mà hook cho qua, chỉ CI bắt."""
+    _stage(kho_main, ten)
+    assert "console" in _goi_cong(_cong("git commit -m 'x'", kho_main))
+
+
+def _goi_import() -> dict[str, set[str]]:
+    """Gói → mọi gói import nó (bắc cầu), đọc từ `dependencies` của pyproject — nguồn sự thật hook phải khớp."""
+    cfg = {g: tomllib.loads((ROOT / d / "pyproject.toml").read_text(encoding="utf-8"))["project"] for g, (d, _) in GOI.items()}
+    ten = {c["name"]: g for g, c in cfg.items()}
+    dung = {g: {ten[m.group()] for x in c.get("dependencies", []) if (m := re.match(r"[\w.-]+", x)) and m.group() in ten}
+            for g, c in cfg.items()}
+    kq: dict[str, set[str]] = {}
+    for g in GOI:
+        thay, cho = set(), [g]
+        while cho:
+            c = cho.pop()
+            moi = {h for h in GOI if c in dung[h]} - thay
+            thay |= moi
+            cho += moi
+        kq[g] = thay
+    return kq
+
+
+@pytest.mark.parametrize("goi", sorted(GOI))
+def test_cong_commit_chay_goi_bi_dung_goi_import_no_va_console(kho_main: Path, goi: str) -> None:
+    """Đổi một gói có thể làm đỏ gói import nó (company, keeper dùng core; console dùng company, keeper) — chạy riêng
+    gói bị đụng là báo xanh điều chưa đo. Kỳ vọng tính từ pyproject: thêm phụ thuộc mà quên hook thì test này đỏ.
+    Console luôn có: README đếm test của mọi gói, trần pragma/skip đếm trên mọi gói."""
+    thu_muc, module = GOI[goi]
+    _stage(kho_main, f"{thu_muc}/src/{module}/x.py")
+    assert _goi_cong(_cong("git commit -m 'x'", kho_main)) == {goi, "console", *_goi_import()[goi]}
+
+
+def test_goi_import_doc_dung_pyproject() -> None:
+    """Chốt chính phép tính kỳ vọng trước khi tin nó: rỗng thì test trên xanh vì không kỳ vọng gì."""
+    assert _goi_import()["core"] >= {"company", "keeper", "console"}
+    assert _goi_import()["gateway"] == set()
+
+
+@pytest.mark.parametrize("ten", ["docs/integrations/projects-template.lock.json", ".claude/agents/sc-x.md"])
+def test_cong_commit_file_ngoai_goi_ma_company_doc_keo_company(kho_main: Path, ten: str) -> None:
+    """Hai chỗ ngoài company mà test company đọc: lock template (`test_delivery_contract.py` đối chiếu với mã) và
+    subagent sinh ra (`assetscan` quét `.claude/agents/`) — đổi riêng chúng phải chạy cả cổng company."""
+    _stage(kho_main, ten)
+    assert _goi_cong(_cong("git commit -m 'x'", kho_main)) == {"company", "console"}
+
+
+def test_cong_commit_doi_ten_sang_goi_khac_chay_ca_goi_cu(kho_main: Path) -> None:
+    """`git diff --name-only` mặc định dò đổi tên và chỉ in ĐÍCH: dời file khỏi gói A thì A mất file mà cổng A không
+    chạy."""
+    _stage(kho_main, "platform/gateway/src/gateway/x.py")
+    _git(kho_main, "commit", "-qm", "nen")
+    (kho_main / "companies/keeper/src/keeper").mkdir(parents=True)
+    _git(kho_main, "mv", "platform/gateway/src/gateway/x.py", "companies/keeper/src/keeper/x.py")
+    assert {"gateway", "keeper"} <= _goi_cong(_cong("git commit -m 'x'", kho_main))
+
+
+@pytest.mark.parametrize("lenh", ["git add -A && git commit -m 'x'", "git add . ; git commit -m 'x'",
+                                  "git commit -am 'x'"])
+def test_cong_commit_stage_cung_lenh_van_chay_cong(kho_main: Path, lenh: str) -> None:
+    """Hook chạy TRƯỚC cả lệnh: gõ `git add … && git commit` một lần thì lúc hook đọc, index còn rỗng — trước đây
+    cổng bị bỏ qua hẳn. Phải xét cả thay đổi chưa stage lẫn file chưa track mà `git add` sắp lấy."""
+    _stage(kho_main, "platform/gateway/src/gateway/x.py")
+    _git(kho_main, "commit", "-qm", "nen")
+    (kho_main / "platform/gateway/src/gateway/x.py").write_text("x = 2\n", encoding="utf-8")
+    _tao(kho_main, "companies/keeper/src/keeper/moi.py")
+    goi = _goi_cong(_cong(lenh, kho_main))
+    assert "gateway" in goi, f"bỏ qua thay đổi chưa stage: {goi}"
+    if "add" in lenh:
+        assert "keeper" in goi, f"bỏ qua file chưa track mà `git add` sắp lấy: {goi}"
+
+
+def test_cong_commit_stage_cung_lenh_van_chan_file_cam(kho_main: Path) -> None:
+    _stage(kho_main, "nen.txt")
+    _git(kho_main, "commit", "-qm", "nen")
+    _tao(kho_main, "llm.yaml")
+    kq = _cong("git add -A && git commit -m 'x'", kho_main)
+    assert kq.returncode == 2, f"`git add -A && git commit` mang llm.yaml vào lịch sử: {kq.stderr}"
+
+
+def test_cong_commit_a_van_chan_ha_nguong(kho_main: Path) -> None:
+    _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
+    (kho_main / "pyproject.toml").write_text("fail_under = 100\n", encoding="utf-8")
+    _git(kho_main, "add", "pyproject.toml")
+    _git(kho_main, "commit", "-qm", "nen")
+    (kho_main / "pyproject.toml").write_text("fail_under = 95\n", encoding="utf-8")
+    kq = _cong("git commit -am 'x'", kho_main)
+    assert kq.returncode == 2, f"`commit -a` hạ fail_under mà không bị chặn: {kq.stderr}"
+
+
+# Test ngoài console với ra ngoài gói của nó. Hook chạy cổng gói bị đụng + gói import nó + console, nên đổi riêng file
+# ngoài gói mà test ấy đọc KHÔNG chạy test ấy — trừ khi hook có ánh xạ riêng. Mỗi dòng nói nó được lo thế nào.
+TEST_DOC_NGOAI_GOI = {
+    "companies/software-company/tests/test_delivery_contract.py": "hook: `docs/integrations/*` kéo company",
+    "companies/software-company/tests/test_roles.py": "no-ky-thuat ở hook: đọc `truth.py` của console",
+    "companies/software-company/tests/test_codemap_duong_dan.py": "no-ky-thuat ở hook: thử đường dẫn từ gốc hub",
+    "companies/software-company/tests/test_ranh_gioi_kieu.py": "an toàn: `SRC.parents[1]` là gốc gói",
+    "platform/xagents-core/tests/test_cong_journal_append.py": "no-ky-thuat ở hook: quét `src/` của mọi gói",
+}
+
+
+def _voi_ra_ngoai_goi(p: Path, van: str | None = None) -> bool:
+    """Có `parents[k]` ra khỏi gói: tính từ `__file__` mà k vượt gốc gói, hoặc từ biến khác — không tính được nó trỏ
+    đâu, nên kể là ra (dòng an toàn thì ghi vào danh sách kèm lý do). `van` thay nội dung file, cho phép tự kiểm."""
+    k_ra = len(p.relative_to(ROOT).parts) - 2   # companies/<gói>/tests/t.py: parents[2] đã là companies/
+    for n in ast.walk(ast.parse(p.read_text(encoding="utf-8") if van is None else van)):
+        if (isinstance(n, ast.Subscript) and isinstance(n.value, ast.Attribute) and n.value.attr == "parents"
+                and isinstance(n.slice, ast.Constant) and isinstance(n.slice.value, int)):
+            if n.slice.value >= (k_ra if "__file__" in ast.unparse(n.value.value) else 1):
+                return True
+    return False
+
+
+def test_test_ngoai_console_doc_file_ngoai_goi_deu_co_ten() -> None:
+    """Test của gói A đọc file ngoài A thì đổi riêng file ấy không chạy cổng A — đúng lỗ commit chỉ sửa README từng
+    lọt (2026-09-28, test ở company đọc README gốc). Thêm test như vậy: đặt nó ở console (luôn chạy), hoặc thêm ánh
+    xạ vào `pre-commit-gate.sh`; rồi ghi vào danh sách trên kèm cách nó được lo."""
+    thay = {p.relative_to(ROOT).as_posix()
+            for p in [*ROOT.glob("companies/*/tests/**/*.py"), *ROOT.glob("platform/*/tests/**/*.py")]
+            if not p.is_relative_to(ROOT / "platform" / "console") and _voi_ra_ngoai_goi(p)}
+    assert thay == set(TEST_DOC_NGOAI_GOI)
+
+
+def test_bo_do_voi_ra_ngoai_goi_dung_y() -> None:
+    """Chốt bộ dò trên mẫu biết trước (`TRAPS.md` §2): cổng mù thì danh sách trên xanh vì không thấy gì."""
+    t = ROOT / "companies" / "software-company" / "tests" / "test_mau.py"
+    ca = {"Path(__file__).resolve().parents[1] / 'src'": False, "Path(__file__).parents[3] / 'README.md'": True,
+          "PKG.parents[1] / 'docs'": True, "# parents[3] trong chú thích\nx = 1": False}
+    for van, ra in ca.items():
+        assert _voi_ra_ngoai_goi(t, van) is ra, van
+
+
 @pytest.fixture
 def kho_worktree(kho_main: Path, tmp_path: Path) -> tuple[Path, Path]:
     """Checkout chính đứng trên `main` + một worktree trên nhánh riêng.
@@ -588,6 +755,21 @@ def test_moi_hook_khai_trong_settings_ton_tai_that() -> None:
     for mot_lenh in lenh:
         duong_dan = mot_lenh.replace("${CLAUDE_PROJECT_DIR}/", "").split()[0]
         assert (ROOT / duong_dan).is_file(), f"settings.json trỏ vào hook không tồn tại: {duong_dan}"
+
+
+def test_moi_hook_khai_trong_settings_co_bit_thuc_thi_trong_git() -> None:
+    """Claude Code gọi THẲNG đường dẫn trong `command`, không qua `bash <file>` như `_chay` ở file này. Thiếu bit
+    thực thi thì trên Linux/macOS lệnh trả 126 "Permission denied" — Claude Code coi là lỗi không chặn và cho lệnh đi
+    tiếp: cổng chết im lặng. Đo 2026-09-28 trên phiên cloud Linux: cả ba hook mode 100644 (commit từ Windows, nơi
+    không có bit thực thi), `git commit` 40 file đụng năm gói xong trong 6 giây — riêng cổng năm gói mất 5 phút.
+    Cùng họ `test_dev_task_entrypoint_is_executable_in_git` (#365), lần đó chỉ sửa `dev-task.sh`."""
+    cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    duong = sorted({h["command"].replace("${CLAUDE_PROJECT_DIR}/", "").split()[0]
+                    for nhom in cfg.get("hooks", {}).values() for muc in nhom for h in muc["hooks"]})
+    kq = subprocess.run(["git", "ls-files", "-s", "--", *duong], cwd=ROOT, capture_output=True, text=True, check=True)
+    mode = {dong.split("\t", 1)[1]: dong.split(" ", 1)[0] for dong in kq.stdout.splitlines()}
+    thieu = [d for d in duong if mode.get(d) != "100755"]
+    assert not thieu, f"hook khai trong settings.json thiếu bit thực thi trong git (cần 100755): {thieu}"
 
 
 def test_moi_hook_deu_co_test_trong_file_nay() -> None:

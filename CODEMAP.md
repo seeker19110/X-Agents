@@ -73,4 +73,4 @@ từng package ở `<pkg>/CODEMAP.md`.
 |---|---|
 | Tên công ty, gốc, tên bus | `companies/keeper/src/keeper/core.py` |
 | Topic, model payload, chủ namespace | `companies/keeper/src/keeper/events.py` + `companies/keeper/topics/schemas/` |
-| Việc còn phải làm (BT2–BT8) | `companies/keeper/docs/DAC-TA-KEEPER.md`; trạng thái ở `docs/thi-hanh/keeper.md` §B |
+| Lộ trình BT1–BT8 (BT1–BT7 đã merge; còn canary BT8, chờ người) | `companies/keeper/docs/DAC-TA-KEEPER.md`; trạng thái ở `docs/thi-hanh/keeper.md` §B; bảng module đầy đủ ở `companies/keeper/CODEMAP.md` |

@@ -1,6 +1,6 @@
 """`CoreConfig` — chỗ DUY NHẤT core biết một công ty khác công ty kia ở đâu (ADR gốc 0001 §2).
 
-Mỗi công ty dựng đúng một `CoreConfig` (`company/core.py`, `studio/core.py`) rồi truyền xuống. Thêm một điểm
+Mỗi công ty dựng đúng một `CoreConfig` (`company/core.py`, `keeper/core.py`) rồi truyền xuống. Thêm một điểm
 khác biệt mới thì thêm một TRƯỜNG ở đây, không thêm một câu `if` trong core.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ class TopicACL:
 class CoreConfig:
     """Một công ty, nhìn từ core.
 
-    `prefix` ("COMPANY" | "STUDIO") là tiền tố của MỌI biến môi trường, của thông điệp lỗi có nhắc biến, và của
+    `prefix` ("COMPANY" | "KEEPER") là tiền tố của MỌI biến môi trường, của thông điệp lỗi có nhắc biến, và của
     tên tool MCP. Nó viết HOA vì biến môi trường viết hoa; chỗ nào cần chữ thường thì hạ tại chỗ dùng.
 
     `root` là gốc thư mục công ty — nơi có `llm.yaml`, `agents/`, `skills/`, `topics/schemas/`, `evals/`.
@@ -88,7 +88,7 @@ class CoreConfig:
         return self.env_name("GATE_APPROVERS")
 
     def env_name(self, ten: str) -> str:
-        """`COMPANY_MODEL_STRONG`, `STUDIO_LLM_PROVIDER`… — một chỗ ghép tiền tố cho cả core.
+        """`COMPANY_MODEL_STRONG`, `KEEPER_LLM_PROVIDER`… — một chỗ ghép tiền tố cho cả core.
 
         Mọi biến môi trường của core đi qua đây. Viết thẳng `f"{cfg.prefix}_..."` ở nơi dùng thì mỗi nơi tự
         chọn dấu nối, và một chỗ gõ sai sẽ im lặng đọc ra biến không tồn tại.

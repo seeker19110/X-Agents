@@ -1,8 +1,8 @@
 # ARCHITECTURE.md — xagents-core
 
 ```
-companies/software-company, companies/keeper
-        │  import xagents_core.*  (27 file + 25 file, đo 2026-09-12)
+companies/software-company, companies/keeper, platform/console
+        │  import xagents_core.*  (27 + 15 + 3 file trong src/, đo 2026-09-28)
         ▼
 ┌─────────────────────────────── platform/xagents-core ───────────────────────────────┐
 │  events.py (Envelope/AuditLog/SharedContext — 5 lớp chung, lớp con công ty thu hẹp)  │
@@ -41,8 +41,8 @@ platform/gateway (proxy) hoặc provider trả phí trực tiếp
   `platform/gateway` hoặc thẳng provider trả phí, core không phân biệt.
 - **Đĩa**: `sandbox.py`/`sqlite_bus.py` giữ state runtime cũ; từ ADR-0017, `ExecutionJournal` ghi append-only
   khi harness được bật. File journal là state vận hành do caller chọn đường dẫn, không phải artifact Git.
-- **Test**: 542 ca sau ADR-0017 (23 ca execution mới), `branch=true` + `fail_under=100` đã bật
-  từ ngày đầu, không phải mục tiêu đang tới.
+- **Test**: số ca hiện tại ở dòng xagents-core trong `README.md` gốc (có cổng canh); `branch=true` +
+  `fail_under=100` đã bật từ ngày đầu, không phải mục tiêu đang tới.
 - **Tài liệu**: package này không có `docs/` riêng — ADR gốc `0001` ở `docs/adr/` cấp repo; mọi "vì sao" khác
   nằm trong docstring module, đọc trực tiếp thay vì tìm file riêng.
 
