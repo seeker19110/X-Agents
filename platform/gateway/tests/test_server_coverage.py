@@ -148,6 +148,29 @@ async def test_refresh_catalog_per_candidate_fetch_failure_then_success(manager,
 
 
 @pytest.mark.asyncio
+async def test_refresh_catalog_empty_catalog_tries_next_account(manager, monkeypatch):
+    # Tài khoản trả danh sách rỗng (không lỗi) chưa phải kết quả: dò tiếp tài khoản sau.
+    monkeypatch.setattr(gw_server, "discovery_is_stale", lambda: True)
+    creds_a = gw_auth.AntigravityCredentials(access_token="t1", email="a@example.com", project_id="p1")
+    creds_b = gw_auth.AntigravityCredentials(access_token="t2", email="b@example.com", project_id="p2")
+    monkeypatch.setattr(manager, "resolve_credential_candidates", lambda: [creds_a, creds_b])
+    calls: list[str] = []
+
+    def fake_fetch(token, project, **kw):
+        calls.append(token)
+        return [] if token == "t1" else [{"id": "gemini-9", "name": "G9", "code_assist_model": "gemini-9"}]
+
+    monkeypatch.setattr(gw_server, "fetch_available_models", fake_fetch)
+    server = GatewayServer(auth_manager=manager, client=StubClient())
+    try:
+        await server._refresh_catalog()
+        assert calls == ["t1", "t2"]
+        assert {m["id"] for m in gw_client.discovered_models()} == {"gemini-9"}
+    finally:
+        gw_client.set_discovered_models([])
+
+
+@pytest.mark.asyncio
 async def test_refresh_catalog_failure_is_negatively_cached(manager, monkeypatch):
     """Discovery hỏng thì KHÔNG dò lại ở mọi request: mỗi lần dò là N lượt fetch tuần tự + đóng dấu LRU."""
     monkeypatch.setattr(gw_server, "discovery_is_stale", lambda: True)

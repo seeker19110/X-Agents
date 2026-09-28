@@ -13,13 +13,17 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- fix(audit): **audit hoàn thiện trên main #365 — lối quyết định của người không còn nhận `by` không phải người,
-  `gate_reviewer decide` không để lại bus rỗng ở sai đường dẫn**. F-A: `gate_cli approve|reject|reopen`, quyết gate
-  qua console (cả gate keeper) và `orchestrator decide-change` trả lỗi rõ khi `by` không có dạng `human` /
-  `human:<tên>` — trước đây `reviewer:*`/`orchestrator` (ở keeper là mọi tên) lọt ACL bus, in "approve"/`ok` mà gate
-  vẫn chờ ở mọi tiến trình khác; `decide-change --by ops` ghi quyết định của khách dưới tên agent; vai khác nổ
-  traceback (console: HTTP 500). F-B: `gate_reviewer decide` kiểm `missing_bus` như `gate_cli`. Báo cáo
-  `docs/reports/2026-09-27-audit-hoan-thien.md` (#366).
+- fix(audit): **audit hoàn thiện trên main #365 — lối quyết định của người không còn nhận `by` không phải người;
+  tắt backend đang được ưu tiên không còn để `routing.prefer` trỏ vào nó; cả năm gói phủ 100% nhánh**. F-A:
+  `gate_cli approve|reject|reopen`, quyết gate qua console (cả gate keeper) và `orchestrator decide-change` trả lỗi
+  rõ khi `by` không có dạng `human` / `human:<tên>` — trước đây `reviewer:*`/`orchestrator` (ở keeper là mọi tên)
+  lọt ACL bus, in "approve"/`ok` mà gate vẫn chờ ở mọi tiến trình khác; `decide-change --by ops` ghi quyết định của
+  khách dưới tên agent; vai khác nổ traceback (console: HTTP 500). F-B: `gate_reviewer decide` kiểm `missing_bus`
+  như `gate_cli`. F-C: sổ `TRAN_SKIP`/`TRAN_PRAGMA` đếm cả `pytestmark`, marker skip gán vào biến (theo chỗ dùng) và
+  `# pragma: no branch`. F-D (lộ ra khi phủ nhánh console): `console/settings.py` sửa bản sao của `routing` rồi chỉ
+  gán lại khi khác rỗng — tắt backend duy nhất được ưu tiên thì báo "bỏ ưu tiên" mà file vẫn giữ `prefer` cũ. F-E:
+  gateway (27 nhánh) và console (13 nhánh) bật `branch = true`, sổ `CHUA_PHU_NHANH` rỗng; đột biến từng nhánh: 25/27
+  và 10/12 đỏ, bốn ca sống là lớp phòng thủ thừa. Báo cáo `docs/reports/2026-09-27-audit-hoan-thien.md` (#366).
 - fix(audit): kiểm lại ranh giới đường dẫn khi tìm file, dừng cây tiến trình sandbox, cập nhật console theo WAL, trả lỗi JSON đúng HTTP 400 và đồng bộ cổng local với CI; sửa quyền thực thi script và test Python độc lập PATH. Báo cáo `docs/reports/2026-09-27-audit-hardening.md` (#365).
 
 - fix(khung): **hook `auto-format.sh` chỉ format file vốn đã sạch `ruff format`, không còn làm phình diff**. `dev-task.sh format-file` chạy `ruff format` toàn file sau mỗi Edit, trong khi phần lớn repo cố ý viết gọn một dòng và CI chỉ `ruff check`: sửa 5 dòng `orch/guards.py` thành +82, `orch/gates_flow.py` 399 → 591 dòng (vượt trần 400). Nay chỉ format khi bản trong index đã sạch (`git show :./<file> | ruff format --check --stdin-filename <file> -`) hoặc file mới chưa track; ngoài repo hay git lỗi thì bỏ qua. Đo trên `guards.py`, cùng một dòng thêm: bản cũ +52/−23, bản mới +1/−0. Năm ca mới trong `test_cong_khung.py`, mục `TRAPS.md` §3; có hiệu lực sau khi checkout chính `pull` (#364).

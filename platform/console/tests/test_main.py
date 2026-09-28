@@ -289,3 +289,21 @@ def test_start_gateway_goi_dung_lenh_va_tra_ma_thoat(monkeypatch: pytest.MonkeyP
 
     assert cli.start_gateway() == 7
     assert da_chay == [[sys.executable, "-m", "gateway", "start"]]
+
+
+def test_utf8_stdio_bo_qua_stream_khong_reconfigure_va_nuot_loi() -> None:
+    """Phủ nhánh (audit 2026-09-28, #366): stream không có `reconfigure` (bị thay bằng StringIO, pipe cũ) bị bỏ
+    qua, stream đổi hỏng không làm CLI chết. Truyền stream giả làm tham số — không thay `sys.stdout` toàn cục,
+    thay nó làm lệch phép đo coverage (cùng lý do với `platform/gateway/tests/test_x_manage_coverage.py`)."""
+    calls: list[dict[str, str]] = []
+
+    class DoiDuoc:
+        def reconfigure(self, **kw: str) -> None:
+            calls.append(kw)
+
+    class Hong:
+        def reconfigure(self, **kw: str) -> None:
+            raise ValueError("stream đã đóng")
+
+    cli._utf8_stdio(object(), Hong(), DoiDuoc())
+    assert calls == [{"encoding": "utf-8", "errors": "replace"}]

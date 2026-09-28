@@ -39,6 +39,19 @@ def test_legacy_flat_file_is_read(manager):
     assert [c.email for c in manager.load_all_stored_credentials()] == ["solo@example.com"]
 
 
+def test_load_all_skips_unusable_accounts_and_duplicate_emails(manager):
+    # Mục hỏng (không phải dict, thiếu access_token) bị bỏ; hai khoá cùng một email chỉ tính một lần (khoá đầu).
+    manager.token_file.parent.mkdir(parents=True, exist_ok=True)
+    manager.token_file.write_text(json.dumps({"accounts": {
+        "a@example.com": _creds("a").to_dict(),
+        "bi-danh": _creds("a", access_token="token-a-2").to_dict(),
+        "b@example.com": {"email": "b@example.com"},
+        "c@example.com": "khong-phai-dict",
+    }}), encoding="utf-8")
+    creds = manager.load_all_stored_credentials()
+    assert [(c.email, c.access_token) for c in creds] == [("a@example.com", "token-a")]
+
+
 def test_cooldown_excludes_rate_limited_account(manager, caplog):
     first, second = _creds("a"), _creds("b")
     manager.save_credentials(first)
@@ -313,6 +326,29 @@ def test_atomic_write_takes_posix_chmod_branch(manager, monkeypatch):
     monkeypatch.setattr(gw_auth.os, "name", "posix")
     manager.save_credentials(_creds("a"))
     assert manager.token_file.is_file()
+
+
+def test_atomic_write_skips_chmod_on_windows(manager, monkeypatch):
+    # Chiều ngược lại, chạy được cả trên Linux CI: trên Windows `os.chmod` chỉ bật/tắt cờ read-only, không gọi.
+    # Chỉ `gateway.auth` thấy `os.name == "nt"`: đổi `os.name` toàn cục thì pathlib của chính pytest vỡ
+    # (`cannot instantiate 'WindowsPath'`) đúng lúc test đỏ cần in báo cáo.
+    class OsWindows:
+        name = "nt"
+
+        def __init__(self):
+            self.chmod_calls = []
+
+        def chmod(self, *a, **kw):
+            self.chmod_calls.append(a)
+
+        def __getattr__(self, attr):
+            return getattr(os, attr)
+
+    fake_os = OsWindows()
+    monkeypatch.setattr(gw_auth, "os", fake_os)
+    manager._atomic_write(manager.token_file, {"a": 1})
+    assert json.loads(manager.token_file.read_text(encoding="utf-8")) == {"a": 1}
+    assert fake_os.chmod_calls == []
 
 
 def test_atomic_write_cleans_up_tmp_file_and_reraises_on_failure(manager, monkeypatch):

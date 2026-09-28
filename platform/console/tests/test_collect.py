@@ -6,20 +6,21 @@ import json
 import math
 import sqlite3
 from contextlib import closing
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from company.events import AuditLog as CompanyAudit
 from company.events import Envelope as CompanyEnvelope
-from company.events import Task
+from company.events import PullRequest, Task
 from company.gates import HumanGate as CompanyHumanGate
 from company.sqlite_bus import SQLiteBus as CompanySQLiteBus
 from xagents_core.execution import ExecutionEvent, ExecutionEventKind, ExecutionJournal, RunSpec, TaskSpec
+from xagents_core.llm import MAY_CONFIG_ENV
 
 import console.collect as collect_mod
-from conftest import gate_decide
+from conftest import _produced, gate_decide
 from console.collect import COMPANY, collect
 
 DEAD_GATEWAY = "http://127.0.0.1:9"  # cổng 9 (discard) không có ai nghe → luôn từ chối ngay
@@ -533,3 +534,102 @@ def test_khong_doc_duoc_bus_van_doc_duoc_quality(tmp_path: Path) -> None:
     assert s["sources"][COMPANY]["ok"] is False
     assert s["quality"] == [{"run_id": "RUN-OK", "status": "succeeded",
                              "checks_total": ["tests"], "checks_passed": ["tests"], "blocker": ""}]
+
+
+# ---------- phủ nhánh (branch = true, audit 2026-09-28, #366) ----------
+
+def _ticket(bus: CompanySQLiteBus, tid: str, **extra: object) -> None:
+    task = Task(ticket_id=tid, project_id="P1", requirement_id="R1", assignee="builder", title="t", acceptance=["ok"],
+                budget_tokens=1_000, **extra)
+    bus.publish(CompanyEnvelope(topic="tasks", key=tid, actor="delivery-lead", payload=task.model_dump()))
+
+
+def _pr(bus: CompanySQLiteBus, tid: str, local_checks: dict) -> None:
+    pr = PullRequest(ticket_id=tid, branch=f"ticket/{tid}", pr_ref="PR-1", local_checks=local_checks)
+    bus.publish(CompanyEnvelope(topic="pull-requests", key=tid, actor="builder", payload=pr.model_dump()))
+
+
+def test_pr_chua_chay_kiem_cuc_bo_hien_dau_hoi_khong_phai_fail(tmp_path: Path) -> None:
+    """`local_checks` thiếu `lint`/`tests` là CHƯA CHẠY — hiện "?", không được gộp với chạy mà đỏ ("fail")."""
+    db = tmp_path / "company.sqlite"
+    bus = CompanySQLiteBus(db)
+    _ticket(bus, "TCK-1")
+    _pr(bus, "TCK-1", {"lint": False})
+    bus.close()
+    row = next(p for p in state(db)["prs"] if p["id"] == "TCK-1")
+    assert (row["lint"], row["tests"], row["v"]) == ("fail", "?", "unverified")
+
+
+def test_checklist_note_lay_ket_luan_review_that_va_cat_theo_note_width() -> None:
+    v = object.__new__(collect_mod.CompanyView)
+    goc = "thiếu kiểm tra quyền ở mọi route quản trị " * 5
+    v.envelopes = [SimpleNamespace(topic="review-results", payload={
+        "ticket_id": "TCK-1", "source": "reviewer", "verdict": "block", "root_cause": goc})]
+    r = SimpleNamespace(subject_id="TCK-1")
+    assert len(f"block · {goc}") > collect_mod.NOTE_WIDTH
+    assert v.checklist_note(r, "review:reviewer:block") == f"block · {goc}"[: collect_mod.NOTE_WIDTH]
+    assert v.checklist_note(r, "review:security:pass") == ""   # nguồn chưa có review → không bịa
+    assert v.checklist_note(r, "tests") == ""                  # mục không phải review
+
+
+def test_log_moi_xuong_dung_o_log_limit_ban_ghi_moi_nhat() -> None:
+    """`log()` dừng ở LOG_LIMIT dòng MỚI NHẤT — không dựng hàng nghìn dòng mỗi lượt poll rồi mới cắt ở `collect()`."""
+    v = object.__new__(collect_mod._View)
+    t0 = datetime(2026, 9, 1, tzinfo=UTC)
+    v.envelopes = [SimpleNamespace(topic="audit-log", key=f"k{i}", ts=t0 + timedelta(minutes=i),
+                                   payload={"action": "produced:tasks", "actor": "builder", "tokens": i})
+                   for i in range(collect_mod.LOG_LIMIT + 1)]
+    rows = v.log()
+    assert len(rows) == collect_mod.LOG_LIMIT
+    assert rows[0][1]["tok"] == collect_mod.LOG_LIMIT   # mới nhất đứng đầu
+    assert rows[-1][1]["tok"] == 1                      # bản cũ nhất (0) bị cắt
+
+
+def test_task_phat_lai_cua_ticket_da_biet_khong_dang_ky_lai(tmp_path: Path) -> None:
+    """Replay gặp `tasks` của ticket đã biết: console không đăng ký lại (đè trạng thái về `dispatched`), để
+    `DeliveryLead.replay` quyết — bản trùng bị bỏ qua, bản rework (retry tăng) mới kéo ticket về `dispatched`."""
+    db = tmp_path / "company.sqlite"
+    bus = CompanySQLiteBus(db)
+    _ticket(bus, "TCK-1")
+    _pr(bus, "TCK-1", {"lint": True, "tests": True, "verified_by": "workspace"})
+    _ticket(bus, "TCK-1")                                   # phát lại y hệt
+    bus.close()
+    truoc = next(t for t in state(db)["tickets"] if t["id"] == "TCK-1")
+    assert truoc["st"] == "in_review" and truoc["retry"] == 0
+
+    bus = CompanySQLiteBus(db)
+    _ticket(bus, "TCK-1", retry=1, hint="sửa theo review")  # rework thật
+    bus.close()
+    sau = next(t for t in state(db)["tickets"] if t["id"] == "TCK-1")
+    assert sau["st"] == "dispatched" and sau["retry"] == 1
+
+
+def test_routing_status_llm_yaml_khong_co_backend_thi_hoi_gateway(
+    tmp_path: Path, company_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`llm.yaml` có mà không khai `backends:` → không có gì để hỏi `routing.status()`; phải rơi về gateway
+    (ở đây đã chết → `sources.gateway.ok = False`), không trả danh sách rỗng giả làm "không có backend nào"."""
+    llm_yaml = tmp_path / "llm.yaml"
+    llm_yaml.write_text("provider: fake\n", encoding="utf-8")
+    may = tmp_path / "may.yaml"
+    may.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv(MAY_CONFIG_ENV, str(may))   # tầng máy rỗng: llm.yaml tầng máy của người chạy test không lọt vào
+    monkeypatch.delenv("COMPANY_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("COMPANY_LLM_BACKENDS", raising=False)
+    monkeypatch.setattr(collect_mod.company_llm, "CONFIG_FILE", llm_yaml)
+
+    assert collect_mod._routing_status() is None
+    s = collect(company_db, gateway_url=DEAD_GATEWAY)
+    assert s["backends"] == [] and s["sources"]["gateway"]["ok"] is False
+
+
+def test_chi_phi_ngoai_cua_so_khong_don_vao_ngay_nao(tmp_path: Path) -> None:
+    db = tmp_path / "company.sqlite"
+    bus = CompanySQLiteBus(db)
+    _produced(bus, CompanyEnvelope, CompanyAudit, actor="builder", topic_out="pull-requests", tokens=10, cost=5.0,
+              age_days=collect_mod.COST_WINDOW_DAYS + 6)
+    _produced(bus, CompanyEnvelope, CompanyAudit, actor="builder", topic_out="pull-requests", tokens=10, cost=0.25)
+    bus.close()
+    series = state(db)["cost_days"]["series"]
+    assert len(series) == collect_mod.COST_WINDOW_DAYS
+    assert sum(sum(day) for day in series) == pytest.approx(0.25)

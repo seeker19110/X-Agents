@@ -164,9 +164,10 @@ hết đúng thì không cổng nào biết.
 
 **A6. Độ sâu phép đo, không chỉ con số.** `fail_under = 100` trên **dòng** vẫn để lọt nhánh chưa đi. Package nào
 chưa `branch = true` **đã có cổng canh từ 2026-09-15** (`test_branch_coverage_dung_so_chua_phu_nhanh`, sổ
-`CHUA_PHU_NHANH`, so bằng đúng), nên phép này còn đúng một việc cổng không làm: hỏi **bao giờ hạ nốt sổ** và
-bật `branch` cho package còn lại. Câu "phủ 100%" trong tài liệu vẫn phải nói rõ *100% dòng* hay *100% dòng và
-nhánh* — nói trống là một dòng lệch, và phần "dòng lệch" ấy thì chưa cổng nào canh.
+`CHUA_PHU_NHANH`, so bằng đúng). Sổ rỗng từ #366 (2026-09-28): cả năm package đo nhánh, và `# pragma: no
+branch` được đếm chung sổ `TRAN_PRAGMA` với `no cover`. Phép này còn đúng một việc cổng không làm: câu "phủ 100%"
+trong tài liệu vẫn phải nói rõ *100% dòng* hay *100% dòng và nhánh* — nói trống là một dòng lệch, và phần "dòng
+lệch" ấy thì chưa cổng nào canh.
 
 **A7. Hạn dùng của bằng chứng.** Bằng chứng có ngày, và ngày cũ đi thì bằng chứng nhạt đi kể cả khi không cổng
 nào đỏ: ngày ghi eval recordings (`companies/*/evals/recordings/REQUIRED.txt` + `git log -1 --format=%ad` trên

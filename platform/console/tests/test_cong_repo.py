@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -103,18 +104,21 @@ def test_quality_needs_phu_moi_job_con() -> None:
 # PR này cả ba đều KHÔNG CÓ TRẦN, KHÔNG CÓ HẠN ĐÁO, KHÔNG AI ĐẾM LẠI: thêm bao nhiêu cũng được, coverage vẫn
 # khai 100%. Sổ dưới đây là số đo ngày 2026-09-12. Thêm một lối thoát mới ⇒ CI đỏ tới khi sửa số ở đây, tức là
 # đi qua review. Bỏ bớt một lối thoát cũng phải sửa số — sổ chỉ có giá trị khi nó khớp chính xác hai chiều.
-TRAN_PRAGMA = {                      # `# pragma: no cover` trong src/ của từng package
+TRAN_PRAGMA = {                      # `# pragma: no cover` / `no branch` trong src/ của từng package
     "platform/xagents-core": 6,      # `grep 'pragma: no cover'` ra 7: llm.py:509 là văn xuôi NHẮC TỚI
     "platform/gateway": 0,           # `` `pragma: no cover` `` (có backtick), không phải directive
     "platform/console": 2,
-    "companies/software-company": 10,
+    "companies/software-company": 13,  # +3 (#366): `no branch` bắt đầu được đếm khi cả năm package bật
+                                       # `branch = true` — mcp_bridge.py:181/183, llm.py:497; cả ba có lời đo
+                                       # tracer ngay trên dòng (arc thoát qua `with` bị ghi về dòng `with`)
     "companies/keeper": 4,               # +1 (2026-09-12): PullRequestExists.__str__ (publish.py) — chỉ phục
                                           # vụ traceback người đọc, không ai assert chuỗi này
 }
 TRAN_SKIP = {                        # skip/xfail trong tests/ của từng package
     "platform/xagents-core": 0,
     "platform/gateway": 3,
-    "platform/console": 1,
+    "platform/console": 4,          # +3 (#366): regex cũ bỏ sót `pytestmark` của test_cong_khung.py (bỏ CẢ
+                                    # module khi máy thiếu bash) và hai `@POSIX_ONLY` của test_server.py
     "companies/software-company": 3,  # thêm ca symlink thư mục: chỉ skip khi OS không cấp quyền tạo symlink
     "companies/keeper": 0,
 }
@@ -122,26 +126,41 @@ TRAN_OMIT = 2                        # dòng `omit` trong pyproject.toml của c
 
 # Lối thoát thứ tư, và là lối duy nhất KHÔNG phải một dòng người ta thêm vào: `fail_under = 100` trên **dòng**
 # vẫn để lọt nhánh chưa đi (`docs/TASK-PACK.md` A6). Package nào chưa `branch = true` thì con số "phủ 100%"
-# của nó nông hơn ba package kia, mà không chỗ nào nói ra. Sổ này nói ra. Đo 2026-09-14; lý do `gateway` và
-# `console` còn ở đây: `companies/keeper/pyproject.toml` ghi "keeper đi trước vì khoảng cách nhỏ nhất (3)".
+# của nó nông hơn các package kia, mà không chỗ nào nói ra. Sổ này nói ra. Đo 2026-09-14: gateway và console
+# chưa bật. Audit 2026-09-27/28 (#366) phủ nốt 27 nhánh của gateway rồi 13 nhánh của console — sổ rỗng, cả năm
+# package đo nhánh. Sổ vẫn giữ để canh chiều ngược lại: một package lặng lẽ tắt `branch` thì test đỏ.
 # Bật xong một package ⇒ test đỏ tới khi bỏ nó khỏi sổ — sổ chỉ có giá trị khi khớp chính xác hai chiều.
-CHUA_PHU_NHANH = {"platform/gateway", "platform/console"}
+CHUA_PHU_NHANH: set[str] = set()
 
-_PRAGMA = re.compile(r"#\s*pragma:\s*no cover")
-_SKIP = re.compile(r"(?:@pytest\.mark\.|pytest\.)(?:skip|xfail)")
+_PRAGMA = re.compile(r"#\s*pragma:\s*no (?:cover|branch)")
+_SKIP = re.compile(r"pytest\.mark\.(?:skipif|skip|xfail)\b|pytest\.(?:skip|xfail|importorskip)\(")
+# Marker skip gán vào biến tự nó chưa bỏ ca nào — mỗi `@TEN` mới bỏ một ca, nên đếm chỗ dùng thay chỗ gán.
+# `pytestmark` thì pytest tự áp cho CẢ module: chính phép gán là một chỗ bỏ, đếm một.
+# no-ky-thuat: chỉ đếm `@TEN` trong cùng file với phép gán, quay lại khi có marker skip dùng chung qua conftest/import
+_MARKER_GAN = re.compile(r"^(\w+)\s*=\s*pytest\.mark\.(?:skipif|skip|xfail)\b", re.MULTILINE)
 _TU_NO = "test_cong_repo.py"         # chính file này chứa các mẫu trên dưới dạng chuỗi — không tự đếm mình
 
 
-def _dem(thu_muc: Path, mau: re.Pattern[str]) -> int:
+def _dem_pragma(van_ban: str) -> int:
+    return len(_PRAGMA.findall(van_ban))
+
+
+def _dem_skip(van_ban: str) -> int:
+    gan = [ten for ten in _MARKER_GAN.findall(van_ban) if ten != "pytestmark"]
+    dung = sum(len(re.findall(rf"^\s*@{re.escape(ten)}\b", van_ban, re.MULTILINE)) for ten in gan)
+    return len(_SKIP.findall(van_ban)) - len(gan) + dung
+
+
+def _dem(thu_muc: Path, dem: Callable[[str], int]) -> int:
     if not thu_muc.is_dir():
         return 0
-    return sum(len(mau.findall(f.read_text(encoding="utf-8", errors="replace")))
+    return sum(dem(f.read_text(encoding="utf-8", errors="replace"))
                for f in thu_muc.rglob("*.py") if f.name != _TU_NO)
 
 
 @pytest.mark.parametrize("pkg", sorted(TRAN_PRAGMA))
 def test_pragma_no_cover_khong_vuot_tran(pkg: str) -> None:
-    that = _dem(ROOT / pkg / "src", _PRAGMA)
+    that = _dem(ROOT / pkg / "src", _dem_pragma)
     assert that == TRAN_PRAGMA[pkg], (
         f"{pkg}: đếm được {that} `pragma: no cover`, sổ ghi {TRAN_PRAGMA[pkg]}. Mỗi cái là một dòng được miễn "
         f"khỏi fail_under=100 — thêm thì phải sửa số ở đây (đi qua review), bớt thì cũng phải sửa cho khớp.")
@@ -149,7 +168,7 @@ def test_pragma_no_cover_khong_vuot_tran(pkg: str) -> None:
 
 @pytest.mark.parametrize("pkg", sorted(TRAN_SKIP))
 def test_skip_xfail_khong_vuot_tran(pkg: str) -> None:
-    that = _dem(ROOT / pkg / "tests", _SKIP)
+    that = _dem(ROOT / pkg / "tests", _dem_skip)
     assert that == TRAN_SKIP[pkg], (
         f"{pkg}: đếm được {that} skip/xfail, sổ ghi {TRAN_SKIP[pkg]}. Ca bị bỏ im lặng không hiện trong "
         f"`pytest -q` — đó là cách 'xanh vì rỗng' sống sót.")
@@ -158,7 +177,7 @@ def test_skip_xfail_khong_vuot_tran(pkg: str) -> None:
 def test_branch_coverage_dung_so_chua_phu_nhanh() -> None:
     """`fail_under = 100` trên dòng vẫn để lọt nhánh (A6). Package nào chưa `branch = true` phải nằm đúng
     trong `CHUA_PHU_NHANH` — không cổng nào canh việc một package lặng lẽ tắt `branch`, và "phủ 100%" của nó
-    khi ấy nông hơn hẳn ba package còn lại mà tài liệu vẫn nói chung một câu."""
+    khi ấy nông hơn hẳn các package còn lại mà tài liệu vẫn nói chung một câu."""
     that = {p for p in _packages()
             if (ROOT / p / "pyproject.toml").is_file()
             and "branch = true" not in (ROOT / p / "pyproject.toml").read_text(encoding="utf-8")}
@@ -331,3 +350,21 @@ def test_file_anh_em_cua_bus_bi_gitignore(ten):
 
     r = subprocess.run(["git", "check-ignore", "-q", "--no-index", ten], cwd=ROOT, capture_output=True)
     assert r.returncode == 0, f"{ten} chưa bị .gitignore bắt"
+
+
+def test_bo_dem_loi_thoat_bat_du_cac_dang_viet() -> None:
+    """F-C (audit 2026-09-28, #366): hai bộ đếm cũ hụt ở ba dạng có thật trong repo — `pytestmark =
+    pytest.mark.skipif(...)` (bỏ CẢ module), marker skip gán vào biến rồi dùng `@TEN` (mỗi `@TEN` bỏ một ca),
+    và `# pragma: no branch` (miễn một nhánh khỏi `branch = true`). Sổ khớp đúng số mà bộ đếm hụt thì sổ nói
+    ít hơn thật — đúng hướng lệch cổng này sinh ra để chặn."""
+    van_ban = (
+        'pytestmark = pytest.mark.skipif(X, reason="a")\n'
+        'POSIX_ONLY = pytest.mark.skipif(Y, reason="b")\n'
+        "@POSIX_ONLY\ndef test_a(): ...\n"
+        "@POSIX_ONLY\ndef test_b(): ...\n"
+        '@pytest.mark.xfail(reason="c")\ndef test_c(): ...\n'
+        'def test_d():\n    pytest.skip("d")\n'
+        'np = pytest.importorskip("numpy")\n'
+    )
+    assert _dem_skip(van_ban) == 6   # pytestmark + 2 × @POSIX_ONLY + xfail + skip( + importorskip(
+    assert _dem_pragma("x = 1  # pragma: no cover\nif a: b  # pragma: no branch\n") == 2

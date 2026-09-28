@@ -553,3 +553,119 @@ def test_discovery_is_stale_empty_then_fresh_then_expired(monkeypatch):
 
     monkeypatch.setattr(gw.time, "time", lambda: gw._discovered_at + gw.MODEL_CATALOG_TTL_S + 1)
     assert gw.discovery_is_stale() is True
+
+
+# ---------- phủ nhánh (branch = true, audit 2026-09-27) ----------
+
+
+def test_reset_hint_zero_does_not_mask_later_hint():
+    # "Resets in 0s" khớp mẫu Code Assist nhưng tổng 0 giây: không dùng được, phải đọc tiếp mẫu sau.
+    assert gw.reset_hint_seconds("Resets in 0s") is None
+    assert gw.reset_hint_seconds("Resets in 0s. Thử lại sau 5s") == 5
+
+
+def test_coerce_content_to_parts_anthropic_image_not_base64_is_skipped():
+    # Ảnh kiểu Anthropic trỏ URL (không phải base64): Code Assist chỉ nhận inlineData, nên bỏ qua.
+    assert gw._coerce_content_to_parts([{"type": "image", "source": {"type": "url", "url": "http://x/y.png"}}]) == []
+
+
+def test_real_thought_signature_keeps_real_signature_and_ignores_non_dict_google():
+    # Chữ ký thật ở `thoughtSignature` thắng chữ ký trong `extra_content`; `google` không phải dict thì bỏ qua.
+    real = {"thoughtSignature": "sig-that", "extra_content": {"google": {"thought_signature": "sig-khac"}}}
+    assert gw._real_thought_signature(real) == "sig-that"
+    assert gw._real_thought_signature({"extra_content": {"google": "khong-phai-dict"}}) == ""
+
+
+def test_sanitize_schema_keeps_union_with_several_non_null_variants():
+    node = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+    assert gw._sanitize_gemini_schema_node(node) == node
+
+
+def test_build_request_drops_empty_system_and_empty_messages():
+    # Message rỗng không thành một lượt rỗng: nếu thành, hai lượt user hai bên nó không còn liền nhau để gộp.
+    payload = {"messages": [
+        {"role": "system", "content": ""},
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": ""},
+        {"role": "user", "content": "nữa"},
+    ]}
+    inner = gw.build_code_assist_request(payload, "p")["request"]
+    assert "systemInstruction" not in inner
+    assert inner["contents"] == [{"role": "user", "parts": [{"text": "hi"}, {"text": "nữa"}]}]
+
+
+def test_build_request_tool_result_without_tool_call_id_has_no_id():
+    payload = {"messages": [{"role": "user", "content": "hi"}, {"role": "tool", "content": "kết quả"}]}
+    contents = gw.build_code_assist_request(payload, "p")["request"]["contents"]
+    assert contents[-1]["parts"][-1] == {"functionResponse": {"name": "tool", "response": {"result": "kết quả"}}}
+
+
+def test_build_request_tool_calls_not_a_list_are_ignored():
+    # `tool_calls` sai kiểu (một dict lẻ, một số) thì bỏ qua, giữ phần văn bản — không nổ TypeError khi lặp.
+    for sai_kieu in ({"id": "c1"}, 7):
+        payload = {"messages": [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "trả lời", "tool_calls": sai_kieu},
+        ]}
+        contents = gw.build_code_assist_request(payload, "p")["request"]["contents"]
+        assert contents[-1] == {"role": "model", "parts": [{"text": "trả lời"}]}
+
+
+def test_parts_to_openai_skips_part_without_text_or_function_call():
+    parts = [{"inlineData": {"mimeType": "image/png", "data": "AA"}}, {"thought": True}]
+    assert gw._parts_to_openai(parts, with_index=False) == ("", "", [])
+
+
+def test_translate_response_without_candidates_is_empty_stop():
+    out = gw.translate_gemini_to_openai_response({"response": {"candidates": []}}, "m")
+    assert out["choices"][0]["message"] == {"role": "assistant", "content": ""}
+    assert out["choices"][0]["finish_reason"] == "stop"
+
+
+def test_translate_response_keeps_text_when_extractor_finds_nothing(monkeypatch):
+    # Nhánh phòng thủ: với hai mẫu hiện có, khớp `search` là trích được ít nhất một lời gọi; nếu bộ trích (sau
+    # này đổi mẫu) trả rỗng thì phải giữ nguyên văn bản, không thay bằng bản đã gỡ mẫu.
+    monkeypatch.setattr(gw, "_extract_tool_calls_from_text", lambda text: ([], ""))
+    resp = {"response": {"candidates": [{"content": {"parts": [{"text": "[Tool call: f({})]"}]}}]}}
+    message = gw.translate_gemini_to_openai_response(resp, "m")["choices"][0]["message"]
+    assert message == {"role": "assistant", "content": "[Tool call: f({})]"}
+
+
+def test_translate_response_as_content_keeps_tool_call_with_empty_arguments(monkeypatch):
+    # Nhánh phòng thủ: `_parts_to_openai` luôn điền arguments bằng `json.dumps` (ít nhất "{}"); nếu arguments rỗng
+    # thì không có JSON nào để đưa về `content` — giữ nguyên tool_calls thay vì trả content rỗng.
+    call = {"id": "c1", "type": "function", "function": {"name": "f", "arguments": ""}}
+    monkeypatch.setattr(gw, "_parts_to_openai", lambda parts, **kw: ("", "", [call]))
+    resp = {"response": {"candidates": [{"content": {"parts": []}}]}}
+    choice = gw.translate_gemini_to_openai_response(resp, "m", as_content=True)["choices"][0]
+    assert choice["message"]["content"] is None
+    assert choice["message"]["tool_calls"] == [call]
+    assert choice["finish_reason"] == "tool_calls"
+
+
+def test_upstream_error_message_keeps_raw_body_when_error_field_is_unusable():
+    assert gw._upstream_error_message(500, '{"error": {"code": 5}}') == 'Code Assist lỗi HTTP 500: {"error": {"code": 5}}'
+    assert gw._upstream_error_message(502, '{"error": 42}') == 'Code Assist lỗi HTTP 502: {"error": 42}'
+
+
+@pytest.mark.asyncio
+async def test_stream_event_without_candidates_emits_no_chunk():
+    auth = FakeAuthManager(accounts=[
+        gw_auth.AntigravityCredentials(access_token="token-a", email="a@example.com", project_id="project-a"),
+    ])
+
+    def handler(request):
+        empty = {"response": {"candidates": []}}
+        good = {"response": {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}}
+        body = f"data: {json.dumps(empty)}\n\ndata: {json.dumps(good)}\n\ndata: [DONE]\n\n"
+        return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, content=body.encode())
+
+    client = _client(auth, handler)
+    try:
+        chunks = [c async for c in client.stream_chat_completion(
+            {"model": "gemini-3.8-flash-medium", "messages": [{"role": "user", "content": "hi"}]}
+        )]
+    finally:
+        await client.close()
+    deltas = [json.loads(c[6:])["choices"][0]["delta"] for c in chunks if c.startswith("data: {")]
+    assert deltas == [{"role": "assistant"}, {"content": "ok"}, {}]

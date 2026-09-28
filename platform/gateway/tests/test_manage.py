@@ -24,6 +24,17 @@ def test_setup_writes_llm_yaml_preserving_other_keys(tmp_path):
     assert data["extra"] == {"temperature": 0}
 
 
+def test_setup_creates_llm_yaml_and_parent_dir_when_missing(tmp_path):
+    target = tmp_path / "moi" / "llm.yaml"
+    assert manage.main(["setup", "--target", str(target), "--port", "9000"]) == 0
+    assert yaml.safe_load(target.read_text(encoding="utf-8")) == {
+        "provider": "openai",
+        "base_url": "http://127.0.0.1:9000/v1",
+        "models": {"strong": manage.DEFAULT_STRONG_MODEL, "standard": manage.DEFAULT_STANDARD_MODEL},
+        "max_tokens": 16000,
+    }
+
+
 def test_reset_and_logout(tmp_path, monkeypatch):
     monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
     mgr = gw_auth.AntigravityAuthManager()
@@ -88,6 +99,22 @@ def test_daemon_entry_removes_pid_file_at_exit(tmp_path, monkeypatch):
     assert not pid_file.exists()
 
 
+def test_daemon_exit_keeps_pid_file_of_another_process(tmp_path, monkeypatch):
+    # PID file đã thuộc tiến trình khác (daemon mới khởi động sau) thì không xoá; không có file thì không lỗi.
+    monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
+    registered = []
+    import atexit
+
+    monkeypatch.setattr(atexit, "register", lambda fn: registered.append(fn))
+    monkeypatch.setattr("gateway.server.run_server", lambda host, port: None)
+    manage._run_daemon("127.0.0.1", 1)
+    registered[0]()                                   # chưa có PID file
+    pid_file = manage.get_pid_file()
+    pid_file.write_text(str(os.getpid() + 1), encoding="utf-8")
+    registered[0]()
+    assert pid_file.read_text(encoding="utf-8") == str(os.getpid() + 1)
+
+
 def test_models_lists_and_accepts_valid_llm_yaml(tmp_path, capsys):
     target = tmp_path / "llm.yaml"
     target.write_text(
@@ -150,6 +177,28 @@ def test_models_probe_cli_flags_failing_cli_model(tmp_path, monkeypatch, capsys)
     monkeypatch.setattr(manage, "_probe_cli", lambda provider, model: ("LỖI", "exit 1: unknown model"))
     assert manage.main(["models", "--check", str(target), "--probe-cli"]) == 1
     assert "claude-opus-99" in capsys.readouterr().out
+
+
+def test_models_probe_cli_ok_model_is_not_a_problem(tmp_path, monkeypatch, capsys):
+    target = tmp_path / "llm.yaml"
+    target.write_text(
+        "backends:\n  - {name: claude-sub, provider: claude-code, models: {strong: claude-opus-5}}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manage, "_probe_cli", lambda provider, model: ("OK", "trả lời được"))
+    assert manage.main(["models", "--check", str(target), "--offline", "--probe-cli"]) == 0
+    out = capsys.readouterr().out
+    assert "claude-opus-5" in out and "OK  trả lời được" in out
+
+
+def test_models_probe_all_alive_reports_no_dead_model(tmp_path, monkeypatch, capsys):
+    target = tmp_path / "llm.yaml"
+    target.write_text("backends: []\n", encoding="utf-8")
+    monkeypatch.setattr(manage, "_probe_antigravity", lambda ids: 0)
+    assert manage.main(["models", "--check", str(target), "--offline", "--probe"]) == 0
+    out = capsys.readouterr().out
+    assert "nghỉ hưu" not in out and "không có trên kênh" not in out
+    assert "Mọi model trong llm.yaml đều được gateway hỗ trợ." in out
 
 
 def test_models_probe_id_does_not_treat_missing_candidate_as_config_error(tmp_path, monkeypatch, capsys):

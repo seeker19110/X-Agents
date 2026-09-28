@@ -170,6 +170,33 @@ def test_cmd_start_background_spawn_uses_windows_creationflags(tmp_path, monkeyp
     assert "PID 4245" in capsys.readouterr().out
 
 
+def test_cmd_start_background_spawn_posix_uses_new_session_without_creationflags(tmp_path, monkeypatch):
+    """Chiều ngược của test trên, ép platform để CI Windows cũng đi nhánh không-phải-win32 (phủ nhánh): không cờ
+    Windows, daemon tách session riêng."""
+    monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
+    monkeypatch.setattr(sys, "platform", "linux")
+    running_calls = {"n": 0}
+
+    def fake_running(host, port):
+        running_calls["n"] += 1
+        return running_calls["n"] > 1
+
+    monkeypatch.setattr(manage, "is_server_running", fake_running)
+    seen = {}
+
+    class FakeProc:
+        pid = 4246
+
+    def fake_popen(*a, **k):
+        seen.update(creationflags=k.get("creationflags"), start_new_session=k.get("start_new_session"))
+        return FakeProc()
+
+    monkeypatch.setattr(manage.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(manage.time, "sleep", lambda s: None)
+    assert manage.main(["start", "--host", "127.0.0.1", "--port", "7"]) == 0
+    assert seen == {"creationflags": 0, "start_new_session": True}
+
+
 def test_cmd_start_background_spawn_sleeps_between_healthcheck_polls(tmp_path, monkeypatch, capsys):
     """Healthcheck đầu tiên thất bại (server chưa kịp bind) -> phải sleep rồi thử lại, không chỉ chờ 1 lần."""
     monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
@@ -429,6 +456,22 @@ def test_models_reports_dangling_alias_when_live_catalog_misses_alias_target(tmp
     assert "Alias trỏ vào model upstream không còn khai" in out
 
 
+def test_models_live_catalog_covering_every_alias_prints_no_alias_section(tmp_path, monkeypatch, capsys):
+    from gateway.client import MODEL_ALIAS_MAP, set_discovered_models
+
+    target = tmp_path / "llm.yaml"
+    target.write_text("backends: []\n", encoding="utf-8")
+    ids = sorted(set(MODEL_ALIAS_MAP) | set(MODEL_ALIAS_MAP.values()))
+    monkeypatch.setattr(manage, "_discover_catalog", lambda: [{"id": i, "name": i, "code_assist_model": i} for i in ids])
+    try:
+        assert manage.main(["models", "--check", str(target)]) == 0
+    finally:
+        set_discovered_models([])   # như test trên: không để catalog giả rò sang test khác
+    out = capsys.readouterr().out
+    assert "Alias trỏ vào model upstream không còn khai" not in out
+    assert "Alias cũng chấp nhận" not in out
+
+
 def test_models_target_missing_file_is_skipped(tmp_path, capsys):
     missing = tmp_path / "no-such-llm.yaml"
     assert manage.main(["models", "--check", str(missing), "--offline"]) == 0
@@ -457,13 +500,28 @@ def test_discover_catalog_returns_empty_when_resolve_fails(monkeypatch, capsys):
 
 # ---------- main(): stdout/stderr reconfigure + dispatch ----------
 #
-# Vòng lặp reconfigure(encoding="utf-8", ...) trong main() đã chạy (nhánh reconfigure thành công)
-# ở MỌI lần gọi manage.main() khắp bộ test này, vì sys.stdout/sys.stderr thật đều có .reconfigure().
+# `_utf8_stdio` (main() gọi với sys.stdout/sys.stderr) đã chạy nhánh reconfigure thành công ở MỌI lần gọi
+# manage.main() khắp bộ test này, vì sys.stdout/sys.stderr thật đều có .reconfigure().
 # Từng thử thay sys.stdout/sys.stderr toàn cục bằng object giả để bắt riêng nhánh "reconfigure lỗi
 # bị nuốt" — nhưng việc đó làm sai lệch số liệu coverage của các test aiohttp async chạy SAU nó
 # trong cùng phiên (dường như là hạn chế của coverage.py khi tracer bám theo sys.stdout/stderr bị
-# thay đổi giữa chừng, không phải lỗi thật). Vì nhánh "thành công" đã được phủ gián tiếp và nhánh
-# suppress không đáng đánh đổi rủi ro đó, không test bằng cách thay sys.stdout/sys.stderr nữa.
+# thay đổi giữa chừng, không phải lỗi thật). Nên không thay sys.stdout/sys.stderr: hai nhánh còn lại
+# ("không có reconfigure", "reconfigure lỗi") đi qua stream giả truyền thẳng vào tham số của `_utf8_stdio`.
+
+
+def test_utf8_stdio_bo_qua_stream_khong_reconfigure_va_nuot_loi():
+    calls = []
+
+    class DoiDuoc:
+        def reconfigure(self, **kw):
+            calls.append(kw)
+
+    class Hong:
+        def reconfigure(self, **kw):
+            raise ValueError("stream đã đóng")
+
+    manage._utf8_stdio(object(), Hong(), DoiDuoc())
+    assert calls == [{"encoding": "utf-8", "errors": "replace"}]
 
 
 def test_dunder_main_guard_calls_main_and_exits(monkeypatch, tmp_path):

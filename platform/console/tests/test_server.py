@@ -547,6 +547,23 @@ def test_stream_host_la_bi_tu_choi(make_console, fake_modules) -> None:
     assert fake_modules.calls["collect"] == []
 
 
+def test_head_tra_header_khong_kem_than(make_console) -> None:
+    """RFC 9110 §9.3.2: HEAD như GET nhưng KHÔNG có thân (phủ nhánh, audit 2026-09-28, #366). Đọc bằng socket
+    thô: `http.client` tự bỏ thân của phản hồi HEAD nên không thấy được server lỡ ghi thân vào kết nối."""
+    c = make_console()
+    with socket.create_connection(("127.0.0.1", c.port), timeout=5) as s:
+        s.sendall(f"HEAD /healthz HTTP/1.1\r\nHost: 127.0.0.1:{c.port}\r\nConnection: close\r\n\r\n".encode())
+        raw = b""
+        while chunk := s.recv(65536):
+            raw += chunk
+    head, _, body = raw.partition(b"\r\n\r\n")
+    status_line, *header_lines = head.decode("latin-1").split("\r\n")
+    headers = {k.strip().lower(): v.strip() for k, _, v in (h.partition(":") for h in header_lines)}
+    assert " 200 " in status_line
+    assert int(headers["content-length"]) == len(b'{"ok": true}')   # header nói đúng độ dài thân của GET
+    assert body == b""
+
+
 def test_stream_head_khong_treo(make_console, fake_modules) -> None:
     """do_HEAD gọi thẳng do_GET; nếu không chặn thì HEAD /api/stream sẽ ngồi trong vòng lặp đẩy."""
     c = make_console(stream_max_seconds=30.0)

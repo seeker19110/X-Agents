@@ -55,8 +55,11 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["src/console"]
+# Phủ nhánh (`docs/TASK-PACK.md` A6): bật ở audit 2026-09-28 (#366) sau khi phủ 13 nhánh còn thiếu — một trong số
+# đó lộ lỗi thật (`settings.update_settings` ghi lại `routing.prefer` cũ trỏ vào backend vừa tắt).
+branch = true
 
 [tool.coverage.report]
-# Cả năm package phủ 100% dòng (console đo DÒNG, không đo nhánh): ngưỡng bằng đúng mức đạt được, nên mất một dòng phủ là CI đỏ.
+# Cả năm package phủ 100% dòng + nhánh: ngưỡng bằng đúng mức đạt được, nên mất một dòng hay một nhánh là CI đỏ.
 # Nhánh phụ thuộc nền tảng (os.name == "nt", AF_INET6) được test bằng cách thay socket/ctypes, không bằng môi trường.
 fail_under = 100
