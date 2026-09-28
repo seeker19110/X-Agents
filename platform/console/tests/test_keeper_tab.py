@@ -232,20 +232,46 @@ def test_duyet_gate_keeper_qua_console_di_dung_duong_gate(keeper_db: Path) -> No
 
 def test_four_eyes_va_allowlist_cua_keeper_van_ap_tren_duong_console(keeper_db: Path,
                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
-    """Console không được là lối tắt bỏ qua `KEEPER_GATE_APPROVERS` (K3.7 của company, lặp lại cho keeper)."""
-    from keeper.gates import APPROVERS_ENV
+    """Console không được là lối tắt bỏ qua `KEEPER_GATE_APPROVERS` (K3.7 của company, lặp lại cho keeper).
+    Four-eyes thử trên gate do NGƯỜI mở: `by` không hình người (`keeper-supervisor`) bị chặn trước đó (F-A)."""
+    from keeper.gates import APPROVERS_ENV, CHECKLIST, GateRequest
+    from keeper.gates import PersistentGate as KeeperGate
 
     from console.decide import GateError, decide
 
+    bus = KeeperBus(KEEPER_CORE, keeper_db)
+    try:
+        KeeperGate(bus).request(GateRequest(kind="patch", subject_id="KT-2", created_by="human:truc-ban",
+                                            checklist=list(CHECKLIST)))
+    finally:
+        bus.close()
     with pytest.raises(GateError) as e:
-        decide(None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve",
-               by="keeper-supervisor", reason="tự duyệt")
+        decide(None, keeper_db, subject_id="KT-2", xuong=KEEPER, decision="approve",
+               by="human:truc-ban", reason="tự duyệt")
     assert "four-eyes" in str(e.value)
     monkeypatch.setenv(APPROVERS_ENV, "human:cto")
     with pytest.raises(GateError) as e2:
         decide(None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve",
                by="human:nguoi-la", reason="")
     assert "danh sách người duyệt" in str(e2.value)
+
+
+@pytest.mark.parametrize("by", ["owner", "reviewer:x", "patcher"])
+def test_by_khong_phai_nguoi_khong_duyet_duoc_gate_keeper_qua_console(keeper_db: Path, by: str) -> None:
+    """Bus keeper không chặn actor lạ ghi `gate.decide`, nên trước bản vá (audit 2026-09-27, F-A) console trả `ok`
+    kèm `event_id` cho MỌI `by` không phải người, còn `trusted_decision` bỏ bản ghi ở mọi tiến trình khác — gate
+    vẫn chờ. `keeper gate` (CLI) chặn đúng chỗ này từ đầu; console là lối vòng qua chốt đó."""
+    from keeper.gates import PersistentGate as KeeperGate
+
+    from console.decide import decide
+
+    with pytest.raises(ValueError, match="không phải người"):
+        decide(None, keeper_db, subject_id="KT-1", xuong=KEEPER, decision="approve", by=by, reason="ok")
+    bus = KeeperBus(KEEPER_CORE, keeper_db)
+    try:
+        assert "KT-1" in KeeperGate(bus).pending
+    finally:
+        bus.close()
 
 
 def test_quyet_dinh_rieng_cua_keeper_duoc_nhan(keeper_db: Path) -> None:

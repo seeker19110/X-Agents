@@ -32,11 +32,20 @@ def test_duyet_gate_that(company_db: Path) -> None:
 
 
 def test_four_eyes_chan_nguoi_tao(company_db: Path) -> None:
+    """Gate do NGƯỜI mở (`gate_cli request --by human:…`): từ F-A (audit 2026-09-27) `by` không hình người bị chặn
+    trước khi tới four-eyes, nên tên agent đã tạo gate (`delivery-lead`) không còn thử được chốt này."""
+    from company.gates import GateRequest
+    bus = CompanySQLiteBus(company_db)
+    try:
+        CompanyGate(bus).request(GateRequest(kind="release", subject_id="REL-002", checklist=["tests"],
+                                             created_by="human:lead"))
+    finally:
+        bus.close()
     with pytest.raises(GateError) as e:
-        decide(company_db, subject_id="REL-001", xuong=COMPANY, decision="approve",
-               by="delivery-lead", reason="tự duyệt")
+        decide(company_db, subject_id="REL-002", xuong=COMPANY, decision="approve",
+               by="human:lead", reason="tự duyệt")
     assert "four-eyes" in str(e.value)
-    assert "REL-001" in {g["id"] for g in collect(company_db, gateway_url=DEAD_GATEWAY)["gates"]}
+    assert "REL-002" in {g["id"] for g in collect(company_db, gateway_url=DEAD_GATEWAY)["gates"]}
 
 
 def test_allowlist_nguoi_duyet_cua_cong_ty_gia_cong(company_db: Path,
@@ -51,6 +60,23 @@ def test_allowlist_nguoi_duyet_cua_cong_ty_gia_cong(company_db: Path,
     out = decide(company_db, subject_id="REL-001", xuong=COMPANY, decision="approve",
                  by="human:cto", reason="ok")
     assert out["ok"] and out["event_id"]
+
+
+@pytest.mark.parametrize("by", ["reviewer:x", "orchestrator", "owner"])
+def test_by_khong_phai_nguoi_bi_tu_choi_truoc_khi_ghi(company_db: Path, by: str) -> None:
+    """Ô "Bạn là" của console là chữ tự do (`drawer.js`). Trước bản vá (audit 2026-09-27, F-A): `reviewer:x` và
+    `orchestrator` trả `ok` kèm `event_id` nhưng mọi tiến trình khác bỏ bản ghi (`_trusted` → None) nên gate vẫn
+    chờ; `owner` (quên tiền tố) nổ `PermissionDenied` của ACL bus — không phải `PermissionError` — nên server trả
+    500 "lỗi không lường trước"."""
+    with pytest.raises(ValueError, match="không phải người"):
+        decide(company_db, subject_id="REL-001", xuong=COMPANY, decision="approve", by=by, reason="ok")
+    assert "REL-001" in {g["id"] for g in collect(company_db, gateway_url=DEAD_GATEWAY)["gates"]}
+    bus = CompanySQLiteBus(company_db)
+    try:
+        assert not [e for e in bus.replay(topic="audit-log")
+                    if e.payload.get("action") == "gate.decide" and "REL-001" in (e.payload.get("evidence") or "")]
+    finally:
+        bus.close()
 
 
 def test_subject_khong_co_gate_cho(company_db: Path) -> None:

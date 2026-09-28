@@ -968,6 +968,25 @@ def test_cli_decide_change_khong_co_change_request_bao_loi_ro(tmp_path, capsys):
     assert "không có change-request CR-KHONG-CO" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("by", ["ops", "pm", "reviewer:x"])
+def test_cli_decide_change_voi_by_khong_phai_nguoi_bao_loi_va_cr_van_cho(tmp_path, capsys, by):
+    """Họ F-A (audit 2026-09-27): `decide-change` là cửa của KHÁCH quyết change request, nhưng không kiểm `--by` là
+    người như `publish` ngay trên nó. `--by ops` (chủ topic `change-requests`) lọt ACL bus và ghi quyết định của khách
+    dưới tên agent — `_cr_accepted_*` chỉ đọc `decision` nên kế hoạch mới vẫn chạy; vai khác nổ `PermissionDenied`
+    thành traceback thay vì lỗi rõ."""
+    db = tmp_path / "c.sqlite"; bus = SQLiteBus(db)
+    _pub(bus, "change-requests", "CR-1", "human:po", {"change_id": "CR-1", "project_id": "P1", "requested_by": "human:po",
+                                                      "description": "đổi phạm vi", "decision": "pending"})
+    bus.close()
+    assert orch_main(["--db", str(db), "decide-change", "CR-1", "accepted", "--by", by]) == 2
+    assert "phải là người" in capsys.readouterr().err
+    bus = SQLiteBus(db)
+    try:
+        assert [e.payload["decision"] for e in bus.replay(topic="change-requests", key="CR-1")] == ["pending"]
+    finally:
+        bus.close()
+
+
 def test_cli_publish_change_request_keys_by_change_id(tmp_path, capsys, monkeypatch):
     """Change request có cả project_id và change_id; key phải là change_id (schema: key = change_id) — `decide-change`
     replay theo key, lấy project_id là quyết định của khách không tìm thấy CR. Đo được 2026-09-06: CR-RISK-001 vào bus
