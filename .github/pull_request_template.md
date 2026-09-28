@@ -26,7 +26,7 @@ Closes #
 
 ## Validation
 
-- [ ] `scripts/dev-task.sh gate <gói>` cho mọi gói bị đụng (`company|gateway|console|core|keeper|all` — khớp đúng `ci.yml`)
+- [ ] `scripts/dev-task.sh gate <gói>` cho gói bị đụng, gói import nó và `console` (`company|gateway|console|core|keeper|all` — khớp đúng `ci.yml`)
 - [ ] Test đỏ TRƯỚC khi sửa, xanh sau (`AGENTS.md` luật bắt buộc 4) — tên ca:
 - [ ] Chạm `agents/`/`skills/`: đủ 7 bước `CONTRIBUTING.md` §3
 - [ ] Kiểm tay:

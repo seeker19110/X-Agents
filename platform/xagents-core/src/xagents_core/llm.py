@@ -40,7 +40,7 @@ from typing import Any, ClassVar, Protocol, Self, TypeVar, cast
 import yaml
 
 from .config import CoreConfig
-from .sandbox import SECRET_ENV
+from .sandbox import LLM_ENV, SECRET_ENV
 from .tools import ToolCall, ToolSpec
 
 __all__ = [
@@ -632,13 +632,14 @@ class ModelClient(Protocol):
 
 def cli_env(keep_prefixes: tuple[str, ...] = ()) -> dict[str, str]:
     """Env cho tiến trình CLI model (claude/codex): bỏ mọi biến trông như khoá, trừ tiền tố mà CLI cần để đăng
-    nhập. Khoá `COMPANY_LLM_*`/`STUDIO_LLM_*` của công ty không bao giờ đi theo.
+    nhập. Cấu hình `<PREFIX>_LLM_*` của công ty (`sandbox.LLM_ENV`) không bao giờ đi theo, kể cả khi trùng tiền tố
+    giữ lại.
 
     Trước khi có hàm này, adapter truyền nguyên `os.environ` — nghĩa là khoá TTS/ảnh/YouTube của phòng ban đi
     thẳng vào tiến trình con, thứ không lượt gọi model nào cần tới."""
     out = {}
     for k, v in os.environ.items():
-        if k.upper().startswith(("COMPANY_LLM", "STUDIO_LLM")): continue
+        if LLM_ENV.search(k): continue
         if SECRET_ENV.search(k) and not k.upper().startswith(tuple(p.upper() for p in keep_prefixes)): continue
         out[k] = v
     return out

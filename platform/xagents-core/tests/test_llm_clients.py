@@ -349,6 +349,17 @@ def test_cli_env_bo_khoa_tru_tien_to_cli_can(monkeypatch):
     assert env["OPENAI_API_KEY"] == "giu" and env["PATH_LIKE_NORMAL"] == "giu"
 
 
+@pytest.mark.parametrize("giu", [(), ("ANTHROPIC_", "CLAUDE_"), ("KEEPER_",)])
+def test_cli_env_bo_cau_hinh_llm_cua_moi_cong_ty(monkeypatch, giu):
+    """Cùng họ `test_clean_env_bo_cau_hinh_llm_cua_moi_cong_ty` (`test_sandbox.py`): `startswith(("COMPANY_LLM",
+    "STUDIO_LLM"))` sót keeper. Ca `("KEEPER_",)` ghim lời hứa của docstring: không `keep_prefixes` nào mở được
+    không gian này cho CLI model."""
+    monkeypatch.setenv("KEEPER_LLM_PROVIDER", "x")
+    monkeypatch.setenv("KEEPER_LLM_BACKENDS", "x")
+    env = cli_env(keep_prefixes=giu)
+    assert "KEEPER_LLM_PROVIDER" not in env and "KEEPER_LLM_BACKENDS" not in env
+
+
 def test_check_argv_bao_ro_thay_vi_de_he_dieu_hanh_bao_kho_hieu():
     check_argv(["codex", "exec"])   # dưới trần: im lặng
     with pytest.raises(LLMError, match="argv của CLI dài"):

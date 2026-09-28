@@ -8,7 +8,7 @@
 #   1. Đang đứng trên `main`/`master`      → chặn (luật cấm 1)
 #   2. Staged có file cấm commit           → chặn (luật cấm 3: llm.yaml, media.yaml, *.sqlite*, company.artifacts/)
 #   3. Diff staged HẠ `fail_under`         → chặn (luật cấm 6: thêm test, không hạ số)
-#   4. `scripts/dev-task.sh gate` đỏ       → chặn (luật bắt buộc 3)
+#   4. `scripts/dev-task.sh gate` đỏ       → chặn (luật bắt buộc 3): gói bị đụng + gói import nó + console
 #
 # Lấy từ `seeker19110/project-template` (`.claude/hooks/pre-commit-gate.sh`); ba phép kiểm đầu là của repo này.
 # Bỏ qua có chủ đích: thêm `--no-verify` vào lệnh commit.
@@ -77,8 +77,25 @@ case "$nhanh" in
     ;;
 esac
 
+# THỨ SẮP VÀO COMMIT — ba phép dưới đọc cùng một chỗ. Hook chạy TRƯỚC cả lệnh Bash: gõ `git add … && git commit`
+# (hay `git rm`/`git mv` trước commit, hay `commit -a`) một lần thì lúc này index chưa có thứ lệnh ấy sắp stage —
+# trước đây cả ba phép đọc index cũ và cho qua (đo 2026-09-28). Lệnh tự stage → xét thêm thay đổi chưa stage và
+# file chưa track: thừa (chạy thêm gói) rẻ hơn thiếu (lọt cổng). `--no-renames`: dời file khỏi gói A phải kéo A,
+# không chỉ gói đích.
+tu_stage=0
+printf '%s' "$cmd_scan" | grep -Eq '(^|[^-])git[[:space:]]+([^|&;]*[[:space:]])?(add|rm|mv)([[:space:]]|$)' && tu_stage=1
+printf '%s' "$cmd_scan" | grep -Eq 'commit[^|&;]*[[:space:]](-[[:alpha:]]*a[[:alpha:]]*|--all)([[:space:]]|$)' && tu_stage=1
+staged="$(git -C "$CAY" diff --cached --name-only --no-renames 2>/dev/null)"
+them="$(git -C "$CAY" diff --cached -U0 2>/dev/null)"
+if [ "$tu_stage" = 1 ]; then
+  staged="$staged
+$(git -C "$CAY" diff --name-only --no-renames 2>/dev/null)
+$(git -C "$CAY" ls-files --others --exclude-standard 2>/dev/null)"
+  them="$them
+$(git -C "$CAY" diff -U0 2>/dev/null)"
+fi
+
 # --- 2. file cấm commit ---
-staged="$(git -C "$CAY" diff --cached --name-only 2>/dev/null)"
 if [ -n "$staged" ]; then
   cam="$(printf '%s\n' "$staged" | grep -E '(^|/)(llm\.yaml|media\.yaml)$|\.sqlite|(^|/)company\.artifacts/' || true)"
   if [ -n "$cam" ]; then
@@ -88,7 +105,7 @@ if [ -n "$staged" ]; then
 fi
 
 # --- 3. hạ ngưỡng coverage ---
-ha_nguong="$(git -C "$CAY" diff --cached -U0 2>/dev/null \
+ha_nguong="$(printf '%s\n' "$them" \
   | grep -E '^\+[[:space:]]*fail_under[[:space:]]*=' \
   | grep -Ev '=[[:space:]]*100([^0-9]|$)' || true)"
 if [ -n "$ha_nguong" ]; then
@@ -96,35 +113,42 @@ if [ -n "$ha_nguong" ]; then
        "Luật cấm 6: fail_under = 100 ở cả năm package. Mất một dòng phủ thì THÊM TEST, không hạ số."
 fi
 
-# --- 4. cổng chất lượng, HẸP theo gói bị đụng ---
-# Chạy cổng cả năm package trước MỖI commit mất nhiều phút; hàng rào nào đắt quá thì agent sẽ tìm cách né và
-# nó thành vô dụng. Nên: chỉ gói có file trong diff staged. File ở GỐC (pyproject/Makefile/CI) ảnh hưởng mọi
-# gói → quay về `all`, không được chạy hẹp rồi báo xanh.
+# --- 4. cổng chất lượng: gói bị đụng + gói import nó + console ---
+# Cổng cả năm gói mất ~5 phút; hàng rào đắt quá thì agent sẽ tìm cách né và nó thành vô dụng. Nên chỉ chạy gói có
+# thể đỏ vì diff:
+#   - gói có file trong diff, cộng gói IMPORT nó (pyproject: company, keeper dùng core; console dùng company,
+#     keeper) — `test_cong_khung.py` tính kỳ vọng từ pyproject, thêm phụ thuộc mà quên dòng dưới là đỏ;
+#   - console LUÔN chạy: nó giữ cổng cấp repo (README đếm test mọi gói, trần pragma/skip, link tài liệu, hook,
+#     workflow, mẫu PR). Commit chỉ sửa tài liệu trước đây bỏ qua mọi cổng — đo 2026-09-28: sửa một dòng README
+#     làm đỏ test ở gói khác, commit chỉ đụng README ấy sẽ lọt;
+#   - file ngoài company mà test company đọc: lock template (`test_delivery_contract.py`), subagent sinh ra
+#     (`assetscan` quét `.claude/agents/`) → kéo company;
+#   - file ở GỐC không phải `.md` (pyproject, uv.lock, Makefile) ảnh hưởng mọi gói → `all`.
+# no-ky-thuat: test ngoài console đọc file ngoài gói mà dòng dưới không kéo gói của nó (danh sách TEST_DOC_NGOAI_GOI ở test_cong_khung.py), quay lại khi CI đỏ ở một test trong danh sách ấy trên commit hook đã cho qua
 goi_bi_dung() {
-  local goi="" f
+  local goi="console" f
   while IFS= read -r f; do
-    [ -n "$f" ] || continue
     case "$f" in
-      companies/software-company/*) goi="$goi company" ;;
-      platform/gateway/*)           goi="$goi gateway" ;;
-      platform/console/*)           goi="$goi console" ;;
-      platform/xagents-core/*)      goi="$goi core" ;;
-      companies/keeper/*)           goi="$goi keeper" ;;
-      docs/*|*.md)                  : ;;   # tài liệu: không gói nào phải chạy cổng vì nó
-      */*)                          : ;;   # thư mục khác (.github, .claude, scripts) → xử ở dưới
-      *)                            echo "all"; return 0 ;;   # file ngay ở GỐC → ảnh hưởng mọi gói
+      "")                                   : ;;
+      platform/xagents-core/*)              goi="$goi core company keeper" ;;
+      companies/software-company/*)         goi="$goi company" ;;
+      companies/keeper/*)                   goi="$goi keeper" ;;
+      platform/gateway/*)                   goi="$goi gateway" ;;
+      docs/integrations/*|.claude/agents/*) goi="$goi company" ;;
+      */*|*.md)                             : ;;   # console (có sẵn), tài liệu, .github, .claude, scripts
+      *)                                    echo "all"; return 0 ;;   # file ngay ở GỐC → ảnh hưởng mọi gói
     esac
   done <<EOF
 $staged
 EOF
-  printf '%s\n' "$goi" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' '
+  printf '%s\n' $goi | sort -u | tr '\n' ' '
 }
 
-can_chay="$(goi_bi_dung)"
-if [ -z "${can_chay// /}" ]; then
-  echo "[pre-commit-gate] diff staged không đụng package nào → bỏ qua cổng chất lượng." >&2
+if [ -z "$(printf '%s' "$staged" | tr -d '[:space:]')" ]; then
+  echo "[pre-commit-gate] không có thay đổi nào sắp vào commit → bỏ qua cổng chất lượng." >&2
   exit 0
 fi
+can_chay="$(goi_bi_dung)"
 
 # Cổng chạy trên $CAY, không trên $ROOT: `dev-task.sh` lấy cây để `cd` + venv từ `CLAUDE_PROJECT_DIR`, không từ
 # vị trí của chính nó — nên phải đổi CẢ đường dẫn script lẫn biến. Chạy trên checkout chính là chấm code khác

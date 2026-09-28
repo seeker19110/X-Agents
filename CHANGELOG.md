@@ -6,8 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- fix(khung): **ba hook Claude Code sống lại trên Linux/macOS; quy trình một lệnh cổng; tài liệu khớp code, có cổng
-  canh**. Hook: `.claude/hooks/*.sh` mode `100644` (commit từ Windows), `settings.json` gọi thẳng đường dẫn nên `sh`
+- fix(khung): **ba hook Claude Code sống lại trên Linux/macOS và hết lọt cổng; quy trình một lệnh cổng; tài liệu
+  khớp code, có cổng canh; core lọc cấu hình LLM của keeper khỏi lệnh con**. Hook: `.claude/hooks/*.sh` mode `100644` (commit từ Windows), `settings.json` gọi thẳng đường dẫn nên `sh`
   trả 126 "Permission denied" — Claude Code coi là lỗi không chặn, cả ba hàng rào chết im lặng ngoài Windows (đo trên
   phiên cloud Linux: commit 40 file đụng năm gói qua trong 6 giây, cổng năm gói mất 5 phút). Nay `100755`;
   `test_cong_khung.py` canh mode của mọi hook khai trong `settings.json` — đỏ với ba hook `100644`, xanh sau
@@ -24,7 +24,19 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
   `cd gateway`/`cd software-company` và `../TRAPS.md` sai cấp còn sót từ #262, 16 module thiếu trong CODEMAP, gate
   `patch` và canary BT8 của keeper, tám màn + SSE của console, Studio và `STUDIO_*` đã rời repo, số file import
   `xagents_core` đo lại (27/15/3). Đo hai chiều: cài lại bảy lỗi cũ → mỗi lỗi đỏ đúng một ca, gỡ ra → 12/12 xanh;
-  dòng gateway mất dãy ADR → regex mới đỏ, regex cũ xanh nhầm.
+  dòng gateway mất dãy ADR → regex mới đỏ, regex cũ xanh nhầm. Cổng pre-commit hết bốn lỗ (`TRAPS.md` §3): hook
+  chạy TRƯỚC lệnh nên `git add … && git commit` gõ một lần thì cả ba phép đọc index cũ; commit chỉ sửa tài liệu bỏ
+  qua mọi cổng; sửa core không chạy company/keeper; rename không kéo gói cũ. Nay lệnh tự stage thì xét cả thay đổi
+  chưa stage, cổng chạy gói bị đụng + gói import nó + console luôn, `--no-renames`; test dòng `fail_under` của README
+  dời từ software-company sang console. `DEV_TASK_DRY_RUN=1` hết in "cổng XANH" khi chưa chạy gì. Core:
+  `SECRET_ENV`/`cli_env` lọc `<PREFIX>_LLM_*` của mọi công ty theo hình (`sandbox.LLM_ENV`) thay bản liệt kê
+  `COMPANY_LLM|STUDIO_LLM` — `KEEPER_LLM_PROVIDER`/`KEEPER_LLM_BACKENDS` từng đi thẳng vào mọi lệnh con keeper chạy
+  bằng `clean_env()`; 5 ca đỏ → xanh, đột biến về bản liệt kê đỏ lại; core hết nhắc `STUDIO_*`/`studio/core.py` như
+  thứ đang có. Cổng tài liệu thêm "bảng không hàng nào thừa ô" (GitHub lặng lẽ bỏ ô thừa, `|` trong backtick cũng
+  tách ô): 6 hàng mất chữ ở `CODEMAP.md` software-company, `TRAPS.md`, `dac-ta-tro-ly-kiem-duyet.md`; ba đột biến bộ
+  lọc đều đỏ. `CONTRIBUTING` §3: `make eval-record AGENT=all --jobs 3` thật ra chạy `--jobs 1` (cờ của `make`) →
+  `JOBS=3`; `eval-record.yml` ghi vì sao chỉ nhận `company`. Docstring `console/submit.py` hết trỏ
+  `studio.orchestrator`, `KIEN-TRUC-4-LOP.md` trỏ đúng `loops.js`.
 - refactor(audit): **dọn "Việc để lại" của audit hoàn thiện theo tiêu chí đơn giản + chất lượng** (chủ dự án giao
   phiên chính quyết, 2026-09-28). Gỡ ba lớp phòng thủ thừa của F-E: `if text:` ở gateway `client.py` (bộ lọc lúc nối
   `systemInstruction` đã lo, test mới ghim ca message system rỗng nằm giữa) và `getattr` + so `None` ở `_utf8_stdio`

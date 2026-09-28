@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,25 @@ def test_so_test_trong_readme_khop_dia() -> None:
         + repr(lech)
         + " — sửa README trong CÙNG PR làm số đổi, đừng để lại cho phiên audit."
     )
+
+
+def test_fail_under_trong_readme_khop_pyproject() -> None:
+    """Dòng `fail_under` của README gốc khớp `pyproject.toml` từng gói — đo 2026-09-05 nó ghi 90 cho công ty khi
+    pyproject đã nâng lên 98.
+
+    Dời từ `test_review_fixes_2026_09.py` của software-company (2026-09-28): test ở company đọc README gốc thì commit
+    chỉ sửa README không chạy nó, vì hook chạy cổng gói bị đụng + console (`test_cong_khung.py` `TEST_DOC_NGOAI_GOI`).
+    """
+    dong = next((ln for ln in ROOT_README.read_text(encoding="utf-8").splitlines() if "`fail_under`" in ln), "")
+    m = re.search(r"`fail_under` ([\d /]+) cho ([\w\- /]+)", dong)
+    assert m, "README gốc phải ghi '`fail_under` a / b / … cho <gói> / <gói> …' trên một dòng"
+    khai = [int(x) for x in m.group(1).split("/")]
+    goi = [p.strip() for p in m.group(2).split(" / ")]  # tên gói có `/` (ADR-0011) → tách theo " / ", không "/"
+    assert len(khai) == len(goi), f"{len(khai)} ngưỡng nhưng {len(goi)} gói"
+    for so, ten in zip(khai, goi, strict=True):
+        cfg = tomllib.loads((ROOT / ten / "pyproject.toml").read_text(encoding="utf-8"))
+        that = cfg["tool"]["coverage"]["report"]["fail_under"]
+        assert so == that, f"README gốc ghi fail_under của {ten} là {so}, pyproject.toml nói {that}"
 
 
 # Dòng mở/đóng conflict của git — `=======` không đủ (bảng Markdown, gạch dưới tiêu đề Setext đều hợp lệ).

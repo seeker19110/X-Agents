@@ -18,6 +18,9 @@ Git KHÔNG đi qua đây (ADR-0035): argv hard-code, hook đã bị vô hiệu, 
   tiến trình** của máy — đánh đổi ghi ở đây để không ai tưởng là kín).
 - `read_only` — `studio.qc` chỉ đo file, mount `:ro`.
 
+Studio đã rời repo: `stdin` và `read_only` nay không còn chỗ gọi nào ngoài test của core, và `sandbox_from_settings`
+chỉ còn company gọi — keeper chỉ dùng `clean_env` (đo 2026-09-28). Giữ vì là API core có test; gỡ là quyết định riêng.
+
 **Chọn backend là việc của công ty, không phải của core**: `sandbox_from_settings` dưới đây nhận mode/runtime/image
 đã đọc sẵn, còn *đọc từ đâu* thì mỗi bên tự làm — nguồn cấu hình khác nhau (`cfg.sandbox` của company vs
 `media.yaml render.sandbox` của studio), tên biến môi trường khác nhau, và **mặc định cũng khác**: company `auto`,
@@ -37,14 +40,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-# Hợp đồng của shim hai công ty (`company.sandbox`, `studio.sandbox`): `import *` chỉ mang tên trong đây.
+# Hợp đồng của shim `company.sandbox` (keeper nhập thẳng core): `import *` chỉ mang tên trong đây.
 __all__ = ["SECRET_ENV", "ContainerSandbox", "Handle", "Result", "RunSpec", "Sandbox", "SandboxError",
            "SubprocessSandbox", "clean_env", "sandbox_from_settings", "sanitize_env"]
+
+# `<PREFIX>_LLM_*` — cấu hình model của MỌI công ty (`COMPANY_LLM_PROVIDER`, `KEEPER_LLM_BACKENDS`…). Viết theo hình,
+# không liệt kê tên: core không được biết tên công ty (ADR gốc 0001 §2), và bản liệt kê cũ `COMPANY_LLM|STUDIO_LLM`
+# đã sót keeper (đo 2026-09-28). `llm.cli_env` dùng lại nó để không `keep_prefixes` nào mở được không gian này.
+LLM_ENV = re.compile(r"_LLM(_|$)", re.IGNORECASE)
 
 SECRET_ENV = re.compile(
     r"(API_?KEY|TOKEN|SECRET|PASSW(OR)?D|CREDENTIAL|ACCESS_KEY|PRIVATE_KEY|SESSION_KEY|SIGNING_KEY|AUTH(?!OR)"
     r"|_URL$|_URI$|_DSN$|DATABASE|CONNECTION_STRING|SSH_AUTH_SOCK|^GITHUB_|^GH_|^NPM_|^PYPI_|^AWS_|^AZURE_|^GOOGLE_"
-    r"|^OPENAI_|^ANTHROPIC_|^COMPANY_LLM|^STUDIO_LLM|^CLAUDE_CONFIG_DIR$|^CODEX_HOME$"
+    r"|^OPENAI_|^ANTHROPIC_|" + LLM_ENV.pattern + r"|^CLAUDE_CONFIG_DIR$|^CODEX_HOME$"
     # ADR-0016: con trỏ tới tầng máy — không phải bí mật, mà là ĐƯỜNG ĐẾN bí mật, cùng họ CLAUDE_CONFIG_DIR.
     r"|^XAGENTS_LLM_CONFIG$)",
     re.IGNORECASE)
@@ -288,8 +296,8 @@ def sandbox_from_settings(mode: str, runtime: str, image: str, env_var: str,
     """Dựng backend từ ba giá trị đã đọc sẵn. Core cố ý KHÔNG tự đọc `os.environ` hay file cấu hình: nguồn và tên
     biến khác nhau giữa hai công ty (xem docstring module), nên nơi gọi đọc rồi truyền vào.
 
-    `env_var` chỉ để dựng câu lỗi đúng tên biến người vận hành phải đặt — người đọc lỗi cần biết gõ gì, và
-    `COMPANY_SANDBOX` hay `STUDIO_SANDBOX` là hai câu trả lời khác nhau.
+    `env_var` chỉ để dựng câu lỗi đúng tên biến người vận hành phải đặt — người đọc lỗi cần biết gõ gì, và tên đó
+    là của công ty gọi (`COMPANY_SANDBOX`), core không tự đoán.
 
     `auto` chọn container nếu có binary; `container` khai đích danh mà thiếu binary → `SandboxError`
     (fail-closed — không bao giờ âm thầm tụt về subprocess)."""

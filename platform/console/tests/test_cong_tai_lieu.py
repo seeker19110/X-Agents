@@ -1,5 +1,5 @@
 """Cổng cho tài liệu ĐANG SỐNG: dẫn chiếu mở được, lệnh `cd`/`python -m` chạy được, CODEMAP gọi tên đủ module,
-ARCHITECTURE kể đủ job CI, mẫu PR mang đúng khối BÁO CÁO XÁC THỰC của `AGENTS.md`.
+ARCHITECTURE kể đủ job CI, mẫu PR mang đúng khối BÁO CÁO XÁC THỰC của `AGENTS.md`, bảng không hàng nào thừa ô.
 
 Vì sao cần: cải tổ thư mục #262 dời năm package vào `platform/`/`companies/`. #275 sửa số `../` trong `CLAUDE.md`
 của package và đặt cổng cho đúng các file đó. Audit 2026-09-28 đo lại thì CÙNG họ lỗi vẫn sống ở các file bên
@@ -259,6 +259,47 @@ def test_mau_pr_mang_nguyen_van_khoi_bao_cao_xac_thuc() -> None:
     assert _khoi_bao_cao(mau) == goc, "khối BÁO CÁO XÁC THỰC trong mẫu PR lệch khối trong AGENTS.md"
 
 
+# --- bảng markdown ---------------------------------------------------------------------------------------------
+
+_HANG_PHAN_CACH = re.compile(r"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$")
+
+
+def _so_o(hang: str) -> int:
+    """Số ô GFM của một hàng: tách ở mọi `|` không thoát, KỂ CẢ `|` trong code span — GFM tách ô trước khi đọc
+    inline, nên muốn giữ `a|b` trong backtick phải viết `a\\|b`."""
+    hang = hang.strip().removeprefix("|")
+    if hang.endswith("|") and not hang.endswith("\\|"):
+        hang = hang[:-1]
+    return len(re.split(r"(?<!\\)\|", hang))
+
+
+def _hang_thua_o(van: str) -> list[tuple[int, int, int]]:
+    """`(dòng, ô tiêu đề, ô hàng)` cho mỗi hàng bảng NHIỀU ô hơn tiêu đề. Bảng = hàng mở bằng `|` nằm ngay trên
+    một hàng phân cách `|---|`, kéo tới dòng đầu tiên không mở bằng `|`; bảng trong khối code không tính."""
+    dong = _KHOI_CODE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), van).split("\n")
+    thua: list[tuple[int, int, int]] = []
+    tieu_de: int | None = None
+    for i, d in enumerate(dong):
+        if not d.lstrip().startswith("|"):
+            tieu_de = None
+        elif tieu_de is None:
+            if i + 1 < len(dong) and _HANG_PHAN_CACH.match(dong[i + 1].strip()):
+                tieu_de = _so_o(d)
+        elif _so_o(d) > tieu_de:
+            thua.append((i + 1, tieu_de, _so_o(d)))
+    return thua
+
+
+def test_bang_markdown_khong_hang_nao_thua_o() -> None:
+    """GitHub lặng lẽ bỏ ô vượt số cột tiêu đề — không lỗi, không cảnh báo, chữ cứ thế mất. Đo 2026-09-28: 6 hàng
+    trong tài liệu sống, không hàng nào cố ý — cột "Test đối chiếu" của `companies/software-company/CODEMAP.md`
+    §Bằng chứng do code sinh (tiêu đề chỉ hai cột), ô "Lần sau" của bẫy `$?` sau pipe trong `TRAPS.md` (`|` trong
+    backtick). Hàng ÍT ô hơn thì được điền rỗng, không mất chữ nào — không canh."""
+    thua = [f"{rel}:{d} ({m} ô > {n} ô tiêu đề)" for rel in _tai_lieu_song()
+            for d, n, m in _hang_thua_o((ROOT / rel).read_text(encoding="utf-8"))]
+    assert not thua, f"hàng bảng thừa ô, GitHub bỏ phần thừa (`|` trong code span phải viết `\\|`): {thua}"
+
+
 # --- chính các bộ lọc ------------------------------------------------------------------------------------------
 
 def test_bo_loc_cua_cong_tai_lieu_dung_y() -> None:
@@ -292,3 +333,7 @@ def test_bo_loc_cua_cong_tai_lieu_dung_y() -> None:
     assert _goi_ten("`budget.can_open_pr`", PurePosixPath("keeper/budget.py"))
     assert not _goi_ten("sửa `llm.yaml`", PurePosixPath("company/llm.py"))
     assert not _goi_ten("`paragraph.py`", PurePosixPath("company/graph.py"))
+
+    bang = ("| a | b |\n|---|:-:|\n| `x|y` | z |\n| `x\\|y` | z |\n| một |\n\n| c |\n|---|\n| d | e |\n"
+            "```\n| f |\n|---|\n| g | h |\n```\n| i | j | k |\n")
+    assert _hang_thua_o(bang) == [(3, 2, 3), (9, 1, 2)]

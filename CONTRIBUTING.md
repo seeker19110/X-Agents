@@ -38,7 +38,8 @@ scripts/dev-task.sh gate <gói>    # gói: company | gateway | console | core | 
 
 Script giữ lệnh khớp đúng `ci.yml` (`ruff check src tests` → `mypy src/<module>` → `pytest -q --cov`, riêng
 software-company thêm `-n auto`), nên không phải nhớ biến thể của từng package; `DEV_TASK_DRY_RUN=1` in lệnh mà
-không chạy. Claude Code còn chạy nó tự động trước mỗi commit cho gói bị đụng (`.claude/hooks/pre-commit-gate.sh`).
+không chạy. Claude Code còn chạy nó tự động trước mỗi commit (`.claude/hooks/pre-commit-gate.sh`) cho gói bị
+đụng, gói import nó, và console — console giữ cổng cấp repo nên chạy cả khi commit chỉ sửa tài liệu.
 `make lint && make test` ở gốc vẫn dùng được, nhưng `make test` **không** đo coverage — xanh ở đó chưa chắc xanh CI.
 
 Mỗi package có `Makefile` với `test`, `cov`, `lint`, `types`, `fix`; target riêng: software-company (`golden`,
@@ -84,8 +85,8 @@ Prompt là code: đổi prompt mà không chạy lại các bước dưới đâ
 
    | Đường | Khi nào | Lệnh |
    |---|---|---|
-   | Máy cá nhân | bạn có API key trên máy | `make eval-record AGENT=<id>` (thêm `--jobs 3` cho `AGENT=all`) |
-   | GitHub Actions | **không** có key trên máy, hoặc muốn ghi cả bộ | Actions → **eval-record** → Run workflow |
+   | Máy cá nhân | bạn có API key trên máy | `make eval-record AGENT=<id>` trong thư mục công ty (company: thêm `JOBS=3` cho `AGENT=all` — `--jobs 3` là cờ của `make`, lệnh eval vẫn nhận `--jobs 1`) |
+   | GitHub Actions | **không** có key trên máy, hoặc muốn ghi cả bộ | Actions → **eval-record** → Run workflow (chỉ `company`; keeper đi đường máy cá nhân, lý do ở đầu `.github/workflows/eval-record.yml`) |
 
    **Điểm chấm dao động, và `--runs N` là chỗ duy nhất đo được nó.** Phát lại (`--replay`) là *tất định*: khoá
    là `hash(system, user)` và giá trị là `text` đã ghi, nên chạy lại trăm lần ra đúng một số. Dao động sinh ra

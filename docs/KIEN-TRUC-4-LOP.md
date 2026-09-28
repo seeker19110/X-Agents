@@ -215,7 +215,7 @@ gói nào đổi schema topic; audit action mới chỉ là dòng thừa với c
 2. `tools_used` thêm `capped`, `max_turns` · `metrics.collect()["loops"]` = {turns_p50, p90, max, capped_ratio,
    no_progress_ratio, retry_max_ratio, n, empty} · 6 gauge `company_loop_*` · console ô "vòng tool" rỗng → xám,
    module `static/js/loops.js`, ba câu hỏi ADR console-0003 trả lời trong PR.
-3. Được: `runner.py:274-280`, `metrics.py`, `platform/console/src/console/{collect,truth}.py`, `platform/console/static/js/loops.js`,
+3. Được: `runner.py:274-280`, `metrics.py`, `platform/console/src/console/{collect,truth}.py`, `platform/console/src/console/static/js/loops.js`,
    `index.html` một thẻ, `API.md`, tests. Không: schema; `tools_trace`; studio (dùng chung `company.metrics`).
 4. `metrics.py:1-60,103`; console ADR-0003; `platform/console/CLAUDE.md` (thêm màn = HTML + một module); `test_hop_dong_schema.py`.
 5. Percentile code thuần; `retry_max_ratio` = ticket `ticket.blocked` / ticket có `tasks`; `empty=True` khi n=0.

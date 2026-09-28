@@ -1,9 +1,9 @@
 """Giao việc cho công ty THẬT: nạp event do người tạo vào bus SQLite của xưởng tương ứng.
 
 Console không có "đường tắt" nào: nó publish đúng `Envelope` qua đúng `SQLiteBus` của công ty, nên payload
-được kiểm theo JSON Schema của topic (`topics/schemas/*.json`) y như CLI `python -m company.orchestrator publish`
-/ `python -m studio.orchestrator publish`. Chỉ nhận những topic do NGƯỜI nạp (`FORMS`); topic của agent hay
-`audit-log` (quyết định gate) không đi qua đây — gate có `decide.py` riêng, đúng lớp `HumanGate`.
+được kiểm theo JSON Schema của topic (`topics/schemas/*.json`) y như CLI `python -m company.orchestrator publish`.
+Chỉ nhận những topic do NGƯỜI nạp (`FORMS`); topic của agent hay `audit-log` (quyết định gate) không đi qua đây —
+gate có `decide.py` riêng, đúng lớp `HumanGate`.
 
 Mọi lỗi người dùng thấy được đổi thành `ValueError` (tham số sai, 400) hoặc `SubmitError` (bus từ chối, kèm
 `http_status`) với thông điệp tiếng Việt để `server.py` trả mã HTTP đúng nghĩa.

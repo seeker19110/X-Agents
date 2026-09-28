@@ -288,6 +288,17 @@ def test_clean_env_bo_con_tro_tang_may_cua_adr0016(monkeypatch):
     assert "XAGENTS_LLM_CONFIG" not in clean_env()
 
 
+@pytest.mark.parametrize("ten", ["KEEPER_LLM_PROVIDER", "KEEPER_LLM_BACKENDS", "COMPANY_LLM_PROVIDER"])
+def test_clean_env_bo_cau_hinh_llm_cua_moi_cong_ty(monkeypatch, ten):
+    """`<PREFIX>_LLM_*` là cấu hình model của một công ty — không lệnh con nào (test của khách, git, gh) cần tới.
+
+    Regex cũ liệt kê tên `COMPANY_LLM|STUDIO_LLM`: core biết tên công ty (trái ADR gốc 0001 §2) và sót keeper, nên
+    `KEEPER_LLM_PROVIDER` đi thẳng vào mọi lệnh keeper chạy bằng `clean_env()` (đo 2026-09-28). Ca `COMPANY_LLM_*`
+    giữ cho bản viết chung không đánh rơi công ty cũ: test sẵn có chỉ dùng `*_LLM_API_KEY`, thứ `API_?KEY` đã bắt."""
+    monkeypatch.setenv(ten, "x")
+    assert ten not in clean_env()
+
+
 # ---------- container không được sống sót sau khi client docker bị giết ----------
 
 def _cleanup_calls(rec: list[dict[str, Any]], runtime: str = "docker") -> list[list[str]]:
