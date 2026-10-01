@@ -132,6 +132,19 @@ mức rò thực tế của hook/plugin vào `claude -p` khi thiếu `--restrict
 `claude --help`, không phải bản ghi; (c) một lượt MCP thật có `--restricted`. Phiên đầu tiên có `claude` đăng nhập
 phải chạy `/plugin` (thấy `ecc@xagents-ecc`) và một lượt agent MCP thật trước khi coi ADR này là "đã đo".
 
+**Đo 2026-10-01, phiên Claude Code on the web** (CLI 2.1.286, container remote, `claude` đã đăng nhập):
+
+- `claude plugin marketplace list` → "No marketplaces configured"; `claude plugin install ecc@xagents-ecc --scope local`
+  → `failureCode: not_found`. Đọc chuỗi trong binary CLI (mã đã minify — là suy luận, không phải đo): `install` chỉ tra
+  marketplace đã đăng ký trong `~/.claude/plugins/known_marketplaces.json`; marketplace khai ở `extraKnownMarketplaces`
+  của project là nguồn hạng "repo", được đăng ký qua bước tin tưởng tương tác chứ không tự đăng ký khi chạy lệnh.
+- Một lượt `claude -p` thật trong repo, không `--restricted`: sự kiện `init` chỉ có hai plugin builtin, 69 lệnh không
+  lệnh nào `ecc:` ⇒ **phiên Claude Code on the web không nạp ECC**. Container đặt `CLAUDE_CODE_REMOTE_HERMETIC_MODE`;
+  chạy lại với môi trường đã gỡ các biến remote bị từ chối quyền (coi là lách hermetic), nên chưa tách được nguyên
+  nhân là chế độ hermetic hay thiếu bước tin tưởng.
+- (a) trên máy người vận hành, (b) và (c) vẫn chưa đo: phép đo hook SessionStart/Stop từ settings có/không
+  `--restricted` trong một thư mục tạm cũng bị từ chối quyền.
+
 ## Liên quan
 
 - `docs/integrations/ecc.lock.json` — bản ghim + lý do từng hook tắt.
