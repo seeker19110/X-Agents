@@ -54,6 +54,23 @@ oan thì sửa hook kèm test trong `test_cong_khung.py`.
 
 - `/product-goal <mã> <mục tiêu>` — hợp đồng chất lượng theo dự án/ngành, nối `/thi-hanh`; xem `docs/PRODUCT-EXCELLENCE.md`. Không che `/goal` native.
 
+## ECC — plugin ghim, lớp thêm chứ không phải luật (ADR gốc 0027)
+
+`.claude/settings.json` bật plugin ECC (`affaan-m/ECC`) ghim đúng một commit (`docs/integrations/ecc.lock.json`):
+293 skill, 94 lệnh, 68 agent mang tiền tố `ecc:` cộng hook vòng đời của nó (cần `node`). Phiên chưa thấy `/ecc:*` thì
+chạy `/plugin` và cài `ecc@xagents-ecc` (bản ghim) — đường nạp này chưa đo bằng CLI thật, xem ADR 0027 §"Chưa đo".
+
+- **Luật repo thắng khi trùng.** `/gate` chứ không `/ecc:quality-gate`; `/thi-hanh` chứ không `/ecc:orch-*`; PR theo
+  `docs/QUY-TRINH-GIT.md` chứ không `/ecc:pr`; `fail_under = 100` chứ không 80% của rule ECC.
+- **Dùng tự do**: `/ecc:python-review`, `/ecc:security-scan`, `/ecc:code-review`, `/ecc:review-pr`, `/ecc:test-coverage`,
+  `/ecc:build-fix`, skill `ecc:tdd-workflow`, `ecc:python-testing`… — nhất là khi soi code công ty sinh cho repo khách.
+- **Không dùng ở đây**: `/ecc:auto-update` (phá ghim — nâng bản qua PR sửa settings + lock), `/ecc:update-codemaps`,
+  `/ecc:hookify*`, `/ecc:project-init`, `/ecc:checkpoint`; `/ecc:skill-create`, `/ecc:learn` không ghi vào `.claude/skills/`.
+- **Hai hook ECC đã tắt** vì trái luật: `block-no-verify` (chặn đường thoát `--no-verify` của `AGENTS.md`) và
+  `suggest-compact` (trái auto-compact 300k). GateGuard của ECC chặn lần sửa đầu mỗi file tới khi nêu importer/API —
+  vướng thì `ECC_GATEGUARD=off` trong `.claude/settings.local.json`, đừng sửa settings chung.
+- Agent của công ty (`claude -p`) **không** nhận ECC: mọi chế độ chạy `--restricted`, có test argv khoá.
+
 ## Thao tác trên Windows
 
 - Shell chính là PowerShell 7; Bash tool là Git Bash. `cd` trong Bash **không giữ** qua lệnh sau — dùng đường dẫn

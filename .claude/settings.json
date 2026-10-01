@@ -2,7 +2,9 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "autoCompactEnabled": true,
   "env": {
-    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "300000"
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "300000",
+    "ECC_HOOK_PROFILE": "standard",
+    "ECC_DISABLED_HOOKS": "pre:bash:block-no-verify,pre:edit-write:suggest-compact"
   },
   "permissions": {
     "deny": [
@@ -41,5 +43,30 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "xagents-ecc": {
+      "source": {
+        "source": "settings",
+        "name": "xagents-ecc",
+        "owner": { "name": "X-Agents" },
+        "plugins": [
+          {
+            "name": "ecc",
+            "source": {
+              "source": "github",
+              "repo": "affaan-m/ECC",
+              "ref": "v2.2.2",
+              "sha": "c70874fae9eb0e5ad0365beb7e2955899fd1d30f"
+            },
+            "description": "ECC (affaan-m/ECC) ghim đúng commit đã đo — ADR gốc 0027; luật repo thắng khi trùng"
+          }
+        ]
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ecc@xagents-ecc": true,
+    "ecc@ecc": false
   }
 }

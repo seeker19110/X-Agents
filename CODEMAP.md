@@ -23,6 +23,7 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Thêm slash command cho Claude Code | `.claude/commands/<tên>.md` | `platform/console/tests/test_cong_khung.py` (canh frontmatter + đường dẫn) |
 | Đổi lệnh cổng cục bộ | `scripts/dev-task.sh` — phải khớp đúng `.github/workflows/ci.yml`, lệch là cổng cục bộ khác cổng CI | `uv run pytest tests/test_cong_khung.py` (console) |
 | Đổi/thêm hàng rào chặn lệnh | `.claude/hooks/*.sh` + nối trong `.claude/settings.json` | `test_cong_khung.py` — hook không có test là cổng không ai biết còn sống không |
+| Nâng bản ECC, bật/tắt hook ECC (ADR 0027) | `.claude/settings.json` (`extraKnownMarketplaces.xagents-ecc` sha + ref, `env.ECC_DISABLED_HOOKS`) **cùng lúc** với `docs/integrations/ecc.lock.json` | `platform/console/tests/test_cong_ecc.py` — settings lệch lock là đỏ |
 | Luật cho agent KHÔNG phải Claude Code | `GEMINI.md` (bản đầy đủ) + `.cursorrules`/`.windsurfrules`/`.clinerules` | — |
 | Trợ lý kiểm duyệt `sc-*` | **không sửa tay** — `companies/software-company/agents/`, `skills/`, `gates/checklists.md` → `make subagents` | commit `.claude/agents/` |
 
