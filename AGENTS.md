@@ -172,6 +172,7 @@ Luật cấm 1, 3, 6 và luật bắt buộc 3 ở trên **có cơ chế chặn*
 | `block-dangerous-git.sh` | `git push` (kể cả force) vào `main`/`master`; `reset --hard`; `merge\|rebase\|cherry-pick --abort` |
 | `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · diff hạ `fail_under` · cổng đỏ ở gói bị đụng, gói import nó, hoặc console (luôn chạy, kể cả commit chỉ sửa tài liệu) |
 | `auto-format.sh` | (không chặn) format file vừa sửa qua `dev-task.sh format-file` — chỉ khi bản trong index vốn đã sạch `ruff format` hoặc file mới chưa track |
+| hook của plugin ECC (ADR gốc 0027) | lớp thêm, ghim commit ở `docs/integrations/ecc.lock.json`; `block-no-verify` và `suggest-compact` tắt qua `ECC_DISABLED_HOOKS` vì trái đường thoát `--no-verify` ngay dưới và auto-compact 300k — hook của repo vẫn là hàng rào chính |
 
 Đường thoát tường minh: `ALLOW_DANGEROUS_GIT=1`, hoặc `--no-verify` trong lệnh commit — dùng thì **phải nói rõ
 lý do cho người dùng**, không lặng lẽ lách. Hook chặn oan → sửa hook kèm test, đừng tắt nó.

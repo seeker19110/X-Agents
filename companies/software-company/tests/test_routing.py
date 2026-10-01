@@ -491,14 +491,16 @@ def test_claude_code_tran_chi_phi_moi_luot_cli(tmp_path: Path):
 
 
 def test_cli_tools_off_still_refuses_tools_and_keeps_single_turn():
-    """Mặc định (cli_tools=False) giữ nguyên hành vi cũ: có tool thì báo lỗi, không tool thì một lượt, không tool CLI."""
+    """Mặc định (cli_tools=False) giữ nguyên hành vi cũ: có tool thì báo lỗi, không tool thì một lượt, không tool CLI.
+    Không tool vẫn phải `--restricted` (ADR gốc 0027): không có nó, plugin/hook mà settings user/project của máy bật
+    (vd. ECC — SessionStart chèn ngữ cảnh, Stop chạy cost-tracker/evaluate-session) chạy trong MỌI lượt agent của công ty."""
     with pytest.raises(LLMError, match="cli_tools"):
         _cc(runner=lambda a, s: _CC_OK).complete(system="s", user="u", schema={}, model_tier="strong", tools=_RW)
     seen: list = []
     _cc(runner=lambda a, s: (seen.append(a), _CC_OK)[1]).complete(system="s", user="u", schema={}, model_tier="strong")
     # không tool nhưng KHÔNG phải 1 lượt: `--json-schema` cần lượt ép JSON của CLI (đo: num_turns 2); 1 → error_max_turns
     assert seen[0][seen[0].index("--tools") + 1] == "" and int(seen[0][seen[0].index("--max-turns") + 1]) >= 2
-    assert "--restricted" not in seen[0]
+    assert "--restricted" in seen[0]
 
 
 def test_cli_tools_refuses_without_workdir_or_mappable_tool(tmp_path: Path):

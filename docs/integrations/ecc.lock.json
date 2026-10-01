@@ -1,0 +1,22 @@
+{
+  "repository": "affaan-m/ECC",
+  "tag": "v2.2.2",
+  "revision": "c70874fae9eb0e5ad0365beb7e2955899fd1d30f",
+  "version": "2.2.2",
+  "license": "MIT",
+  "adr": "docs/adr/0027-tich-hop-ecc-plugin-ghim.md",
+  "load_path": ".claude/settings.json extraKnownMarketplaces.xagents-ecc → enabledPlugins ecc@xagents-ecc",
+  "hook_profile": "standard",
+  "disabled_hooks": {
+    "pre:bash:block-no-verify": "chặn `git commit --no-verify` (đo rc=2) — đúng đường thoát tường minh mà AGENTS.md mục Hàng rào thi hành giữ lại; hook của repo đã canh commit",
+    "pre:edit-write:suggest-compact": "nhắc /compact thủ công sau N lần sửa — trái chính sách auto-compact native 300k (docs/AUTO-COMPACT.md, test_auto_compact_config.py)"
+  },
+  "measured": {
+    "skills": 293,
+    "agents": 68,
+    "commands": 94,
+    "hook_entries": 24,
+    "description_chars": 116816,
+    "requires": "node (hook ECC là script node; đo với v22.22.0)"
+  }
+}
