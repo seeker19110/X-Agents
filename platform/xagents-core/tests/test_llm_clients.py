@@ -149,6 +149,25 @@ def test_anthropic_ma_khong_tam_thoi_van_la_llm_error(monkeypatch):
     assert not isinstance(ei.value, TransientError) and ei.value.status == 400
 
 
+def test_anthropic_het_han_muc_dau_ra_noi_ro_thay_vi_tra_json_cut(monkeypatch):
+    """Cùng họ điểm nâng 3 của `OpenAICompatClient` (`finish_reason == "length"`): `stop_reason == "max_tokens"`
+    mà không có tool_use thì `text` là JSON cụt — runner báo "đầu ra không phải JSON", người đọc đi sửa prompt
+    trong khi việc cần làm là tăng `max_tokens`."""
+    _fake_sdk(monkeypatch, _Msg([_Block("text", text='{"answer": "nửa ch')], _Usage(output_tokens=100),
+                                stop_reason="max_tokens"))
+    with pytest.raises(LLMError, match="stop_reason=max_tokens") as ei:
+        AnthropicClient(_cfg(max_tokens=100)).complete(system="s", user="u", schema={}, model_tier="strong")
+    assert "max_tokens=100" in str(ei.value) and not isinstance(ei.value, TransientError)
+
+
+def test_anthropic_max_tokens_giua_luot_tool_van_tra_tool_use(monkeypatch):
+    """Như nhánh OpenAI: có tool_use thì để runner chạy tool — hạn mức là của lượt, không phải của cả hội thoại."""
+    call = _Block("tool_use", id="t1", name="web", input={"q": "x"})
+    _fake_sdk(monkeypatch, _Msg([call], _Usage(), stop_reason="max_tokens"))
+    out = AnthropicClient(_cfg()).complete(system="s", user="u", schema={}, model_tier="strong")
+    assert out.tool_calls[0].name == "web"
+
+
 def test_anthropic_refusal_mang_theo_ly_do(monkeypatch):
     _fake_sdk(monkeypatch, _Msg([], _Usage(), stop_reason="refusal",
                                 stop_details=types.SimpleNamespace(category="harmful")))
@@ -822,3 +841,54 @@ def test_ttl_dai_bat_qua_cau_hinh(monkeypatch):
     assert kw["system"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     assert kw["tools"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     assert "extra_headers" not in kw, "TTL 1h không cần anthropic-beta (shared/prompt-caching.md § API reference)"
+
+
+# ---------- phân loại "tạm thời" theo CỤM có ranh giới từ, không theo chuỗi con trần ----------
+#
+# Chuỗi con "rate"/"limit"/"usage" khớp cả "generate", "context limit" (prompt quá dài — lỗi NỘI DUNG, chờ bao lâu
+# cũng thế) và "Usage: codex exec …" (sai cờ CLI). Đọc nhầm là tạm thời thì routing cho backend nghỉ, mọi backend
+# nghỉ → orchestrator hoãn event mãi, lỗi thật không tới agent/supervisor — đúng vòng lặp 2026-09-05 (ca
+# `test_cli_exit_error_doc_JSON_thay_vi_soi_duoi_output`), lần này qua thông điệp chứ không qua telemetry.
+
+VINH_VIEN = [
+    "input length and `max_tokens` exceed context limit: 199000 + 21333 > 200000",
+    "Error: failed to generate a response for this prompt",
+    "invalid model identifier 'claude-moderate-9'",
+]
+TAM_THOI = [
+    "Claude AI usage limit reached|1700000000",
+    "5-hour limit reached ∙ resets 3pm",
+    "You've hit your limit · resets 10:40pm (Asia/Ho_Chi_Minh)",
+    "API Error: 429 {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\"}}",
+    "API Error: 529 overloaded_error",
+    "quota exceeded for this project",
+    "rate limit exceeded",
+]
+
+
+@pytest.mark.parametrize("msg", VINH_VIEN)
+def test_loi_vinh_vien_mang_chu_rate_limit_khong_thanh_tam_thoi(msg):
+    assert not isinstance(cli_exit_error(1, "", msg), TransientError), "đường stderr"
+    assert not isinstance(cli_exit_error(1, json.dumps({"subtype": "error", "result": msg}), ""), TransientError)
+    with pytest.raises(LLMError) as ei:
+        _cc()._parse(json.dumps({"is_error": True, "result": msg}), "claude-x")
+    assert not isinstance(ei.value, TransientError), "đường is_error"
+
+
+@pytest.mark.parametrize("msg", [*VINH_VIEN, "Usage: codex exec [OPTIONS] [PROMPT]"])
+def test_codex_loi_vinh_vien_khong_thanh_tam_thoi(msg):
+    c, _ = _codex(json.dumps({"type": "error", "message": msg}))
+    with pytest.raises(LLMError) as ei:
+        c.complete(system="s", user="u", schema={}, model_tier="strong")
+    assert not isinstance(ei.value, TransientError)
+
+
+@pytest.mark.parametrize("msg", TAM_THOI)
+def test_loi_han_muc_that_van_la_tam_thoi_o_ca_bon_duong(msg):
+    assert isinstance(cli_exit_error(1, "", msg), TransientError)
+    assert isinstance(cli_exit_error(1, json.dumps({"subtype": "error", "result": msg}), ""), TransientError)
+    with pytest.raises(TransientError):
+        _cc()._parse(json.dumps({"is_error": True, "result": msg}), "claude-x")
+    c, _ = _codex(json.dumps({"type": "error", "message": msg}))
+    with pytest.raises(TransientError):
+        c.complete(system="s", user="u", schema={}, model_tier="strong")
