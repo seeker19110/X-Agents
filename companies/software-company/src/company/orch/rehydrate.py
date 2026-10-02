@@ -17,6 +17,7 @@ from ..quality_floor import PROFILE_ACTION
 from ..roles import LEAD_ACTOR, ROLE
 from ..runner import CONTEXT_ONLY
 from .quality_flow import note_profile
+from .retry_flow import decide_applied
 from .routes import ACTOR, ROUTES
 
 if TYPE_CHECKING:
@@ -173,9 +174,10 @@ def rehydrate(o: Orchestrator) -> None:
     o.processed -= reopened
     # Chỉ đếm quyết định ĐÃ xử lý: decide còn trong hàng đợi sẽ được `_on_gate_decide` đếm khi chạy — đếm cả hai
     # nơi là bộ đếm sống lệch bộ đếm dựng lại, restart sau đó sinh khoá escalation trùng khoá cũ và gate bị nuốt
-    # (CAMPUS-UNI/TCK-001, 2026-09-24).
+    # (CAMPUS-UNI/TCK-001, 2026-09-24). Decide đã ÁP rồi bị hoãn transient (`DECIDE_APPLIED`) cũng đã đếm: lần xử lý
+    # lại chỉ gọi lại lượt agent, không đếm nữa.
     for eid, sid in quyet:
-        if eid in o.processed: o.escalation_decided[sid] += 1
+        if eid in o.processed or decide_applied(o.once, eid) is not None: o.escalation_decided[sid] += 1
     o.partial = {k: v for k, v in o.partial.items() if k not in o.processed}
     o.queue = [e for e in log if o._actionable(e) and e.event_id not in o.processed]
     o._nap_lai_hen(hen)

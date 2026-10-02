@@ -22,7 +22,8 @@ from ..gate_reviewer import machine_acceptor
 from ..gate_risk import request_gate
 from ..gates import Decision, GateRequest
 from ..roles import LEAD_ACTOR, ROLE, resume_actor
-from .routes import ACTOR, MAX_TURN_CONTINUATIONS, PROD_ROUTE, RESEARCH_TOPICS, REVIEW_AGENT, Route, review_route
+from .retry_flow import DECIDE_APPLIED, _deploy_production, _rerun_missing_reviews, _retry_decide_calls, decide_applied
+from .routes import ACTOR, MAX_TURN_CONTINUATIONS, RESEARCH_TOPICS, Route
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -31,31 +32,38 @@ if TYPE_CHECKING:
 def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     from ..orchestrator import _evidence  # nhập lười: orchestrator.py nhập module này trước khi định nghĩa _evidence
     d = _evidence(env.payload); sid, decision, by = d["subject_id"], d["decision"], d.get("by", "human")
-    kind = next((g.kind for g in reversed(o.gate.history) if g.subject_id == sid), None)
+    # Loại gate của lần xử lý lại lấy từ khoá lúc hoãn, không tra lại `history`: sau `_retry_unhandled` gate MỚI NHẤT
+    # của subject là escalation, không phải gate mà quyết định này đóng.
+    applied = decide_applied(o.once, env.event_id)
+    kind = applied or next((g.kind for g in reversed(o.gate.history) if g.subject_id == sid), None)
     res.actions.append(f"gate:{kind}:{sid}:{decision}")
-    # Đếm ở ĐÂY chứ không ở `_on_escalation_decided`: `_rehydrate` đếm mọi `gate.decide` theo subject, nên đếm
-    # sống hẹp hơn (chỉ gate escalation) là hai đường lệch nhau và test bất biến restart đỏ — nó đã bắt đúng
-    # lỗi này trong chính bản sửa mở gate cho lần chặn thứ hai.
-    o.escalation_decided[sid] += 1
-    if kind == "escalation":
-        o._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
-    elif kind == "acceptance" and decision == "approve" and machine_acceptor(env.actor):  # actor do bus kiểm, không `by` tự khai
-        # ADR-0043 §3: máy nghiệm thu — đóng ticket ở đây vì không có `acceptance-results` nào kéo theo; audit
-        # `acceptance.auto` là thứ `_rehydrate` dựng lại sau restart (trạng thái ticket không được chỉ sống trong RAM).
-        rid = sid.removeprefix(o.gate.UAT_PREFIX or "")
-        o.lead.close_accepted(rid)
-        o._audit("acceptance.auto", {"release_id": rid, "subject_id": sid, "reason": d.get("reason", "")})
-    elif decision == "approve":
-        # ADR-0037: không còn nhánh `sid in o.plans` — kế hoạch được `_check_plan` cho đi thẳng lúc lập, không
-        # chờ ai ký. Duyệt gate release vẫn là bước cho phép deploy production.
-        if sid in o.lead.release_tickets:
-            rc = o.latest("release-candidates", sid)
-            if rc is not None:
-                o._recall(ROLE.OPS, rc)  # ký lại gate release phải chạy lại được lượt production
-                o._call(ROLE.OPS, rc, PROD_ROUTE, res)
+    if applied is not None:
+        _retry_decide_calls(o, applied, sid, by, d.get("reason", ""), res)
+    else:
+        # Đếm ở ĐÂY chứ không ở `_on_escalation_decided`: `_rehydrate` đếm mọi `gate.decide` theo subject, nên đếm
+        # sống hẹp hơn (chỉ gate escalation) là hai đường lệch nhau và test bất biến restart đỏ — nó đã bắt đúng
+        # lỗi này trong chính bản sửa mở gate cho lần chặn thứ hai.
+        o.escalation_decided[sid] += 1
+        if kind == "escalation":
+            o._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
+        elif kind == "acceptance" and decision == "approve" and machine_acceptor(env.actor):  # actor do bus kiểm, không `by` tự khai
+            # ADR-0043 §3: máy nghiệm thu — đóng ticket ở đây vì không có `acceptance-results` nào kéo theo; audit
+            # `acceptance.auto` là thứ `_rehydrate` dựng lại sau restart (trạng thái ticket không được chỉ sống trong RAM).
+            rid = sid.removeprefix(o.gate.UAT_PREFIX or "")
+            o.lead.close_accepted(rid)
+            o._audit("acceptance.auto", {"release_id": rid, "subject_id": sid, "reason": d.get("reason", "")})
+        elif decision == "approve":
+            # ADR-0037: không còn nhánh `sid in o.plans` — kế hoạch được `_check_plan` cho đi thẳng lúc lập, không
+            # chờ ai ký. Duyệt gate release vẫn là bước cho phép deploy production.
+            _deploy_production(o, sid, res)
     o._note_closed()
-    o._mark(env, res)
     o._retry_deferred()
+    if res.transient:
+        # Lượt production (hay lượt chạy lại sau escalation) chỉ có MỘT đường vào là event này: `_mark` khi backend
+        # chập chờn là nuốt quyết định của người — không deploy, không hoãn, không gate (review toàn repo 2026-10-02).
+        if applied is None: o._remember(f"{DECIDE_APPLIED}:{env.event_id}:{kind}")
+        return o._defer_transient(env, res)
+    o._mark(env, res)
     return res
 
 def _check_escalations(o: Orchestrator) -> None:
@@ -202,12 +210,8 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
         # xử lý, nên duyệt gate xong không có gì chạy lại review còn thiếu — ticket nằm im tới `review_timeout`
         # (2 giờ) mới được `tick` giao lại. Đo được (2026-09-05): QLKH-005/QLKH-013 duyệt xong đứng im, người
         # phải `takeover` nộp lại PR nguyên trạng để vòng review chạy. Ở đây gọi lại đúng nguồn còn thiếu trên PR
-        # mới nhất; `partial` giữ cho reviewer/qa đã chấm không chạy lại.
-        if o.lead.state.get(tid) == "in_review" and (pr := o.latest("pull-requests", tid)) is not None:
-            for src in sorted(o.lead.required_reviews(tid) - set(o.lead.reviews.get(tid, {}))):
-                o._audit("review.rerun", {"ticket_id": tid, "source": src, "by": by}, ticket_id=tid,
-                            project_id=o.project_for(pr))
-                o._call(REVIEW_AGENT[src], pr, review_route(REVIEW_AGENT[src]), res)
+        # mới nhất (`_rerun_missing_reviews`).
+        _rerun_missing_reviews(o, tid, by, res)
     elif decision in {"reject", "rollback"} and tid in o.lead.tickets:
         blocked = o.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
         o._audit("ticket.abandoned", {"ticket_id": tid, "by": by, "dependents_blocked": blocked}, ticket_id=tid,
@@ -302,7 +306,9 @@ def _mark_unhandled(o: Orchestrator, env: Envelope, agent: str, error: object, r
     escalate → gate `escalation` mở cho người; duyệt gate = chạy lại đúng event này (`_retry_unhandled`).
     Gọi từ `_after_error`, từ `_plan` khi lượt lập kế hoạch lỗi, từ `_threat_model` khi security chặn spec, và
     từ `_defer` khi một event hoãn `transient:` quá trần — bốn chỗ audit 2026-09-23 đo được là kết thúc im lặng."""
-    subject = str(env.payload.get("ticket_id") or env.key)
+    from ..orchestrator import _evidence  # nhập lười, lý do như trong _on_gate_decide
+    # `gate.decide` hoãn transient quá trần (`_defer`): `env.key` của audit-log là tên người ký, không phải việc bị bỏ.
+    subject = str(_evidence(env.payload)["subject_id"] if env.topic == "audit-log" else env.payload.get("ticket_id") or env.key)
     rec = {"agent": agent, "topic": env.topic, "event_id": env.event_id, "subject": subject, "error": str(error)[:300]}
     with o._lock: o.unhandled[subject] = rec
     o._audit("agent_error_unhandled", rec, ticket_id=env.payload.get("ticket_id"), project_id=o.project_for(env))
@@ -357,32 +363,6 @@ def _continue_after_turn_cap(o: Orchestrator, env: Envelope, tid: str, error: Ex
     o.lead.continue_no_retry(tid, f"làm tiếp lần {n}/{MAX_TURN_CONTINUATIONS}: lượt trước hết lượt tool (error_max_turns) "
                                   "giữa chừng; việc dở đã được giữ thành WIP trong worktree — xem git_status/git_diff, "
                                   "làm nốt phần còn thiếu, đừng làm lại từ đầu")
-    return True
-
-def _retry_stalled(o: Orchestrator, pid: str, by: str, reason: str) -> bool:
-    """Người duyệt gate escalation của dự án: chạy lại event đã lỗi (bỏ dấu đã xử lý, đưa về đầu hàng đợi)."""
-    st = o.stalled.get(pid)
-    if st is None: return False
-    env = next((e for e in o.bus.replay(topic=st["topic"], key=pid) if e.event_id == st["event_id"]), None)
-    if env is None: return False
-    with o._lock:
-        o.processed.discard(env.event_id); o.partial.pop(env.event_id, None); o.stalled.pop(pid, None)
-    o._audit("project.retried", {**st, "by": by, "reason": reason}, project_id=pid)
-    with o._qlock: o.queue.insert(0, env)
-    return True
-
-def _retry_unhandled(o: Orchestrator, subject: str, by: str, reason: str) -> bool:
-    """Như `_retry_stalled` nhưng cho event bất kỳ mà agent lỗi không nhánh nào nhận (`unhandled`)."""
-    rec = o.unhandled.get(subject)
-    if rec is None: return False
-    env = next((e for e in o.bus.replay(topic=str(rec["topic"])) if e.event_id == rec["event_id"]), None)
-    if env is None: return False
-    with o._lock:
-        o.processed.discard(env.event_id); o.partial.pop(env.event_id, None); o.unhandled.pop(subject, None)
-        o.spec_runtime_reworks.pop(subject, None)  # người cho chạy lại → spec-writer được thêm một lượt sửa tự động
-        o.plan_reworks.pop(str(rec["event_id"]), None)  # ... và `product[plan]` được thêm `PLAN_REWORKS` lượt
-    o._audit("event.retried", {**rec, "subject": subject, "by": by, "reason": reason[:300]}, project_id=o.project_for(env))
-    with o._qlock: o.queue.insert(0, env)
     return True
 
 def _record_lessons(o: Orchestrator, rid: str) -> None:

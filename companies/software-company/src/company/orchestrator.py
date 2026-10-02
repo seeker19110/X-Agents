@@ -63,7 +63,18 @@ from .events import Envelope
 from .gate_cli import PersistentGate
 from .gates import gate_approvers
 from .llm import LLMError, ModelClient, TransientError
-from .orch import fsm, gates_flow, guards, rehydrate, release_fsm, scheduler, ticket_fsm, verify, worktree_flow
+from .orch import (
+    fsm,
+    gates_flow,
+    guards,
+    rehydrate,
+    release_fsm,
+    retry_flow,
+    scheduler,
+    ticket_fsm,
+    verify,
+    worktree_flow,
+)
 from .orch.cli import main, source_fingerprint
 from .orch.enrich import _with_chan_doan as _with_chan_doan
 from .orch.enrich import _with_diff as _with_diff
@@ -446,8 +457,8 @@ class Orchestrator:
     _mark_unhandled = gates_flow._mark_unhandled
     _rework_after_error = gates_flow._rework_after_error
     _stall = gates_flow._stall
-    _retry_stalled = gates_flow._retry_stalled
-    _retry_unhandled = gates_flow._retry_unhandled
+    _retry_stalled = retry_flow._retry_stalled
+    _retry_unhandled = retry_flow._retry_unhandled
     _on_gate_decide = gates_flow._on_gate_decide
     _check_escalations = gates_flow._check_escalations
     _check_debt = gates_flow._check_debt
