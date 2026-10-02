@@ -1198,6 +1198,19 @@ def test_duong_dan_static_co_byte_nul_thi_404(make_console) -> None:
     assert resp.startswith(b"HTTP/1.0 404") or resp.startswith(b"HTTP/1.1 404")
 
 
+def test_duong_dan_static_co_byte_nul_thi_404_ca_khi_resolve_khong_nem(
+    make_console, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows: `resolve()` không đụng đĩa nên không ném, NUL chỉ nổ ở `open()` — CI windows-latest đỏ ở ca trên.
+
+    Giả lập thứ tự đó trên mọi OS: `resolve()` thuần chuỗi, để `read_bytes()` là chỗ gặp byte NUL đầu tiên.
+    """
+    c = make_console()
+    monkeypatch.setattr(Path, "resolve", lambda self, *a, **k: Path(os.path.abspath(self)))
+    resp = _socket_tran(c, b"GET /static/a\x00b.js HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+    assert resp.startswith(b"HTTP/1.0 404") or resp.startswith(b"HTTP/1.1 404")
+
+
 def test_engine_action_khong_bam_duoc_thi_400(engine_console) -> None:
     """`[] in {"start", "stop"}` ném TypeError (unhashable), không phải False."""
     c, fake = engine_console(allow_engine=True)

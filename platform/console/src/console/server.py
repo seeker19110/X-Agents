@@ -667,10 +667,14 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, html.encode("utf-8"), "text/html; charset=utf-8", csp_nonce=nonce)
 
     def _serve_static(self, rel: str) -> None:
+        # Byte NUL chặn trước mọi thao tác đường dẫn: POSIX ném ValueError ở `resolve()`, Windows mới ném ở `open()`.
+        if "\x00" in rel:
+            self._error(HTTPStatus.NOT_FOUND, "không có file này")
+            return
         root = self.server.static_dir.resolve()
         try:
             target = (root / rel).resolve()
-        except (OSError, ValueError):   # ValueError: byte NUL trong đường dẫn
+        except OSError:
             self._error(HTTPStatus.NOT_FOUND, "không có file này")
             return
         if target != root and root not in target.parents:
