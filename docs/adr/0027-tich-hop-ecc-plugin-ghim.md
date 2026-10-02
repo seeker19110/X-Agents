@@ -1,6 +1,7 @@
 # ADR-0027: tích hợp ECC (`affaan-m/ECC`) bằng plugin ghim commit — luật repo thắng, runtime công ty cách ly
 
-Ngày: 2026-10-01 · Trạng thái: **đề xuất** (người dùng yêu cầu "tích hợp sâu, tối đa"; chờ duyệt qua PR) ·
+Ngày: 2026-10-01 · Trạng thái: **đề xuất, thay một phần bởi ADR-0028** (§1 nạp bằng plugin và §2 hook ECC đã bỏ;
+§3 luật repo thắng và §4 `--restricted` còn hiệu lực) ·
 Liên quan: ADR-0003 (đối chiếu ruflo), `companies/software-company/docs/adr/0023`, `0024`, `0026` (claude -p)
 
 ## Bối cảnh
