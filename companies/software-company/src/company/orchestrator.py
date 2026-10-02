@@ -283,6 +283,7 @@ class Orchestrator:
     _mark = scheduler._mark
     _remember = scheduler._remember
     _audit = scheduler._audit
+    _resume_overdue = scheduler._resume_overdue
 
 
     def process(self, env: Envelope) -> StepResult | None:

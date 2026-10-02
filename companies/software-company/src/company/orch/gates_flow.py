@@ -39,7 +39,8 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
     # Loại gate của lần xử lý lại lấy từ khoá lúc hoãn, không tra lại `history`: sau `_retry_unhandled` gate MỚI NHẤT
     # của subject là escalation, không phải gate mà quyết định này đóng.
     applied = decide_applied(o.once, env.event_id)
-    kind = applied or next((g.kind for g in reversed(o.gate.history) if g.subject_id == sid), None)
+    g = next((g for g in reversed(o.gate.history) if g.subject_id == sid), None)
+    kind = applied or (g.kind if g is not None else None)
     res.actions.append(f"gate:{kind}:{sid}:{decision}")
     if applied is not None:
         _retry_decide_calls(o, applied, sid, by, d.get("reason", ""), res)
@@ -60,6 +61,7 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
             # ADR-0037: không còn nhánh `sid in o.plans` — kế hoạch được `_check_plan` cho đi thẳng lúc lập, không
             # chờ ai ký. Duyệt gate release vẫn là bước cho phép deploy production.
             _deploy_production(o, sid, res)
+        if kind != "escalation": o._resume_overdue(g, by, res)  # escalation tự `resume` trong `_on_escalation_decided`
     o._note_closed()
     o._retry_deferred()
     if res.transient:
