@@ -127,8 +127,10 @@ class EvidenceRule:
 
 
 EVIDENCE_RULES: tuple[EvidenceRule, ...] = (
-    EvidenceRule("before-must-fail", lambda e: e.before.exit_code != 0,
-                 "tắt bản sửa mà lệnh CI vẫn xanh ⇒ không test nào đo bản sửa này"),
+    # `> 0`, không phải `!= 0`: mã âm là lần chạy KHÔNG hoàn tất (`TIMEOUT_EXIT`, `MISSING_EXIT`, bị giết bằng
+    # tín hiệu) — không test nào chạy xong thì không có chiều đỏ nào được đo.
+    EvidenceRule("before-must-fail", lambda e: e.before.exit_code > 0,
+                 "tắt bản sửa mà lệnh CI vẫn xanh hoặc không chạy xong ⇒ không test nào đo bản sửa này"),
     EvidenceRule("after-must-pass", lambda e: e.after.exit_code == 0,
                  "bật bản sửa mà lệnh CI vẫn đỏ ⇒ patch chưa xong"),
     EvidenceRule("verifier-must-be-workspace", lambda e: e.verified_by == TRUSTED_VERIFIER,

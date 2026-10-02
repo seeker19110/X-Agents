@@ -261,6 +261,7 @@ def _repo_sach(tmp_path: Path) -> Path:
     (repo / "companies" / "software-company" / "tests" / "golden" / "agents").mkdir(parents=True)
     (repo / "companies" / "software-company" / "agents").mkdir(parents=True)
     (repo / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
+    _git(repo, "init", "-b", "main")
     return repo
 
 
@@ -320,3 +321,33 @@ def test_drift_tu_thu_muc_con_ra_dung_ket_qua_nhu_o_goc(tmp_path: Path, capsys):
     assert "DRIFT sc-foo.md" in o_goc and "pr-7" not in o_goc
     assert main(["drift", "--repo", str(repo / "companies" / "software-company")]) == 1
     assert capsys.readouterr().out == o_goc
+
+
+def test_drift_thu_muc_khong_phai_git_khong_duoc_bao_sach(tmp_path: Path, capsys):
+    """`--repo` trỏ sai chỗ (không phải repo git) thì phép (c) không đọc được `git log` nào và ba phép kia
+    không thấy file nào — trước đây in "sạch" và thoát 0: cổng CI xanh giả, đúng thứ comment job `drift-check`
+    trong `ci.yml` cảnh báo. Không soi được thì phải nói là không soi được."""
+    repo = tmp_path / "khong-phai-git"
+    repo.mkdir()
+    assert main(["drift", "--repo", str(repo)]) == 2
+    cap = capsys.readouterr()
+    assert "sạch" not in cap.out and "không phải repo git" in cap.err
+
+
+def test_drift_clone_nong_khong_duoc_bao_sach(tmp_path: Path, capsys):
+    """Clone `--depth 1` chỉ có một commit: phép (c) không thấy PR nào đã merge và im lặng — cùng họ xanh giả
+    với ca trên, trước đây chỉ có một dòng comment trong `ci.yml` canh."""
+    goc = _repo_sach(tmp_path)
+    for i in (1, 2):  # PR #1 THIẾU dòng CHANGELOG, PR #2 có — chỉ commit #2 còn lại trong clone nông
+        (goc / "CHANGELOG.md").write_text("# Changelog\n\n- feat: 2 (#2)\n" if i == 2 else "# Changelog\n",
+                                          encoding="utf-8")
+        _git(goc, "add", "-A")
+        _git(goc, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", f"feat: {i} (#{i})")
+    assert main(["drift", "--repo", str(goc)]) == 1, "đối chứng: lịch sử đủ thì thấy PR #1 thiếu dòng"
+    assert "pr-1" in capsys.readouterr().out
+    nong = tmp_path / "nong"
+    r = subprocess.run(["git", "clone", "--depth", "1", f"file://{goc}", str(nong)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert main(["drift", "--repo", str(nong)]) == 2
+    cap = capsys.readouterr()
+    assert "sạch" not in cap.out and "clone nông" in cap.err

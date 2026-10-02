@@ -283,6 +283,26 @@ def test_ticket_mang_danh_tinh_event_da_tieu_thu(tmp_path: Path):
     assert t.signal_event_ids == [env.event_id] and t.ticket_id == f"KEEP:{env.event_id}"
 
 
+def test_publish_ticket_loi_giua_nhip_thi_nhip_sau_van_ra_ticket(tmp_path: Path, monkeypatch):
+    """Sổ `seen` chỉ được ghi khi ticket ĐÃ lên bus. Nhịp lỗi lúc publish (SQLite bận vì gate CLI là tiến
+    trình khác, đĩa đầy...) mà id đã vào sổ thì nhịp sau bỏ qua signal đó — nuốt im lặng tới khi mở lại
+    tiến trình (`TRAPS.md` khuôn 1)."""
+    o = _orc(tmp_path)
+    o.submit_signal(_signal(semver_jump=None))
+    that = o._publish
+
+    def _ban(topic, key, actor, payload):
+        if topic == "maintenance-tickets":
+            raise OSError("database is locked")
+        return that(topic, key, actor, payload)
+
+    monkeypatch.setattr(o, "_publish", _ban)
+    with pytest.raises(OSError):
+        o.tick(now=NOW)
+    monkeypatch.setattr(o, "_publish", that)
+    assert len(o.tick(now=NOW).tickets) == 1, "signal chưa thành ticket nào thì không được coi là đã tiêu thụ"
+
+
 # ---------- CHẶN-2: cổng evidence đứng ở ĐƯỜNG TIÊU THỤ, không chỉ ở hàm dựng ----------
 
 def _bad_report(ticket_id: str) -> VerificationReport:
@@ -388,6 +408,37 @@ def test_audit_cua_code_ghi_duoi_actor_rieng_va_action_la_y_dinh(tmp_path: Path)
     assert CODE_ACTOR != "keeper-supervisor", "code không được ghi audit dưới tên một vai agent"
     actions = {a.payload["action"] for a in o.bus.replay(topic="audit-log")}
     assert "pr.open" not in actions, "BT7 chưa gọi `gh pr create` — không được gọi ý định là `pr.open`"
+
+
+def _blocked(o: KeeperOrchestrator) -> list[list[str]]:
+    import json
+    return [json.loads(a.payload["evidence"])["blockers"] for a in o.bus.replay(topic="audit-log")
+            if a.payload["action"] == "pr.blocked"]
+
+
+def test_pr_blocked_chi_ghi_khi_cong_chan_doi_khong_ghi_moi_nhip(tmp_path: Path):
+    """`watch` mặc định 5 giây một nhịp: ticket chờ người duyệt gate một ngày = ~17k dòng `pr.blocked` y hệt
+    nhau, và `bus.replay()` lúc mở đọc lại hết. Ghi khi tập cổng chặn ĐỔI là đủ để người biết vì sao."""
+    o = _orc(tmp_path)
+    o.submit_signal(_signal())
+    o.tick(now=NOW)
+    o.tick(now=NOW)
+    o.tick(now=NOW)
+    assert _blocked(o) == [["evidence", "gate"]]
+
+    (t,) = o.tickets.values()
+    _verify(o, t.ticket_id)
+    o.tick(now=NOW)
+    assert _blocked(o) == [["evidence", "gate"], ["gate"]], "cổng chặn đổi thì phải ghi lại"
+
+
+def test_pr_blocked_khong_ghi_lai_sau_khi_mo_lai_bus(tmp_path: Path):
+    """Khoá chống lặp phải dựng lại từ `audit-log`, không phải biến RAM (`TRAPS.md` khuôn 2)."""
+    o = _orc(tmp_path)
+    o.submit_signal(_signal())
+    o.tick(now=NOW)
+    _orc(tmp_path).tick(now=NOW)
+    assert _blocked(_orc(tmp_path)) == [["evidence", "gate"]]
 
 
 # ---------- I1: lỗi ghi GitHub không được nuốt vào tick_error ----------

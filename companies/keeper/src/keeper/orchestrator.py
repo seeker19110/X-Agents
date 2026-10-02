@@ -68,7 +68,7 @@ from .release import compose, fill_pr_number
 from .triage import ObservedSignal, TriageState, triager
 from .worktree import KeeperWorktree
 
-__all__ = ["CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "KeeperOrchestrator", "TickResult",
+__all__ = ["BLOCKED_ACTION", "CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "KeeperOrchestrator", "TickResult",
            "touches_human_only"]
 
 #: Khoá chặn "việc này của người" — hằng số chứ không chuỗi rời, vì cả `pr_blockers` lẫn test đều nêu tên nó.
@@ -87,6 +87,9 @@ CODE_ACTOR = "keeper-orchestrator"
 
 #: Action ghi khi một `verification-reports` đến từ bus KHÔNG qua được `require_two_way` (bất biến I2).
 REJECT_ACTION = "verification.rejected"
+
+#: Action ghi khi `open_pr` bị cổng chặn — chỉ khi tập cổng chặn ĐỔI, không phải mỗi nhịp (xem `open_pr`).
+BLOCKED_ACTION = "pr.blocked"
 
 
 def touches_human_only(subject: str) -> bool:
@@ -135,6 +138,8 @@ class KeeperOrchestrator:
         # một dòng mỗi lần mở lại.
         self._audited_rejects: set[str] = set()
         self._pending_rejects: list[tuple[str, dict[str, Any]]] = []
+        # `evidence` của bản ghi `pr.blocked` gần nhất mỗi ticket — dựng lại từ `audit-log`, không phải RAM thuần.
+        self._last_blocked: dict[str, str] = {}
         self._replaying = True
         for env_ in self.bus.replay():
             self._apply(env_)
@@ -157,6 +162,8 @@ class KeeperOrchestrator:
             # phải parse `evidence` (một dòng log xấu không được làm sập replay của cả orchestrator).
             if env.payload.get("action") == REJECT_ACTION:
                 self._audited_rejects.add(env.key)
+            elif env.payload.get("action") == BLOCKED_ACTION:
+                self._last_blocked[str(env.payload.get("ticket_id"))] = str(env.payload.get("evidence"))
         elif env.topic == "maintenance-signals":
             self.signals.append(ObservedSignal(env.event_id, Signal.model_validate(env.payload)))
         elif env.topic == "maintenance-tickets":
@@ -221,9 +228,12 @@ class KeeperOrchestrator:
     def _triage(self, now: datetime) -> list[Ticket]:
         """Cả lô một lần: `triager` gộp trùng theo `(kind, subject)` NGAY TRONG lô, và chống trùng theo
         `event_id` nên hai chủ thể khác nhau không dùng chung một khoá. (Bản trước phải gọi từng signal một vì
-        `generation` là tham số chung cho cả lời gọi — trục thế hệ ấy đã bỏ, lý do ở `triage.py`.)"""
+        `generation` là tham số chung cho cả lời gọi — trục thế hệ ấy đã bỏ, lý do ở `triage.py`.)
+
+        `triager` ghi vào một BẢN NHÁP của sổ: sổ thật chỉ nhận id qua `_apply` khi ticket đã lên bus. Đưa sổ
+        thật vào thì publish lỗi giữa nhịp vẫn để id lại trong sổ, và nhịp sau nuốt signal tới khi mở lại."""
         out: list[Ticket] = []
-        for t in triager(self.signals, state=self.triage, now=now):
+        for t in triager(self.signals, state=TriageState(self.triage.seen), now=now):
             self._publish("maintenance-tickets", t.ticket_id, TRIAGER_ACTOR, t.model_dump())
             out.append(self.tickets[t.ticket_id])
         return out
@@ -288,11 +298,18 @@ class KeeperOrchestrator:
         """Soạn dòng release và ghi ý định mở PR, hoặc `None` kèm audit nêu ĐÍCH DANH cổng chặn.
 
         Ghi lý do chặn vào `audit-log` chứ không im lặng trả `None`: một ticket đứng yên mà không ai biết vì
-        sao là đúng khuôn "chế độ hỏng không tự khai báo" (`TRAPS.md`)."""
+        sao là đúng khuôn "chế độ hỏng không tự khai báo" (`TRAPS.md`).
+
+        Ghi khi tập cổng chặn ĐỔI, không phải mỗi nhịp: `watch` 5 giây một nhịp thì một ticket chờ người duyệt
+        gate cả ngày là ~17k dòng y hệt nhau, và mọi lần mở lại đều `replay()` hết chúng. Đánh dấu SAU khi
+        audit đã ghi: đánh dấu trước mà audit lỗi thì lý do chặn không bao giờ được ghi."""
         blockers = self.pr_blockers(ticket)
         if blockers:
-            self._audit("pr.blocked", {"ticket_id": ticket.ticket_id, "blockers": blockers},
-                        ticket_id=ticket.ticket_id)
+            data = {"ticket_id": ticket.ticket_id, "blockers": blockers}
+            evidence = json.dumps(data, ensure_ascii=False)
+            if self._last_blocked.get(ticket.ticket_id) != evidence:
+                self._audit(BLOCKED_ACTION, data, ticket_id=ticket.ticket_id)
+                self._last_blocked[ticket.ticket_id] = evidence
             return None
         note = compose(ticket)
         self._publish("release-notes", note.ticket_id, RELEASE_ACTOR, note.model_dump())

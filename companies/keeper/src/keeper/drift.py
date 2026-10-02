@@ -138,6 +138,23 @@ def _git_log_pr_commits(repo: Path) -> list[tuple[int, datetime]]:
     return out
 
 
+def history_gap(repo: Path) -> str | None:
+    """Vì sao phép (c) KHÔNG soi được lịch sử của `repo`, hoặc `None` khi soi được.
+
+    Phép (c) gặp `git log` lỗi thì trả rỗng — đúng cho một hàm phát tín hiệu, nhưng người gọi in "sạch" thì đó
+    là cổng xanh giả. Hai ca đo được: không phải repo git (`--repo` trỏ sai chỗ), và clone nông (`--depth 1` chỉ
+    còn một commit nên không PR nào bị soi). Lịch sử trống thì không có gì để soi, không phải lỗ."""
+    r = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"], cwd=str(repo), capture_output=True, text=True,
+        encoding="utf-8", check=False,
+    )
+    if r.returncode != 0:
+        return f"{repo} không phải repo git — {(r.stderr or r.stdout).strip()[:200]}"
+    if r.stdout.strip() == "true":
+        return f"{repo} là clone nông — `git log` thiếu lịch sử, PR đã merge không được soi (cần fetch-depth: 0)"
+    return None
+
+
 def changelog_drift(repo: Path, changelog: Path, *, cutoff: datetime = CHANGELOG_RULE_CUTOFF) -> list[Signal]:
     """Phép (c): mỗi PR merged trong `git log` của `repo` SAU `cutoff` mà `(#n)` không xuất hiện trong
     `changelog` → một `Signal`. PR merge trước `cutoff` không bị soi (luật §10 chưa có hiệu lực khi đó)."""
