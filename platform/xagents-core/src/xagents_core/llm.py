@@ -122,9 +122,11 @@ class TransientError(LLMError):
 # Thông điệp CLI (claude -p, codex) không mang mã có cấu trúc thì mới đọc chữ — theo CỤM có ranh giới từ, như
 # `routing.QUOTA_PATTERNS`. Chuỗi con trần "rate"/"limit"/"usage" từng khớp "generate", "context limit" (prompt
 # quá dài, lỗi NỘI DUNG) và "Usage: codex exec …" (sai cờ): backend đi nghỉ, event bị hoãn mãi, lỗi không tới agent.
+# `quota`/`timeout` lấy ranh giới là CHỮ CÁI chứ không `\b`: `\b` coi `_` là chữ nên mã lỗi snake_case
+# (`insufficient_quota`, `request_timeout`) rơi khỏi "tạm thời" — vẫn không khớp "quotation".
 TRANSIENT_TEXT = re.compile(
-    r"\b(?:429|502|503|529)\b|\brate.?limit|\boverloaded|\bquota\b|\busage limit\b|\bhit your limit\b|"
-    r"\blimit reached\b|\btimed out\b|\btimeout\b", re.IGNORECASE)
+    r"\b(?:429|502|503|529)\b|\brate.?limit|\boverloaded|(?<![a-z])quota(?![a-z])|\busage limit\b|\bhit your limit\b|"
+    r"\blimit reached\b|\btimed out\b|(?<![a-z])timeout(?![a-z])", re.IGNORECASE)
 
 
 def looks_transient(text: str) -> bool:

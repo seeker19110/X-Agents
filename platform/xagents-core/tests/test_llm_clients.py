@@ -854,6 +854,7 @@ VINH_VIEN = [
     "input length and `max_tokens` exceed context limit: 199000 + 21333 > 200000",
     "Error: failed to generate a response for this prompt",
     "invalid model identifier 'claude-moderate-9'",
+    "unbalanced quotation in prompt template",
 ]
 TAM_THOI = [
     "Claude AI usage limit reached|1700000000",
@@ -863,6 +864,11 @@ TAM_THOI = [
     "API Error: 529 overloaded_error",
     "quota exceeded for this project",
     "rate limit exceeded",
+    # Mã lỗi snake_case (OpenAI/codex): `\b` coi `_` là chữ nên `\bquota\b` không khớp — bản chuỗi con trước đó
+    # vẫn khớp, đổi sang regex từng làm hồi quy chúng thành lỗi vĩnh viễn.
+    '{"error":{"code":"insufficient_quota"}}',
+    "quota_exceeded",
+    "upstream request_timeout",
 ]
 
 
