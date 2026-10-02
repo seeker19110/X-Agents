@@ -357,6 +357,34 @@ def test_bao_cao_hong_trong_bus_cu_bi_tu_choi_lai_khi_mo_va_chi_ghi_audit_mot_la
     assert len(rejects) == 1, "một event hỏng = đúng một bản ghi từ chối, dù mở lại bao nhiêu lần"
 
 
+def test_tu_choi_gia_mao_khong_nuot_duoc_ban_ghi_tu_choi_that(tmp_path: Path):
+    """Anh em của `pr.blocked` giả mạo: `_audited_rejects` dựng từ `verification.rejected` trên topic MỞ. Bản giả
+    mang `key` = event_id của một báo cáo hỏng ghi lúc orchestrator đang tắt thì lần mở sau coi như đã ghi từ
+    chối, báo cáo hỏng bị chặn trong im lặng. Chỉ bản ghi của `CODE_ACTOR` được tính. Đo hai chiều: bỏ kiểm
+    actor thì assert đỏ."""
+    from keeper.bus import KeeperBus
+    from keeper.core import CORE
+    from keeper.events import AuditLog
+    o1 = _orc(tmp_path)
+    o1.submit_signal(_signal(semver_jump=None))
+    (t,) = o1.tick(now=NOW).tickets
+    o1.bus.close()
+
+    bus = KeeperBus(CORE, tmp_path / "keeper.sqlite")  # tiến trình khác, orchestrator đang tắt
+    hong = Envelope(topic="verification-reports", key=t.ticket_id, actor="regression-guard",
+                    payload=_bad_report(t.ticket_id).model_dump())
+    bus.publish(Envelope(topic="audit-log", key=hong.event_id, actor="human:mallory",
+                         payload=AuditLog(actor=CODE_ACTOR, action=REJECT_ACTION, ticket_id=t.ticket_id,
+                                          evidence="{}").model_dump()))
+    bus.publish(hong)
+    bus.close()
+
+    o2 = _orc(tmp_path)
+    assert t.ticket_id not in o2.verified
+    that = [a for a in o2.bus.replay(topic="audit-log") if a.payload["action"] == REJECT_ACTION and a.actor == CODE_ACTOR]
+    assert [a.key for a in that] == [hong.event_id], "báo cáo hỏng phải có bản ghi từ chối thật của code"
+
+
 # ---------- CHẶN-3: I3 trong CÙNG một nhịp ----------
 
 def _hai_ticket_du_cong(o: KeeperOrchestrator) -> list:
@@ -439,6 +467,30 @@ def test_pr_blocked_khong_ghi_lai_sau_khi_mo_lai_bus(tmp_path: Path):
     o.tick(now=NOW)
     _orc(tmp_path).tick(now=NOW)
     assert _blocked(_orc(tmp_path)) == [["evidence", "gate"]]
+
+
+def test_pr_blocked_gia_mao_khong_nuot_duoc_dong_that(tmp_path: Path):
+    """`audit-log` là topic MỞ (ai cũng ghi). Khoá chống lặp đọc `pr.blocked` mà không kiểm `env.actor` thì một
+    bản ghi giả mang đúng `evidence` kế tiếp làm dòng thật không bao giờ được ghi — người không biết vì sao PR
+    nằm im. Chỉ dòng do code ghi (`CODE_ACTOR`) mới được làm khoá. Khoá dựng lại lúc replay, nên bản giả cắn sau
+    khi mở lại bus. Đo hai chiều: bỏ kiểm actor thì assert đỏ."""
+    import json
+
+    from keeper.events import AuditLog
+    o = _orc(tmp_path)
+    o.submit_signal(_signal())
+    o.tick(now=NOW)
+    (t,) = o.tickets.values()
+    gia = json.dumps({"ticket_id": t.ticket_id, "blockers": ["gate"]}, ensure_ascii=False)
+    o.bus.publish(Envelope(topic="audit-log", key="x", actor="human:mallory",
+                           payload=AuditLog(actor=CODE_ACTOR, action="pr.blocked", ticket_id=t.ticket_id,
+                                            evidence=gia).model_dump()))
+    o = _orc(tmp_path)
+    _verify(o, t.ticket_id)
+    o.tick(now=NOW)
+    that = [json.loads(a.payload["evidence"])["blockers"] for a in o.bus.replay(topic="audit-log")
+            if a.payload["action"] == "pr.blocked" and a.actor == CODE_ACTOR]
+    assert that == [["evidence", "gate"], ["gate"]], "bản ghi giả không được thay dòng thật của code"
 
 
 # ---------- I1: lỗi ghi GitHub không được nuốt vào tick_error ----------

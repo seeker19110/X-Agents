@@ -160,6 +160,9 @@ class KeeperOrchestrator:
         if env.topic == "audit-log":
             # Chỉ để biết event hỏng nào ĐÃ có bản ghi từ chối. `key` mang `event_id` bị từ chối, nên không
             # phải parse `evidence` (một dòng log xấu không được làm sập replay của cả orchestrator).
+            # `audit-log` là topic MỞ (ai cũng ghi): chỉ bản ghi của code làm khoá, bản giả không nuốt được dòng thật.
+            if env.actor != CODE_ACTOR:
+                return
             if env.payload.get("action") == REJECT_ACTION:
                 self._audited_rejects.add(env.key)
             elif env.payload.get("action") == BLOCKED_ACTION:
