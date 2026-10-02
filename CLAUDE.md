@@ -54,23 +54,23 @@ oan thì sửa hook kèm test trong `test_cong_khung.py`.
 
 - `/product-goal <mã> <mục tiêu>` — hợp đồng chất lượng theo dự án/ngành, nối `/thi-hanh`; xem `docs/PRODUCT-EXCELLENCE.md`. Không che `/goal` native.
 
-## ECC — plugin ghim, lớp thêm chứ không phải luật (ADR gốc 0027)
+## ECC — vendor chọn lọc, lớp thêm chứ không phải luật (ADR gốc 0028)
 
-`.claude/settings.json` bật plugin ECC (`affaan-m/ECC`) ghim đúng một commit (`docs/integrations/ecc.lock.json`):
-293 skill, 94 lệnh, 68 agent mang tiền tố `ecc:` cộng hook vòng đời của nó (cần `node`). Phiên chưa thấy `/ecc:*` thì
-chạy `/plugin` và cài `ecc@xagents-ecc` (bản ghim) — trên máy thật chưa đo, xem ADR 0027 §"Chưa đo". **Phiên Claude
-Code on the web không nạp ECC** (đo 2026-10-01: `init` chỉ có plugin builtin, `plugin install` báo `not_found`).
+23 mục chọn lọc của ECC (`affaan-m/ECC`, MIT) nằm thẳng trong `.claude/` với tiền tố `ecc-`. Ghim đúng một commit ở
+`docs/integrations/ecc.lock.json`. Không có plugin, hook hay `node`. Phiên Claude Code on the web nạp đủ (đo
+2026-10-02, ADR 0028 §"Đo").
 
-- **Luật repo thắng khi trùng.** `/gate` chứ không `/ecc:quality-gate`; `/thi-hanh` chứ không `/ecc:orch-*`; PR theo
-  `docs/QUY-TRINH-GIT.md` chứ không `/ecc:pr`; `fail_under = 100` chứ không 80% của rule ECC.
-- **Dùng tự do**: `/ecc:python-review`, `/ecc:security-scan`, `/ecc:code-review`, `/ecc:review-pr`, `/ecc:test-coverage`,
-  `/ecc:build-fix`, skill `ecc:tdd-workflow`, `ecc:python-testing`… — nhất là khi soi code công ty sinh cho repo khách.
-- **Không dùng ở đây**: `/ecc:auto-update` (phá ghim — nâng bản qua PR sửa settings + lock), `/ecc:update-codemaps`,
-  `/ecc:hookify*`, `/ecc:project-init`, `/ecc:checkpoint`; `/ecc:skill-create`, `/ecc:learn` không ghi vào `.claude/skills/`.
-- **Hai hook ECC đã tắt** vì trái luật: `block-no-verify` (chặn đường thoát `--no-verify` của `AGENTS.md`) và
-  `suggest-compact` (trái auto-compact 300k). GateGuard của ECC chặn lần sửa đầu mỗi file tới khi nêu importer/API —
-  vướng thì `ECC_GATEGUARD=off` trong `.claude/settings.local.json`, đừng sửa settings chung.
-- Agent của công ty (`claude -p`) **không** nhận ECC: mọi chế độ chạy `--restricted`, có test argv khoá.
+- **Gọi:** lệnh `/ecc-python-review`, `/ecc-review-pr`, `/ecc-build-fix`; skill `/ecc-python-testing`,
+  `/ecc-security-review`, `/ecc-agent-introspection-debugging`…; agent `ecc-code-reviewer`, `ecc-silent-failure-hunter`…
+  Danh sách kèm lý do: `select` trong lock. Tiền tố `ecc:` của plugin cũ (ADR 0027) không còn.
+- **Luật repo thắng khi trùng.** Coverage `fail_under = 100`, không phải 80%. Test đỏ trước. PR theo
+  `docs/QUY-TRINH-GIT.md`. Không xoá code ngoài yêu cầu. Mỗi tệp vendor mang câu này ngay đầu.
+- **Mục ECC bị nhắc mà không có tệp `ecc-<tên>`** là mục repo không vendor, có lý do trong `rejected` của lock (vd
+  `tdd-workflow` lấy 80% làm trục, `orch-*` trùng `/thi-hanh`). Dùng `/gate`, `/debug`, `/adr`, `/thi-hanh` hoặc bỏ qua.
+- **Bản dẫn xuất, không sửa tay** (luật cấm 5). Muốn thêm/bớt mục hay nâng bản: sửa lock, chạy `make ecc-vendor`, đọc
+  diff `.claude/` như mã người lạ, mở PR. `test_cong_ecc.py` đỏ ngay khi sha256 lệch lock; job CI `ecc-check` sinh
+  lại từ commit ghim rồi so.
+- Agent của công ty (`claude -p`) **không** thấy mục `ecc-*`: mọi chế độ chạy `--restricted` (đo được 0, giống `sc-*`).
 
 ## Thao tác trên Windows
 

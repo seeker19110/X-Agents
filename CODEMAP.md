@@ -23,7 +23,7 @@ từng package ở `<pkg>/CODEMAP.md`.
 | Thêm slash command cho Claude Code | `.claude/commands/<tên>.md` | `platform/console/tests/test_cong_khung.py` (canh frontmatter + đường dẫn) |
 | Đổi lệnh cổng cục bộ | `scripts/dev-task.sh` — phải khớp đúng `.github/workflows/ci.yml`, lệch là cổng cục bộ khác cổng CI | `uv run pytest tests/test_cong_khung.py` (console) |
 | Đổi/thêm hàng rào chặn lệnh | `.claude/hooks/*.sh` + nối trong `.claude/settings.json` | `test_cong_khung.py` — hook không có test là cổng không ai biết còn sống không |
-| Nâng bản ECC, bật/tắt hook ECC (ADR 0027) | `.claude/settings.json` (`extraKnownMarketplaces.xagents-ecc` sha + ref, `env.ECC_DISABLED_HOOKS`) **cùng lúc** với `docs/integrations/ecc.lock.json` | `platform/console/tests/test_cong_ecc.py` — settings lệch lock là đỏ |
+| Thêm/bớt mục ECC, nâng bản ECC (ADR 0028) | `docs/integrations/ecc.lock.json` (`revision`, `select`, `rejected`) → `make ecc-vendor` (`scripts/ecc_vendor.py`); **không sửa tay** tệp `ecc-` trong `.claude/` | `platform/console/tests/test_cong_ecc.py` (sha256 lệch lock là đỏ), `platform/console/tests/test_ecc_vendor.py`, job CI `ecc-check` |
 | Luật cho agent KHÔNG phải Claude Code | `GEMINI.md` (bản đầy đủ) + `.cursorrules`/`.windsurfrules`/`.clinerules` | — |
 | Trợ lý kiểm duyệt `sc-*` | **không sửa tay** — `companies/software-company/agents/`, `skills/`, `gates/checklists.md` → `make subagents` | commit `.claude/agents/` |
 
