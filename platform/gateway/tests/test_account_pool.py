@@ -284,6 +284,108 @@ def test_read_file_with_corrupt_json_returns_empty(manager, caplog):
     assert "Không đọc được" in caplog.text
 
 
+def _doc_loi_mot_lan(monkeypatch, exc: Exception, lan: int = 1) -> None:
+    """`lan` lần đọc token file KẾ TIẾP ném `exc` (Defender/indexer khoá file trên Windows — gateway TRAPS #39)."""
+    that = gw_auth.json.load
+    con = [exc] * lan
+
+    def load(f):
+        if con:
+            raise con.pop()
+        return that(f)
+
+    monkeypatch.setattr(gw_auth.json, "load", load)
+
+
+def test_save_khong_xoa_pool_khi_doc_file_loi_tam_thoi(manager, monkeypatch, caplog):
+    """Đọc lỗi KHÔNG phải file rỗng: ghi đè lúc ấy xoá mọi tài khoản khác cùng refresh token của chúng."""
+    for name in "abc":
+        manager.save_credentials(_creds(name))
+    _doc_loi_mot_lan(monkeypatch, PermissionError("bị khoá"))
+    assert manager.save_credentials(_creds("a", access_token="token-a-NEW")) is False
+    assert sorted(c.email for c in manager.load_all_stored_credentials()) == [
+        "a@example.com",
+        "b@example.com",
+        "c@example.com",
+    ]
+    assert "KHÔNG ghi" in caplog.text
+
+
+def test_save_tra_true_khi_ghi_duoc(manager):
+    assert manager.save_credentials(_creds("a")) is True
+
+
+def test_save_tra_false_khi_ghi_loi(manager, monkeypatch):
+    def hong(*a, **k):
+        raise OSError("đĩa đầy")
+
+    monkeypatch.setattr(manager, "_atomic_write", hong)
+    assert manager.save_credentials(_creds("a")) is False
+
+
+def test_save_khong_ghi_de_file_hong(manager):
+    """File không phải JSON hợp lệ: ghi đè là mất luôn thứ người còn cứu được bằng tay — từ chối, nói rõ."""
+    manager.token_file.parent.mkdir(parents=True, exist_ok=True)
+    manager.token_file.write_text('{"accounts": {"b@example.com": ', encoding="utf-8")
+    assert manager.save_credentials(_creds("a")) is False
+    assert manager.token_file.read_text(encoding="utf-8") == '{"accounts": {"b@example.com": '
+
+
+def test_file_khong_phai_object_doc_la_rong_nhung_khong_bi_ghi_de(manager, caplog):
+    manager.token_file.parent.mkdir(parents=True, exist_ok=True)
+    manager.token_file.write_text("[]", encoding="utf-8")
+    assert manager.load_all_stored_credentials() == []
+    assert "không phải object JSON" in caplog.text
+    assert manager.save_credentials(_creds("a")) is False
+    assert manager.token_file.read_text(encoding="utf-8") == "[]"
+
+
+def test_mark_unavailable_khong_xoa_pool_khi_doc_file_loi(manager, monkeypatch):
+    for name in "abc":
+        manager.save_credentials(_creds(name))
+    _doc_loi_mot_lan(monkeypatch, PermissionError("bị khoá"), lan=2)  # khoá kéo dài qua cả lần đọc lại
+    manager.mark_account_unavailable(_creds("a"), 429, retry_after="30")
+    assert len(json.loads(manager.token_file.read_text(encoding="utf-8"))["accounts"]) == 3
+
+
+def test_remove_account_doc_loi_thi_noi_ra_khong_bao_khong_co(manager, monkeypatch):
+    """Đọc lỗi mà trả False thì CLI in "Không có tài khoản" — sai sự thật (khuôn 1)."""
+    manager.save_credentials(_creds("a"))
+    _doc_loi_mot_lan(monkeypatch, PermissionError("bị khoá"))
+    with pytest.raises(OSError):
+        manager.remove_account("a@example.com")
+    assert [c.email for c in manager.load_all_stored_credentials()] == ["a@example.com"]
+
+
+def test_request_dang_bay_khong_hoan_tac_logout(manager):
+    """Request giữ `creds` cũ của a; người chạy `logout a`; request nhận 429 → a không được quay lại pool."""
+    manager.save_credentials(_creds("a", refresh_token="rA"))
+    manager.save_credentials(_creds("b"))
+    stale = manager.load_stored_credentials("a@example.com")
+    assert manager.remove_account("a@example.com")
+    manager.mark_account_unavailable(stale, 429, retry_after="30")
+    manager.mark_account_healthy(stale)
+    assert [c.email for c in manager.load_all_stored_credentials()] == ["b@example.com"]
+
+
+def test_remove_account_file_phang_cu(manager):
+    """File phẳng (một tài khoản ở gốc) vẫn được `load_all_stored_credentials` nhận → `logout` phải gỡ được."""
+    manager.token_file.parent.mkdir(parents=True, exist_ok=True)
+    manager.token_file.write_text(json.dumps(_creds("f").to_dict()), encoding="utf-8")
+    assert [c.email for c in manager.load_all_stored_credentials()] == ["f@example.com"]
+    assert manager.remove_account("f@example.com")
+    assert manager.load_all_stored_credentials() == []
+
+
+def test_update_fields_file_phang_van_chuyen_sang_accounts(manager):
+    """Đường lùi `save_credentials` của `_update_account_fields` vẫn cần cho file phẳng còn chứa chính tài khoản đó."""
+    manager.token_file.parent.mkdir(parents=True, exist_ok=True)
+    manager.token_file.write_text(json.dumps(_creds("f").to_dict()), encoding="utf-8")
+    manager.mark_account_unavailable(_creds("f"), 429, retry_after="30")
+    stored = json.loads(manager.token_file.read_text(encoding="utf-8"))["accounts"]["f@example.com"]
+    assert stored["last_failure_status"] == 429
+
+
 # ---------- load_stored_credentials ----------
 
 
@@ -423,11 +525,11 @@ def test_save_credentials_logs_error_on_write_failure(manager, monkeypatch, capl
 # ---------- _update_account_fields ----------
 
 
-def test_update_account_fields_falls_back_to_save_when_no_existing_file(manager):
+def test_update_account_fields_khong_tao_lai_file_da_xoa(manager):
+    """Không còn file = tài khoản cuối đã `logout`; request đang bay ghi lại là hoàn tác lệnh của người."""
     c = _creds("a")
     manager.mark_account_unavailable(c, 429, retry_after="10")
-    stored = json.loads(manager.token_file.read_text(encoding="utf-8"))["accounts"]["a@example.com"]
-    assert stored["last_failure_status"] == 429
+    assert not manager.token_file.exists()
 
 
 def test_update_account_fields_logs_error_on_write_failure(manager, monkeypatch, caplog):
