@@ -107,18 +107,26 @@ def read_settings(paths: dict[str, Path] | None = None, gateway_url: str = DEFAU
     return out
 
 
+def _write_with_mode(path: Path, text: str, mode: int) -> None:
+    """Đặt quyền TRƯỚC khi nội dung vào file: ghi theo umask (0644) rồi mới chmod là có một khoảng bản sao khoá
+    đọc được cho mọi user — chết giữa hai bước thì khoảng ấy thành vĩnh viễn."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        os.chmod(path, mode)   # O_CREAT chỉ áp 0o600 khi TẠO mới; file sót từ lần trước giữ quyền cũ của nó
+        f.write(text)
+
+
 def _atomic_write(path: Path, data: dict[str, Any]) -> None:
-    # tmp và .bak tạo theo umask (thường 0644); `os.replace` thì mang quyền của tmp sang — llm.yaml 0600 (có khoá)
-    # sẽ thành đọc-được-cho-mọi-người. Giữ đúng quyền của file gốc cho cả hai.
+    # `os.replace` mang quyền của tmp sang — llm.yaml 0600 (có khoá) sẽ thành đọc-được-cho-mọi-người nếu tmp theo
+    # umask. Giữ đúng quyền của file gốc cho cả tmp lẫn .bak.
     mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
-    if mode is not None:   # chưa có file gốc thì không có gì để sao lưu
-        backup = path.with_suffix(path.suffix + ".bak")
-        backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-        os.chmod(backup, mode)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    if mode is not None:
-        os.chmod(tmp, mode)
+    text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+    if mode is None:   # chưa có file gốc thì không có gì để sao lưu, cũng không có quyền nào để giữ
+        tmp.write_text(text, encoding="utf-8")
+    else:
+        _write_with_mode(path.with_suffix(path.suffix + ".bak"), path.read_text(encoding="utf-8"), mode)
+        _write_with_mode(tmp, text, mode)
     os.replace(tmp, path)
 
 

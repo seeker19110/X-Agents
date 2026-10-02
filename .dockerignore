@@ -5,6 +5,7 @@
 # `GH_TOKEN`) mà chạy `docker compose up -d --build` là bake khoá vào layer image — gitleaks không bắt lớp
 # này vì file chưa từng vào git. Cổng canh: `platform/console/tests/test_cong_docker.py`.
 **/llm.yaml
+**/llm.yaml.*
 **/media.yaml
 .env
 **/.env

@@ -195,6 +195,27 @@ def test_tat_backend_da_tat_la_khong_doi_gi(llm):
     assert llm.read_text(encoding="utf-8") == before
 
 
+@pytest.mark.skipif(os.name == "nt", reason="quyền nhóm/người khác là khái niệm POSIX")
+def test_khong_luc_nao_ban_sao_khoa_mang_quyen_rong(llm, monkeypatch):
+    """`.bak`/`.tmp` từng được ghi đủ nội dung (có khoá) theo umask 0644 rồi mới chmod: chết hay chmod lỗi giữa
+    hai bước là bản sao khoá nằm lại cho mọi user trên máy đọc. Quyền phải siết TRƯỚC khi nội dung vào file."""
+    os.chmod(llm, 0o600)
+    cu = os.umask(0o022)
+
+    def chmod_hong(*_a, **_k):
+        raise OSError("giả lập chết giữa lúc ghi và lúc chmod")
+
+    monkeypatch.setattr(settings.os, "chmod", chmod_hong)
+    try:
+        with pytest.raises(OSError):
+            settings._atomic_write(llm, {"backends": []})
+    finally:
+        os.umask(cu)
+    lo = [(f.name, oct(stat.S_IMODE(f.stat().st_mode))) for f in llm.parent.iterdir()
+          if f != llm and f.stat().st_size and stat.S_IMODE(f.stat().st_mode) & 0o077]
+    assert not lo, f"bản sao có nội dung mà nhóm/người khác đọc được: {lo}"
+
+
 def test_ghi_nguyen_tu_file_chua_co_khong_tao_bak(tmp_path):
     """`_atomic_write` lên đường dẫn chưa có file (llm.yaml bị xoá giữa lúc đọc và lúc ghi): ghi mới, không
     để `.bak` rỗng giả làm bản sao lưu, không sót file `.tmp`."""

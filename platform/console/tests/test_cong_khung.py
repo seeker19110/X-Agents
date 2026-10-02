@@ -379,7 +379,9 @@ def test_cong_commit_cho_qua_tren_nhanh_rieng(kho_main: Path) -> None:
     assert _cong("git commit -m 'x'", kho_main).returncode == 0
 
 
-@pytest.mark.parametrize("ten", ["llm.yaml", "media.yaml", "company.sqlite", "a/b/llm.yaml"])
+@pytest.mark.parametrize("ten", ["llm.yaml", "media.yaml", "company.sqlite", "a/b/llm.yaml",
+                                 # bản tạm/sao lưu của console (`settings._atomic_write`) mang cùng khoá API
+                                 "llm.yaml.tmp", "a/llm.yaml.bak", "llm.yaml.bak.2"])
 def test_cong_commit_chan_file_cam_trong_staged(kho_main: Path, ten: str) -> None:
     """Luật cấm 3: gitleaks quét cả lịch sử — lỡ commit rồi xoá vẫn đỏ, nên phải chặn trước khi vào lịch sử."""
     _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
@@ -390,6 +392,17 @@ def test_cong_commit_chan_file_cam_trong_staged(kho_main: Path, ten: str) -> Non
     kq = _cong("git commit -m 'x'", kho_main)
     assert kq.returncode == 2, f"đáng lẽ chặn {ten}"
     assert ten.split("/")[-1] in kq.stderr
+
+
+@pytest.mark.parametrize("ten", ["llm.example.yaml", "docs/llm.yaml.md"])
+def test_cong_commit_khong_chan_nham_file_mau(kho_main: Path, ten: str) -> None:
+    """Chiều ngược của phép trên: mẫu `*.example.yaml` là thứ PHẢI commit được (luật cấm 3)."""
+    _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
+    f = kho_main / ten
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("x", encoding="utf-8")
+    _git(kho_main, "add", "-f", ten)
+    assert _cong("git commit -m 'x'", kho_main).returncode == 0, f"chặn oan {ten}"
 
 
 def test_cong_commit_chan_ha_nguong_coverage(kho_main: Path) -> None:

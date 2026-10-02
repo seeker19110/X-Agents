@@ -1172,3 +1172,45 @@ def test_duong_dan_bus_mac_dinh_tro_dung_cay_cong_ty() -> None:
     from console import server as sv
     for db in (sv.DEFAULT_COMPANY_DB, sv.DEFAULT_KEEPER_DB):
         assert (db.parent / "pyproject.toml").is_file(), f"{db} không nằm trong cây package nào"
+
+
+# --- input dị dạng: phải là mã lỗi có thông điệp, không phải kết nối đứt (khuôn 1) --------------------
+
+def _socket_tran(c: Console, request: bytes) -> bytes:
+    """http.client từ chối gửi byte điều khiển trong URL — kẻ gửi thật thì không, nên đi socket trần."""
+    with socket.create_connection(("127.0.0.1", c.port), timeout=5) as s:
+        s.sendall(request)
+        chunks = []
+        while chunk := s.recv(65536):
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def test_token_khong_ascii_thi_401_khong_dut_ket_noi(make_console, fake_modules) -> None:
+    """`secrets.compare_digest` ném TypeError với chuỗi không ASCII; header đọc latin-1 nên `é` lọt vào được."""
+    c = make_console()
+    assert c.request("GET", "/api/state", token="sai-é")[0] == 401
+
+
+def test_duong_dan_static_co_byte_nul_thi_404(make_console) -> None:
+    c = make_console()
+    resp = _socket_tran(c, b"GET /static/a\x00b.js HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+    assert resp.startswith(b"HTTP/1.0 404") or resp.startswith(b"HTTP/1.1 404")
+
+
+def test_engine_action_khong_bam_duoc_thi_400(engine_console) -> None:
+    """`[] in {"start", "stop"}` ném TypeError (unhashable), không phải False."""
+    c, fake = engine_console(allow_engine=True)
+    status, resp = c.request("POST", "/api/engine", body={**_ENG, "action": []})
+    assert status == 400 and "'action'" in resp["error"] and fake.calls == []
+
+
+def test_body_json_long_qua_sau_thi_400(make_console, fake_modules) -> None:
+    """1 MiB đủ chỗ cho 100 000 dấu `[`; `json.loads` ném RecursionError, không phải JSONDecodeError."""
+    c = make_console(readonly=False)
+    conn = http.client.HTTPConnection("127.0.0.1", c.port, timeout=5)
+    conn.request("POST", "/api/gate/decide", body=b"[" * 100_000, headers={"X-Console-Token": c.token})
+    resp = conn.getresponse()
+    assert resp.status == 400 and "JSON" in json.loads(resp.read())["error"]
+    conn.close()
+    assert fake_modules.calls["decide"] == []
