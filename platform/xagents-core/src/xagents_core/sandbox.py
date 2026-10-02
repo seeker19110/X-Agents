@@ -196,6 +196,9 @@ class SubprocessSandbox:
                              errors="replace", timeout=spec.timeout, env=sanitize_env(spec.env), input=spec.stdin)
         except subprocess.TimeoutExpired:
             return Result(None, "", f"quá {spec.timeout}s", True, self.name)
+        except OSError as e:   # thiếu binary / cwd: 127 như shell trong container báo, không ném xuyên nơi gọi
+            return Result(127, "", f"không chạy được {spec.argv[0]!r} trong {spec.cwd}: {e.strerror or e}", False,
+                          self.name)
         return Result(int(r.returncode), (r.stdout or "")[-spec.max_output:], (r.stderr or "")[-spec.max_output:],
                       False, self.name)
 

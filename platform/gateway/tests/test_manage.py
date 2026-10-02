@@ -61,7 +61,10 @@ def test_stop_skips_pid_that_is_not_gateway(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append(pid))
     pid_file = manage.get_pid_file()
     # Giả /proc/<pid>/cmdline: PID được tái dùng bởi tiến trình khác → không SIGTERM, chỉ xoá PID file.
-    cmdlines = {424242: b"python3\0-m\0something_else\0", 424243: b"python3\0-c\0from gateway.manage import ...\0"}
+    cmdlines = {
+        424242: b"python3\0-m\0something_else\0",
+        424243: b"python3\0-u\0-c\0import sys; from gateway.manage import _run_daemon; ...\0127.0.0.1\0001123\0",
+    }
     real_read_bytes = manage.Path.read_bytes
 
     def fake_read_bytes(self):
@@ -77,7 +80,7 @@ def test_stop_skips_pid_that_is_not_gateway(tmp_path, monkeypatch, capsys):
     assert manage.main(["stop"]) == 0
     assert killed == [] and not pid_file.exists()
     assert "không phải tiến trình gateway" in capsys.readouterr().out
-    # cmdline chứa "gateway" → SIGTERM như bình thường.
+    # cmdline mang chữ ký daemon → SIGTERM như bình thường.
     pid_file.write_text("424243", encoding="utf-8")
     assert manage.main(["stop"]) == 0
     assert killed == [424243]

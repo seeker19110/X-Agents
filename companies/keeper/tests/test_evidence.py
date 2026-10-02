@@ -98,6 +98,16 @@ def test_chieu_nguoc_bo_hang_kiem_before_thi_cung_dau_vao_khong_con_nem():
     require_two_way(ev, rules=rules_without("before-must-fail"))  # không ném
 
 
+@pytest.mark.parametrize("before", [TIMEOUT_EXIT, MISSING_EXIT, -9], ids=["qua-gio", "khong-co-lenh", "bi-giet"])
+def test_lan_chay_truoc_khong_hoan_tat_khong_phai_chieu_do(before: int):
+    """Chiều ngược nghĩa là TEST chạy xong và ĐỎ. Quá giờ (cache lạnh lần đầu, cache ấm lần sau), lệnh không có
+    trên máy (script do chính patch thêm, bị stash cùng `--include-untracked`) hay tiến trình bị giết bằng tín
+    hiệu (`-9` khi OOM) đều là KHÔNG test nào chạy — nhận chúng là bằng chứng hai chiều mà không đo gì."""
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(_ev(before=before, after=0))
+    assert "before-must-fail" in str(e.value)
+
+
 def test_after_do_thi_bi_nem():
     with pytest.raises(EvidenceError) as e:
         require_two_way(_ev(before=1, after=2))

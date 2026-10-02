@@ -302,7 +302,9 @@ class ConsoleHandler(BaseHTTPRequestHandler):
 
     def _authorized(self) -> bool:
         given = self.headers.get("X-Console-Token") or ""
-        return secrets.compare_digest(given, self.server.token)
+        # So bytes, không so str: header đọc latin-1 nên `é` lọt vào được, và `compare_digest` ném TypeError với
+        # str không ASCII — kết nối đứt thay vì 401.
+        return secrets.compare_digest(given.encode("utf-8"), self.server.token.encode("utf-8"))
 
     def _guard(self) -> bool:
         """Kiểm tra chung cho mọi request. Trả False nghĩa là đã trả lời lỗi rồi."""
@@ -417,7 +419,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b""
         try:
             data = json.loads(raw.decode("utf-8") or "{}")
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):   # 1 MiB đủ chỗ 100k dấu `[`
             raise GateHTTPError(HTTPStatus.BAD_REQUEST, "body không phải JSON hợp lệ") from None
         if not isinstance(data, dict):
             raise GateHTTPError(HTTPStatus.BAD_REQUEST, "body phải là một object JSON")
@@ -552,7 +554,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         action = payload.get("action")
         xuong = payload.get("xuong")
         by = payload.get("by")
-        if action not in {"start", "stop"}:
+        if action not in ("start", "stop"):   # tuple chứ không set: `[] in {…}` ném TypeError, không phải False
             self._error(HTTPStatus.BAD_REQUEST, "trường 'action' phải là 'start' hoặc 'stop'")
             return
         if not isinstance(xuong, str) or not isinstance(by, str):
@@ -665,6 +667,10 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, html.encode("utf-8"), "text/html; charset=utf-8", csp_nonce=nonce)
 
     def _serve_static(self, rel: str) -> None:
+        # Byte NUL chặn trước mọi thao tác đường dẫn: POSIX ném ValueError ở `resolve()`, Windows mới ném ở `open()`.
+        if "\x00" in rel:
+            self._error(HTTPStatus.NOT_FOUND, "không có file này")
+            return
         root = self.server.static_dir.resolve()
         try:
             target = (root / rel).resolve()

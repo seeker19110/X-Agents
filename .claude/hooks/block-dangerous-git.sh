@@ -61,8 +61,11 @@ chan() {
   exit 2
 }
 
-# Nhánh chính xuất hiện như đích push: `origin main`, `HEAD:main`, `origin/main` không tính (đó là đọc, không ghi).
-nham_nhanh_chinh() { printf '%s' "$cmd_scan" | grep -Eq '(^|[[:space:]:])(main|master)([[:space:]]|$)'; }
+# Nhánh chính xuất hiện như đích push: `origin main`, `HEAD:main`, `+main`, `HEAD:refs/heads/main`;
+# `origin/main` không tính (đó là đọc, không ghi). Đo 2026-10-02: thiếu `+` và `refs/heads/` thì hai dạng sau lọt.
+nham_nhanh_chinh() { printf '%s' "$cmd_scan" | grep -Eq '(^|[[:space:]:+])(refs/heads/)?(main|master)([[:space:]]|$)'; }
+# Refspec mở đầu bằng `+` là force-push không cần cờ (`git push origin +main`).
+co_refspec_cong() { printf '%s' "$cmd_scan" | grep -Eq '(^|[[:space:]])\+[^[:space:]]'; }
 
 # --- 1 + 1b: mọi thứ ghi vào nhánh chính ---
 # Xét TỪNG ĐOẠN lệnh (tách ở `&&` `||` `;` `|`): `git push -u origin x && gh pr create --base main` có `main` ở lệnh
@@ -71,7 +74,7 @@ nham_nhanh_chinh() { printf '%s' "$cmd_scan" | grep -Eq '(^|[[:space:]:])(main|m
 toan_bo="$cmd_scan"
 while IFS= read -r cmd_scan; do
   if la_git push && nham_nhanh_chinh; then
-    if co_co '--force|--force-with-lease|--force-with-lease=[^[:space:]]*|-f'; then
+    if co_co '--force|--force-with-lease|--force-with-lease=[^[:space:]]*|-f' || co_refspec_cong; then
       chan "force-push vào nhánh chính" "Luật cấm 1: không đẩy thẳng nhánh chính; force-push còn xoá lịch sử người khác."
     fi
     chan "push thẳng vào nhánh chính" "Luật cấm 1 (AGENTS.md): mọi thay đổi đi nhánh → PR → CI xanh → squash merge."

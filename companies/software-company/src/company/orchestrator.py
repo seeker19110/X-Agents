@@ -97,7 +97,6 @@ from .orch.routes import spec_runtime_gap as spec_runtime_gap
 from .orch.state import OrchState, install_aliases
 from .registry import AgentSpec, load_agents
 from .roles import ENGINEERING as ENGINEERING
-from .routing import retry_after_seconds
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
 from .sandbox import Sandbox, SubprocessSandbox
 from .supervisor import Supervisor
@@ -268,6 +267,7 @@ class Orchestrator:
     watch = scheduler.watch
     _maybe_reload = scheduler._maybe_reload
     _defer = scheduler._defer
+    _defer_transient = scheduler._defer_transient
     _retry_deferred = scheduler._retry_deferred
     _mark = scheduler._mark
     _remember = scheduler._remember
@@ -297,11 +297,10 @@ class Orchestrator:
         fsm.step(release_fsm.RELEASE_TRANSITIONS, self, env, res, phase="post")
         self._note_closed()
         if res.transient:  # một agent chưa chạy được vì transport: giữ event lại, nhịp sau thử tiếp (agent xong rồi không chạy lại)
-            stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
             # Backend đã nói rõ phải chờ bao lâu ("mọi backend đều đang nghỉ, thử lại sau 1515s") — tôn trọng nó.
             # Trước đây mọi nhịp tick đều hỏi lại: đo được 60 bản ghi `llm_error`/phút liên tục trong lúc pool
             # hết quota (2026-09-04), và `_rehydrate` replay TOÀN BỘ log nên bus phình làm mọi lần mở lại chậm dần.
-            return self._defer(env, res, ":".join(stuck.split(":")[:2]), wait_s=retry_after_seconds(stuck))
+            return self._defer_transient(env, res)
         self._mark(env, res)
         return res
 

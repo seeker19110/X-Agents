@@ -694,6 +694,12 @@ def test_gate_khong_nhac_lai_va_escalate_lai_sau_khi_mo_lai_bus(tmp_path):
 
     overdue = [e for e in SQLiteBus(db).replay(topic="audit-log") if e.payload["action"] == "gate.overdue"]
     assert len(overdue) == 1, f"mở lại bus không được nhắc lại gate cũ, nhận được {len(overdue)} bản ghi"
+    # Khuôn 2: khoá chống escalate lặp của supervisor (`_escalated_once`) chỉ sống trong RAM — mở lại bus là mất,
+    # mỗi lần restart thêm một `escalate` cho cùng một gate, `n` của `_check_escalations` tăng theo. Đo hai chiều:
+    # bỏ kiểm `o.once` trước `escalate_gate` trong `tick` thì thành 2.
+    esc = [e for e in SQLiteBus(db).replay(topic="supervisor-actions")
+           if e.payload["action"] == "escalate" and e.payload["target"] == "G-RESTART"]
+    assert len(esc) == 1, f"mở lại bus không được escalate lại gate cũ, nhận được {len(esc)}"
 
 
 # Trạng thái chỉ sống trong RAM là nguồn lỗi lặp lại nhiều nhất: nó không hỏng ồn ào, nó chỉ lặng lẽ biến mất
@@ -1161,6 +1167,91 @@ def test_spec_bi_reject_thi_khong_lap_plan_va_bi_danh_dau_xong():
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert not any(a.startswith("plan_") for a in acts)
 
+
+
+def test_spec_request_changes_goi_lai_spec_writer_va_trinh_lai_gate():
+    """`request_changes` ở gate spec từng là ngõ cụt: không nhánh nào trong `_on_gate_decide` nhận nó, event spec
+    hoãn được chạy lại rồi đánh dấu xong, và một spec viết lại sau đó cũng bị đánh dấu xong vì gate "đã quyết" —
+    không gate mới, không plan, `gates_pending` rỗng, dự án nằm im mà không ai được hỏi. ADR-0031 §3 định nghĩa
+    đúng nghĩa của nó: gọi lại spec-writer trên event nguồn với `hint` + `previous_spec`. Đo hai chiều: bỏ nhánh
+    `request_changes` trong `_plan` thì cả ba assert đầu đỏ."""
+    goi = []
+    def spy(system, user):
+        if _agent_of(system) == "product" and _product_phase(system) == "spec": goi.append(user)
+        return handler(system, user)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=spy))
+    _drive_to_spec_gate(bus, orch)
+    n0 = len(goi)
+    orch.gate.decide("SPEC-P1", "request_changes", by="human:po", reason="thiếu luồng huỷ lịch; bổ sung rồi trình lại")
+    orch.run()
+    assert len(goi) == n0 + 1, "spec-writer phải được gọi lại đúng một lần"
+    assert "thiếu luồng huỷ lịch" in goi[-1], "lý do của người phải tới spec-writer làm `hint`"
+    assert "SPEC-P1" in orch.gate.pending, "spec viết lại phải được trình lại gate, không bị đánh dấu xong"
+    assert not orch.plans and not orch.lead.tickets
+    orch.gate.decide("SPEC-P1", "approve", by="human:po")
+    orch.run()
+    assert "PLAN-P1-1" in orch.plans and len(goi) == n0 + 1, "duyệt bản viết lại thì lập plan, không gọi spec-writer nữa"
+
+
+def test_spec_request_changes_gap_transient_thi_hoan_khong_danh_dau_xong():
+    """Spec-writer gặp `TransientError` ở lượt viết lại: `_act_plan` trả True nên `process()` không tự hoãn — nếu
+    `_plan` vẫn `_mark` và ghi khoá `spec.changes`, event spec bị coi là xong, không gate, không lượt viết lại
+    nào nữa: dự án nằm im mà không ai được hỏi. Phải hoãn như mọi `transient:` khác và viết lại khi backend về.
+    Đo hai chiều: bỏ nhánh hoãn trong `_plan` thì assert đầu đỏ; hoãn mà bỏ mốc hẹn của backend thì assert
+    "nhịp kế không hỏi lại" đỏ."""
+    from company.llm import TransientError
+
+    goi = {"n": 0, "nghi": False}
+    def chap_chon(system, user):
+        if _agent_of(system) == "product" and _product_phase(system) == "spec":
+            goi["n"] += 1
+            if goi["nghi"]: raise TransientError("mọi backend đều đang nghỉ, thử lại sau 1515s")
+        return handler(system, user)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=chap_chon))
+    _drive_to_spec_gate(bus, orch)
+    orch.gate.decide("SPEC-P1", "request_changes", by="human:po", reason="thiếu luồng huỷ lịch; bổ sung rồi trình lại")
+    goi["nghi"] = True; n0 = goi["n"]
+    orch.run()
+    assert goi["n"] == n0 + 1 and orch.deferred, "transient ở lượt viết lại phải hoãn event, không đánh dấu xong"
+    assert "SPEC-P1" not in orch.gate.pending and not orch.plans
+    orch.tick()
+    assert goi["n"] == n0 + 1, "backend đã hẹn 1515s thì nhịp kế không hỏi lại (như nhánh transient của process())"
+    goi["nghi"] = False
+    for k in orch.defer_until: orch.defer_until[k] = 0.0
+    orch.tick()
+    assert goi["n"] == n0 + 2, "backend về thì spec-writer phải được gọi lại"
+    assert "SPEC-P1" in orch.gate.pending, "bản viết lại được trình lại gate"
+    assert [r for _, r in orch.deferred.values()] == ["gate:SPEC-P1"], "chỉ còn bản viết lại chờ gate, hết transient"
+
+
+def test_spec_request_changes_mo_lai_bus_khong_viet_lai_lan_hai(tmp_path):
+    """Mở lại bus khi bản viết lại đang chờ gate: gate dựng lại từ audit vẫn chờ người, spec-writer không bị gọi
+    lần nữa (khoá `spec.changes:<sid>:<seq>` nằm trong `once`, cũng dựng lại từ audit — khuôn 2)."""
+    db = tmp_path / "c.sqlite"
+    bus1 = SQLiteBus(db); o1 = Orchestrator(bus1, FakeClient(handler=handler))
+    _drive_to_spec_gate(bus1, o1)
+    o1.gate.decide("SPEC-P1", "request_changes", by="human:po", reason="thiếu luồng huỷ lịch; bổ sung rồi trình lại")
+    o1.run()
+    assert "SPEC-P1" in o1.gate.pending
+    bus1.close()
+
+    bus2 = SQLiteBus(db); c2 = FakeClient(handler=handler); o2 = Orchestrator(bus2, c2)
+    o2.run()
+    assert "SPEC-P1" in o2.gate.pending and not c2.calls, "mở lại bus: không viết lại spec lần hai"
+
+
+def test_spec_request_changes_khong_co_nguon_thi_dung_nhu_quyet_dinh():
+    """Spec publish tay (không `causation_id`, chưa có `requirements-draft`): không có gì để pha `spec` làm lại —
+    giữ hành vi cũ, ghi đúng quyết định vào `actions`, không gọi agent nào."""
+    bus = InMemoryBus(); client = FakeClient(handler=handler); orch = Orchestrator(bus, client)
+    _pub(bus, "approved-specs", "P1", "product", {"project_id": "P1", "status": "pending_human", "kind": "library",
+                                                  "artifacts": {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}})
+    orch.run()
+    orch.gate.decide("SPEC-P1", "request_changes", by="human:po", reason="thiếu luồng huỷ lịch; bổ sung rồi trình lại")
+    orch.run()
+    assert not client.calls and "SPEC-P1" not in orch.gate.pending and not orch.deferred
+    assert any("gate:SPEC-P1:request_changes" in str(e.payload) for e in bus.replay(topic="audit-log")
+               if e.payload["action"] == "orchestrated")
 
 def test_tick_nhac_va_escalate_gate_qua_han():
     """`tick` phải audit `gate.remind`/`gate.overdue` và giao việc cho supervisor khi gate quá hạn — mỗi cái một lần."""

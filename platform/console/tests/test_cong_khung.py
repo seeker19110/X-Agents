@@ -291,6 +291,10 @@ CHAN_GIT = HOOKS / "block-dangerous-git.sh"
         "git status && git push origin main",
         "git push origin feat-x; git push origin main",
         "git fetch | git push -f origin main",
+        # refspec đầy đủ và `+` (force theo refspec) vẫn là ghi vào main — đo được 2026-10-02: cả hai lọt
+        "git push origin HEAD:refs/heads/main",
+        "git push origin +main",
+        "git push origin +HEAD:refs/heads/master",
     ],
 )
 def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
@@ -312,12 +316,22 @@ def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
         # đo được 2026-09-26: `main` ở lệnh KHÁC trong cùng dòng (đích PR của gh) bị đọc thành đích push
         "git push -u origin feat-x && gh pr create --base main --title t",
         "git push origin feat-x || git log main",
+        # `refs/heads/` chỉ là đích khi đứng sau `:` hay đầu refspec — nhánh tên `refs/heads/main-x` thì không
+        "git push origin HEAD:refs/heads/main-x",
+        "git push origin +feat-x",
     ],
 )
 def test_chan_git_khong_chan_oan(cmd: str) -> None:
     """Chặn oan làm agent tưởng repo hỏng rồi đi đường vòng — tệ hơn không chặn."""
     kq = _chay(CHAN_GIT, stdin=_payload(cmd))
     assert kq.returncode == 0, f"chặn oan: {cmd}\n{kq.stderr}"
+
+
+def test_chan_git_goi_dung_ten_force_push_qua_refspec_cong() -> None:
+    """`+main` là force-push không cần cờ: thông điệp phải nói đúng là force (khuôn 1), không chỉ "push thẳng"."""
+    kq = _chay(CHAN_GIT, stdin=_payload("git push origin +main"))
+    assert kq.returncode == 2
+    assert "force-push vào nhánh chính" in kq.stderr
 
 
 def test_chan_git_co_duong_thoat_tuong_minh() -> None:
@@ -365,7 +379,9 @@ def test_cong_commit_cho_qua_tren_nhanh_rieng(kho_main: Path) -> None:
     assert _cong("git commit -m 'x'", kho_main).returncode == 0
 
 
-@pytest.mark.parametrize("ten", ["llm.yaml", "media.yaml", "company.sqlite", "a/b/llm.yaml"])
+@pytest.mark.parametrize("ten", ["llm.yaml", "media.yaml", "company.sqlite", "a/b/llm.yaml",
+                                 # bản tạm/sao lưu của console (`settings._atomic_write`) mang cùng khoá API
+                                 "llm.yaml.tmp", "a/llm.yaml.bak", "llm.yaml.bak.2"])
 def test_cong_commit_chan_file_cam_trong_staged(kho_main: Path, ten: str) -> None:
     """Luật cấm 3: gitleaks quét cả lịch sử — lỡ commit rồi xoá vẫn đỏ, nên phải chặn trước khi vào lịch sử."""
     _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
@@ -376,6 +392,17 @@ def test_cong_commit_chan_file_cam_trong_staged(kho_main: Path, ten: str) -> Non
     kq = _cong("git commit -m 'x'", kho_main)
     assert kq.returncode == 2, f"đáng lẽ chặn {ten}"
     assert ten.split("/")[-1] in kq.stderr
+
+
+@pytest.mark.parametrize("ten", ["llm.example.yaml", "docs/llm.yaml.md"])
+def test_cong_commit_khong_chan_nham_file_mau(kho_main: Path, ten: str) -> None:
+    """Chiều ngược của phép trên: mẫu `*.example.yaml` là thứ PHẢI commit được (luật cấm 3)."""
+    _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
+    f = kho_main / ten
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("x", encoding="utf-8")
+    _git(kho_main, "add", "-f", ten)
+    assert _cong("git commit -m 'x'", kho_main).returncode == 0, f"chặn oan {ten}"
 
 
 def test_cong_commit_chan_ha_nguong_coverage(kho_main: Path) -> None:

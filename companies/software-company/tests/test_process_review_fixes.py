@@ -368,3 +368,16 @@ def test_parse_ddg_link_khong_boc_uddg_giu_nguyen_href():
     page = '<a class="result__a" href="https://direct.example/page">Direct hit</a>'
     rows = _parse_ddg(page)
     assert rows and rows[0][1] == "https://direct.example/page"
+
+
+def test_parse_ddg_lay_duoc_doan_trich_va_khong_muon_cua_ket_qua_sau():
+    """`.*?(?:<a class="result__snippet">…</a>)?`: `.*?` lười khớp rỗng rồi nhóm tuỳ chọn cũng khớp rỗng — đoạn trích
+    LUÔN rỗng, researcher chỉ thấy tiêu đề + URL. Sửa phải không làm kết quả không có trích "mượn" trích của kết quả
+    kế tiếp. Đo hai chiều: regex cũ cho `rows[0][2] == ""`."""
+    page = ('<a rel="nofollow" class="result__a" href="https://a.example/">A</a>'
+            '<div><a class="result__snippet" href="https://a.example/">trích của A</a></div>'
+            '<a rel="nofollow" class="result__a" href="https://b.example/">B</a>'
+            '<a rel="nofollow" class="result__a" href="https://c.example/">C</a>'
+            '<a class="result__snippet" href="https://c.example/">trích của C</a>')
+    rows = _parse_ddg(page)
+    assert [(t, s) for t, _, s in rows] == [("A", "trích của A"), ("B", ""), ("C", "trích của C")]

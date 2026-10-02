@@ -283,6 +283,26 @@ def test_ticket_mang_danh_tinh_event_da_tieu_thu(tmp_path: Path):
     assert t.signal_event_ids == [env.event_id] and t.ticket_id == f"KEEP:{env.event_id}"
 
 
+def test_publish_ticket_loi_giua_nhip_thi_nhip_sau_van_ra_ticket(tmp_path: Path, monkeypatch):
+    """Sổ `seen` chỉ được ghi khi ticket ĐÃ lên bus. Nhịp lỗi lúc publish (SQLite bận vì gate CLI là tiến
+    trình khác, đĩa đầy...) mà id đã vào sổ thì nhịp sau bỏ qua signal đó — nuốt im lặng tới khi mở lại
+    tiến trình (`TRAPS.md` khuôn 1)."""
+    o = _orc(tmp_path)
+    o.submit_signal(_signal(semver_jump=None))
+    that = o._publish
+
+    def _ban(topic, key, actor, payload):
+        if topic == "maintenance-tickets":
+            raise OSError("database is locked")
+        return that(topic, key, actor, payload)
+
+    monkeypatch.setattr(o, "_publish", _ban)
+    with pytest.raises(OSError):
+        o.tick(now=NOW)
+    monkeypatch.setattr(o, "_publish", that)
+    assert len(o.tick(now=NOW).tickets) == 1, "signal chưa thành ticket nào thì không được coi là đã tiêu thụ"
+
+
 # ---------- CHẶN-2: cổng evidence đứng ở ĐƯỜNG TIÊU THỤ, không chỉ ở hàm dựng ----------
 
 def _bad_report(ticket_id: str) -> VerificationReport:
@@ -337,6 +357,34 @@ def test_bao_cao_hong_trong_bus_cu_bi_tu_choi_lai_khi_mo_va_chi_ghi_audit_mot_la
     assert len(rejects) == 1, "một event hỏng = đúng một bản ghi từ chối, dù mở lại bao nhiêu lần"
 
 
+def test_tu_choi_gia_mao_khong_nuot_duoc_ban_ghi_tu_choi_that(tmp_path: Path):
+    """Anh em của `pr.blocked` giả mạo: `_audited_rejects` dựng từ `verification.rejected` trên topic MỞ. Bản giả
+    mang `key` = event_id của một báo cáo hỏng ghi lúc orchestrator đang tắt thì lần mở sau coi như đã ghi từ
+    chối, báo cáo hỏng bị chặn trong im lặng. Chỉ bản ghi của `CODE_ACTOR` được tính. Đo hai chiều: bỏ kiểm
+    actor thì assert đỏ."""
+    from keeper.bus import KeeperBus
+    from keeper.core import CORE
+    from keeper.events import AuditLog
+    o1 = _orc(tmp_path)
+    o1.submit_signal(_signal(semver_jump=None))
+    (t,) = o1.tick(now=NOW).tickets
+    o1.bus.close()
+
+    bus = KeeperBus(CORE, tmp_path / "keeper.sqlite")  # tiến trình khác, orchestrator đang tắt
+    hong = Envelope(topic="verification-reports", key=t.ticket_id, actor="regression-guard",
+                    payload=_bad_report(t.ticket_id).model_dump())
+    bus.publish(Envelope(topic="audit-log", key=hong.event_id, actor="human:mallory",
+                         payload=AuditLog(actor=CODE_ACTOR, action=REJECT_ACTION, ticket_id=t.ticket_id,
+                                          evidence="{}").model_dump()))
+    bus.publish(hong)
+    bus.close()
+
+    o2 = _orc(tmp_path)
+    assert t.ticket_id not in o2.verified
+    that = [a for a in o2.bus.replay(topic="audit-log") if a.payload["action"] == REJECT_ACTION and a.actor == CODE_ACTOR]
+    assert [a.key for a in that] == [hong.event_id], "báo cáo hỏng phải có bản ghi từ chối thật của code"
+
+
 # ---------- CHẶN-3: I3 trong CÙNG một nhịp ----------
 
 def _hai_ticket_du_cong(o: KeeperOrchestrator) -> list:
@@ -388,6 +436,61 @@ def test_audit_cua_code_ghi_duoi_actor_rieng_va_action_la_y_dinh(tmp_path: Path)
     assert CODE_ACTOR != "keeper-supervisor", "code không được ghi audit dưới tên một vai agent"
     actions = {a.payload["action"] for a in o.bus.replay(topic="audit-log")}
     assert "pr.open" not in actions, "BT7 chưa gọi `gh pr create` — không được gọi ý định là `pr.open`"
+
+
+def _blocked(o: KeeperOrchestrator) -> list[list[str]]:
+    import json
+    return [json.loads(a.payload["evidence"])["blockers"] for a in o.bus.replay(topic="audit-log")
+            if a.payload["action"] == "pr.blocked"]
+
+
+def test_pr_blocked_chi_ghi_khi_cong_chan_doi_khong_ghi_moi_nhip(tmp_path: Path):
+    """`watch` mặc định 5 giây một nhịp: ticket chờ người duyệt gate một ngày = ~17k dòng `pr.blocked` y hệt
+    nhau, và `bus.replay()` lúc mở đọc lại hết. Ghi khi tập cổng chặn ĐỔI là đủ để người biết vì sao."""
+    o = _orc(tmp_path)
+    o.submit_signal(_signal())
+    o.tick(now=NOW)
+    o.tick(now=NOW)
+    o.tick(now=NOW)
+    assert _blocked(o) == [["evidence", "gate"]]
+
+    (t,) = o.tickets.values()
+    _verify(o, t.ticket_id)
+    o.tick(now=NOW)
+    assert _blocked(o) == [["evidence", "gate"], ["gate"]], "cổng chặn đổi thì phải ghi lại"
+
+
+def test_pr_blocked_khong_ghi_lai_sau_khi_mo_lai_bus(tmp_path: Path):
+    """Khoá chống lặp phải dựng lại từ `audit-log`, không phải biến RAM (`TRAPS.md` khuôn 2)."""
+    o = _orc(tmp_path)
+    o.submit_signal(_signal())
+    o.tick(now=NOW)
+    _orc(tmp_path).tick(now=NOW)
+    assert _blocked(_orc(tmp_path)) == [["evidence", "gate"]]
+
+
+def test_pr_blocked_gia_mao_khong_nuot_duoc_dong_that(tmp_path: Path):
+    """`audit-log` là topic MỞ (ai cũng ghi). Khoá chống lặp đọc `pr.blocked` mà không kiểm `env.actor` thì một
+    bản ghi giả mang đúng `evidence` kế tiếp làm dòng thật không bao giờ được ghi — người không biết vì sao PR
+    nằm im. Chỉ dòng do code ghi (`CODE_ACTOR`) mới được làm khoá. Khoá dựng lại lúc replay, nên bản giả cắn sau
+    khi mở lại bus. Đo hai chiều: bỏ kiểm actor thì assert đỏ."""
+    import json
+
+    from keeper.events import AuditLog
+    o = _orc(tmp_path)
+    o.submit_signal(_signal())
+    o.tick(now=NOW)
+    (t,) = o.tickets.values()
+    gia = json.dumps({"ticket_id": t.ticket_id, "blockers": ["gate"]}, ensure_ascii=False)
+    o.bus.publish(Envelope(topic="audit-log", key="x", actor="human:mallory",
+                           payload=AuditLog(actor=CODE_ACTOR, action="pr.blocked", ticket_id=t.ticket_id,
+                                            evidence=gia).model_dump()))
+    o = _orc(tmp_path)
+    _verify(o, t.ticket_id)
+    o.tick(now=NOW)
+    that = [json.loads(a.payload["evidence"])["blockers"] for a in o.bus.replay(topic="audit-log")
+            if a.payload["action"] == "pr.blocked" and a.actor == CODE_ACTOR]
+    assert that == [["evidence", "gate"], ["gate"]], "bản ghi giả không được thay dòng thật của code"
 
 
 # ---------- I1: lỗi ghi GitHub không được nuốt vào tick_error ----------

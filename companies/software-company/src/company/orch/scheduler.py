@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..delivery import DONE_STATES
 from ..events import AuditLog, Envelope
+from ..routing import retry_after_seconds
 from .cli import _fmt, source_fingerprint
 from .guards import clarification_warnings
 from .quality_flow import note_env, sync_quality
@@ -142,7 +143,12 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
         pha = "overdue" if sid in overdue else "remind"
         o._audit(f"gate.{pha}", {"subject_id": sid}, once=f"gate:{sid}:{pha}:{_the_he(o, sid)}")
     for sid in overdue:  # quá hạn không tự đi tiếp, nhưng cũng không im lặng: supervisor nhận việc
-        o.supervisor.escalate_gate(sid, f"gate quá hạn {o.gate.timeout}", once_key=f"gate.escalate:{sid}:{_the_he(o, sid)}")
+        # Khoá chống lặp của supervisor (`_escalated_once`) chỉ sống trong RAM: mở lại bus là escalate lại cùng gate
+        # (khuôn 2). `o.once` dựng lại từ audit nên mới là thứ chặn được lần thứ hai.
+        key = f"gate.escalate:{sid}:{_the_he(o, sid)}"
+        if key in o.once: continue
+        o._remember(key)
+        o.supervisor.escalate_gate(sid, f"gate quá hạn {o.gate.timeout}", once_key=key)
     for tid, missing in o.lead.overdue_reviews(now).items():
         pr = o.latest("pull-requests", tid)
         since = o.lead.review_since[tid].isoformat()  # đọc trước: _call bên dưới có thể đóng vòng review và xoá nó
@@ -244,6 +250,13 @@ def _defer(o: Orchestrator, env: Envelope, res: StepResult, reason: str, wait_s:
                                     "until": (datetime.now(UTC) + timedelta(seconds=float(wait_s or 0))).isoformat()},
                     ticket_id=env.payload.get("ticket_id"), project_id=env.payload.get("project_id"))
     return res
+
+def _defer_transient(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
+    """Hoãn event vì một lượt agent gặp `TransientError` (`res.transient`), giữ mốc hẹn của backend ("thử lại sau
+    1515s"). Một đường cho `process()` và các hành động tự `_mark` (`_plan`): bên đó `process()` không thấy
+    `res.transient` vì hành động đã trả True — tự `_mark` thì event bị coi là xong và dự án đứng im."""
+    stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
+    return _defer(o, env, res, ":".join(stuck.split(":")[:2]), wait_s=retry_after_seconds(stuck))
 
 def _retry_deferred(o: Orchestrator, only: str | None = None) -> None:
     """Đưa event hoãn về đầu hàng đợi; `only` = tiền tố lý do (vd. "transient:") để chỉ thử lại loại đó.

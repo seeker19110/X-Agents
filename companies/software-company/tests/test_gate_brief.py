@@ -320,6 +320,23 @@ def test_release_voi_repo_doc_diff_nhanh_tich_hop(tmp_path):
     assert "file đổi trên company/integration" in it["facts"][0]
 
 
+
+def test_release_nhan_ra_docs_ten_tieng_viet(tmp_path):
+    """`core.quotepath` mặc định: `docs/hướng-dẫn.md` ra `"docs/h\\341\\273\\260..."` — mở đầu bằng ngoặc kép nên
+    `startswith("docs/")` sai, hồ sơ nói "docs/: không" cho một release CÓ tài liệu. Người ký đọc đúng bằng chứng
+    hồ sơ đưa, nhưng bằng chứng đó sai. Đo hai chiều: bỏ `core.quotepath=false` khỏi `gate_brief._git` thì đỏ."""
+    import subprocess
+    repo = _init_repo(tmp_path / "repo")
+    db, _, orch = _scenario(tmp_path, to="release", repo=repo)
+    integ = orch.integration_for("P1"); integ.ensure()
+    (integ.path / "docs").mkdir(exist_ok=True)
+    (integ.path / "docs" / "hướng-dẫn.md").write_text("# Hướng dẫn\n", encoding="utf-8")
+    for cmd in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "docs"]):
+        subprocess.run(["git", "-C", str(integ.path), *cmd], check=True, capture_output=True)
+    b = GB.build(GB.load_state(db, repo=repo), "REL-001")
+    it = next(x for x in b["self_check"] if x["id"] == "release.changelog-docs-notice")
+    assert "docs/: có" in it["facts"][1], it["facts"]
+
 def test_endpoints_va_section():
     assert GB._endpoints(CONTRACT) == ["/orders", "/payments"]
     assert GB._endpoints("GET /a\nPOST /b\n/: x\n") == ["/a", "/b"]

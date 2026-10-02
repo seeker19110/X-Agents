@@ -475,3 +475,16 @@ def test_evidence_khong_co_lock_nao_thi_unverified_ke_du_ten(tmp_path):
     ev = evidence(_root(tmp_path, None), FakeSandbox(), sha="s")
     assert ev["unverified"] is True
     assert all(n in ev["reason"] for n in ("uv.lock", "package-lock.json", "Cargo.lock", "go.mod"))
+
+
+def test_evidence_lock_file_hong_thanh_ly_do_khong_nem(tmp_path):
+    """Lock file của khách là dữ liệu ngoài: một `package-lock.json` cắt dở (merge conflict, ghi dở) hay `uv.lock`
+    sai cú pháp làm `json.loads`/`tomllib.loads` ném `ValueError` xuyên lên `evidence_before` — lượt release-check
+    của security thành lỗi agent, mất luôn SBOM của các lock file còn lại. Mọi chỗ hỏng khác trong module này đã
+    là `licenses_error` (`_json_run`); lock file hỏng phải cùng khuôn. Đo hai chiều: bỏ `except` ở `evidence` thì đỏ."""
+    root = _files(_root(tmp_path), {"frontend/package-lock.json": '{"packages": {', "api/Cargo.lock": "[[package]\n"})
+    ev = evidence(root, FakeSandbox(json.dumps(LICENSES)), sha="s")
+    assert ev["components"] == 4, "uv.lock còn nguyên thì vẫn có SBOM của nó"
+    err = ev["licenses_error"]
+    assert "frontend/package-lock.json:" in err and "api/Cargo.lock:" in err and "đọc không được" in err
+    assert ev["source"] == "uv.lock+api/Cargo.lock+frontend/package-lock.json"
