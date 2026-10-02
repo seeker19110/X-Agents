@@ -145,6 +145,18 @@ phải chạy `/plugin` (thấy `ecc@xagents-ecc`) và một lượt agent MCP t
 - (a) trên máy người vận hành, (b) và (c) vẫn chưa đo: phép đo hook SessionStart/Stop từ settings có/không
   `--restricted` trong một thư mục tạm cũng bị từ chối quyền.
 
+**Đo 2026-10-02, phiên Claude Code on the web** (CLI 2.1.287, model `claude-haiku-4-5`):
+
+- **(c) đã đo.** `python -m company.probe --binary claude` → `mode: mcp`, `tool_called: true`: CLI chạy với
+  `--restricted` vẫn gọi ngược tool `probe_ping` của công ty qua cầu MCP. Argv ghi lại bằng cách bọc `_subprocess`
+  (chỉ tên cờ): `--restricted --mcp-config --strict-mcp-config --tools --allowedTools --settings --max-turns …`.
+  Câu "tool MCP không phải tool gốc nên `--restricted` không gỡ" giờ là bản ghi, không còn chỉ là ngữ nghĩa `--help`.
+- Đường không tool đổi ở #374 (`--restricted --tools "" --json-schema`): `ClaudeCodeClient` của company và của keeper,
+  mỗi gói một lượt thật → `{"ok": true}` đúng schema.
+- **(b) vẫn chưa đo.** Phép đo hook SessionStart/UserPromptSubmit/Stop từ `settings.json` + `settings.local.json` của
+  một thư mục tạm, có/không `--restricted`, bị bộ phân loại auto-mode chặn lần nữa ("Auto-Mode Bypass") dù người dùng
+  đã yêu cầu làm tiếp; không thử lại bằng đường khác. (a) vẫn cần máy người vận hành. Trạng thái giữ "đề xuất".
+
 ## Liên quan
 
 - `docs/integrations/ecc.lock.json` — bản ghim + lý do từng hook tắt.
