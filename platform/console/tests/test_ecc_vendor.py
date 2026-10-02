@@ -201,9 +201,10 @@ def test_render_ghi_chu_nguon_ngay_sau_frontmatter(V: ModuleType, src: Path) -> 
 
 
 def test_render_chuan_hoa_crlf_cua_nguon(V: ModuleType, src: Path) -> None:
+    """Checkout trên Windows (`core.autocrlf=true`): commit vẫn LF, đĩa là CRLF. Không commit bản CRLF — autocrlf
+    chuẩn hoá nó về đúng blob cũ, `git commit` báo "nothing to commit" (đỏ trên runner Windows của #377)."""
     _write(src, {"commands/beta-cmd.md": COMMAND.replace("\n", "\r\n")})
-    lock = _lock_for(src, revision=_commit(src))
-    assert "\r" not in V.render(src, lock)[".claude/commands/ecc-beta-cmd.md"][1]
+    assert "\r" not in V.render(src, _lock_for(src))[".claude/commands/ecc-beta-cmd.md"][1]
 
 
 # --- render: từ chối -----------------------------------------------------------------------------------------------
