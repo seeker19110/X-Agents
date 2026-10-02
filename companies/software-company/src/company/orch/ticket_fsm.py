@@ -68,14 +68,24 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     if env.topic == "approved-specs":
         sid = f"SPEC-{project}"
         if not o.gate.is_approved(sid):
-            decided = [g for g in o.gate.history if g.subject_id == sid]
-            if sid not in o.gate.pending and not decided:
-                if (gap := spec_runtime_gap(env.payload)) is not None:
-                    return o._spec_runtime_missing(env, project, gap, res)
-                request_gate(o.gate, GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
-                                              checklist=["prd", "acceptance-criteria", "ux-flow", "risks"]))
-            if decided and sid not in o.gate.pending:
-                res.actions.append(f"gate:{sid}:{decided[-1].decision}"); o._mark(env, res); return res
+            last = next((g for g in reversed(o.gate.history) if g.subject_id == sid), None)
+            # ADR-0031 §3: `request_changes` của người = spec-writer viết lại trên event nguồn với lý do làm `hint`.
+            # Khoá theo THẾ HỆ gate (`seq`, khuôn 3): event đầu tới sau quyết định (spec cũ đang hoãn) gọi viết lại
+            # và ghi khoá; bản viết lại tới sau, thấy khoá, được trình lại gate như một spec mới.
+            changes = f"spec.changes:{sid}:{last.seq}" if last is not None and last.decision == "request_changes" else None
+            if sid not in o.gate.pending:
+                if last is None or (changes is not None and changes in o.once):
+                    if (gap := spec_runtime_gap(env.payload)) is not None:
+                        return o._spec_runtime_missing(env, project, gap, res)
+                    request_gate(o.gate, GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
+                                                  checklist=["prd", "acceptance-criteria", "ux-flow", "risks"]))
+                elif changes is not None and (cause := _spec_source(o, env, project)) is not None:
+                    o._remember(changes)
+                    _spec_rework(o, env, cause, f"người yêu cầu sửa spec ở gate {sid}: {last.reason}"[:500], res)
+                    res.actions.append(f"spec_changes:{project}:rework")
+                    o._mark(env, res); return res
+                else:
+                    res.actions.append(f"gate:{sid}:{last.decision}"); o._mark(env, res); return res
             return o._defer(env, res, f"gate:{sid}")
         if not o._threat_model(env, sid, res):
             o._mark(env, res); return res
@@ -153,6 +163,20 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     o._mark(env, res)
     return res
 
+def _spec_source(o: Orchestrator, env: Envelope, project: str) -> Envelope | None:
+    """Event nguồn để pha `spec` viết lại một spec: đúng `causation_id` của nó, không có thì `requirements-draft` mới nhất."""
+    cause = next((e for t in ("clarification-answers", "requirements-draft", "clarification-questions")
+                  for e in o.bus.replay(topic=t) if e.event_id == env.causation_id), None) if env.causation_id else None
+    return cause if cause is not None else o.latest("requirements-draft", project)
+
+def _spec_rework(o: Orchestrator, env: Envelope, cause: Envelope, hint: str, res: StepResult) -> None:
+    """Gọi lại `product` pha `spec` trên `cause` với `hint` + `previous_spec` — một đường cho cả máy (thiếu runtime,
+    ADR-0031) lẫn người (`request_changes` ở gate spec)."""
+    prev = {k: env.payload.get(k) for k in ("kind", "runtime", "artifacts")}
+    inp = cause.model_copy(update={"payload": {**cause.payload, "hint": hint, "previous_spec": prev}})
+    o._recall(ROLE.PRODUCT, cause)  # `partial` đã ghi `product` cho event nguồn: gọi lại là CHỦ Ý
+    o._call(ROLE.PRODUCT, inp, spec_route(cause.topic), res)
+
 def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str, res: StepResult) -> StepResult:
     """ADR-0031: spec ứng dụng không có `runtime` hợp lệ thì KHÔNG mở gate spec — người ký Gate 1 không được đặt
     trước một PRD mà câu "chạy cho tôi xem" chưa có câu trả lời. Thay vào đó trả về `product` pha `spec` với lý do (`hint`)
@@ -162,19 +186,12 @@ def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str
     `TRAPS.md`); bộ đếm theo dự án dựng lại từ audit (khuôn 2)."""
     with o._lock:
         o.spec_runtime_reworks[project] += 1; n = o.spec_runtime_reworks[project]
-    cause = next((e for t in ("clarification-answers", "requirements-draft", "clarification-questions")
-                  for e in o.bus.replay(topic=t) if e.event_id == env.causation_id), None) if env.causation_id else None
-    if cause is None:
-        cause = o.latest("requirements-draft", project)
+    cause = _spec_source(o, env, project)
     o._audit("spec.runtime_missing", {"project_id": project, "event_id": env.event_id, "kind": env.payload.get("kind"),
                                          "runtime": env.payload.get("runtime"), "reason": gap, "attempt": n,
                                          "source_event": cause.event_id if cause else None}, project_id=project)
     if cause is not None and n <= SPEC_RUNTIME_REWORKS:
-        hint = f"orchestrator từ chối mở gate spec (lần {n}): {gap}"
-        prev = {k: env.payload.get(k) for k in ("kind", "runtime", "artifacts")}
-        inp = cause.model_copy(update={"payload": {**cause.payload, "hint": hint, "previous_spec": prev}})
-        o._recall(ROLE.PRODUCT, cause)  # `partial` đã ghi `product` cho event nguồn: gọi lại là CHỦ Ý
-        o._call(ROLE.PRODUCT, inp, spec_route(cause.topic), res)
+        _spec_rework(o, env, cause, f"orchestrator từ chối mở gate spec (lần {n}): {gap}", res)
         res.actions.append(f"spec_runtime_missing:{project}:rework:{n}")
         o._mark(env, res); return res
     why = gap if cause is not None else f"{gap}; không có requirements-draft để pha `spec` làm lại"

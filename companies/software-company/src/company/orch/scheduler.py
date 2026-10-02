@@ -142,7 +142,12 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
         pha = "overdue" if sid in overdue else "remind"
         o._audit(f"gate.{pha}", {"subject_id": sid}, once=f"gate:{sid}:{pha}:{_the_he(o, sid)}")
     for sid in overdue:  # quá hạn không tự đi tiếp, nhưng cũng không im lặng: supervisor nhận việc
-        o.supervisor.escalate_gate(sid, f"gate quá hạn {o.gate.timeout}", once_key=f"gate.escalate:{sid}:{_the_he(o, sid)}")
+        # Khoá chống lặp của supervisor (`_escalated_once`) chỉ sống trong RAM: mở lại bus là escalate lại cùng gate
+        # (khuôn 2). `o.once` dựng lại từ audit nên mới là thứ chặn được lần thứ hai.
+        key = f"gate.escalate:{sid}:{_the_he(o, sid)}"
+        if key in o.once: continue
+        o._remember(key)
+        o.supervisor.escalate_gate(sid, f"gate quá hạn {o.gate.timeout}", once_key=key)
     for tid, missing in o.lead.overdue_reviews(now).items():
         pr = o.latest("pull-requests", tid)
         since = o.lead.review_since[tid].isoformat()  # đọc trước: _call bên dưới có thể đóng vòng review và xoá nó

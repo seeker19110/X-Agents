@@ -60,7 +60,10 @@ def parse_runtime(spec_payload: dict[str, Any] | None) -> Runtime | None:
         return None
     cmd = rt.get("command")
     if isinstance(cmd, str):
-        cmd = shlex.split(cmd, posix=True)
+        try:
+            cmd = shlex.split(cmd, posix=True)
+        except ValueError:  # nháy lẻ: lệnh model viết hỏng là "không đủ trường", không phải crash của orchestrator
+            return None
     if not isinstance(cmd, list) or not cmd or not all(isinstance(x, str) and x for x in cmd):
         return None
     try:
@@ -125,6 +128,10 @@ def run_smoke(root: Path, rt: Runtime, sandbox: Any = None,
                            "ok": False, "http_status": None, "exit_code": None, "elapsed_s": 0.0,
                            "sandbox": sb.name}
     t0 = time.monotonic()
+    if rt.port and _probe(url) is not None:
+        # Cổng cố định đã có ai trả lời TRƯỚC khi sản phẩm khởi động: poll sẽ đo kẻ chiếm cổng, không đo sản phẩm.
+        out["error"] = f"cổng {port} đã có tiến trình khác trả lời trước khi khởi động — smoke không đo được sản phẩm"
+        return out
     try:
         proc = sb.spawn(RunSpec(argv=argv, cwd=root, env=clean_env(), timeout=float(rt.timeout_s),
                                 network=True, port=port))

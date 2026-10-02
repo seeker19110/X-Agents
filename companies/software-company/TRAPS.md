@@ -15,6 +15,8 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../../TRAPS.md`. Ở đây là
 | Từ chối escalation RC cũ → ticket đã giao về rework | #80 | `_superseded_release` xét nội dung đã tới khách chưa |
 | Xung đột merge đốt retry nội dung | Ticket `blocked` vì merge, không vì code (#63) | Bộ đếm riêng, ngưỡng riêng |
 | Reset worktree vứt việc dở | 40 lượt tool viết devserver dở bị xoá, lần 2 lại từ 0 (#82) | `keep_wip` → commit WIP; HEAD là WIP mà lượt này không sửa → PR từ HEAD (#84) |
+| `request_changes` ở gate spec là ngõ cụt | Không nhánh nào nhận nó; spec viết lại cũng bị đánh dấu xong vì gate "đã quyết" → dự án im, `gates_pending` rỗng (rà 2026-10-02) | ADR-0031 §3: gọi lại spec-writer với lý do làm `hint`; khoá `spec.changes:<sid>:<seq>` trong `once` → bản viết lại được trình gate lại |
+| Chống escalate lặp bằng set RAM của supervisor | Mỗi lần mở lại bus, gate quá hạn bị escalate thêm một lần (rà 2026-10-02) | `tick` kiểm `o.once` (dựng lại từ audit) trước `escalate_gate` |
 
 ## Bằng chứng và lời khai
 
@@ -23,6 +25,9 @@ Bốn khuôn lỗi chung và bẫy thao tác ở `../../TRAPS.md`. Ở đây là
 | `deployed` là lời khai | 25 release, 0 điểm vào (2026-09-06) | ADR-0029 smoke do orchestrator chạy; `smoke.unverified` khi không có `runtime` |
 | `env`/`release_id`/`ticket_id` do model khai | Gate 3 không mở (#72, #75) | Identity từ ROUTE; audit `*_overridden` |
 | Lượt production không thấy staging/QA | "chưa qua staging" dù có (#80) | `_release_evidence` vào payload |
+| Tên file non-ASCII bị git escape | `--name-only` in `"qlkh/kh\303\241ch.py"`: `git diff -- <tên đó>` rỗng → file tiếng Việt rơi khỏi diff gửi reviewer, hồ sơ gate nói "docs/: không" (rà 2026-10-02) | `RAW_PATHS` (`core.quotepath=false`) trong `workspace._git` và `gate_brief._git` |
+| Smoke đo kẻ chiếm cổng | `runtime.port` cố định đã có tiến trình khác trả 200 → poll đầu ghi `ok=True` cho sản phẩm chưa lên (rà 2026-10-02) | `run_smoke` probe cổng trước `spawn`; có ai trả lời → `error`, không `ok` |
+| Dữ liệu khách hỏng làm sập lượt thay vì thành lý do | `shlex.split` nháy lẻ trong `runtime.command`; lock file JSON/TOML cắt dở → `ValueError` xuyên lên orchestrator (rà 2026-10-02) | `parse_runtime` → None; `supply_chain.evidence` → `licenses_error` |
 | Diff bị cắt mà reviewer không biết | security chặn QLKH-012 "thiếu diff" — openapi 804 dòng | `diff()` xếp mã nguồn trước, nói rõ file bị bỏ (#67); reviewer có tool đọc (#87) |
 | `local_checks` pass giả từ lệnh không liên quan | frontend PR "pass" bằng ruff+pytest | `stacks.py` theo stack; không nhận ra stack → `unverified` (ADR-0013) |
 | Test xanh trước khi có code | TDD chỉ là lời dặn | `qa` pha `author` chạy lượt mù (ADR-0028); `tests_green_before_code` audit |
