@@ -291,6 +291,10 @@ CHAN_GIT = HOOKS / "block-dangerous-git.sh"
         "git status && git push origin main",
         "git push origin feat-x; git push origin main",
         "git fetch | git push -f origin main",
+        # refspec đầy đủ và `+` (force theo refspec) vẫn là ghi vào main — đo được 2026-10-02: cả hai lọt
+        "git push origin HEAD:refs/heads/main",
+        "git push origin +main",
+        "git push origin +HEAD:refs/heads/master",
     ],
 )
 def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
@@ -312,12 +316,22 @@ def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
         # đo được 2026-09-26: `main` ở lệnh KHÁC trong cùng dòng (đích PR của gh) bị đọc thành đích push
         "git push -u origin feat-x && gh pr create --base main --title t",
         "git push origin feat-x || git log main",
+        # `refs/heads/` chỉ là đích khi đứng sau `:` hay đầu refspec — nhánh tên `refs/heads/main-x` thì không
+        "git push origin HEAD:refs/heads/main-x",
+        "git push origin +feat-x",
     ],
 )
 def test_chan_git_khong_chan_oan(cmd: str) -> None:
     """Chặn oan làm agent tưởng repo hỏng rồi đi đường vòng — tệ hơn không chặn."""
     kq = _chay(CHAN_GIT, stdin=_payload(cmd))
     assert kq.returncode == 0, f"chặn oan: {cmd}\n{kq.stderr}"
+
+
+def test_chan_git_goi_dung_ten_force_push_qua_refspec_cong() -> None:
+    """`+main` là force-push không cần cờ: thông điệp phải nói đúng là force (khuôn 1), không chỉ "push thẳng"."""
+    kq = _chay(CHAN_GIT, stdin=_payload("git push origin +main"))
+    assert kq.returncode == 2
+    assert "force-push vào nhánh chính" in kq.stderr
 
 
 def test_chan_git_co_duong_thoat_tuong_minh() -> None:
