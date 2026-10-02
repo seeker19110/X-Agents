@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..delivery import DONE_STATES
 from ..events import AuditLog, Envelope
+from ..routing import retry_after_seconds
 from .cli import _fmt, source_fingerprint
 from .guards import clarification_warnings
 from .quality_flow import note_env, sync_quality
@@ -249,6 +250,13 @@ def _defer(o: Orchestrator, env: Envelope, res: StepResult, reason: str, wait_s:
                                     "until": (datetime.now(UTC) + timedelta(seconds=float(wait_s or 0))).isoformat()},
                     ticket_id=env.payload.get("ticket_id"), project_id=env.payload.get("project_id"))
     return res
+
+def _defer_transient(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
+    """Hoãn event vì một lượt agent gặp `TransientError` (`res.transient`), giữ mốc hẹn của backend ("thử lại sau
+    1515s"). Một đường cho `process()` và các hành động tự `_mark` (`_plan`): bên đó `process()` không thấy
+    `res.transient` vì hành động đã trả True — tự `_mark` thì event bị coi là xong và dự án đứng im."""
+    stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
+    return _defer(o, env, res, ":".join(stuck.split(":")[:2]), wait_s=retry_after_seconds(stuck))
 
 def _retry_deferred(o: Orchestrator, only: str | None = None) -> None:
     """Đưa event hoãn về đầu hàng đợi; `only` = tiền tố lý do (vd. "transient:") để chỉ thử lại loại đó.

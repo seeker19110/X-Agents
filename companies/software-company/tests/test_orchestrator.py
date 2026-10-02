@@ -1193,6 +1193,37 @@ def test_spec_request_changes_goi_lai_spec_writer_va_trinh_lai_gate():
     assert "PLAN-P1-1" in orch.plans and len(goi) == n0 + 1, "duyệt bản viết lại thì lập plan, không gọi spec-writer nữa"
 
 
+def test_spec_request_changes_gap_transient_thi_hoan_khong_danh_dau_xong():
+    """Spec-writer gặp `TransientError` ở lượt viết lại: `_act_plan` trả True nên `process()` không tự hoãn — nếu
+    `_plan` vẫn `_mark` và ghi khoá `spec.changes`, event spec bị coi là xong, không gate, không lượt viết lại
+    nào nữa: dự án nằm im mà không ai được hỏi. Phải hoãn như mọi `transient:` khác và viết lại khi backend về.
+    Đo hai chiều: bỏ nhánh hoãn trong `_plan` thì assert đầu đỏ; hoãn mà bỏ mốc hẹn của backend thì assert
+    "nhịp kế không hỏi lại" đỏ."""
+    from company.llm import TransientError
+
+    goi = {"n": 0, "nghi": False}
+    def chap_chon(system, user):
+        if _agent_of(system) == "product" and _product_phase(system) == "spec":
+            goi["n"] += 1
+            if goi["nghi"]: raise TransientError("mọi backend đều đang nghỉ, thử lại sau 1515s")
+        return handler(system, user)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=chap_chon))
+    _drive_to_spec_gate(bus, orch)
+    orch.gate.decide("SPEC-P1", "request_changes", by="human:po", reason="thiếu luồng huỷ lịch; bổ sung rồi trình lại")
+    goi["nghi"] = True; n0 = goi["n"]
+    orch.run()
+    assert goi["n"] == n0 + 1 and orch.deferred, "transient ở lượt viết lại phải hoãn event, không đánh dấu xong"
+    assert "SPEC-P1" not in orch.gate.pending and not orch.plans
+    orch.tick()
+    assert goi["n"] == n0 + 1, "backend đã hẹn 1515s thì nhịp kế không hỏi lại (như nhánh transient của process())"
+    goi["nghi"] = False
+    for k in orch.defer_until: orch.defer_until[k] = 0.0
+    orch.tick()
+    assert goi["n"] == n0 + 2, "backend về thì spec-writer phải được gọi lại"
+    assert "SPEC-P1" in orch.gate.pending, "bản viết lại được trình lại gate"
+    assert [r for _, r in orch.deferred.values()] == ["gate:SPEC-P1"], "chỉ còn bản viết lại chờ gate, hết transient"
+
+
 def test_spec_request_changes_mo_lai_bus_khong_viet_lai_lan_hai(tmp_path):
     """Mở lại bus khi bản viết lại đang chờ gate: gate dựng lại từ audit vẫn chờ người, spec-writer không bị gọi
     lần nữa (khoá `spec.changes:<sid>:<seq>` nằm trong `once`, cũng dựng lại từ audit — khuôn 2)."""

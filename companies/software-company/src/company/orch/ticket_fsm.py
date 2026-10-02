@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,7 @@ from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..llm import LLMError, TransientError
 from ..roles import PHASE, ROLE, SOURCE
+from ..routing import retry_after_seconds
 from ..runner import RunnerError
 from .fsm import Transition
 from .guards import pending_clarifications
@@ -80,8 +82,10 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
                     request_gate(o.gate, GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
                                                   checklist=["prd", "acceptance-criteria", "ux-flow", "risks"]))
                 elif changes is not None and (cause := _spec_source(o, env, project)) is not None:
-                    o._remember(changes)
                     _spec_rework(o, env, cause, f"người yêu cầu sửa spec ở gate {sid}: {last.reason}"[:500], res)
+                    if res.transient:  # `_act_plan` trả True nên `process()` không tự hoãn: hoãn ở đây, khoá chưa ghi
+                        return o._defer_transient(env, res)
+                    o._remember(changes)
                     res.actions.append(f"spec_changes:{project}:rework")
                     o._mark(env, res); return res
                 else:
@@ -184,14 +188,18 @@ def _spec_runtime_missing(o: Orchestrator, env: Envelope, project: str, gap: str
     khuôn với kế hoạch bị `_check_plan` từ chối (approve = chạy lại event nguồn, reject = bỏ).
     Khoá theo `event_id` của spec (mỗi lần `product` publish một spec là một event mới, không nuốt lần hai — khuôn 3
     `TRAPS.md`); bộ đếm theo dự án dựng lại từ audit (khuôn 2)."""
-    with o._lock:
-        o.spec_runtime_reworks[project] += 1; n = o.spec_runtime_reworks[project]
+    with o._lock: n = o.spec_runtime_reworks[project] + 1
     cause = _spec_source(o, env, project)
+    rework = cause if cause is not None and n <= SPEC_RUNTIME_REWORKS else None
+    if rework is not None:
+        _spec_rework(o, env, rework, f"orchestrator từ chối mở gate spec (lần {n}): {gap}", res)
+        if res.transient:  # chưa sửa được lượt nào: hoãn, KHÔNG đếm — bộ đếm dựng lại từ audit ngay dưới (khuôn 2)
+            return o._defer_transient(env, res)
+    with o._lock: o.spec_runtime_reworks[project] = n
     o._audit("spec.runtime_missing", {"project_id": project, "event_id": env.event_id, "kind": env.payload.get("kind"),
                                          "runtime": env.payload.get("runtime"), "reason": gap, "attempt": n,
                                          "source_event": cause.event_id if cause else None}, project_id=project)
-    if cause is not None and n <= SPEC_RUNTIME_REWORKS:
-        _spec_rework(o, env, cause, f"orchestrator từ chối mở gate spec (lần {n}): {gap}", res)
+    if rework is not None:
         res.actions.append(f"spec_runtime_missing:{project}:rework:{n}")
         o._mark(env, res); return res
     why = gap if cause is not None else f"{gap}; không có requirements-draft để pha `spec` làm lại"
@@ -225,14 +233,23 @@ def _assume_clarifications(o: Orchestrator, now: datetime | None = None) -> list
     out: list[StepResult] = []
     for pid, p in pending_clarifications(o.bus).items():
         if now - datetime.fromisoformat(p["since"]) <= clarify_timeout(): continue
+        if o.defer_until.get(f"assume:{pid}", 0.0) > time.monotonic(): continue  # backend đã hẹn giờ, chưa tới
         draft = o.latest("requirements-draft", pid)
         if draft is None: continue  # không có draft thì không có gì để viết spec; `_spec_ready` đã audit `spec_writer.no_draft`
         assumed = [{"question_id": q["id"], "answer": q["default"], "text": q["text"]} for q in p["questions"]]
-        o._audit("clarification.assumed", {"project_id": pid, "event_id": p["event_id"], "round": p["round"],
-                                           "since": p["since"], "assumed": assumed}, project_id=pid)
         res = StepResult(draft.event_id, draft.topic, draft.key)
         inp = draft.model_copy(update={"payload": {**draft.payload, "assumed_answers": assumed}})
         o._call(ROLE.PRODUCT, inp, spec_route("requirements-draft"), res)
+        if res.transient:
+            # Sổ giả định ghi TRƯỚC lời gọi thì vòng câu hỏi rời `pending_clarifications` mà spec chưa viết: không
+            # nhịp nào thử lại, `status` nói không chờ ai — dự án đứng im. Chưa ghi sổ thì nhịp sau thử lại, giữ
+            # mốc hẹn của backend như `_defer` (key riêng: `_retry_deferred` chỉ đọc key có trong `deferred`).
+            stuck = next(a for a in res.actions if a.startswith("transient:"))
+            if (wait := retry_after_seconds(stuck)) is not None:
+                with o._lock: o.defer_until[f"assume:{pid}"] = time.monotonic() + wait
+        else:
+            o._audit("clarification.assumed", {"project_id": pid, "event_id": p["event_id"], "round": p["round"],
+                                               "since": p["since"], "assumed": assumed}, project_id=pid)
         out.append(res)
     return out
 
