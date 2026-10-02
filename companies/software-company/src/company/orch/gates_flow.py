@@ -49,7 +49,9 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
         # sống hẹp hơn (chỉ gate escalation) là hai đường lệch nhau và test bất biến restart đỏ — nó đã bắt đúng
         # lỗi này trong chính bản sửa mở gate cho lần chặn thứ hai.
         o.escalation_decided[sid] += 1
-        if kind == "escalation":
+        if decision == "hold":
+            _hold(o, g, res)
+        elif kind == "escalation":
             o._on_escalation_decided(sid, decision, by, d.get("reason", ""), res)
         elif kind == "acceptance" and decision == "approve" and machine_acceptor(env.actor):  # actor do bus kiểm, không `by` tự khai
             # ADR-0043 §3: máy nghiệm thu — đóng ticket ở đây vì không có `acceptance-results` nào kéo theo; audit
@@ -61,7 +63,7 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
             # ADR-0037: không còn nhánh `sid in o.plans` — kế hoạch được `_check_plan` cho đi thẳng lúc lập, không
             # chờ ai ký. Duyệt gate release vẫn là bước cho phép deploy production.
             _deploy_production(o, sid, res)
-        if kind != "escalation": o._resume_overdue(g, by, res)  # escalation tự `resume` trong `_on_escalation_decided`
+        if kind != "escalation" and decision != "hold": o._resume_overdue(g, by, res)  # escalation tự `resume` trong `_on_escalation_decided`
     o._note_closed()
     o._retry_deferred()
     if res.transient:
@@ -71,6 +73,15 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
         return o._defer_transient(env, res)
     o._mark(env, res)
     return res
+
+def _hold(o: Orchestrator, g: GateRequest | None, res: StepResult) -> None:
+    """`hold` = chưa quyết. Core đóng gate với MỌI quyết định, còn mọi nhánh bên dưới đọc "khác approve" là từ chối
+    (rework release, đóng dự án kẹt; spec/release thì treo không gate) — nên mở lại đúng gate đó, không thi hành gì.
+    Không qua `request_gate`: người vừa nói "chưa", máy không được tự duyệt thay. Chỉ mở khi `hold` còn là quyết định
+    mới nhất của subject và chưa gì đang chờ: xử lý lại event sau restart không mở trùng, không đè thế hệ sau."""
+    if g is None or g.decision != "hold" or g.subject_id in o.gate.pending: return
+    o.gate.request(GateRequest(kind=g.kind, subject_id=g.subject_id, checklist=list(g.checklist), created_by=g.created_by))
+    res.actions.append(f"gate:held:{g.subject_id}")
 
 def _check_escalations(o: Orchestrator) -> None:
     """Ticket blocked (retry hết) hoặc bị supervisor escalate → gate `escalation` cho người quyết (checklist gate 'bất thường')."""
