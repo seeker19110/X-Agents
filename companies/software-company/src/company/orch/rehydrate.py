@@ -132,7 +132,7 @@ def rehydrate(o: Orchestrator) -> None:
                 o.unhandled.pop(str(d.get("subject")), None)
                 o.spec_runtime_reworks.pop(str(d.get("subject")), None)
                 o.plan_reworks.pop(str(d.get("event_id")), None)
-            elif a["action"] == "gate.decide":
+            elif a["action"] == "gate.decide" and env.event_id in o.gate.closers:  # như `_on_gate_decide`: bản trùng không tính
                 if d.get("subject_id"): quyet.append((env.event_id, str(d["subject_id"])))
                 sid = str(d.get("subject_id") or "")
                 if d.get("decision") == "approve" and sid in o.unhandled and (

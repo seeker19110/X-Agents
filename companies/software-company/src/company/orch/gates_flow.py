@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     from ..orchestrator import _evidence  # nhập lười: orchestrator.py nhập module này trước khi định nghĩa _evidence
     d = _evidence(env.payload); sid, decision, by = d["subject_id"], d["decision"], d.get("by", "human")
+    if env.event_id not in o.gate.closers:
+        # Không đóng gate nào (tiến trình khác đã ký gate này trước): sổ gate bỏ qua nó, thi hành nó là deploy
+        # production lần hai cho một chữ ký (O4, nhật ký 2026-10-02).
+        res.actions.append(f"gate:ignored:{sid}:{decision}"); o._mark(env, res); return res
     # Loại gate của lần xử lý lại lấy từ khoá lúc hoãn, không tra lại `history`: sau `_retry_unhandled` gate MỚI NHẤT
     # của subject là escalation, không phải gate mà quyết định này đóng.
     applied = decide_applied(o.once, env.event_id)

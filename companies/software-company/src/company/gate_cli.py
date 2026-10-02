@@ -128,7 +128,23 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
         return r
 
     def __init__(self, bus: InMemoryBus, **kw):
+        # event_id của các bản `gate.decide` ĐÃ đóng một gate. Gán trước `super().__init__`: core replay log ngay trong đó.
+        self.closers: set[str] = set()
         super().__init__(bus, envelope_cls=Envelope, audit_cls=AuditLog, request_cls=GateRequest, **kw)
+
+    def apply(self, env: Envelope) -> None:
+        """Như core, cộng ghi bản `gate.decide` nào thật sự đóng gate (`closers`). Hai tiến trình cùng ký một gate thì
+        core chỉ để bản đầu đóng, bản sau bị bỏ qua — orchestrator hỏi `closers` để không thi hành bản sau (O4)."""
+        n = len(self.history)
+        super().apply(env)
+        if len(self.history) > n: self.closers.add(env.event_id)
+
+    def _log(self, actor: str, action: str, data: dict[str, Any], *, by: str | None = None) -> None:
+        """Bản do CHÍNH tiến trình này ký: `decide` đóng gate trong RAM trước khi ghi, nên `apply` lúc `publish`
+        không còn thấy gate chờ — ghi `closers` ở đây."""
+        env = self._envelope(actor, action, data, by=by)
+        if action == "gate.decide": self.closers.add(env.event_id)
+        self.bus.publish(env)
 
 
 def has_quality_profile(bus: InMemoryBus, project_id: str) -> bool:
