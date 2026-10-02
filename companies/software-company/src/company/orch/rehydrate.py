@@ -247,5 +247,6 @@ def _retry_con_can(o: Orchestrator, log: list[Envelope], idx: int, rec: dict[str
             if r.topic_in == rec.get("topic") and r.agent == rec.get("agent")}
     outs.discard(CONTEXT_ONLY)
     if not outs: return True          # không suy ra được route → giữ nguyên hành vi cũ, thà chạy lại còn hơn kẹt
-    key = str(rec.get("project_id") or "")
+    # `project.retried` mang `project_id`; `unhandled`/`event.retried` chỉ mang `subject` (O6: thiếu vế này là khoá `""`).
+    key = str(rec.get("project_id") or rec.get("subject") or "")
     return not any(e.topic in outs and e.key == key for e in log[idx + 1:])

@@ -1431,6 +1431,17 @@ def test_retry_con_can_khong_suy_ra_duoc_route_thi_giu_nguyen_hanh_vi_cu(tmp_pat
     assert orch._retry_con_can([], 0, rec) is True
 
 
+def test_retry_con_can_doc_subject_cua_ban_ghi_unhandled():
+    """Bản ghi `unhandled`/`event.retried` (`_mark_unhandled`) chỉ mang `subject`, không mang `project_id` — trước
+    đây khoá rơi về `""`, không event nào khớp, nên lệnh chạy lại LUÔN được coi là còn cần, kể cả khi đầu ra của
+    event đã nằm trên bus sau lệnh — đúng lượt model trùng mà hàm này sinh ra để chặn (O6, nhật ký 2026-10-02)."""
+    orch = Orchestrator(InMemoryBus(), FakeClient())
+    rec = {"agent": "builder", "topic": "tasks", "event_id": "e-task", "subject": "T1", "error": "x"}
+    pr = Envelope(topic="pull-requests", key="T1", actor="human:lead", payload={"ticket_id": "T1"})
+    assert orch._retry_con_can([pr, pr], 0, rec) is False, "PR của T1 đã có sau lệnh chạy lại: việc đã xong"
+    assert orch._retry_con_can([pr], 0, rec) is True, "chưa có gì sau lệnh: vẫn chạy lại"
+
+
 def test_tick_tu_gom_ticket_approved_con_sot_thanh_release():
     """`flush_releases` trước đây chỉ được gọi ngay lúc MỘT ticket vừa review pass (`_on_review`) hoặc lúc đóng
     một ticket escalated (`_on_escalation_decided`, reject/rollback) — không nhịp nào gọi lại sau đó. Ticket
