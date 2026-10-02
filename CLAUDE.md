@@ -58,7 +58,8 @@ oan thì sửa hook kèm test trong `test_cong_khung.py`.
 
 `.claude/settings.json` bật plugin ECC (`affaan-m/ECC`) ghim đúng một commit (`docs/integrations/ecc.lock.json`):
 293 skill, 94 lệnh, 68 agent mang tiền tố `ecc:` cộng hook vòng đời của nó (cần `node`). Phiên chưa thấy `/ecc:*` thì
-chạy `/plugin` và cài `ecc@xagents-ecc` (bản ghim) — đường nạp này chưa đo bằng CLI thật, xem ADR 0027 §"Chưa đo".
+chạy `/plugin` và cài `ecc@xagents-ecc` (bản ghim) — trên máy thật chưa đo, xem ADR 0027 §"Chưa đo". **Phiên Claude
+Code on the web không nạp ECC** (đo 2026-10-01: `init` chỉ có plugin builtin, `plugin install` báo `not_found`).
 
 - **Luật repo thắng khi trùng.** `/gate` chứ không `/ecc:quality-gate`; `/thi-hanh` chứ không `/ecc:orch-*`; PR theo
   `docs/QUY-TRINH-GIT.md` chứ không `/ecc:pr`; `fail_under = 100` chứ không 80% của rule ECC.
