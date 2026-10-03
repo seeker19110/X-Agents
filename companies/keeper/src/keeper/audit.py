@@ -27,6 +27,10 @@ báo cáo, hay trả thứ không parse được → đúng MỘT `SecurityFindi
 `kind` của nguồn đó, mức `DEFAULT_SEVERITY`), mang lý do trong `detail`. Trả `[]` ở đây là đọc "chưa quét
 xong" thành "sạch" — khuôn 1 "chế độ hỏng không tự khai báo" (`TRAPS.md`).
 
+Hai nguồn qua `gh` theo cùng luật: `GitHubReader` trả `None` khi `gh` không trả lời → `dependabot:loi-cong-cu`
+/ `code-scanning:loi-cong-cu`. Bản đầu nuốt lỗi `gh` thành `[]` ngay trong `github.py`, nên luật trên chỉ đúng
+cho hai công cụ chạy cục bộ.
+
 Mã thoát của cả hai công cụ này là 1 khi TÌM THẤY vấn đề — nên `exit_code != 0` KHÔNG phải lỗi ở đây, và
 không được dùng để quyết định gì. Chỉ nội dung báo cáo mới được đọc.
 """
@@ -62,6 +66,9 @@ SCORECARD_CHECKS = frozenset({
 #: Hậu tố `subject` của finding đánh dấu "công cụ CÓ trên máy nhưng không chạy xong" (quá giờ, lỗi, báo cáo
 #: hỏng/thiếu) — xem mục "Công cụ lỗi" ở docstring module.
 TOOL_ERROR = "loi-cong-cu"
+# `GitHubReader` đã gộp mọi chế độ hỏng của `gh` (vắng mặt, chưa đăng nhập, quá giờ, API lỗi, JSON hỏng) thành
+# `None`; lý do chi tiết nằm trong bộ đệm của nó, không tới được đây.
+_GH_UNKNOWN = "gh không trả lời (vắng mặt, chưa `gh auth login`, quá giờ, API lỗi hay JSON hỏng)"
 
 
 def _default_gitleaks_report_path() -> Path:
@@ -81,8 +88,8 @@ def _default_gitleaks_report_path() -> Path:
 
 class SecuritySource(Protocol):
     """Phần giao diện `github.py` mà `security-auditor` cần — `GitHubReader` và `FakeGitHub` đều khớp."""
-    def dependabot_alerts(self) -> list[DependabotAlert]: ...
-    def code_scanning_alerts(self) -> list[CodeScanningAlert]: ...
+    def dependabot_alerts(self) -> list[DependabotAlert] | None: ...
+    def code_scanning_alerts(self) -> list[CodeScanningAlert] | None: ...
 
 
 def _severity(raw: str | None) -> Severity:
@@ -90,7 +97,7 @@ def _severity(raw: str | None) -> Severity:
     return cast(Severity, s) if s in SEVERITIES else DEFAULT_SEVERITY
 
 
-def _tool_error(tool: str, kind: Literal["secret", "dependency"], reason: str) -> list[SecurityFinding]:
+def _tool_error(tool: str, kind: Literal["secret", "dependency", "scorecard"], reason: str) -> list[SecurityFinding]:
     """Một finding đánh dấu công cụ không chạy xong — xem mục "Công cụ lỗi" ở docstring module."""
     return [SecurityFinding(subject=f"{tool}:{TOOL_ERROR}", severity=DEFAULT_SEVERITY, kind=kind,
                             detail=f"{tool} không quét xong — KHÔNG phải 'không có phát hiện': {reason[-300:]}")]
@@ -168,18 +175,25 @@ def pip_audit_findings(repo: Path, *, runner: CommandRunner = run_command) -> li
 
 
 def dependabot_findings(gh: SecuritySource) -> list[SecurityFinding]:
-    """Alert Dependabot ĐANG MỞ. Alert đã `fixed`/`dismissed` không phải việc phải làm."""
+    """Alert Dependabot ĐANG MỞ. Alert đã `fixed`/`dismissed` không phải việc phải làm. `gh` không trả lời
+    (`None`) → lỗi công cụ, như gitleaks/pip-audit — xem docstring module."""
+    alerts = gh.dependabot_alerts()
+    if alerts is None:
+        return _tool_error("dependabot", "dependency", _GH_UNKNOWN)
     return [
         SecurityFinding(subject=f"dependabot-{a.number}", severity=_severity(a.severity),
                         kind="dependency", detail=a.summary)
-        for a in gh.dependabot_alerts() if a.state == "open"
+        for a in alerts if a.state == "open"
     ]
 
 
 def scorecard_findings(gh: SecuritySource) -> list[SecurityFinding]:
     """Alert code scanning ĐANG MỞ mà rule là một check của Scorecard — xem docstring module."""
+    alerts = gh.code_scanning_alerts()
+    if alerts is None:
+        return _tool_error("code-scanning", "scorecard", _GH_UNKNOWN)
     out: list[SecurityFinding] = []
-    for a in gh.code_scanning_alerts():
+    for a in alerts:
         if a.state != "open":
             continue
         check = a.rule_description.split(":", 1)[0].strip()

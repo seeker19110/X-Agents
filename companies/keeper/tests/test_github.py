@@ -164,8 +164,8 @@ def test_json_hong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_json_hong_o_ham_doc_khong_phai_cong_thi_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Hàm đọc KHÔNG mở cổng nào (`workflow_runs`) vẫn giữ quy ước cũ: JSON hỏng → `[]`. Chỉ `open_prs`/
-    `merged_prs` (cổng I3) phân biệt "không biết"."""
+    """Hàm đọc chỉ để QUAN SÁT (`workflow_runs`, `checks`) vẫn giữ quy ước cũ: JSON hỏng → `[]`. Phân biệt "không
+    biết" là `open_prs`/`merged_prs` (cổng I3) và hai nguồn `audit` dùng để kết luận "không có phát hiện"."""
     spy = _RunSpy(stdout="khong-phai-json{{{")
     reader = _reader(tmp_path, spy, monkeypatch)
     assert reader.workflow_runs() == []
@@ -180,19 +180,19 @@ def test_json_khong_phai_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 def test_json_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(stdout="")
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.dependabot_alerts() == []
+    assert reader.workflow_runs() == []
 
 
-def test_gh_loi_dependabot_alerts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    spy = _RunSpy(stdout="", returncode=1)
+@pytest.mark.parametrize("spy", [_RunSpy(stdout="", returncode=1), _RunSpy(stdout="khong-phai-json{{{"),
+                                 _RunSpy(stdout=""), _RunSpy(raise_exc=FileNotFoundError())],
+                         ids=["ma-loi", "json-hong", "rong", "khong-co-gh"])
+def test_nguon_cua_security_auditor_phan_biet_khong_biet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                         spy: _RunSpy) -> None:
+    """Hai nguồn mà `audit` dùng để nói "không có phát hiện" — đọc lỗi thành `[]` là đọc "chưa quét" thành
+    "sạch". `None` để `audit` báo lỗi công cụ, như gitleaks/pip-audit."""
     reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.dependabot_alerts() == []
-
-
-def test_gh_loi_code_scanning_alerts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    spy = _RunSpy(stdout="", returncode=1)
-    reader = _reader(tmp_path, spy, monkeypatch)
-    assert reader.code_scanning_alerts() == []
+    assert reader.dependabot_alerts() is None
+    assert reader.code_scanning_alerts() is None
 
 
 def test_gh_loi_merged_prs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

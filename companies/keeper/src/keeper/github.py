@@ -234,24 +234,25 @@ class GitHubReader:
             return []
         return [CheckRun.model_validate(row) for row in self._parse_list(out)]
 
-    def dependabot_alerts(self) -> list[DependabotAlert]:
+    def dependabot_alerts(self) -> list[DependabotAlert] | None:
+        """`None` = không biết, như `open_prs`: `audit` lấy nguồn này để nói "không có phát hiện", nên đọc lỗi
+        thành `[]` là đọc "chưa quét" thành "sạch"."""
         ok, out = self._run(
             "api", "repos/{owner}/{repo}/dependabot/alerts",
             "--jq", "[.[] | {number, state, severity: .security_advisory.severity, summary: .security_advisory.summary}]",
         )
-        if not ok:
-            return []
-        return [DependabotAlert.model_validate(row) for row in self._parse_list(out)]
+        rows = self._parse_list_strict(ok, out)
+        return None if rows is None else [DependabotAlert.model_validate(row) for row in rows]
 
-    def code_scanning_alerts(self) -> list[CodeScanningAlert]:
+    def code_scanning_alerts(self) -> list[CodeScanningAlert] | None:
+        """`None` = không biết — cùng lý do `dependabot_alerts`."""
         ok, out = self._run(
             "api", "repos/{owner}/{repo}/code-scanning/alerts",
             "--jq", "[.[] | {number, state, severity: .rule.security_severity_level, "
                     "rule_description: .rule.description}]",
         )
-        if not ok:
-            return []
-        return [CodeScanningAlert.model_validate(row) for row in self._parse_list(out)]
+        rows = self._parse_list_strict(ok, out)
+        return None if rows is None else [CodeScanningAlert.model_validate(row) for row in rows]
 
     def pr_age_days(self, pr: int, *, now: datetime | None = None) -> float | None:
         ok, out = self._run("pr", "view", str(pr), "--json", "createdAt")

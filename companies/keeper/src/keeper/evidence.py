@@ -34,7 +34,8 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from itertools import pairwise
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from pydantic import BaseModel
@@ -126,11 +127,34 @@ class EvidenceRule:
     why: str
 
 
+# `pytest.ExitCode.TESTS_FAILED`, viết lại thành hằng vì pytest không phải phụ thuộc lúc chạy của gói. Các mã
+# dương khác của pytest đều là KHÔNG test nào chạy xong: 2 bị ngắt/lỗi lúc thu thập, 3 lỗi nội bộ, 4 sai cách
+# gọi (đường dẫn không có), 5 không thu được test nào.
+PYTEST_TESTS_FAILED = 1
+_PYTEST_NAMES = frozenset({"pytest", "py.test"})
+
+
+def _is_pytest(cmd: str) -> bool:
+    """`cmd` gọi thẳng pytest: một token là tệp chạy `pytest`/`py.test` (kể cả đường dẫn, `.exe`), hoặc `-m pytest`.
+    Nhận nhầm chỉ làm luật CHẶT hơn (đòi mã 1), nên dò theo token là đủ."""
+    tokens = cmd.split()
+    return (any(PureWindowsPath(t).name.removesuffix(".exe") in _PYTEST_NAMES for t in tokens)
+            or ("-m", "pytest") in pairwise(tokens))
+
+
 EVIDENCE_RULES: tuple[EvidenceRule, ...] = (
     # `> 0`, không phải `!= 0`: mã âm là lần chạy KHÔNG hoàn tất (`TIMEOUT_EXIT`, `MISSING_EXIT`, bị giết bằng
     # tín hiệu) — không test nào chạy xong thì không có chiều đỏ nào được đo.
     EvidenceRule("before-must-fail", lambda e: e.before.exit_code > 0,
                  "tắt bản sửa mà lệnh CI vẫn xanh hoặc không chạy xong ⇒ không test nào đo bản sửa này"),
+    # Chỉ xét mã DƯƠNG (mã ≤ 0 là việc của hàng trên): `--include-untracked` stash cả file test MỚI của patch, nên
+    # lệnh nhắm thẳng nó thoát 4/5 — `> 0` mà không test nào chạy.
+    # no-ky-thuat: chỉ nhận ra pytest gọi thẳng, lệnh bọc (`make test`, `dev-task.sh gate`) vẫn nhận mọi mã > 0, quay lại khi keeper đo hai chiều qua một lệnh bọc
+    EvidenceRule("pytest-before-must-be-test-failure",
+                 lambda e: e.before.exit_code <= 0 or not _is_pytest(e.before.cmd)
+                 or e.before.exit_code == PYTEST_TESTS_FAILED,
+                 f"pytest chỉ thoát {PYTEST_TESTS_FAILED} khi có test chạy xong và ĐỎ; mã khác ⇒ không test nào "
+                 "đo bản sửa này (vd file test mới bị stash cùng bản sửa)"),
     EvidenceRule("after-must-pass", lambda e: e.after.exit_code == 0,
                  "bật bản sửa mà lệnh CI vẫn đỏ ⇒ patch chưa xong"),
     EvidenceRule("verifier-must-be-workspace", lambda e: e.verified_by == TRUSTED_VERIFIER,

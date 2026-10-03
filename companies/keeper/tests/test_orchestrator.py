@@ -357,6 +357,26 @@ def test_bao_cao_hong_trong_bus_cu_bi_tu_choi_lai_khi_mo_va_chi_ghi_audit_mot_la
     assert len(rejects) == 1, "một event hỏng = đúng một bản ghi từ chối, dù mở lại bao nhiêu lần"
 
 
+def test_bao_cao_hong_den_sau_thu_hoi_verified_bao_cao_hop_le_moi_hon_cap_lai(tmp_path: Path):
+    """Ghi ở nhật ký 2026-10-02 (K6): ticket đã `verified`, rồi một báo cáo MỚI HƠN cho đúng ticket đó không qua
+    I2 → trước đây bị từ chối nhưng `verified` và báo cáo cũ vẫn nằm đó, cổng `evidence` vẫn mở trên bằng chứng
+    mà lần đo sau đã phủ nhận. Bỏ qua báo cáo sau không chống được giả mạo — kẻ ghi được `verification-reports`
+    thì dựng được cả một báo cáo trông hợp lệ — chỉ giữ lại bằng chứng cũ. Báo cáo mới nhất trên bus quyết định;
+    thu hồi là fail closed và có bản ghi từ chối."""
+    o = _orc(tmp_path)
+    o.submit_signal(_signal(semver_jump=None))
+    (t,) = o.tick(now=NOW).tickets
+    _verify(o, t.ticket_id)
+    assert t.ticket_id in o.verified
+    _publish_bad_report(o, t.ticket_id)
+    assert t.ticket_id not in o.verified and t.ticket_id not in o.reports
+    assert "evidence" in o.pr_blockers(t)
+    assert t.ticket_id not in _orc(tmp_path).verified, "replay theo thứ tự bus cho cùng kết quả"
+
+    _verify(o, t.ticket_id)
+    assert t.ticket_id in o.verified and t.ticket_id in _orc(tmp_path).verified
+
+
 def test_tu_choi_gia_mao_khong_nuot_duoc_ban_ghi_tu_choi_that(tmp_path: Path):
     """Anh em của `pr.blocked` giả mạo: `_audited_rejects` dựng từ `verification.rejected` trên topic MỞ. Bản giả
     mang `key` = event_id của một báo cáo hỏng ghi lúc orchestrator đang tắt thì lần mở sau coi như đã ghi từ

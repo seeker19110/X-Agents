@@ -205,7 +205,13 @@ class KeeperOrchestrator:
 
     def _reject_report(self, env: Envelope, report: VerificationReport, err: EvidenceError) -> None:
         """Báo cáo không đạt hai chiều: KHÔNG vào `self.verified`, và ghi lý do — nuốt im lặng là đúng khuôn
-        "chế độ hỏng không tự khai báo" (`TRAPS.md`)."""
+        "chế độ hỏng không tự khai báo" (`TRAPS.md`).
+
+        Ticket đã `verified` từ báo cáo TRƯỚC thì bị thu hồi: báo cáo mới nhất trên bus quyết định. Giữ báo cáo
+        cũ không chống được giả mạo (kẻ ghi được topic này dựng được cả báo cáo trông hợp lệ), chỉ để cổng
+        `evidence` mở trên bằng chứng mà lần đo sau đã phủ nhận."""
+        self.verified.discard(report.ticket_id)
+        self.reports.pop(report.ticket_id, None)
         data = {"ticket_id": report.ticket_id, "event_id": env.event_id, "error": str(err)[:300]}
         if self._replaying:
             self._pending_rejects.append((env.event_id, data))
@@ -247,6 +253,7 @@ class KeeperOrchestrator:
                             evidence: TwoWayEvidence) -> VerificationReport:
         """`payload` (phần model KỂ) + `evidence` (phần code ĐO) → `VerificationReport` đã qua
         `require_two_way`. Ném `EvidenceError` nếu bằng chứng không đủ — ticket ở lại pha quality (I2)."""
+        # no-ky-thuat: đo lại không đạt I2 thì ném trước khi lên bus nên ticket đã verified giữ bằng chứng cũ (thu hồi chỉ chạy qua `_reject_report`), ổn khi mỗi ticket chỉ đo một lần, quay lại khi có đường gọi record_verification lần hai cho cùng ticket
         report = verification_report(payload, evidence=evidence)
         self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
         return self.reports[ticket_id]

@@ -24,7 +24,7 @@ _BUMP_RE = re.compile(
 
 
 class GitHubLike(Protocol):
-    def dependabot_alerts(self) -> list[DependabotAlert]: ...
+    def dependabot_alerts(self) -> list[DependabotAlert] | None: ...
 
 
 def _norm(name: str) -> str:
@@ -103,7 +103,9 @@ def scan(repo: Path, gh: GitHubLike) -> list[Signal]:
     locked = locked_packages(repo)
     dev_names = dev_package_names(repo)
     out: list[Signal] = []
-    for alert in gh.dependabot_alerts():
+    # `None` (gh không trả lời) → không tín hiệu: scout chỉ quan sát, như `health.pr_age_signals`. Kết luận
+    # "không có lỗ hổng" là việc của `audit`, và nó báo lỗi công cụ cho đúng ca này.
+    for alert in gh.dependabot_alerts() or []:
         if alert.state != "open":  # fixed/dismissed không phải việc phải làm — cùng luật audit.dependabot_findings
             continue
         m = _BUMP_RE.search(alert.summary)
