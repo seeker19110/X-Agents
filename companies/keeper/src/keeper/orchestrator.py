@@ -18,7 +18,7 @@ một trong bốn khuôn lỗi lặp lại của X-Agents (`TRAPS.md`).
 | Khoá | Cổng | Bất biến |
 |---|---|---|
 | `human-only` | `patcher.HUMAN_ONLY_SEGMENTS` — chạm `agents/`/`skills/` thì mở ticket `high` cho NGƯỜI | bảy bước `CONTRIBUTING.md` §3 |
-| `evidence` | `evidence.require_two_way()` (qua `record_verification`) | I2 |
+| `evidence` | `evidence.check_report()` (qua `record_verification` và `_apply`) + worktree VẪN đúng `patch_id` đã đo (ADR keeper 0001) | I2 |
 | `gate` | gate `keeper` approved cho ticket `risk_tier == "high"` | §9 |
 | `budget` | `budget.can_open_pr()` — hỏi `gh` thật mỗi lần | I3 |
 
@@ -49,7 +49,7 @@ from __future__ import annotations
 import json
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -59,14 +59,14 @@ from .budget import GitHubLike, can_open_pr
 from .bus import KeeperBus
 from .core import CORE
 from .events import AuditLog, Envelope, ReleaseNote, Signal, Ticket, VerificationReport
-from .evidence import EvidenceError, TwoWayEvidence, require_two_way, verification_report
+from .evidence import EvidenceError, TwoWayEvidence, build_report, check_report
 from .gates import PersistentGate, gate_approvers, request_gate
 from .github import GitHubWriteAttempt
 from .patcher import HUMAN_ONLY_SEGMENTS
 from .publish import PullRequest, PullRequestExists, create_pr, push_branch
 from .release import compose, fill_pr_number
 from .triage import ObservedSignal, TriageState, triager
-from .worktree import KeeperWorktree
+from .worktree import KeeperWorktree, WorktreeError, content_tree
 
 __all__ = ["BLOCKED_ACTION", "CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "KeeperOrchestrator", "TickResult",
            "touches_human_only"]
@@ -119,10 +119,14 @@ class KeeperOrchestrator:
     INTENT_GUARD = True
 
     def __init__(self, db: Path, repo: Path, gh: GitHubLike, *, approvers: frozenset[str] | None = None,
-                 env: Mapping[str, str] | None = None) -> None:
+                 env: Mapping[str, str] | None = None,
+                 patch_identity: Callable[[str], str | None] | None = None) -> None:
         self.repo = Path(repo)
         self.gh = gh
         self.env = env
+        # Danh tính nội dung HIỆN TẠI của worktree một ticket (ADR keeper 0001) — tiêm được, khuôn
+        # `runner: CommandRunner`: ca kiểm thử cổng không cần git thật. Mặc định đo worktree thật của ticket.
+        self.patch_identity: Callable[[str], str | None] = patch_identity or self._worktree_identity
         self.bus: KeeperBus = KeeperBus(CORE, db)
         self.signals: list[ObservedSignal] = []
         self.tickets: dict[str, Ticket] = {}
@@ -183,8 +187,7 @@ class KeeperOrchestrator:
             # `evidence` cho bất cứ ai publish được `verification-reports` (`sc-security` chấm BT7).
             if self.VERIFY_ON_APPLY:
                 try:
-                    require_two_way(TwoWayEvidence(cmd=r.before.cmd, before=r.before, after=r.after,
-                                                   verified_by=r.verified_by))
+                    self._check_report(r)
                 except EvidenceError as e:
                     self._reject_report(env, r, e)
                     return
@@ -249,14 +252,50 @@ class KeeperOrchestrator:
 
     # ---------- verify (I2) ----------
 
+    def _check_report(self, report: VerificationReport) -> None:
+        """MỘT phép kiểm cho cả đường dựng (`record_verification`) lẫn đường nạp (`_apply`): hai đường mà kiểm
+        khác nhau thì replay cho kết quả khác lần ghi. `check_report` (I2 + rà họ lỗi) cộng danh tính patch: báo
+        cáo không nói nó đo nội dung nào thì không mở được cổng cho nội dung nào cả (ADR keeper 0001, mục b)."""
+        check_report(report)
+        if report.patch_id is None:
+            raise EvidenceError(f"báo cáo của {report.ticket_id} không mang patch_id — không biết nó đo nội dung "
+                                "nào; chỉ bằng chứng từ collect_two_way mới gắn danh tính (ADR keeper 0001)")
+
     def record_verification(self, ticket_id: str, payload: Mapping[str, Any],
                             evidence: TwoWayEvidence) -> VerificationReport:
-        """`payload` (phần model KỂ) + `evidence` (phần code ĐO) → `VerificationReport` đã qua
-        `require_two_way`. Ném `EvidenceError` nếu bằng chứng không đủ — ticket ở lại pha quality (I2)."""
-        # no-ky-thuat: đo lại không đạt I2 thì ném trước khi lên bus nên ticket đã verified giữ bằng chứng cũ (thu hồi chỉ chạy qua `_reject_report`), ổn khi mỗi ticket chỉ đo một lần, quay lại khi có đường gọi record_verification lần hai cho cùng ticket
-        report = verification_report(payload, evidence=evidence)
+        """`payload` (phần model KỂ) + `evidence` (phần code ĐO) → `VerificationReport` đã qua `_check_report`.
+        Ném `EvidenceError` nếu bằng chứng không đủ — ticket ở lại pha quality (I2).
+
+        Không đạt thì báo cáo VẪN lên bus trước khi ném: `_apply` (subscribe đồng bộ) từ chối nó qua
+        `_reject_report` — thu hồi `verified` của lần đo trước, ghi đúng một `verification.rejected` — và vì nó là
+        báo cáo MỚI NHẤT của ticket trên bus, replay cho cùng kết quả thay vì dựng lại `verified` từ báo cáo cũ
+        (ADR keeper 0001, mục c). Một đường thu hồi, không phải hai."""
+        # no-ky-thuat: payload model sai hình (pydantic ValidationError ở build_report) thì không có báo cáo nào lên bus nên báo cáo trước vẫn đứng — nó chỉ mở cổng cho đúng nội dung nó đã đo, quay lại khi có đường gọi record_verification từ output model thật (regression-guard)
+        report = build_report(payload, evidence=evidence)
+        try:
+            self._check_report(report)
+        except EvidenceError:
+            self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
+            raise
         self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
         return self.reports[ticket_id]
+
+    def _worktree_identity(self, ticket_id: str) -> str | None:
+        """`content_tree` của worktree ticket; không đo được (đã dọn, git lỗi) ⇒ `None` — không bao giờ bằng một
+        danh tính đã đo, nên cổng đóng (fail closed)."""
+        try:
+            return content_tree(KeeperWorktree(repo=self.repo, ticket_id=ticket_id).path)
+        except WorktreeError:
+            return None
+
+    def _evidence_current(self, ticket_id: str) -> bool:
+        """Cổng `evidence`: có báo cáo đạt I2 VÀ worktree vẫn đúng nội dung báo cáo ấy đã đo. Từng `verified`
+        không đủ — patch sửa tiếp sau lần đo là code chưa đo (ADR keeper 0001)."""
+        if ticket_id not in self.verified:
+            return False
+        # no-ky-thuat: mỗi lần hỏi cổng là băm lại cả worktree (~50 ms cho 825 file vì index tạm không có stat), quay lại khi một lần pr_blockers đo được quá 1 s hoặc repo khách vượt ~10k file track
+        current = self.patch_identity(ticket_id)
+        return current is not None and current == self.reports[ticket_id].patch_id
 
     # ---------- gate? ----------
 
@@ -296,7 +335,7 @@ class KeeperOrchestrator:
         blockers: list[str] = []
         if touches_human_only(ticket.subject):
             blockers.append(HUMAN_ONLY)
-        if ticket.ticket_id not in self.verified:
+        if not self._evidence_current(ticket.ticket_id):
             blockers.append("evidence")
         if ticket.risk_tier == "high" and not self.gate.is_approved(ticket.ticket_id):
             blockers.append("gate")
@@ -336,6 +375,7 @@ class KeeperOrchestrator:
         Giả định: commit ĐẦU TIÊN (patch + dòng release mang `release.PR_PLACEHOLDER`) đã có sẵn trong
         `wt.path` — hàm này không tự vá, không tự commit lần đầu; nó chỉ publish. Idempotent: note đã có
         `pr_number` thì trả `None` ngay, không gọi `push`/`gh` lần hai (I3)."""
+        # no-ky-thuat: không so danh tính patch lúc publish vì dòng CHANGELOG/nhật ký được ghi vào worktree SAU lần đo theo thiết kế nên khoảng open_pr → publish chưa kiểm, quay lại khi publish được nối tự động vào tick hoặc dòng release được ghi vào worktree trước lần đo
         note = self.notes.get(ticket_id)
         if note is None:
             raise ValueError(f"{ticket_id} chưa có release-notes — open_pr() chưa qua hết cổng?")

@@ -13,16 +13,18 @@ Cạm bẫy lớn nhất của BT6 (`DAC-TA-KEEPER.md` §8): cám dỗ để age
 đúng là `AGENTS.md` cấm §8 ("không tin lời khai") — và một lời khai thì không tốn gì để viết, trong khi hai
 lần chạy CI thật thì tốn. Nếu trường này nhận được từ JSON model trả về, mọi hàng kiểm còn lại thành trang trí.
 
-Đường dữ liệu bị chặn ở ĐÚNG một chỗ, `verification_report()`:
+Đường dữ liệu bị chặn ở ĐÚNG một chỗ, `build_report()` (gọi từ `verification_report()` và `record_verification`):
 
     payload model trả về ──drop_self_claims()──▶ trường KỂ CHUYỆN (ticket_id, family_hits, family_safe)
                                                         │
-    collect_two_way() (code vừa chạy lệnh) ─────────────┴──▶ VerificationReport(before, after, verified_by)
+    collect_two_way() (code vừa chạy lệnh) ─────────────┴──▶ VerificationReport(before, after, verified_by,
+                                                                                 patch_id)
 
-Phép hợp nhất trong `verification_report()` CỐ Ý viết theo thứ tự nguy hiểm — `{**đo được, **payload}`, đúng
-khuôn `guard.guard_payload()` trả `{**payload, **clean}` — để bộ lọc là thứ DUY NHẤT giữ lời khai ở ngoài, và
-để ca chiều ngược tắt được nó rồi đo lại (bỏ lọc ⇒ lời khai lọt, mua được một lần xanh). Viết kiểu "ghi đè
-sau" thì bộ lọc thành vô dụng-nhưng-trông-an-toàn: không ai đo được nó còn sống hay đã chết.
+Phép hợp nhất trong `build_report()` là `{**payload đã lọc, **đo được}` — hai lớp cố ý thừa: `drop_self_claims`
+bỏ mọi trường đo được khỏi payload, và số đo hợp nhất SAU nên vẫn thắng lời khai khi bộ lọc bị nới. Bản đầu
+viết thứ tự ngược (`{**đo được, **payload}`) để bộ lọc là lớp duy nhất và ca chiều ngược tắt được nó; đổi vì
+một trường quên lọc là đủ để lời khai ghi đè. Bộ lọc vẫn đo được qua
+`test_self_claim_fields_phu_kin_moi_truong_do_duoc` (khoá `SELF_CLAIM_FIELDS` bằng tập trường đo).
 
 `SELF_CLAIM_FIELDS` đứng cạnh `CORE.untrusted_fields` (`core.py`) chứ không nằm trong nó: hai cơ chế khác nhau.
 `untrusted_fields` là *lọc nội dung* (sanitize chuỗi có mẫu injection, giữ trường lại); self-claim là *bỏ hẳn
@@ -45,7 +47,7 @@ from xagents_core.sandbox import clean_env
 from .events import RunOutcome, VerificationReport
 from .family import FamilyReport, FamilyReportInvalid, FamilySite, require_family_report
 from .family import SafeSite as FamilySafeSite
-from .worktree import refuse_shared_checkout
+from .worktree import content_tree, refuse_shared_checkout
 
 # Chỉ MỘT giá trị được coi là "code vừa chạy lệnh trong workspace này". `orchestrator` là một người xác minh
 # HỢP LỆ ở chỗ khác trong repo, nhưng không hợp lệ cho một patch của `keeper`: patch được đo trên worktree.
@@ -70,7 +72,7 @@ DEFAULT_TAIL = 2000
 #
 # `test_self_claim_fields_phu_kin_moi_truong_do_duoc` khoá hai tập này bằng nhau, nên thêm một trường đo mới mà
 # quên lọc là CI đỏ, không phải là một lỗ im lặng.
-SELF_CLAIM_FIELDS = frozenset({"verified_by", "before", "after"})
+SELF_CLAIM_FIELDS = frozenset({"verified_by", "before", "after", "patch_id"})
 
 CommandRunner = Callable[..., RunOutcome]
 
@@ -81,6 +83,7 @@ def _measured(evidence: TwoWayEvidence) -> dict[str, object]:
         "before": evidence.before.model_dump(),
         "after": evidence.after.model_dump(),
         "verified_by": evidence.verified_by,
+        "patch_id": evidence.patch_id,
     }
 
 
@@ -112,11 +115,15 @@ def run_command(
 
 class TwoWayEvidence(BaseModel):
     """Hai lần chạy CÙNG một lệnh CI quanh cùng một patch: `before` = đã TẮT bản sửa (stash), `after` = đã bật
-    lại. `verified_by` chỉ được đặt bởi code vừa chạy — xem docstring module."""
+    lại. `verified_by` chỉ được đặt bởi code vừa chạy — xem docstring module.
+
+    `patch_id` là danh tính nội dung worktree mà hai lần chạy đo (`worktree.content_tree`, ADR keeper 0001). Chỉ
+    `collect_two_way` điền nó; bằng chứng dựng tay để `None` thì không thành `verified` được."""
     cmd: str
     before: RunOutcome
     after: RunOutcome
     verified_by: str
+    patch_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -234,6 +241,7 @@ def _stash_depth(runner: CommandRunner, repo: Path) -> int:
 
 def collect_two_way(
     argv: Sequence[str], repo: Path, *, runner: CommandRunner = run_command,
+    identify: Callable[[Path], str] = content_tree,
 ) -> TwoWayEvidence:
     """`git stash` TOÀN BỘ thay đổi chưa commit → chạy lệnh CI (`before`) → `git stash pop` → chạy lại (`after`).
 
@@ -246,12 +254,18 @@ def collect_two_way(
     ("No local changes to save") nên dò chuỗi là một cổng đúng-sai theo locale của máy — đúng khuôn
     "test đúng-sai theo nền tảng" mà `TRAPS.md` §2 cấm. Không tạo được mục stash nào ⇒ không có gì để TẮT ⇒
     `before` sẽ đo chính bản gốc, và con số thu được là vô nghĩa chứ không phải "may mà xanh".
+
+    Danh tính patch (`identify`, mặc định `worktree.content_tree`, ADR keeper 0001) đo TRƯỚC khi stash và đo lại
+    SAU lần chạy `after`: hai số khác nhau (pop trả sai nội dung, hay chính lệnh CI ghi đè file không bị ignore)
+    nghĩa là hai lần chạy không đo cùng một nội dung — không có danh tính nào để gắn báo cáo vào. `identify` là
+    tham số để ca kiểm thử đo được THỨ TỰ gọi mà không cần stash thật.
     """
     # `git stash push --include-untracked` cất TOÀN BỘ worktree, không chỉ diff của patch — chạy nhầm trên
     # checkout chung là nuốt việc chưa commit của phiên khác. `repo` là tham số tự do, nên chốt phải đứng ngay
     # đây, trước lệnh stash đầu tiên. (`sc-security` chấm BT6: đây là phát hiện chặn thứ ba của gói.)
     refuse_shared_checkout(repo)
     cmd = " ".join(argv)
+    patch_id = identify(repo)
     depth = _stash_depth(runner, repo)
     push = runner(("git", "stash", "push", "--include-untracked", "-m", STASH_MESSAGE), repo)
     if push.exit_code != 0:
@@ -276,7 +290,12 @@ def collect_two_way(
             f"khi resolve xong): {pop.output_tail}"
         )
     after = runner(tuple(argv), repo)
-    return TwoWayEvidence(cmd=cmd, before=before, after=after, verified_by=TRUSTED_VERIFIER)
+    sau = identify(repo)
+    if sau != patch_id:
+        raise EvidenceError(
+            f"nội dung worktree đổi trong lúc đo ({patch_id} → {sau}): pop không trả đúng bản sửa, hoặc {cmd} tự "
+            f"ghi file không bị .gitignore — hai lần chạy không đo cùng một patch")
+    return TwoWayEvidence(cmd=cmd, before=before, after=after, verified_by=TRUSTED_VERIFIER, patch_id=patch_id)
 
 
 def drop_self_claims(
@@ -288,11 +307,12 @@ def drop_self_claims(
     return {k: v for k, v in payload.items() if k not in fields}, dropped
 
 
-def verification_report(
-    payload: Mapping[str, Any], *, evidence: TwoWayEvidence,
-    fields: frozenset[str] = SELF_CLAIM_FIELDS, rules: tuple[EvidenceRule, ...] = EVIDENCE_RULES,
+def build_report(
+    payload: Mapping[str, Any], *, evidence: TwoWayEvidence, fields: frozenset[str] = SELF_CLAIM_FIELDS,
 ) -> VerificationReport:
-    """`payload` (JSON model trả về) + `evidence` (đo được) → `VerificationReport` đã qua `require_two_way`.
+    """`payload` (JSON model trả về) + `evidence` (đo được) → `VerificationReport` CHƯA kiểm. Tách khỏi
+    `check_report` để `orchestrator.record_verification` đưa được cả báo cáo HỎNG lên bus — đo lại không đạt
+    phải thu hồi bền, không chỉ ném (ADR keeper 0001).
 
     Model chỉ đóng góp trường KỂ CHUYỆN. Xem docstring module về thứ tự hợp nhất."""
     clean, _dropped = drop_self_claims(payload, fields=fields)
@@ -300,13 +320,28 @@ def verification_report(
     # Hai lớp, cố ý thừa: (1) `drop_self_claims` bỏ hẳn mọi trường đo được khỏi payload; (2) `measured` hợp nhất
     # SAU nên kể cả khi lớp (1) bị nới, số đo vẫn thắng lời khai. Bản đầu chỉ có lớp (1) và hợp nhất theo chiều
     # ngược lại — một trường quên lọc là đủ để lời khai ghi đè.
-    report = VerificationReport.model_validate({**clean, **measured})
+    return VerificationReport.model_validate({**clean, **measured})
+
+
+def check_report(report: VerificationReport, *, rules: tuple[EvidenceRule, ...] = EVIDENCE_RULES) -> None:
+    """Mọi phép kiểm một `VerificationReport` phải qua: hai chiều (I2) + rà họ lỗi. Đọc TỪ báo cáo, không từ
+    `TwoWayEvidence`, để đường nạp bus (`orchestrator._apply`) chạy ĐÚNG phép kiểm của đường dựng — trước đây
+    đường nạp chỉ chạy `require_two_way`, nên báo cáo ghi thẳng lên bus thiếu `family_safe` vẫn được nạp."""
     require_two_way(
-        TwoWayEvidence(cmd=evidence.cmd, before=report.before, after=report.after,
+        TwoWayEvidence(cmd=report.before.cmd, before=report.before, after=report.after,
                        verified_by=report.verified_by),
         rules=rules,
     )
     _require_family_from_report(report)
+
+
+def verification_report(
+    payload: Mapping[str, Any], *, evidence: TwoWayEvidence,
+    fields: frozenset[str] = SELF_CLAIM_FIELDS, rules: tuple[EvidenceRule, ...] = EVIDENCE_RULES,
+) -> VerificationReport:
+    """`build_report` rồi `check_report`: báo cáo trả về đã qua `require_two_way` và rà họ lỗi."""
+    report = build_report(payload, evidence=evidence, fields=fields)
+    check_report(report, rules=rules)
     return report
 
 

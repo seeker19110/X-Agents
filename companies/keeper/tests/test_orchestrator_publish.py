@@ -22,7 +22,7 @@ from keeper.fakes import FakeGitHub
 from keeper.orchestrator import KeeperOrchestrator
 from keeper.publish import PublishError
 from keeper.release import PR_PLACEHOLDER
-from keeper.worktree import open_worktree
+from keeper.worktree import content_tree, open_worktree
 
 NOW = datetime(2026, 9, 12, tzinfo=UTC)
 
@@ -70,10 +70,13 @@ def _orc_voi_ticket_du_cong(repo: Path) -> tuple[KeeperOrchestrator, str]:
     o.submit_signal(Signal.model_validate(
         {"subject": "requests", "kind": "dependency", "detail": "bump", "semver_jump": None}))
     (t,) = o.tick(now=NOW).tickets
+    # Bằng chứng gắn danh tính worktree THẬT của ticket (ADR keeper 0001): worktree phải có trước lần đo, và cổng
+    # `evidence` đo lại đúng nó lúc `tick` mở ý định PR.
+    wt = open_worktree(t.ticket_id, repo=repo)
     cmd = "uv run pytest -q"
     o.record_verification(t.ticket_id, {"ticket_id": t.ticket_id}, TwoWayEvidence(
         cmd=cmd, before=RunOutcome(cmd=cmd, exit_code=1), after=RunOutcome(cmd=cmd, exit_code=0),
-        verified_by=TRUSTED_VERIFIER))
+        verified_by=TRUSTED_VERIFIER, patch_id=content_tree(wt.path)))
     res = o.tick(now=NOW)
     assert res.notes, "ticket phải đủ cổng để có release-notes trước khi publish() có gì để làm"
     return o, t.ticket_id

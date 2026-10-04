@@ -164,7 +164,7 @@ def test_rules_without_ten_la_thi_no():
 # --- lời khai verified_by ---------------------------------------------------------------------------
 
 def test_truong_tu_khai_duoc_khai_bao():
-    assert SELF_CLAIM_FIELDS == frozenset({"verified_by", "before", "after"})
+    assert SELF_CLAIM_FIELDS == frozenset({"verified_by", "before", "after", "patch_id"})
     assert [r.name for r in EVIDENCE_RULES] == ["before-must-fail", "pytest-before-must-be-test-failure",
                                                 "wrapped-before-must-show-test-failure",
                                                 "after-must-pass", "verifier-must-be-workspace"]

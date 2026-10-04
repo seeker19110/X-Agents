@@ -19,7 +19,7 @@ from keeper.evidence import TRUSTED_VERIFIER, TwoWayEvidence
 from keeper.fakes import FakeGitHub
 from keeper.orchestrator import KeeperOrchestrator
 from keeper.release import PR_PLACEHOLDER
-from keeper.worktree import open_worktree
+from keeper.worktree import content_tree, open_worktree
 
 NOW = datetime(2026, 9, 12, tzinfo=UTC)
 _GOC_RUN = subprocess.run
@@ -77,10 +77,11 @@ def _ticket_du_cong(repo: Path) -> str:
     o.submit_signal(Signal.model_validate(
         {"subject": "requests", "kind": "dependency", "detail": "bump", "semver_jump": None}))
     (t,) = o.tick(now=NOW).tickets
+    wt = open_worktree(t.ticket_id, repo=repo)  # bằng chứng gắn danh tính worktree thật (ADR keeper 0001)
     cmd = "uv run pytest -q"
     o.record_verification(t.ticket_id, {"ticket_id": t.ticket_id}, TwoWayEvidence(
         cmd=cmd, before=RunOutcome(cmd=cmd, exit_code=1), after=RunOutcome(cmd=cmd, exit_code=0),
-        verified_by=TRUSTED_VERIFIER))
+        verified_by=TRUSTED_VERIFIER, patch_id=content_tree(wt.path)))
     assert o.tick(now=NOW).notes, "phải có release-notes trước khi publish có gì để làm"
     return t.ticket_id
 

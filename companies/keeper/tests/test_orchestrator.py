@@ -18,6 +18,9 @@ from keeper.github import GitHubWriteAttempt
 from keeper.orchestrator import CODE_ACTOR, HUMAN_ONLY, REJECT_ACTION, KeeperOrchestrator
 
 NOW = datetime(2026, 9, 9, tzinfo=UTC)
+#: Danh tính patch giả (ADR keeper 0001): worktree "hiện tại" của mọi ticket và nội dung mọi bằng chứng đã đo đều là
+#: nó, nên cổng `evidence` ở đây chỉ còn hỏi chuyện I2. Ca sửa-patch-sau-khi-đo ở `test_bang_chung_gan_patch.py`.
+PATCH_ID = "c" * 40
 
 
 class _GH(FakeGitHub):
@@ -36,7 +39,8 @@ class _GH(FakeGitHub):
 
 
 def _orc(tmp_path: Path, gh: _GH | None = None) -> KeeperOrchestrator:
-    return KeeperOrchestrator(tmp_path / "keeper.sqlite", tmp_path / "repo", gh or _GH())
+    return KeeperOrchestrator(tmp_path / "keeper.sqlite", tmp_path / "repo", gh or _GH(),
+                              patch_identity=lambda _ticket_id: PATCH_ID)
 
 
 def _signal(**kw) -> Signal:
@@ -52,6 +56,7 @@ def _evidence(ok: bool = True) -> TwoWayEvidence:
         before=RunOutcome(cmd=cmd, exit_code=1 if ok else 0),
         after=RunOutcome(cmd=cmd, exit_code=0),
         verified_by=TRUSTED_VERIFIER,
+        patch_id=PATCH_ID,
     )
 
 
@@ -312,6 +317,7 @@ def _bad_report(ticket_id: str) -> VerificationReport:
         before=RunOutcome(cmd=cmd, exit_code=0),   # tắt bản sửa mà CI vẫn XANH ⇒ vô hiệu (I2)
         after=RunOutcome(cmd=cmd, exit_code=0),
         verified_by=TRUSTED_VERIFIER,
+        patch_id=PATCH_ID,   # hỏng vì I2, KHÔNG vì thiếu danh tính — ca chiều ngược tắt đúng một phép kiểm
     )
 
 
