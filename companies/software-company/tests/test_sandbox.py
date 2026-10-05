@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from xagents_core.egress import DockerSquidProxy
 
 from company.llm import LLMConfig, load_config
 from company.sandbox import (
@@ -113,7 +114,8 @@ def test_hop_dong_env_da_qua_clean_env(tmp_path, idx, monkeypatch):
     sb.run(RunSpec(argv=["a"], cwd=tmp_path, env=dirty))
     call = runner.calls[0]
     seen = call["env"] if "env" in call else dict(x.split("=", 1) for x in call["input"].splitlines())
-    assert "PATH" in seen and seen["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert ("PATH" in seen) is (idx == 0), "container dùng PATH image; subprocess giữ PATH host"
+    assert seen["PYTHONDONTWRITEBYTECODE"] == "1"
     for k in ("ANTHROPIC_API_KEY", "DATABASE_URL", "GITHUB_TOKEN", "SSH_AUTH_SOCK"):
         assert k not in seen
     assert "sk-secret" not in repr(seen)
@@ -177,13 +179,14 @@ def test_container_argv_co_mang_thi_publish_cong(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "getuid", lambda: 501, raising=False)
     monkeypatch.setattr(os, "getgid", lambda: 20, raising=False)
     runner = FakeRunner()
-    ContainerSandbox("podman", "img", cpus="4", memory="8g", runner=runner).run(
+    ContainerSandbox("podman", "img", cpus="4", memory="8g", runner=runner,
+                     egress=DockerSquidProxy("podman", runner=FakeRunner())).run(
         spec(tmp_path, network=True, port=8123))
     argv = runner.calls[0]["argv"]
     assert argv[:3] == ["podman", "run", "--rm"]
     assert argv[argv.index("--cpus") + 1] == "4" and argv[argv.index("--memory") + 1] == "8g"
-    assert "--network" in argv and argv[argv.index("--network") + 1] == "bridge"
-    assert argv[argv.index("-p") + 1] == "127.0.0.1:8123:8123"
+    assert argv[argv.index("--network") + 1].endswith("-net")
+    assert "-p" not in argv and "--dns" in argv
     assert "none" not in argv
 
 

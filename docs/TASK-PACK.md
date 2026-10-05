@@ -219,3 +219,7 @@ ba mục đó là thứ hay bị bỏ qua nhất và đắt nhất khi bỏ qua.
 
 
 | 2026-10-05 | O3 runtime hub | Đo ba lỗi thật: bind container, thiếu Compose plugin, ghi Git config chỉ đọc. Bản sửa build/compose fixture trả HTTP 200, socket Engine dùng được; cổng/PR còn cần hoàn tất. Đây không phải RC CAMPUS-UNI hay chữ ký khách. |
+
+| 2026-10-05 | S2 và kiểm O1 sau S1 | S2 có test container thật PyPI 200/domain ngoài ACL 403/bypass-DNS bị chặn/smoke 200/cleanup; còn cổng all, PR và cập nhật image watcher. O1 đã ghi mode container vào bus thật sau #392. BT8 có 3 Dependabot alert urllib3 thật cần nâng lock; CAMPUS-UNI còn escalation và RC/chữ ký khách. |
+
+| 2026-10-05 | S2 PR #394 | Cổng all 4539 passed/0 fail/skip, 100% coverage; ACL thật WSL/Windows và smoke CAMPUS snapshot 200. Số PR cùng CHANGELOG/session. Còn CI/merge và cập nhật watcher image; keeper đã có ticket high/bằng chứng hai chiều cho urllib3 thật, chưa PR; CAMPUS còn RC/chữ ký khách. |

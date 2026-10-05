@@ -1,6 +1,6 @@
-# ADR-0010: domain allowlist cho mạng của `ContainerSandbox` — chưa làm, khoanh phạm vi
+# ADR-0010: domain allowlist cho mạng của `ContainerSandbox` — mạng internal và proxy ACL
 
-Ngày: 2026-09-10 · Trạng thái: đề xuất, chưa cài đặt · Mẫu: hạ tầng mới (egress proxy), không phải một field ·
+Ngày: 2026-09-10 · Trạng thái: được chấp nhận (S2, 2026-10-05) · Mẫu: hạ tầng mới (egress proxy), không phải một field ·
 Lớp: 1
 
 ## Bối cảnh
@@ -45,7 +45,7 @@ thật.
 
 ## Quyết định
 
-**Chưa cài đặt egress proxy trong ADR này.** Ba lý do dừng ở mức đề xuất thay vì code luôn:
+**Bối cảnh quyết định ban đầu (2026-09-10, được thay bởi mục thi hành S2 bên dưới).** Ba lý do khi đó dừng ở mức đề xuất:
 
 1. **Không có nơi gọi thật cần nó hôm nay.** Nhu cầu network hiện tại (`company.smoke`) chỉ cần loopback, không
    cần domain ngoài. Xây hạ tầng proxy cho một nhu cầu chưa tồn tại là đoán trước — trái nguyên tắc "không thiết
@@ -98,3 +98,24 @@ module `sandbox.py` dòng 21-25 — studio mặc định `subprocess`).
   credential, lệnh ngoài whitelist), đối chiếu để thấy domain allowlist là mảnh còn thiếu duy nhất trong mô hình.
 - `docs/adr/0001-loi-chung-xagents-core.md` — "core giữ cơ chế, package giữ nghĩa": `EgressProxy` là cơ chế ở
   core, ACL/domain cụ thể theo ticket là nghĩa của nơi gọi (`company`/`studio`), không hard-code trong core.
+
+## Quyết định thi hành S2 — 2026-10-05
+
+Nhu cầu thật nay có: ADR-0044 dùng `uv run` tự đồng bộ phụ thuộc khách trong lint/test; container mạng tắt làm đường này không tải được PyPI. Chủ dự án giao tự quyết và hoàn thiện ngày 05/10. Các mô tả “chưa có nơi gọi” và quyết định hoãn ở trên là lịch sử, được thay bởi mục này.
+
+- Core thêm `allowed_domains` mặc định rỗng, tách quyền ra ngoài khỏi cờ loopback/publish. Cả `run` và `spawn` dùng cùng lifecycle; `network=True` rỗng chạy trên bridge internal riêng, không NAT ra Internet. `network=False` rỗng giữ network none.
+- `EgressProxy` Protocol cấp một session có tên mạng, env proxy và close idempotent. Backend DockerSquidProxy dùng Squid image Canonical `ubuntu/squid:6.6-24.04_beta`, cấu hình ACL được code tạo, hostname chính xác (không wildcard/URL/IP), chỉ HTTP/HTTPS cổng 80/443. Chặn đích loopback/private/link-local để không tới dịch vụ host, kể cả DNS resolve vào địa chỉ nội bộ. Không decrypt TLS.
+- Mỗi session tạo bridge internal, sidecar proxy nối bridge thường và internal; workload chỉ internal. Không mount socket hay config của host vào workload. Proxy nhận config qua stdin `docker exec`, không mount đường dẫn tạm Windows/WSL khó dịch. Không mở cổng proxy trên host. Proxy lỗi thì dọn và ném SandboxError trước chạy workload; cleanup khi hoàn tất, timeout, kill và lỗi spawn.
+- Company chỉ khai PyPI (`pypi.org`, `files.pythonhosted.org`) cho argv `uv` khi dùng container. Các lệnh không phải uv không được Internet. Subprocess tường minh giữ đường vận hành đã chấp nhận; core từ chối RunSpec có domains khi dùng subprocess vì không thể enforce. Không thêm quyền ra ngoài vào config do model tự khai.
+- Docker image Python khách có uv, dùng interpreter hệ thống và cache trong /tmp; người vận hành chọn image phù hợp stack. Không hứa mọi stack chạy được bằng image Python.
+- Bằng chứng trước merge: test đỏ trước mã; test lifecycle lỗi/timeout/kill; container thật gọi PyPI qua proxy thành công, domain ngoài ACL bị 403, gọi trực tiếp không proxy bị chặn, smoke qua cổng publish vẫn HTTP 200, tài nguyên session không còn sau kết thúc. CI không pull image hoặc gọi provider trả phí; integration bỏ qua rõ khi không có Engine/images.
+
+Nguồn cấu hình: https://www.squid-cache.org/Doc/config/http_access/ và https://hub.docker.com/r/ubuntu/squid (đọc 2026-10-05). Image được cài bởi người vận hành, không tự pull khi chạy lệnh khách. DNS/traffic ngoài HTTP(S) không có route Internet; proxy chỉ cho đúng tên, không cho IP literal. Git/deploy bằng Docker socket là ngoại lệ đặc quyền đã ghi trong SECURITY, không được tính là egress sandbox.
+
+- Đo smoke thật 05/10: Docker bridge `--internal` không nhận publish trực tiếp (test HTTP đỏ dù process sống). Cổng publish vì vậy nằm trên relay tin cậy Python, nối bridge thường và internal, chỉ forward đúng cổng tới đúng tên workload do code tạo. Workload không có bridge thường; không có proxy tùy ý trên relay. Cả relay và proxy được dọn trong session. Image relay python:3.12-slim cũng cần cài trước, không pull trong runtime.
+
+### Profile CAMPUS-UNI (2026-10-05)
+
+Smoke dùng cùng allowlist PyPI khi lệnh uv chạy trong container. Với option Waitress `--listen=127.0.0.1:<port>`, harness đổi bind thành `0.0.0.0` chỉ bên trong workload container; relay vẫn publish đúng loopback host. Lệnh đo được ghi trong smoke.command, không sửa spec hay lệnh khởi động Windows của khách. Các dạng bind khác không được đoán/viết lại. Image uv dùng `UV_PROJECT_ENVIRONMENT=/tmp/xagents-venv`, tránh dùng/xóa venv Windows trong worktree mount; dependency vẫn đi qua ACL.
+
+Container không nhận PATH/VIRTUAL_ENV của tiến trình host (so tên không phân biệt hoa thường); dùng giá trị image. Đối chứng Windows: cùng image/lệnh `uv --version`, env image exit 0/uv 0.9.9, truyền PATH host exit 127/not found. Cả env-file và env-argv phải qua cùng lọc trước run/spawn.

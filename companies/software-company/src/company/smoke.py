@@ -119,10 +119,13 @@ def run_smoke(root: Path, rt: Runtime, sandbox: Any = None,
 
     `probe(base_url)` (ADR-0047, DAST): gọi khi sản phẩm vừa trả lời đúng health, TRƯỚC khi bị giết — để đo thêm
     trên chính tiến trình đang chạy thay vì khởi động lần hai."""
-    from .sandbox import RunSpec, SubprocessSandbox
+    from .sandbox import RunSpec, SubprocessSandbox, registry_domains
     sb = sandbox if sandbox is not None else SubprocessSandbox()
     port = rt.port or free_port()
     argv = rt.argv(port)
+    if sb.name.startswith("container:"):
+        argv = [a.replace("--listen=127.0.0.1:", "--listen=0.0.0.0:")
+                if a.startswith("--listen=127.0.0.1:") else a for a in argv]
     url = f"http://127.0.0.1:{port}{rt.path}"
     out: dict[str, Any] = {"verified_by": VERIFIED_BY, "command": argv, "cwd": str(root), "port": port, "url": url,
                            "ok": False, "http_status": None, "exit_code": None, "elapsed_s": 0.0,
@@ -134,7 +137,7 @@ def run_smoke(root: Path, rt: Runtime, sandbox: Any = None,
         return out
     try:
         proc = sb.spawn(RunSpec(argv=argv, cwd=root, env=clean_env(), timeout=float(rt.timeout_s),
-                                network=True, port=port))
+                                network=True, port=port, allowed_domains=registry_domains(argv, sb.name)))
     except OSError as e:
         out["error"] = f"{type(e).__name__}: {e}"[:300]
         out["elapsed_s"] = round(time.monotonic() - t0, 2)

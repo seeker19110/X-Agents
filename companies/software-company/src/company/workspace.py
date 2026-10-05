@@ -134,9 +134,10 @@ class TicketWorkspace:
         # Qua `Sandbox` từ ADR-0035: cùng cách cắt output (4000), cùng timeout; backend `container` thêm mạng tắt
         # và hạn mức. `env=clean_env()` truyền TƯỜNG MINH — `RunSpec.env` mặc định là `{}` (rỗng thật, không phải
         # "chưa khai"), để rỗng là lệnh chạy không có cả `PATH`.
-        from .sandbox import RunSpec
+        from .sandbox import RunSpec, registry_domains
         r = self._sandbox().run(RunSpec(argv=list(cmd), cwd=self.path, env=clean_env(), timeout=float(timeout),
-                                        max_output=4000))
+                                        max_output=4000,
+                                        allowed_domains=registry_domains(cmd, self._sandbox().name)))
         if r.timed_out:
             return CheckResult(ok=False, output=r.stderr[-4000:])
         return CheckResult(ok=r.exit_code == 0, output=(r.stdout + r.stderr)[-4000:])

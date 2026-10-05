@@ -13,7 +13,7 @@ companies/software-company, companies/keeper, platform/console
 │  runner.py ── AgentRunner: build prompt → gọi model → tool loop → ghi audit          │
 │       │            │             │                                                  │
 │       ▼            ▼             ▼                                                  │
-│  guard.py    llm.py/routing.py  tools.py    sandbox.py (tiến trình con, mạng tắt)    │
+│  guard.py    llm.py/routing.py  tools.py    sandbox.py + egress.py (tiến trình, ACL mạng)    │
 │  (injection) (client + xoay backend)  (ranh giới tin cậy)                            │
 │                                                                                       │
 │  blackboard.py (tri thức chung) · context.py (cắt ngân sách token, ADR-0012)         │

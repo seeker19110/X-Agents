@@ -115,7 +115,7 @@ TRAN_PRAGMA = {                      # `# pragma: no cover` / `no branch` trong 
                                           # vụ traceback người đọc, không ai assert chuỗi này
 }
 TRAN_SKIP = {                        # skip/xfail trong tests/ của từng package
-    "platform/xagents-core": 0,
+    "platform/xagents-core": 1,      # S2 container thật cần Engine + image cài trước, không pull trong test
     "platform/gateway": 3,
     "platform/console": 5,          # +3 (#366): regex cũ bỏ sót `pytestmark` của test_cong_khung.py (bỏ CẢ
                                     # module khi máy thiếu bash) và hai `@POSIX_ONLY` của test_server.py;
