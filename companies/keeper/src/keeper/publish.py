@@ -41,20 +41,25 @@ class PullRequest:
     url: str
 
 
-def push_branch(wt: KeeperWorktree, *, remote: str = "origin", timeout: int = 120) -> None:
-    """`git push <remote> <branch>` từ chính worktree của ticket. Không bao giờ push nhánh khác branch của
-    worktree — I1 giới hạn phạm vi ghi vào đúng ticket đang xử lý. Idempotent: remote đã ở đúng SHA thì git
-    trả 0, không lỗi."""
+def push_branch(wt: KeeperWorktree, *, sha: str, remote: str = "origin", timeout: int = 120) -> None:
+    """`git push <remote> <sha>:refs/heads/<branch>` từ chính worktree của ticket. Đích luôn là nhánh của
+    worktree, không bao giờ nhánh khác — I1 giới hạn phạm vi ghi vào đúng ticket đang xử lý. Idempotent: remote
+    đã ở đúng SHA thì git trả 0, không lỗi.
+
+    Đẩy `sha` (commit người gọi đã kiểm — `_require_measured` trả nó), KHÔNG đẩy theo tên nhánh: tên nhánh được
+    phân giải lại lúc push, nên commit chen vào nhánh giữa kiểm và push sẽ lên remote mà không ai đo (ADR keeper
+    0002). Không `-u`: nguồn là sha thì git không có nhánh cục bộ nào để gắn upstream — đo git 2.43, `push -u`
+    trả 0 mà `branch.*` vẫn rỗng — và không chỗ nào trong keeper đọc upstream (`create_pr` nhận `--head`)."""
     refuse_shared_checkout(wt.path)
     try:
         r = subprocess.run(
-            ["git", "-C", str(wt.path), "push", "-u", remote, wt.branch],
+            ["git", "-C", str(wt.path), "push", remote, f"{sha}:refs/heads/{wt.branch}"],
             capture_output=True, text=True, encoding="utf-8", env=git_env(), timeout=timeout,
         )
     except subprocess.TimeoutExpired as e:
-        raise PublishError(f"git push {remote} {wt.branch}: quá {timeout}s") from e
+        raise PublishError(f"git push {remote} {sha}:{wt.branch}: quá {timeout}s") from e
     if r.returncode != 0:
-        raise PublishError(f"git push {remote} {wt.branch}: {(r.stderr or r.stdout).strip()}")
+        raise PublishError(f"git push {remote} {sha}:{wt.branch}: {(r.stderr or r.stdout).strip()}")
 
 
 def create_pr(repo: Path, *, title: str, body: str, head: str, base: str = "main",

@@ -40,13 +40,24 @@ thứ hai sau commit điền số. Hàm ném `EvidenceError`, không push, khôn
 
 1. Không còn báo cáo đạt I2 mang `patch_id` trong `reports`: báo cáo mới hơn đã thu hồi (ADR 0001 mục b), hoặc
    chưa từng có. Kiểm cả khi tắt phép kiểm ở đường nạp, để chốt này tự đứng được.
-2. `content_tree(wt.path) != tree_of(wt.path, "refs/heads/<nhánh>")`: worktree còn thay đổi chưa commit. Nếu không
-   chặn, `commit -a` của bước điền số đưa chúng lên PR.
-3. `release.unmeasured_changes(wt.path, patch_id, cây nhánh, note)` khác rỗng (mục b).
+2. `content_tree(wt.path) != tree_of(wt.path, sha)`: worktree còn thay đổi chưa commit. Nếu không chặn, `commit -a`
+   của bước điền số đưa chúng lên PR.
+3. `release.unmeasured_changes(wt.path, patch_id, cây của sha, note)` khác rỗng (mục b).
 4. Bất kỳ `WorktreeError` nào: worktree mất, `patch_id` không còn trong kho object (gc), git lỗi. Fail closed.
 
 Đo đúng `wt`, không qua `patch_identity(ticket_id)`. Lý do: thứ bị push là nhánh của `wt`, và chốt phải nhìn đúng
 thứ nó thả đi. `patch_identity` tiêm được vẫn phục vụ cổng `evidence` như cũ.
+
+**Push đúng sha đã kiểm** (bổ sung 2026-10-05, trả nợ mục "Cố ý chưa làm" đầu tiên). `sha` ở trên là
+`worktree.commit_of(wt.path, "refs/heads/<nhánh>")`, phân giải MỘT lần; cây được kiểm là cây của chính sha đó, và
+`_require_measured` trả sha ấy. `push_branch(wt, sha=sha)` đẩy `git push <remote> <sha>:refs/heads/<nhánh>`: đích
+vẫn chỉ là nhánh của worktree (I1), nguồn là commit đã kiểm chứ không phải tên nhánh được phân giải lại lúc push.
+Một commit chen vào nhánh ticket giữa kiểm và push không lên remote; lần publish sau (nếu còn) kiểm lại từ đầu. Ca
+`test_publish_day_dung_sha_da_kiem_khi_commit_chen_truoc_lan_push_dau` / `…_thu_hai` đỏ khi refspec quay về tên
+nhánh (remote nhận commit chen). Bỏ `-u`: nguồn là sha thì git không có nhánh cục bộ để gắn upstream (đo git 2.43:
+`push -u` trả 0, `branch.*` vẫn rỗng), và không chỗ nào trong keeper đọc upstream — `create_pr` nhận `--head`.
+Không thêm `--force-with-lease`: mọi lần push của `publish()` là fast-forward (commit điền số là hậu duệ của commit
+đầu), còn sha lùi so với remote thì git tự từ chối non-fast-forward như trước (đo git 2.43).
 
 CLI `keeper publish` bắt `EvidenceError` → in lý do, thoát **4** (2 = chưa có note, 3 = push/`gh` lỗi).
 
@@ -103,9 +114,10 @@ Marker `no-ky-thuat` ở `publish()` bị xoá vì nợ đã trả.
 ## Hệ quả
 
 - **Phải sửa theo:**
-  - `worktree.py`: `tree_of`, `tree_changes`, `blob_text`.
+  - `worktree.py`: `tree_of`, `tree_changes`, `blob_text`; bổ sung `commit_of`.
   - `release.py`: `CHANGELOG_PATH`, `unmeasured_changes`.
-  - `orchestrator.py`: `_require_measured`, hai lời gọi trong `publish()`.
+  - `orchestrator.py`: `_require_measured` (trả sha đã kiểm), hai lời gọi trong `publish()`.
+  - `publish.py`: `push_branch(wt, *, sha, …)` bắt buộc `sha` — không còn đường push theo tên nhánh.
   - `cli.py`: mã thoát 4.
   - Test cũ của `publish` từng ghi một dòng CHANGELOG **khác** dòng của note (`bump requests … tier low`, trong khi
     note là `requests … tier medium`). Giờ chúng ghi đúng `note.changelog_line`.
@@ -113,8 +125,8 @@ Marker `no-ky-thuat` ở `publish()` bị xoá vì nợ đã trả.
   - Thêm khoảng 0,09 s × 2 mỗi lần `publish` trên repo cỡ này. Không đáng kể với một lệnh người gọi tay.
   - Người sửa tay `CHANGELOG.md` sau lần đo, kể cả sửa chữ, phải đo lại. Đây là chặt hơn có chủ ý.
 - **Cố ý chưa làm:**
-  - Kiểm rồi push theo **tên nhánh**, không theo sha đã kiểm. Một tiến trình khác commit vào nhánh ticket trong
-    khoảng giữa kiểm và push thì lọt. Có marker `no-ky-thuat` tại `_require_measured`.
+  - ~~Kiểm rồi push theo **tên nhánh**, không theo sha đã kiểm.~~ Đã trả 2026-10-05: push đúng sha đã kiểm (mục a,
+    "Push đúng sha đã kiểm"); marker `no-ky-thuat` tại `_require_measured` đã gỡ.
   - Ai ghi được `release-notes` thì chọn được nội dung "dòng của note". Thứ được thêm vẫn chỉ là dòng trong hai
     file markdown, không phải code.
 - **Nhận biết nếu sai:**
