@@ -401,11 +401,14 @@ def test_unmeasured_changes_tu_choi_doi_kieu_file_du_noi_dung_y_het(repo: Path) 
     từ chối. Dựng hai cây bằng `mktree` (không cần quyền tạo symlink của hệ điều hành)."""
     o, wt = _da_do(repo)
     dong = o.notes[wt.ticket_id].changelog_line
-    blob = subprocess.run(["git", "-C", str(repo), "hash-object", "-w", "--stdin"], input=dong,
-                          capture_output=True, text=True, check=True).stdout.strip()
+    # stdin là BYTES: chế độ text ghi bằng bảng mã locale (cp1252 trên Windows, vỡ ở "ả" của "bảo trì" — và tiến trình treo tới
+    # timeout của job, 2026-10-05) và còn đổi "\n" thành "\r\n" khiến mktree đọc tên tệp "CHANGELOG.md\r".
+    blob = subprocess.run(["git", "-C", str(repo), "hash-object", "-w", "--stdin"], input=dong.encode("utf-8"),
+                          capture_output=True, check=True).stdout.decode().strip()
 
     def cay(mode: str) -> str:
-        return subprocess.run(["git", "-C", str(repo), "mktree"], input=f"{mode} blob {blob}\tCHANGELOG.md\n",
-                              capture_output=True, text=True, check=True).stdout.strip()
+        dong_cay = f"{mode} blob {blob}\tCHANGELOG.md\n".encode()
+        return subprocess.run(["git", "-C", str(repo), "mktree"], input=dong_cay,
+                              capture_output=True, check=True).stdout.decode().strip()
 
     assert unmeasured_changes(repo, cay("100644"), cay("120000"), o.notes[wt.ticket_id]) == ["T CHANGELOG.md"]
