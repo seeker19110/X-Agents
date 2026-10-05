@@ -101,9 +101,8 @@ def test_hai_chu_namespace_ghi_song_song_khong_mat_ban_ghi(monkeypatch):
 
 # ---------- đo lường ----------
 
-def test_lead_time_ticket_co_so_lieu():
-    """`metrics.collect` tính lead time từ audit `ticket.closed`; trước đây không agent nào phát action đó
-    nên `ticket_lead_seconds` luôn rỗng và gauge Prometheus không bao giờ xuất hiện."""
+def test_ticket_closed_khong_tao_lead_time_khi_khong_co_nhanh_tich_hop():
+    """Dự án không có repo vẫn đóng ticket, nhưng chưa có mốc merge để tính lead time."""
     from company.llm import FakeClient
     from company.orchestrator import Orchestrator
     from test_orchestrator import _drive_to_plan, _pub, handler
@@ -118,7 +117,7 @@ def test_lead_time_ticket_co_so_lieu():
     assert orch.lead.state["T1"] == "closed"
     closed = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "ticket.closed"]
     assert [a["ticket_id"] for a in closed] == ["T1"], "phát đúng một lần cho mỗi ticket"
-    assert "T1" in collect(bus)["ticket_lead_seconds"]
+    assert "T1" not in collect(bus)["ticket_lead_seconds"]
 
 
 # ---------- tool web ----------

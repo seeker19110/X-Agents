@@ -8,7 +8,7 @@ file) để nối dashboard sẵn có. Nguồn số liệu:
   duration_ms, cache_hit, turns, tool_calls) → số lượt hoàn thành và thời gian
 - audit `llm_error|invalid_output|budget_exhausted|injection_*|llm_retry|context_trimmed` → sức khoẻ
 - audit `gate.request` / `gate.decide` → thời gian chờ người
-- topic `tasks` (đầu) → trạng thái cuối theo audit/ticket → lead time ticket
+- topic `tasks` (đầu) → audit `integration.merged` → lead time ticket
 """
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ def collect(bus: InMemoryBus) -> dict[str, Any]:
             if sid in gate_req: gate_wait.append((sid, d.get("decision", ""), (env.ts - gate_req.pop(sid)).total_seconds()))
         elif act == "orchestrated" and d.get("topic") == "acceptance-results":
             pass
-        if act == "ticket.closed" and a.get("ticket_id"):
+        if act == "integration.merged" and a.get("ticket_id"):
             t_close[a["ticket_id"]] = env.ts
 
     def finish(m: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -185,7 +185,7 @@ def prometheus(m: dict[str, Any], prefix: str = "company") -> str:
     emit("gates_decided", g["decided"], "gate đã quyết", kind="counter")
     if g["wait_seconds_avg"] is not None: emit("gate_wait_seconds_avg", g["wait_seconds_avg"], "thời gian chờ gate trung bình")
     for tid, sec in m["ticket_lead_seconds"].items():
-        emit("ticket_lead_seconds", sec, "lead time ticket (tasks đầu → closed)", {"ticket": tid})
+        emit("ticket_lead_seconds", sec, "lead time ticket (tasks đầu → merge nhánh tích hợp)", {"ticket": tid})
     lp = m["loops"]
     # `empty=True`: không phát gauge nào trong sáu gauge `loop_*` — 0/None giả làm "0% chạm trần, tốt" là đúng bẫy
     # "số xanh vì rỗng" (console/TRAPS.md); scrape thiếu các gauge này CHÍNH LÀ tín hiệu "chưa có dữ liệu vòng tool".

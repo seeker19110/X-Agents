@@ -57,8 +57,7 @@ def _superseded(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
     return True
 
 def _note_closed(o: Orchestrator) -> None:
-    """Ghi `ticket.closed` cho ticket vừa vào trạng thái cuối. `metrics.collect` tính lead time (tasks đầu → closed)
-    từ chính action này; không ai phát thì `ticket_lead_seconds` luôn rỗng và gauge Prometheus không bao giờ hiện."""
+    """Ghi `ticket.closed` cho ticket vừa vào trạng thái cuối; lead time được đo riêng tại `integration.merged`."""
     for tid, st in list(o.lead.state.items()):
         if st != "closed": continue
         t = o.lead.tickets.get(tid)
