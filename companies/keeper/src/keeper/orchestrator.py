@@ -198,7 +198,7 @@ class KeeperOrchestrator:
             # `evidence` cho bất cứ ai publish được `verification-reports` (`sc-security` chấm BT7).
             if self.VERIFY_ON_APPLY:
                 try:
-                    self._check_report(r)
+                    self._check_report(r, env.key)
                 except EvidenceError as e:
                     self._reject_report(env, r, e)
                     return
@@ -223,9 +223,14 @@ class KeeperOrchestrator:
 
         Ticket đã `verified` từ báo cáo TRƯỚC thì bị thu hồi: báo cáo mới nhất trên bus quyết định. Giữ báo cáo
         cũ không chống được giả mạo (kẻ ghi được topic này dựng được cả báo cáo trông hợp lệ), chỉ để cổng
-        `evidence` mở trên bằng chứng mà lần đo sau đã phủ nhận."""
-        self.verified.discard(report.ticket_id)
-        self.reports.pop(report.ticket_id, None)
+        `evidence` mở trên bằng chứng mà lần đo sau đã phủ nhận.
+
+        Thu hồi cả ticket của `env.key` lẫn của payload: báo cáo có key lệch payload (`_check_report`) không nói nó
+        là của ticket nào, và nó là báo cáo mới nhất của CẢ HAI — theo payload (`_apply`) và theo chỉ mục (topic, key)
+        của bus (`bus.latest`). Người ghi bus chỉ đóng được cổng, không mở được."""
+        for ticket_id in {report.ticket_id, env.key}:
+            self.verified.discard(ticket_id)
+            self.reports.pop(ticket_id, None)
         data = {"ticket_id": report.ticket_id, "event_id": env.event_id, "error": str(err)[:300]}
         if self._replaying:
             self._pending_rejects.append((env.event_id, data))
@@ -263,11 +268,18 @@ class KeeperOrchestrator:
 
     # ---------- verify (I2) ----------
 
-    def _check_report(self, report: VerificationReport) -> None:
+    def _check_report(self, report: VerificationReport, key: str) -> None:
         """MỘT phép kiểm cho cả đường dựng (`record_verification`) lẫn đường nạp (`_apply`): hai đường mà kiểm
         khác nhau thì replay cho kết quả khác lần ghi. `check_report` (I2 + rà họ lỗi) cộng danh tính patch: báo
         cáo không nói nó đo nội dung nào thì không mở được cổng cho nội dung nào cả (ADR keeper 0001, mục b). Báo cáo
-        mang `payload_error` (phần model kể sai hình, xem `record_verification`) không bao giờ đạt."""
+        mang `payload_error` (phần model kể sai hình, xem `record_verification`) không bao giờ đạt.
+
+        `key` là key của envelope MANG báo cáo. Bus không ràng buộc nó với `ticket_id` trong payload; lệch thì
+        "báo cáo mới nhất của ticket X" có hai câu trả lời (`_apply` khoá theo payload, `bus.latest` theo key) — báo
+        cáo ấy hỏng, không mở cổng cho ticket nào."""
+        if key != report.ticket_id:
+            raise EvidenceError(f"báo cáo mang key {key!r} nhưng payload nói ticket {report.ticket_id!r} — không "
+                                "biết nó là báo cáo của ticket nào; từ chối và thu hồi cả hai (fail closed)")
         if report.payload_error is not None:
             raise EvidenceError(f"phần model kể của {report.ticket_id} sai hình, không dựng được báo cáo — chỉ còn số "
                                 f"đo, không đủ để rời pha quality: {report.payload_error}")
@@ -304,7 +316,9 @@ class KeeperOrchestrator:
             cause = e
             report = build_report({"ticket_id": ticket_id, "payload_error": str(e)[:1000]}, evidence=evidence)
         try:
-            self._check_report(report)
+            # Key là `report.ticket_id` — đúng key hai lời publish dưới đây dùng, nên phép so key luôn qua ở đây;
+            # nó nằm trong `_check_report` để lần ghi và replay chạy CÙNG một phép kiểm.
+            self._check_report(report, report.ticket_id)
         except EvidenceError as err:
             self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
             if cause is not None:
