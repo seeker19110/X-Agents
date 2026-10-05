@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- feat(company): **cắt PRD theo mục ưu tiên khi ngữ cảnh chạm trần**: giữ trọn tiêu chí nghiệm thu, user story và NFR nếu vừa ngân sách; mục bị bỏ mang nhãn và đường đọc bản đầy đủ. Core thêm callback tùy chọn, đường mặc định giữ nguyên; ADR gốc 0029, test đỏ cho prompt mất AC-01 trước khi sửa. PR đang chờ hàng đợi.
+- feat(company): **cắt PRD theo mục ưu tiên khi ngữ cảnh chạm trần**: giữ trọn tiêu chí nghiệm thu, user story và NFR nếu vừa ngân sách; mục bị bỏ mang nhãn và đường đọc bản đầy đủ. Core thêm callback tùy chọn, đường mặc định giữ nguyên; ADR gốc 0029, test đỏ cho prompt mất AC-01 trước khi sửa. (#388).
 - refactor(company): **tách xử lý lỗi agent khỏi quyết định gate (O4)**: `orch/error_flow.py` giữ stall, rework, autoretry và unhandled; `orch/gates_flow.py` còn 299 dòng, sẵn chỗ cho thay đổi tiếp theo. Bảng chuyển trạng thái và hành vi cũ giữ nguyên; test ràng buộc method của `Orchestrator` vào đúng module. (#387).
 - feat(company): **sao lưu `company.sqlite` đang chạy bằng SQLite backup API**: lệnh `orchestrator backup --out <file mới>` đọc cả WAL, kiểm toàn vẹn, công bố bản sao sau khi hoàn tất và không ghi đè đích; hướng dẫn checkout watcher riêng ở runbook. Test đỏ trước khi có lệnh, test WAL mở và các nhánh lỗi. (#386).
 - fix(company): **màn đọc gate reviewer có chữ ký khi cờ tắt**: gate vẫn fail closed nhưng `gate_cli list`, `status`, `metrics` và console phân biệt quyết định đã ký nhưng chưa áp với việc chờ người; metrics đếm gate từ cùng `PersistentGate` và tách số thực sự chờ người. (#385).
