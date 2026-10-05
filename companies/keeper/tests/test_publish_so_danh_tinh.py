@@ -289,6 +289,64 @@ def test_publish_kiem_lai_truoc_lan_push_thu_hai(
     assert o.notes[wt.ticket_id].pr_number is None
 
 
+def _chen_commit_khi_push(monkeypatch: pytest.MonkeyPatch, lan_chen: int) -> dict[str, Any]:
+    """Bọc `push_branch` của orchestrator: ở lần gọi thứ `lan_chen` — tức SAU khi `_require_measured` kiểm xong,
+    TRƯỚC khi push thật — ghi sha đầu nhánh lúc vừa kiểm, rồi commit code chưa đo vào nhánh ticket như một tiến
+    trình khác, rồi mới push. Trả sổ ghi `da_kiem` (sha đã kiểm) và `chen` (sha commit chen)."""
+    goc_push = orch_mod.push_branch
+    so: dict[str, Any] = {"lan": 0}
+
+    def push_bi_chen(w: KeeperWorktree, **kw: Any) -> None:
+        so["lan"] += 1
+        if so["lan"] == lan_chen:
+            so["da_kiem"] = _git(w.path, "rev-parse", f"refs/heads/{w.branch}")
+            (w.path / "app.py").write_text("x = 6  # chen giữa kiểm và push, chưa đo\n", encoding="utf-8")
+            _commit(w.path, "commit chen")
+            so["chen"] = _git(w.path, "rev-parse", "HEAD")
+        goc_push(w, **kw)
+
+    monkeypatch.setattr(orch_mod, "push_branch", push_bi_chen)
+    return so
+
+
+def _remote_co_object(remote: Path, sha: str) -> bool:
+    return subprocess.run(["git", "-C", str(remote), "cat-file", "-e", sha], capture_output=True).returncode == 0
+
+
+def test_publish_day_dung_sha_da_kiem_khi_commit_chen_truoc_lan_push_dau(
+    monkeypatch: pytest.MonkeyPatch, repo: Path, remote: Path, spy: _RunSpy
+) -> None:
+    """Khe TOCTOU: kiểm cây nhánh rồi push theo TÊN nhánh thì commit chen vào giữa hai bước đi lên remote mà
+    không ai đo. Remote phải nhận đúng sha đã kiểm; commit chen không được có mặt trên remote."""
+    o, wt = _da_do(repo)
+    _ghi_release_va_commit(o, wt)
+    so = _chen_commit_khi_push(monkeypatch, lan_chen=1)
+
+    with pytest.raises(EvidenceError, match=r"app\.py"):  # lần kiểm thứ hai thấy commit chen, dừng
+        o.publish(wt.ticket_id, wt, now=NOW)
+
+    assert _nhanh_tren_remote(remote, wt).startswith(so["da_kiem"]), "remote phải ở đúng sha đã kiểm"
+    assert not _remote_co_object(remote, so["chen"]), "commit chen không được lên remote"
+    assert o.notes[wt.ticket_id].pr_number is None
+
+
+def test_publish_day_dung_sha_da_kiem_khi_commit_chen_truoc_lan_push_thu_hai(
+    monkeypatch: pytest.MonkeyPatch, repo: Path, remote: Path, spy: _RunSpy
+) -> None:
+    """Cùng khe ở lần push mang commit điền số PR: kiểm xong commit điền số rồi mới có commit chen — remote nhận
+    commit điền số (đã kiểm), không nhận commit chen; lần publish sau không push nữa nên nó không bao giờ lọt."""
+    o, wt = _da_do(repo)
+    _ghi_release_va_commit(o, wt)
+    so = _chen_commit_khi_push(monkeypatch, lan_chen=2)
+
+    pr = o.publish(wt.ticket_id, wt, now=NOW)
+
+    assert pr is not None and pr.number == 9
+    assert _nhanh_tren_remote(remote, wt).startswith(so["da_kiem"]), "remote phải ở đúng commit điền số đã kiểm"
+    assert "(#9)" in _git(wt.path, "show", f"{so['da_kiem']}:CHANGELOG.md")
+    assert not _remote_co_object(remote, so["chen"]), "commit chen không được lên remote"
+
+
 def test_publish_lan_hai_sau_khi_da_dien_so_van_qua(monkeypatch: pytest.MonkeyPatch, repo: Path, remote: Path) -> None:
     """Dòng release đã mang `(#9)` (lần publish trước điền + commit rồi push hỏng) vẫn là dòng của note: `(#PR)`
     hoặc `(#<số>)` đều khớp."""

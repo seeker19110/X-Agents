@@ -166,6 +166,13 @@ def test_cam_regression_guard_khong_tu_khai_verified_by():
     assert "verified_by" in p
 
 
+def test_cam_regression_guard_khong_tu_khai_patch_id():
+    """regression-guard biết `patch_id` và `before`/`after` do code đo (`evidence.SELF_CLAIM_FIELDS`, ADR keeper
+    0001/0002), không tự khai; sửa worktree sau lần đo là bằng chứng cũ hết khớp, phải đo lại."""
+    p = AGENTS["regression-guard"].prompt
+    assert "patch_id" in p and "`before`/`after`" in p and "đo lại" in p.lower()
+
+
 @pytest.mark.parametrize("agent_id", IDS)
 def test_moi_agent_nhac_bat_bien_I1(agent_id: str):
     """Câu cấm bắt buộc §9: mọi agent — keeper không có quyền ghi ngoài tạo nhánh / commit trong worktree của

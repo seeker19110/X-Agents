@@ -20,12 +20,15 @@ from pathlib import Path
 
 import pytest
 
+from keeper.bus import KeeperBus
+from keeper.core import CORE
 from keeper.events import Envelope, RunOutcome, Signal, Ticket
 from keeper.evidence import (
     SELF_CLAIM_FIELDS,
     TRUSTED_VERIFIER,
     EvidenceError,
     TwoWayEvidence,
+    build_report,
     collect_two_way,
     verification_report,
 )
@@ -347,6 +350,56 @@ def test_danh_tinh_none_khong_bao_gio_khop_ke_ca_bao_cao_none_da_lot_vao_verifie
     o.bus.publish(Envelope(topic="verification-reports", key=t.ticket_id, actor="regression-guard", payload=cu))
     assert t.ticket_id in o.verified
     assert "evidence" in o.pr_blockers(t)
+
+
+# ---------- (9) `key` của envelope lệch `ticket_id` trong payload ⇒ báo cáo hỏng, thu hồi cả hai ----------
+
+
+def _bao_cao_tu_tien_trinh_khac(tmp_path: Path, *, key: str, ticket_id: str, ok: bool = True) -> None:
+    """Báo cáo ghi thẳng lên bus bởi tiến trình KHÁC (không qua `record_verification`): `key` của envelope và
+    `ticket_id` trong payload do người ghi tự chọn — bus không ràng buộc hai thứ ấy với nhau."""
+    report = build_report({"ticket_id": ticket_id}, evidence=_ev(ok=ok))
+    bus = KeeperBus(CORE, tmp_path / "keeper.sqlite")
+    bus.publish(Envelope(topic="verification-reports", key=key, actor="regression-guard", payload=report.model_dump()))
+    bus.close()
+
+
+def test_bao_cao_key_lech_payload_khong_mo_cong_cho_ticket_trong_payload(tmp_path: Path):
+    """Đo 2026-10-05 trước bản sửa: báo cáo ĐẠT I2 cho `t1` mang key `t2` ⇒ `t1` verified, cổng `evidence` mở, trong
+    khi `bus.latest("verification-reports", t1)` là `None` — chỉ mục (topic, key) của chính bus nói `t1` chưa có báo
+    cáo nào. Báo cáo không nói nhất quán nó là của ticket nào thì không mở cổng cho ticket nào."""
+    cay = _Cay()
+    o = _orc(tmp_path, cay)
+    t1, t2 = _hai_ticket(o)
+    _bao_cao_tu_tien_trinh_khac(tmp_path, key=t2.ticket_id, ticket_id=t1.ticket_id)
+    o.bus.poll()
+
+    assert t1.ticket_id not in o.verified and "evidence" in o.pr_blockers(t1)
+    assert t1.ticket_id not in _orc(tmp_path, cay).verified, "replay cho cùng kết quả với lần nạp sống"
+    (ghi,) = _rejects(_orc(tmp_path, cay))
+    assert t2.ticket_id in ghi.payload["evidence"], "lý do từ chối nêu cả key lệch, không chỉ ticket của payload"
+
+
+def test_bao_cao_key_lech_payload_thu_hoi_ca_ticket_mang_key(tmp_path: Path):
+    """Đo 2026-10-05 trước bản sửa: `t2` đã verified đúng khuôn, rồi một báo cáo HỎNG mang key `t2` (payload `t1`)
+    ⇒ `t2` vẫn verified, trong khi báo cáo mới nhất của `t2` theo chỉ mục (topic, key) là báo cáo hỏng ấy — đúng hình
+    "báo cáo cũ thắng báo cáo mới" (`TRAPS.md` dòng K6), chỉ là nhìn theo trục key. Thu hồi CẢ HAI ticket: người ghi
+    bus chỉ đóng được cổng, không mở được."""
+    cay = _Cay()
+    o = _orc(tmp_path, cay)
+    t1, t2 = _hai_ticket(o)
+    o.record_verification(t1.ticket_id, {"ticket_id": t1.ticket_id}, _ev())
+    o.record_verification(t2.ticket_id, {"ticket_id": t2.ticket_id}, _ev())
+    _bao_cao_tu_tien_trinh_khac(tmp_path, key=t2.ticket_id, ticket_id=t1.ticket_id, ok=False)
+    o.bus.poll()
+
+    moi = o.bus.latest("verification-reports", t2.ticket_id)
+    assert moi is not None and moi.payload["ticket_id"] == t1.ticket_id, "báo cáo mới nhất theo key t2 là báo cáo lệch"
+    assert not ({t1.ticket_id, t2.ticket_id} & o.verified)
+    assert not ({t1.ticket_id, t2.ticket_id} & set(o.reports))
+    assert "evidence" in o.pr_blockers(t1) and "evidence" in o.pr_blockers(t2)
+    assert not ({t1.ticket_id, t2.ticket_id} & _orc(tmp_path, cay).verified), "replay cho cùng kết quả"
+    assert len(_rejects(_orc(tmp_path, cay))) == 1
 
 
 # ---------- `collect_two_way` tự đo danh tính ----------

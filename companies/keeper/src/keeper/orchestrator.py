@@ -73,7 +73,7 @@ from .patcher import HUMAN_ONLY_SEGMENTS
 from .publish import PullRequest, PullRequestExists, create_pr, push_branch
 from .release import compose, fill_pr_number, unmeasured_changes
 from .triage import ObservedSignal, TriageState, triager
-from .worktree import KeeperWorktree, WorktreeError, content_tree, tree_of
+from .worktree import KeeperWorktree, WorktreeError, commit_of, content_tree, tree_of
 
 __all__ = ["BLOCKED_ACTION", "CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "SUBJECT_OVERRIDDEN_ACTION",
            "KeeperOrchestrator", "TickResult", "touches_human_only"]
@@ -198,7 +198,7 @@ class KeeperOrchestrator:
             # `evidence` cho bất cứ ai publish được `verification-reports` (`sc-security` chấm BT7).
             if self.VERIFY_ON_APPLY:
                 try:
-                    self._check_report(r)
+                    self._check_report(r, env.key)
                 except EvidenceError as e:
                     self._reject_report(env, r, e)
                     return
@@ -223,9 +223,14 @@ class KeeperOrchestrator:
 
         Ticket đã `verified` từ báo cáo TRƯỚC thì bị thu hồi: báo cáo mới nhất trên bus quyết định. Giữ báo cáo
         cũ không chống được giả mạo (kẻ ghi được topic này dựng được cả báo cáo trông hợp lệ), chỉ để cổng
-        `evidence` mở trên bằng chứng mà lần đo sau đã phủ nhận."""
-        self.verified.discard(report.ticket_id)
-        self.reports.pop(report.ticket_id, None)
+        `evidence` mở trên bằng chứng mà lần đo sau đã phủ nhận.
+
+        Thu hồi cả ticket của `env.key` lẫn của payload: báo cáo có key lệch payload (`_check_report`) không nói nó
+        là của ticket nào, và nó là báo cáo mới nhất của CẢ HAI — theo payload (`_apply`) và theo chỉ mục (topic, key)
+        của bus (`bus.latest`). Người ghi bus chỉ đóng được cổng, không mở được."""
+        for ticket_id in {report.ticket_id, env.key}:
+            self.verified.discard(ticket_id)
+            self.reports.pop(ticket_id, None)
         data = {"ticket_id": report.ticket_id, "event_id": env.event_id, "error": str(err)[:300]}
         if self._replaying:
             self._pending_rejects.append((env.event_id, data))
@@ -263,11 +268,18 @@ class KeeperOrchestrator:
 
     # ---------- verify (I2) ----------
 
-    def _check_report(self, report: VerificationReport) -> None:
+    def _check_report(self, report: VerificationReport, key: str) -> None:
         """MỘT phép kiểm cho cả đường dựng (`record_verification`) lẫn đường nạp (`_apply`): hai đường mà kiểm
         khác nhau thì replay cho kết quả khác lần ghi. `check_report` (I2 + rà họ lỗi) cộng danh tính patch: báo
         cáo không nói nó đo nội dung nào thì không mở được cổng cho nội dung nào cả (ADR keeper 0001, mục b). Báo cáo
-        mang `payload_error` (phần model kể sai hình, xem `record_verification`) không bao giờ đạt."""
+        mang `payload_error` (phần model kể sai hình, xem `record_verification`) không bao giờ đạt.
+
+        `key` là key của envelope MANG báo cáo. Bus không ràng buộc nó với `ticket_id` trong payload; lệch thì
+        "báo cáo mới nhất của ticket X" có hai câu trả lời (`_apply` khoá theo payload, `bus.latest` theo key) — báo
+        cáo ấy hỏng, không mở cổng cho ticket nào."""
+        if key != report.ticket_id:
+            raise EvidenceError(f"báo cáo mang key {key!r} nhưng payload nói ticket {report.ticket_id!r} — không "
+                                "biết nó là báo cáo của ticket nào; từ chối và thu hồi cả hai (fail closed)")
         if report.payload_error is not None:
             raise EvidenceError(f"phần model kể của {report.ticket_id} sai hình, không dựng được báo cáo — chỉ còn số "
                                 f"đo, không đủ để rời pha quality: {report.payload_error}")
@@ -304,7 +316,9 @@ class KeeperOrchestrator:
             cause = e
             report = build_report({"ticket_id": ticket_id, "payload_error": str(e)[:1000]}, evidence=evidence)
         try:
-            self._check_report(report)
+            # Key là `report.ticket_id` — đúng key hai lời publish dưới đây dùng, nên phép so key luôn qua ở đây;
+            # nó nằm trong `_check_report` để lần ghi và replay chạy CÙNG một phép kiểm.
+            self._check_report(report, report.ticket_id)
         except EvidenceError as err:
             self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
             if cause is not None:
@@ -410,7 +424,8 @@ class KeeperOrchestrator:
         `pr_number` thì trả `None` ngay, không gọi `push`/`gh` lần hai (I3).
 
         TRƯỚC MỖI lần push, `_require_measured` so thứ sắp push với nội dung đã đo (ADR keeper 0002): lệch ⇒
-        `EvidenceError`, không push. Lần push thứ hai cũng kiểm, vì commit điền số là `commit -a`."""
+        `EvidenceError`, không push. Lần push thứ hai cũng kiểm, vì commit điền số là `commit -a`. Thứ được push là
+        ĐÚNG sha commit vừa kiểm, không phải tên nhánh."""
         note = self.notes.get(ticket_id)
         if note is None:
             raise ValueError(f"{ticket_id} chưa có release-notes — open_pr() chưa qua hết cổng?")
@@ -418,8 +433,8 @@ class KeeperOrchestrator:
             return None
         ticket = self.tickets[ticket_id]
 
-        self._require_measured(ticket_id, wt, note)
-        push_branch(wt, remote=remote)
+        sha = self._require_measured(ticket_id, wt, note)
+        push_branch(wt, remote=remote, sha=sha)
         try:
             pr = create_pr(self.repo, title=f"fix(keeper): {ticket.subject}",
                            body=f"Ticket bảo trì `{ticket_id}` — mở tự động bởi keeper (I1), cần người merge.",
@@ -432,14 +447,14 @@ class KeeperOrchestrator:
         # Điền số chỉ trong worktree là chưa xong: phải thành commit THỨ HAI và lên remote, TRƯỚC khi note mang
         # `pr_number` lên bus — note có số rồi thì lần `publish()` sau trả sớm, và PR giữ `(#PR)` mãi.
         wt.commit_tracked(f"chore(keeper): điền số PR #{pr.number} cho {ticket_id}")
-        self._require_measured(ticket_id, wt, note)
-        push_branch(wt, remote=remote)
+        sha = self._require_measured(ticket_id, wt, note)
+        push_branch(wt, remote=remote, sha=sha)
         self._publish("release-notes", ticket_id, RELEASE_ACTOR, moi.model_dump())
         self._audit("pr.created", {"ticket_id": ticket_id, "pr_number": pr.number, "url": pr.url},
                     ticket_id=ticket_id)
         return pr
 
-    def _require_measured(self, ticket_id: str, wt: KeeperWorktree, note: ReleaseNote) -> None:
+    def _require_measured(self, ticket_id: str, wt: KeeperWorktree, note: ReleaseNote) -> str:
         """Chốt I2 ở bước ra ngoài máy (ADR keeper 0002): cây NHÁNH sắp push phải là cây đã đo (`patch_id`) cộng
         đúng dòng release của `note` — không gì khác. Ném `EvidenceError` (không push) khi:
 
@@ -449,14 +464,18 @@ class KeeperOrchestrator:
         - không đo được (worktree mất, cây đã đo không còn trong kho, git lỗi) — fail closed.
 
         Đo đúng `wt` (thứ bị push), không qua `patch_identity(ticket_id)`: hai cái chỉ trùng khi `wt` là worktree
-        mặc định của ticket, còn chốt thì phải nhìn đúng thứ nó thả đi."""
-        # no-ky-thuat: kiểm cây nhánh rồi push theo TÊN nhánh chứ không theo sha đã kiểm nên tiến trình khác commit vào nhánh ticket trong ~100 ms giữa kiểm và push thì lọt, quay lại khi publish được nối tự động vào watch hoặc có hơn một tiến trình ghi worktree của ticket
+        mặc định của ticket, còn chốt thì phải nhìn đúng thứ nó thả đi.
+
+        Phân giải `refs/heads/<nhánh>` ra sha commit MỘT lần, kiểm cây của chính sha đó (không đọc lại ref) và trả
+        sha ấy; người gọi push đúng sha này (`push_branch(sha=...)`). Commit chen vào nhánh giữa kiểm và push vì
+        thế không lên remote — lần publish sau (nếu còn) kiểm lại từ đầu."""
         report = self.reports.get(ticket_id)
         if report is None or report.patch_id is None:
             raise EvidenceError(f"{ticket_id}: không còn báo cáo đạt I2 mang patch_id — từ chối publish; đo lại "
                                 "bằng collect_two_way rồi open_pr (ADR keeper 0002)")
         try:
-            pushed = tree_of(wt.path, f"refs/heads/{wt.branch}")
+            sha = commit_of(wt.path, f"refs/heads/{wt.branch}")
+            pushed = tree_of(wt.path, sha)
             if content_tree(wt.path) != pushed:
                 raise EvidenceError(f"{ticket_id}: worktree {wt.path} còn thay đổi chưa commit — bước điền số PR "
                                     "(commit -a) sẽ đưa chúng lên PR mà không ai đo; commit hoặc bỏ rồi đo lại")
@@ -467,6 +486,7 @@ class KeeperOrchestrator:
         if bad:
             raise EvidenceError(f"{ticket_id}: nhánh {wt.branch} khác nội dung đã đo ({report.patch_id[:12]}) ở "
                                 f"{'; '.join(bad[:5])} — đo lại bằng collect_two_way (ADR keeper 0002)")
+        return sha
 
     # ---------- vòng lặp ----------
 
