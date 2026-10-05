@@ -7,6 +7,7 @@ người ngay trong chính core — mỗi dòng có test hoặc đoạn code là
 
 | Bẫy | Đã xảy ra | Chốt chặn / lần sau |
 |---|---|---|
+| Docker Linux coi `--env-file -` là tên file | 2026-10-05: Engine WSL chạy được nhưng `ContainerSandbox.run` trả 125 `open -: no such file or directory`; test giả chỉ kiểm có cờ `--env-file`, không kiểm đối số | POSIX dùng `/dev/stdin` và ca `test_container_env_file_doc_stdin_qua_dev_stdin` kiểm đúng đối số; chạy container thật trước khi chuyển watcher |
 | Đồng hồ Windows bước ~15,6ms làm 2 gate trùng khoá `once` | Hai gate cùng `subject_id` mở cách nhau <16ms có cùng `created_at` → khoá chống-trùng nuốt mất lần quá hạn thứ hai (đo 2026-09-09) | `GateRequest.seq` là bộ đếm tăng dần thay `created_at` để phân biệt thế hệ (`gates.py`) |
 | `PersistentGate` tin `evidence.by` thay vì `env.actor` | Lỗ hổng "actor giả mạo qua evidence" bị vá 2 LẦN Ở 2 CHỖ KHÁC NHAU trước khi hai công ty hợp nhất về một `gate_cli.py` — cùng lỗ hổng, hai lần phát hiện độc lập | `trusted_decision` chỉ đọc `env.actor` (ACL producer lúc publish), không đọc trường tự khai trong payload |
 | `RecordingClient` không chốt `prompt_version` đúng lúc | Sự cố 2026-09-05: ghi bản eval xong đổi prompt, bản ghi cũ vẫn coi là hợp lệ vì version chốt muộn | Chốt `prompt_version` lúc `__init__`; `save()` GỘP thay vì ghi đè (`evals.py`) |
