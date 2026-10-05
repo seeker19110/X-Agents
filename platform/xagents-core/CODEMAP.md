@@ -20,6 +20,7 @@ file giải thích "vì sao" — CODEMAP này trỏ tới đúng chỗ đọc, k
 | Khung event chung (5 lớp) | `Envelope`/`SharedContext`/`AuditLog`/`SupervisorAction`/`can_transition` (`events.py`) — lớp con công ty thu hẹp Literal | `tests/test_events.py` |
 | Nơi core biết một công ty ở đâu | `CoreConfig`/`TopicACL` (`config.py`) — ADR-0001 §2, chỗ DUY NHẤT | `tests/test_config.py` |
 | Sandbox tiến trình con | `SubprocessSandbox`/`ContainerSandbox` (`sandbox.py`, ADR-0035/0010) — fail-closed, mạng tắt mặc định | `tests/test_sandbox.py` |
+| Mạng ra ngoài sandbox | `egress.py` — EgressProxy, DockerSquidProxy, ACL hostname chính xác, network internal và relay cổng smoke (ADR gốc 0010/S2) | `tests/test_egress.py` |
 | Span quan sát được | `observe.py` (ADR-0009) — 3 ranh giới: `runner.step`, `llm.complete`, `tool.call`; `sink=None` phải no-op tuyệt đối | `tests/test_observe.py` |
 | Dòng thời gian một chủ thể từ audit-log | `trace.py` — `base_row`/`audit_row`/`_gop_lap`/`summarize`/`render`; core không biết tên topic | `tests/test_trace.py` |
 | Ghi/phát lại eval prompt | `evals.py` (K3.6c) — `prompt_key`, `RecordingClient`/`ReplayClient`, `stale_recordings` | `tests/test_evals.py` |

@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(core): S2 enforce egress bằng network internal và Squid ACL hostname; subprocess từ chối allowlist, uv của company chỉ tới PyPI, smoke qua relay cổng riêng. Test container thật đo domain cho phép/bị chặn, bypass/DNS và cleanup; image Python khách có uv. (số PR bổ sung sau khi tạo).
+
 - fix(core): S1 theo ADR gốc 0023 — `auto` thiếu Docker/Podman dừng trước khi chạy mã khách; CLI ghi `sandbox.mode`, status và console hiện cảnh báo cho `subprocess` tường minh; ca F1 dùng container thật kiểm bus ngoài mount. (#392).
 - fix(docker): hub nhận traffic publish qua bind trong container và chỉ mở loopback host; image có Compose plugin, Git identity không ghi mount `.gitconfig` chỉ đọc. Ba hồi quy đỏ trước sửa; build và compose thật trả HTTP 200. (#393).
 

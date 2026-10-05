@@ -346,3 +346,20 @@ def test_orchestrator_mac_dinh_subprocess_khong_doc_cau_hinh(monkeypatch):
     monkeypatch.setenv("COMPANY_SANDBOX", "container")
     o = Orchestrator(InMemoryBus(), FakeClient(handler=handler))
     assert isinstance(o.sandbox, SubprocessSandbox)
+
+
+@pytest.mark.parametrize('caller', ['tools', 'workspace', 'licenses'])
+@pytest.mark.parametrize('mode', ['container:test', 'subprocess'])
+def test_s2_uv_chi_mo_pypi_trong_container_khong_mo_mang_khac(tmp_path, caller, mode):
+    from company.supply_chain import installed_licenses
+    ws = _ws(tmp_path)
+    (ws.path / 'pyproject.toml').write_text(
+        '[project]\nname="khach"\nversion="0.1.0"\ndependencies=["pytest", "ruff"]\n')
+    spy = SpySandbox(name=mode, stdout='{}'); ws.sandbox = spy
+    if caller == 'tools': WorkspaceTools(ws).run('lint')
+    elif caller == 'workspace': ws.run_checks()
+    else: installed_licenses(ws.path, spy)
+    assert spy.specs
+    for spec in spy.specs:
+        assert spec.argv[0] == 'uv' and spec.network is False
+        assert spec.allowed_domains == (('pypi.org', 'files.pythonhosted.org') if mode.startswith('container:') else ())

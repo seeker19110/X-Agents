@@ -117,3 +117,10 @@ def test_o3_git_identity_khong_ghi_vao_config_mount_chi_doc() -> None:
     entry = ENTRYPOINT.read_text(encoding="utf-8")
     assert "git config --global" not in entry, "compose mount .gitconfig chỉ đọc; ghi làm hub chết trước khởi động"
     assert "export GIT_COMMITTER_NAME=" in entry and "export GIT_COMMITTER_EMAIL=" in entry
+
+def test_s2_image_python_khach_co_uv_va_khong_tu_tai_interpreter():
+    doc = (ROOT / 'docker/customer-python.Dockerfile').read_text(encoding='utf-8')
+    assert 'ghcr.io/astral-sh/uv:0.9.9' in doc
+    assert 'UV_PYTHON_DOWNLOADS=never' in doc
+    assert 'UV_CACHE_DIR=/tmp/uv-cache' in doc
+    assert 'UV_PROJECT_ENVIRONMENT=/tmp/xagents-venv' in doc

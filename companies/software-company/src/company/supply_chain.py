@@ -17,7 +17,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .sandbox import RunSpec, clean_env
+from .sandbox import RunSpec, clean_env, registry_domains
 from .smoke import VERIFIED_BY, unverified
 
 NOASSERTION = "NOASSERTION"
@@ -121,6 +121,7 @@ def installed_licenses(root: Path, sandbox: Any) -> tuple[dict[str, str], str | 
         env=clean_env(),
         timeout=600.0,
         max_output=2_000_000,
+        allowed_domains=registry_domains(("uv",), sandbox.name),
     )
     data, err = _json_run(sandbox, spec)
     return {str(k): str(v) for k, v in data.items()}, err

@@ -132,12 +132,12 @@ def test_container_env_file_doc_stdin_qua_dev_stdin(tmp_path):
 
 def test_container_mount_chi_doc_cho_qc_va_mo_cong_khi_can_mang(tmp_path):
     rec: list[dict[str, Any]] = []
-    sb = ContainerSandbox("docker", "img:1", runner=_fake_runner(rec))
+    sb = ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), egress=_Egress())
     sb.run(RunSpec(argv=["ffprobe"], cwd=tmp_path, read_only=True))
     assert f"{tmp_path}:/w:ro" in rec[0]["argv"]
     sb.run(RunSpec(argv=["srv"], cwd=tmp_path, network=True, port=8080))
-    assert rec[1]["argv"][rec[1]["argv"].index("--network") + 1] == "bridge"
-    assert "127.0.0.1:8080:8080" in rec[1]["argv"]
+    assert rec[1]["argv"][rec[1]["argv"].index("--network") + 1] == "isolated"
+    assert "-p" not in rec[1]["argv"]  # publish nằm ở relay, workload vẫn chỉ internal
 
 
 def test_container_khi_can_stdin_thi_env_buoc_phai_ra_dong_lenh(tmp_path):
@@ -509,3 +509,92 @@ def test_subprocess_thieu_binary_tra_127_nhu_container_chu_khong_nem(tmp_path):
     r = SubprocessSandbox().run(RunSpec(argv=["khong-co-lenh-nay-xyz", "--version"], cwd=tmp_path, env=clean_env()))
     assert (r.exit_code, r.timed_out, r.sandbox) == (127, False, "subprocess")
     assert "khong-co-lenh-nay-xyz" in r.stderr and r.stdout == ""
+
+
+@pytest.mark.parametrize('method', ['run', 'spawn'])
+def test_s2_subprocess_khong_gia_vo_enforce_domain_allowlist(tmp_path, method):
+    spec = RunSpec(argv=['python', '-V'], cwd=tmp_path, allowed_domains=('pypi.org',))
+    with pytest.raises(SandboxError, match='allowed_domains'):
+        getattr(SubprocessSandbox(), method)(spec)
+
+
+class _Egress:
+    def __init__(self):
+        self.closed = 0; self.opened = []
+        self.network = 'isolated'; self.env = {'HTTPS_PROXY': 'http://proxy:3128'}
+
+    def open(self, name, domains, port=None):
+        self.opened.append((name, domains)); return self
+
+    def close(self):
+        self.closed += 1
+
+
+@pytest.mark.parametrize('outcome', ['ok', 'timeout', 'error'])
+def test_s2_run_dung_mang_proxy_va_don_ca_loi(tmp_path, outcome):
+    rec = []; proxy = _Egress()
+    def run(argv, **kw):
+        rec.append((argv, kw))
+        if 'rm' in argv: return subprocess.CompletedProcess(argv, 0, '', '')
+        if outcome == 'timeout': raise subprocess.TimeoutExpired(argv, 1)
+        if outcome == 'error': raise OSError('runtime disappeared')
+        return subprocess.CompletedProcess(argv, 0, 'ok', '')
+    sb = ContainerSandbox('docker', 'img', runner=run, egress=proxy, env_via_stdin=True)
+    spec = RunSpec(argv=['x'], cwd=tmp_path, allowed_domains=('pypi.org',), env={'HTTPS_PROXY': 'http://wrong'})
+    if outcome == 'error':
+        with pytest.raises(OSError): sb.run(spec)
+    else:
+        r = sb.run(spec); assert r.timed_out == (outcome == 'timeout')
+    argv, kw = rec[0]
+    assert argv[argv.index('--network') + 1] == 'isolated'
+    assert 'HTTPS_PROXY=http://proxy:3128' in kw['input']
+    assert len(proxy.opened) == 1 and proxy.closed == 1
+
+
+@pytest.mark.parametrize('finish', ['poll', 'kill', 'spawn-error'])
+def test_s2_spawn_don_mang_khi_thoat_kill_hoac_khoi_dong_loi(tmp_path, finish):
+    proxy = _Egress(); proc = _FakeProc()
+    def popen(*a, **kw):
+        if finish == 'spawn-error': raise OSError('spawn failed')
+        return proc
+    sb = ContainerSandbox('docker', 'img', runner=lambda *a, **kw: None, popen=popen, egress=proxy)
+    spec = RunSpec(argv=['x'], cwd=tmp_path, network=True, port=8200)
+    if finish == 'spawn-error':
+        with pytest.raises(OSError): sb.spawn(spec)
+    else:
+        handle = sb.spawn(spec)
+        assert handle.poll() is None and proxy.closed == 0
+        if finish == 'poll': proc._rc = 0; assert handle.poll() == 0
+        else: handle.kill()
+        handle.kill(); handle.poll(); assert handle.stderr_tail(4) == 'cuoi'
+    assert proxy.closed == 1
+
+
+def test_s2_workload_internal_khong_co_dns_ra_ngoai(tmp_path):
+    sb = ContainerSandbox('docker', 'img')
+    argv = sb._argv(RunSpec(argv=['x'], cwd=tmp_path, network=True, port=8200), 'check', 'internal-net')
+    assert argv[argv.index('--dns') + 1] == '127.0.0.1'
+
+
+def test_s2_spawn_stdin_loi_phai_go_workload_truoc_khi_don_mang(tmp_path):
+    proxy = _Egress(); removed = []
+    class BrokenInput:
+        def write(self, text): raise BrokenPipeError('stdin closed')
+    proc = _FakeProc(); proc.stdin = BrokenInput()
+    sb = ContainerSandbox('docker', 'img', egress=proxy, popen=lambda *a, **k: proc,
+                          runner=lambda argv, **k: removed.append(argv))
+    with pytest.raises(BrokenPipeError):
+        sb.spawn(RunSpec(argv=['x'], cwd=tmp_path, network=True, port=8200))
+    assert len(removed) == 1 and removed[0][:3] == ['docker', 'rm', '-f']
+    assert proxy.closed == 1
+
+
+@pytest.mark.parametrize('stdin_env', [True, False])
+def test_s2_container_giu_path_va_venv_cua_image_khong_nhan_host(tmp_path, stdin_env):
+    calls = []
+    sb = ContainerSandbox('docker', 'img', runner=_fake_runner(calls), env_via_stdin=stdin_env)
+    sb.run(RunSpec(argv=['uv', '--version'], cwd=tmp_path,
+                   env={'PATH': 'C:/host/bin', 'Virtual_Env': 'C:/host/.venv', 'APP_MODE': 'test'}))
+    blob = repr(calls)
+    assert 'C:/host' not in blob
+    assert 'APP_MODE=test' in blob

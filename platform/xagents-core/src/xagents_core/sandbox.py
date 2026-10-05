@@ -36,9 +36,12 @@ import signal
 import subprocess
 import sys
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from .egress import EgressProxy, EgressSession
 
 # Hợp đồng của shim `company.sandbox` (keeper nhập thẳng core): `import *` chỉ mang tên trong đây.
 __all__ = ["SECRET_ENV", "ContainerSandbox", "Handle", "Result", "RunSpec", "Sandbox", "SandboxError",
@@ -80,6 +83,7 @@ class RunSpec:
     max_output: int = 6000
     stdin: str | None = None
     read_only: bool = False
+    allowed_domains: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -191,6 +195,8 @@ class SubprocessSandbox:
         self._runner, self._popen = runner, popen
 
     def run(self, spec: RunSpec) -> Result:
+        if spec.allowed_domains:
+            raise SandboxError("subprocess không enforce được allowed_domains")
         try:
             r = self._runner(spec.argv, cwd=str(spec.cwd), capture_output=True, text=True, encoding="utf-8",
                              errors="replace", timeout=spec.timeout, env=sanitize_env(spec.env), input=spec.stdin)
@@ -203,6 +209,8 @@ class SubprocessSandbox:
                       False, self.name)
 
     def spawn(self, spec: RunSpec) -> Handle:
+        if spec.allowed_domains:
+            raise SandboxError("subprocess không enforce được allowed_domains")
         extra: dict[str, Any] = {} if sys.platform == "win32" else {"start_new_session": True}
         return _TreeHandle(self._popen(spec.argv, cwd=str(spec.cwd), env=sanitize_env(spec.env),
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
@@ -222,9 +230,10 @@ class ContainerSandbox:
 
     def __init__(self, runtime: str, image: str, cpus: str = "2", memory: str = "2g",
                  runner: Any = subprocess.run, popen: Any = subprocess.Popen,
-                 env_via_stdin: bool | None = None):
+                 env_via_stdin: bool | None = None, egress: EgressProxy | None = None):
         self.runtime, self.image, self.cpus, self.memory = runtime, image, cpus, memory
         self._runner, self._popen = runner, popen
+        self._egress = egress
         # Windows không có `/dev/stdin` cho Docker CLI; env ra `-e` như ca stdin (cùng đánh đổi, xem docstring
         # module); `None` = tự chọn theo hệ điều hành, đặt tường minh để test không phụ thuộc máy chạy. Tên mang
         # `:env-argv` cùng khuôn `:no-uid`: audit đọc tên là biết cách ly còn gì.
@@ -249,7 +258,7 @@ class ContainerSandbox:
         except (OSError, subprocess.SubprocessError):
             pass
 
-    def _argv(self, spec: RunSpec, name: str) -> list[str]:
+    def _argv(self, spec: RunSpec, name: str, network: str = "none") -> list[str]:
         base = [self.runtime, "run", "--rm", "--name", name, "--pids-limit", "256", "--cpus", self.cpus, "--memory", self.memory]
         uid = self._uid()
         if uid: base += ["-u", uid]
@@ -260,8 +269,8 @@ class ContainerSandbox:
             if spec.stdin is not None: base += ["-i"]
             for k, v in sanitize_env(spec.env).items():
                 base += ["-e", f"{k}={v}"]
-        base += (["--network", "bridge", "-p", f"127.0.0.1:{spec.port}:{spec.port}"] if spec.network
-                 else ["--network", "none"])
+        base += ["--network", network]
+        if network != "none": base += ["--dns", "127.0.0.1"]
         return [*base, self.image, *spec.argv]
 
     def _input(self, spec: RunSpec) -> str:
@@ -272,25 +281,75 @@ class ContainerSandbox:
             return ""   # env đã ra `-e`; không đẩy KEY=VALUE vào stdin của một lệnh không đọc nó
         return "\n".join(f"{k}={v}" for k, v in sanitize_env(spec.env).items() if "\n" not in v)
 
+    def _prepare(self, spec: RunSpec, name: str) -> tuple[RunSpec, EgressSession | None]:
+        spec = replace(spec, env={k: v for k, v in sanitize_env(spec.env).items()
+                                  if k.upper() not in {"PATH", "VIRTUAL_ENV"}})
+        if not spec.network and not spec.allowed_domains:
+            return spec, None
+        from .egress import DockerSquidProxy
+        proxy = self._egress or DockerSquidProxy(self.runtime)
+        session = proxy.open(name, spec.allowed_domains, port=spec.port if spec.network else None)
+        return replace(spec, env=sanitize_env(spec.env) | session.env), session
+
     def run(self, spec: RunSpec) -> Result:
         name = _container_name()
+        spec, session = self._prepare(spec, name)
         try:
-            r = self._runner(self._argv(spec, name), input=self._input(spec), capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=spec.timeout)
-        except subprocess.TimeoutExpired:
-            self._remove(name)
-            return Result(None, "", f"quá {spec.timeout}s", True, self.name)
-        return Result(int(r.returncode), (r.stdout or "")[-spec.max_output:], (r.stderr or "")[-spec.max_output:],
-                      False, self.name)
+            try:
+                r = self._runner(self._argv(spec, name, session.network if session else "none"),
+                                 input=self._input(spec), capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=spec.timeout)
+            except subprocess.TimeoutExpired:
+                self._remove(name)
+                return Result(None, "", f"quá {spec.timeout}s", True, self.name)
+            return Result(int(r.returncode), (r.stdout or "")[-spec.max_output:], (r.stderr or "")[-spec.max_output:],
+                          False, self.name)
+        finally:
+            if session: session.close()
 
     def spawn(self, spec: RunSpec) -> Handle:
         name = _container_name()
-        proc = self._popen(self._argv(spec, name), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                           stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
-        if proc.stdin is not None:
-            proc.stdin.write(self._input(spec))
-            proc.stdin.close()
-        return _ProcHandle(proc, on_kill=lambda: self._remove(name))
+        spec, session = self._prepare(spec, name)
+        try:
+            proc = self._popen(self._argv(spec, name, session.network if session else "none"), stdin=subprocess.PIPE,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+                               encoding="utf-8", errors="replace")
+            if proc.stdin is not None:
+                proc.stdin.write(self._input(spec))
+                proc.stdin.close()
+        except BaseException:
+            self._remove(name)
+            if session: session.close()
+            raise
+        handle = _ProcHandle(proc, on_kill=lambda: self._remove(name))
+        return _NetworkHandle(handle, session) if session else handle
+
+
+class _NetworkHandle:
+    """Giữ network đến khi workload thoát/kill, rồi dọn đúng một lần."""
+
+    def __init__(self, handle: Handle, session: EgressSession):
+        self.handle, self.session = handle, session
+        self.closed = False
+
+    def _close(self) -> None:
+        if not self.closed:
+            self.closed = True
+            self.session.close()
+
+    def poll(self) -> int | None:
+        rc = self.handle.poll()
+        if rc is not None: self._close()
+        return rc
+
+    def kill(self) -> None:
+        try:
+            self.handle.kill()
+        finally:
+            self._close()
+
+    def stderr_tail(self, n: int) -> str:
+        return self.handle.stderr_tail(n)
 
 
 def sandbox_from_settings(mode: str, runtime: str, image: str, env_var: str,

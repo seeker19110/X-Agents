@@ -885,3 +885,17 @@ token gateway.
 3. Duyệt gate; trả lời clarification / change request nếu có.
 4. `report`: chi phí và hành động supervisor bất thường; `llm_retry` cho biết gói nào đang gánh việc.
 5. Sao lưu `company.sqlite` / `keeper.sqlite` nếu có nội dung quan trọng.
+
+### Image và egress cho dự án Python của khách (S2)
+
+Trên cùng Engine mà orchestrator dùng, chuẩn bị trước:
+
+```bash
+docker pull ubuntu/squid:6.6-24.04_beta
+docker pull python:3.12-slim
+docker build -f docker/customer-python.Dockerfile -t xagents-customer-python:local .
+export COMPANY_SANDBOX=container
+export COMPANY_SANDBOX_IMAGE=xagents-customer-python:local
+```
+
+Windows đặt hai biến trên trong môi trường tiến trình watcher, runtime trỏ đường đầy đủ tới docker.exe. Image này có uv và không tải interpreter từ domain khác; phụ thuộc dự án chỉ tải qua hai domain PyPI. Git dependency, registry khác và stack không có tool trong image sẽ dừng — chọn image/policy phù hợp trước khi chạy. Smoke chỉ mở đúng cổng localhost qua relay, không mở toàn bộ Internet cho workload. Không mount bus/config/socket vào image khách.

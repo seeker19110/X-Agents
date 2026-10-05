@@ -111,3 +111,7 @@ thật) — đó là chế độ đã cảnh báo ở trên và đòi firewall/r
 
 Agent trong `software-company` sinh và chạy code trong repo bạn trỏ tới bằng `--repo`. Hãy coi đó là chạy code chưa
 được review: dùng repo riêng, không phải môi trường có quyền production, và đọc diff trước khi merge.
+
+### S2 — mạng của container chạy mã khách
+
+`RunSpec.allowed_domains` rỗng từ chối ra ngoài; `network=True` chỉ cấp cổng smoke qua relay. Workload ở bridge internal, DNS upstream của workload tắt; HTTP(S) ra ngoài qua Squid ACL tên chính xác, cổng 80/443, từ chối IP/private/link-local. `uv` trong company chỉ được tới `pypi.org` và `files.pythonhosted.org`. Không tự pull image trong runtime; proxy lỗi thì dừng trước lệnh khách. Subprocess không thể enforce allowlist và core từ chối nếu được khai domains. Cần chọn image chứa tool của stack khách; image Python mẫu ở `docker/customer-python.Dockerfile`. Socket Docker của hub/deploy vẫn là ngoại lệ đặc quyền, không nằm trong hàng rào này.

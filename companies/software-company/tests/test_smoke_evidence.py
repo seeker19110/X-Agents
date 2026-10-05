@@ -533,3 +533,36 @@ def test_gate_brief_release_hien_evidence_run(tmp_path, monkeypatch):
     b = build(orch, "REL-001")
     assert b["extra"]["staging_reviews"][0]["run"].startswith("ok=True http=200")
     assert "chạy: ok=True http=200" in render_md(b)
+
+
+def _capture_smoke_spec(tmp_path, mode, command):
+    class Done:
+        def poll(self): return 0
+        def stderr_tail(self, limit): return ''
+    class Capture:
+        name = mode
+        def spawn(self, spec):
+            self.spec = spec
+            return Done()
+    sb = Capture()
+    result = run_smoke(tmp_path, Runtime(command), sandbox=sb)
+    return sb.spec, result
+
+
+def test_s2_smoke_waitress_container_bind_nhan_relay(tmp_path):
+    spec, result = _capture_smoke_spec(tmp_path, 'container:img',
+                                      ('uv', 'run', 'waitress-serve', '--listen=127.0.0.1:{port}', 'campus.wsgi:application'))
+    assert any(a.startswith('--listen=0.0.0.0:') for a in spec.argv)
+    assert result['command'] == spec.argv
+
+
+def test_s2_smoke_uv_container_cap_allowlist_pypi(tmp_path):
+    spec, _ = _capture_smoke_spec(tmp_path, 'container:img', ('uv', 'run', 'waitress-serve'))
+    assert spec.allowed_domains == ('pypi.org', 'files.pythonhosted.org')
+
+
+def test_s2_smoke_subprocess_giu_bind_host_va_khong_khai_enforcement(tmp_path):
+    spec, _ = _capture_smoke_spec(tmp_path, 'subprocess',
+                                 ('uv', 'run', 'waitress-serve', '--listen=127.0.0.1:{port}', 'campus.wsgi:application'))
+    assert any(a.startswith('--listen=127.0.0.1:') for a in spec.argv)
+    assert spec.allowed_domains == ()

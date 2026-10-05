@@ -21,7 +21,7 @@ from xagents_core.tools import ToolCall as ToolCall
 from xagents_core.tools import ToolError as ToolError
 from xagents_core.tools import ToolSpec as ToolSpec
 
-from .sandbox import RunSpec, Sandbox, SubprocessSandbox
+from .sandbox import RunSpec, Sandbox, SubprocessSandbox, registry_domains
 from .stacks import detect
 from .workspace import TicketWorkspace, clean_env
 
@@ -210,7 +210,8 @@ class WorkspaceTools:
         # ghép từ allowlist, nhưng NỘI DUNG repo khách thì không — backend `container` chạy nó với mạng tắt và
         # không thấy `HOME` của người vận hành. `env=clean_env()` tường minh (xem `TicketWorkspace._run`).
         r = self.sandbox.run(RunSpec(argv=[*argv, *(["--", *args] if args else [])], cwd=self.root,
-                                     env=clean_env(), timeout=float(self.timeout), max_output=MAX_OUTPUT))
+                                     env=clean_env(), timeout=float(self.timeout), max_output=MAX_OUTPUT,
+                                     allowed_domains=registry_domains(argv, self.sandbox.name)))
         if r.timed_out:
             return f"lỗi: {command} quá {self.timeout}s"
         return f"exit={r.exit_code}\n{(r.stdout + r.stderr)[-MAX_OUTPUT:]}"
