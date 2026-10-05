@@ -24,6 +24,7 @@ from xagents_core.gate_cli import trusted_decision as trusted_decision
 from . import gate_risk
 from .bus import InMemoryBus
 from .events import AuditLog, Envelope
+from .gate_reviewer import enabled as reviewer_enabled
 from .gate_reviewer import trusted_reviewer
 from .gate_risk import AUTOAPPROVE_ACTOR, AUTOAPPROVE_REASON_PREFIX
 from .gates import GateKind, GateRequest, HumanGate, gate_approvers, gate_autoapprove_enabled
@@ -139,6 +140,20 @@ class PersistentGate(CorePersistentGate[Envelope, AuditLog], HumanGate):
         super().apply(env)
         if len(self.history) > n: self.closers.add(env.event_id)
 
+    def reviewer_signed_pending(self) -> dict[str, dict[str, str]]:
+        """Chiếu riêng các chữ ký reviewer hợp lệ bị cờ đọc tắt; không thay đổi `pending` hay đường tin cậy."""
+        if reviewer_enabled(): return {}
+        out: dict[str, dict[str, str]] = {}
+        for env in self.bus.replay(topic="audit-log"):
+            d = _json_evidence(env)
+            sid = d.get("subject_id")
+            if not isinstance(sid, str): continue
+            req = self.pending.get(sid)
+            if req is None or sid in out or env.ts < req.created_at: continue
+            if (signed := trusted_reviewer(env, req, self.history, for_display=True)) is not None:
+                out[sid] = {"decision": signed["decision"], "by": env.actor}
+        return out
+
     def _log(self, actor: str, action: str, data: dict[str, Any], *, by: str | None = None) -> None:
         """Bản do CHÍNH tiến trình này ký: `decide` đóng gate trong RAM trước khi ghi, nên `apply` lúc `publish`
         không còn thấy gate chờ — ghi `closers` ở đây."""
@@ -202,8 +217,10 @@ def main(argv: list[str] | None = None) -> int:
     bus = SQLiteBus(ns.db); gate = PersistentGate(bus, approvers=gate_approvers())
     if ns.cmd == "list":
         remind, overdue = gate.due()
+        signed = gate.reviewer_signed_pending()
         for sid, r in gate.pending.items():
-            flag = " OVERDUE" if sid in overdue else (" remind" if sid in remind else "")
+            flag = (f" đã ký bởi {signed[sid]['by']}; cờ tắt, chưa áp" if sid in signed else
+                    " OVERDUE" if sid in overdue else " remind" if sid in remind else "")
             print(f"{sid:<12} {r.kind:<10} by={r.created_by or '-':<16} checklist={','.join(r.checklist)}{flag}")
         if not gate.pending: print("(không có gate chờ)")
         return 0

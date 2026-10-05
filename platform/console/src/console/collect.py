@@ -335,6 +335,13 @@ class CompanyView(_View):
         nhìn; nó không phải `HumanGate` nên không duyệt được, chỉ trỏ tới form trả lời."""
         out = super().gates(now)
         if not self.ok or self.bus is None: return out
+        signed = self.gate.reviewer_signed_pending()
+        for row in out:
+            if row["id"] in signed:
+                row["reviewer_signed"] = signed[row["id"]]
+                row["title"] = f"Đã ký bởi {signed[row['id']]['by']} (cờ tắt, chưa áp) · {row['title']}"
+                row["sev"] = "signed"
+                row["decidable"] = False
         over_h = self.gate.timeout.total_seconds() / 3600
         warn_h = self.gate.remind_at.total_seconds() / 3600
         for pid, c in sorted(pending_clarifications(self.bus).items()):

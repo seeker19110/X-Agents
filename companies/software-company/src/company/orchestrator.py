@@ -516,6 +516,7 @@ class Orchestrator:
                 "stalled": {pid: f"{st['agent']} lỗi trên {st['topic']}: {st['error'][:120]}" for pid, st in self.stalled.items()},
                 "architecture_debt": self.supervisor.debt_table(),  # ADR-0032
                 "gates_pending": {sid: g.kind for sid, g in self.gate.pending.items()}, "plans": list(self.plans),
+                "gates_reviewer_signed_unapplied": self.gate.reviewer_signed_pending(),
                 "clarifications_pending": pending_clarifications(self.bus),
                 "blackboard": {key: {"v": sc.version, "ref": sc.content_ref, "chars": len(sc.content or ""),
                                      "file": str(p) if (p := self.blackboard.path(sc.namespace,

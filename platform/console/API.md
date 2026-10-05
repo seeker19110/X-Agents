@@ -57,14 +57,14 @@ công ty đó bao giờ).
   },
   "gates": [{
     "id": "REL-001", "xuong": "software-company", "kind": "release",
-    "by": "delivery-lead", "trigger": "human:owner", "hours": 26, "sev": "over",   // over|warn|calm
+    "by": "delivery-lead", "trigger": "human:owner", "hours": 26, "sev": "over",   // over|warn|calm|signed
     "effect": "Duyệt = … (hậu quả của việc duyệt, theo kind; rỗng khi xưởng không nói)",
     "reject": "Từ chối = … (ticket/RC về đâu; rỗng khi xưởng không nói)",   // C2
     "agent":  "ops",                                                       // agent chạy lại sau khi duyệt; "" khi không biết
     "title": "…", "facts": [["ticket_id","TCK-112"], …],
     "cl": [["review:fact:pass","mô tả ngắn lấy từ checklist/evidence"], …],
-    "decidable": true      // false = không phải HumanGate: `kind="clarification"` (câu hỏi làm rõ chờ người,
-                           //   id `CLARIFY-<project_id>`, cl = các câu chưa trả lời) — trả lời qua form, không duyệt
+    "decidable": true,     // false = câu hỏi làm rõ hoặc gate reviewer đã ký nhưng cờ tiến trình đọc tắt
+    "reviewer_signed": {"decision":"approve","by":"reviewer:doc-lap"} // chỉ có khi chữ ký hợp lệ, cờ tắt; gate chưa áp
   }],
   "tickets": [{"id":"TCK-112","st":"in_review","who":"builder","t":"…",
                "used":82400,"out":9800,"bud":120000,"est":78000,"retry":0,   // used = tổng token; out = đầu ra (ngân sách so với out)
@@ -145,8 +145,8 @@ Nguồn của từng phần:
 | `keeper` | `maintenance-tickets` + `debt-ledger` (`keeper.ledger.Ledger.overdue`) + `release-notes` + `PersistentGate` của `keeper`; hạn mức tuần từ `keeper.budget.max_pr_per_week()` (`KEEPER_MAX_PR_PER_WEEK`). Số PR đang mở THẬT là câu trả lời của `gh` — console không gọi `gh` nên không nói con số đó |
 | `loops` | `company.metrics.collect(bus)["loops"]` — audit `tools_used` (`turns`, `capped`, `max_turns`) + `ticket.blocked` trên ticket có `tasks` |
 
-`hours` làm tròn xuống. `sev`: `over` khi ≥ 24 giờ (quá hạn), `warn` khi ≥ 12 giờ
-(đến hạn nhắc), còn lại `calm` — khớp `GATE_TIMEOUT_H` / `GATE_REMIND_H` của repo.
+`hours` làm tròn xuống. `sev`: `signed` khi reviewer đã ký hợp lệ nhưng cờ đọc tắt;
+ngoài ra `over` khi ≥ 24 giờ (quá hạn), `warn` khi ≥ 12 giờ (đến hạn nhắc), còn lại `calm`.
 
 ## `decide.py`
 
