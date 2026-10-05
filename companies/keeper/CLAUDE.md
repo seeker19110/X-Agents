@@ -54,4 +54,4 @@ cùng `xagents-core`) — nhánh chưa test là CI đỏ ngay, không phải "đ
 | Thêm loại tín hiệu mới | `events.py` (thêm `kind`), `topics/schemas/*.json` viết tay + test đối chiếu `set(get_args(Topic)) == set(bus._schemas)`, thêm hàng vào `risk.py:RISK_RULES`, cập nhật nơi phát signal (`scout.py`/`health.py`/`drift.py`) |
 | Đổi ngưỡng rủi ro tự động vá | `risk.py:RISK_RULES` — bảng dữ liệu tra theo TÊN HÀNG, khớp hàng đầu tiên, mọi `high` phải đứng trước `low`. Không viết chuỗi `if` (bài học K1.7) |
 | Đổi luật ngân sách PR | `budget.py:can_open_pr()` — giữ nguyên tắc hỏi GitHub thật, không cache trong RAM |
-| Publish PR thật cho một ticket | `orchestrator.publish()` (`push_branch`+`create_pr` từ `publish.py`, rồi `release.fill_pr_number`) qua CLI `keeper publish <ticket_id>` — không tự vá/tự commit, giả định worktree đã có patch |
+| Publish PR thật cho một ticket | `orchestrator.publish()` (`push_branch`+`create_pr` từ `publish.py`, rồi `release.fill_pr_number`) qua CLI `keeper publish <ticket_id>` — không tự vá/tự commit, giả định worktree đã có patch; so nội dung đã đo trước mỗi push (ADR keeper 0002), lệch thì CLI thoát 4 |

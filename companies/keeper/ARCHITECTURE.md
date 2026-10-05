@@ -21,14 +21,17 @@ rủi ro thấp  rủi ro cao/không rõ
 patcher.py (3 thao tác: bump_dependency / regen_derived / fix_docs; FORBIDDEN_PATHS chặn .git/ .github/)
    │
    ▼
-evidence.require_two_way() ── BẮT BUỘC: đo trước (đỏ) và đo sau (xanh), không có ca nào bỏ qua
+evidence.require_two_way() ── BẮT BUỘC: đo trước (đỏ) và đo sau (xanh), không có ca nào bỏ qua; báo cáo gắn
+   │                          patch_id (cây nội dung worktree) — sửa patch sau khi đo thì cổng evidence đóng lại
    │
    ▼
 release-clerk ── open_pr(): soạn CHANGELOG (PR_PLACEHOLDER), ghi pr.intent vào audit-log — Ý ĐỊNH, chưa PR thật
    │
    ▼
-NGƯỜI/script gọi `keeper publish <ticket_id>` ── orchestrator.publish(): push_branch() + create_pr() (publish.py)
-   │                                              rồi fill_pr_number() điền số PR thật, ghi audit pr.created
+NGƯỜI/script gọi `keeper publish <ticket_id>` ── orchestrator.publish(): _require_measured() (cây nhánh vs
+   │                                              patch_id, ADR keeper 0002) → push_branch() + create_pr()
+   │                                              (publish.py) rồi fill_pr_number() điền số PR thật, kiểm lại,
+   │                                              push lần hai, ghi audit pr.created
    ▼
 NGƯỜI merge PR thật (I1: keeper không có quyền tự merge)
 ```
@@ -46,7 +49,7 @@ chung của phiên khác.
 | Bất biến | Ở đâu | Vì sao |
 |---|---|---|
 | I1 — không quyền ghi ngoài worktree/PR của chính nó | `github.py` (chỉ hàm đọc) | Keeper vá chính repo chứa nó — quyền ghi rộng là rủi ro tối đa |
-| I2 — bằng chứng đo hai chiều bắt buộc | `evidence.require_two_way()` | "Tests pass" không kèm bằng chứng đỏ→xanh là lời khai, không phải bằng chứng (luật cấm 8) |
+| I2 — bằng chứng đo hai chiều bắt buộc | `evidence.require_two_way()`, `orchestrator._check_report()` + danh tính patch (ADR keeper 0001) | "Tests pass" không kèm bằng chứng đỏ→xanh là lời khai, không phải bằng chứng (luật cấm 8) |
 | I3 — một PR bảo trì mở tại một thời điểm, hỏi GitHub thật | `budget.can_open_pr()` | Đếm trong RAM mất khi mở lại tiến trình — đúng khuôn lỗi "chống trùng sống trong bộ nhớ" |
 | I4 — không hạ `fail_under`, không sửa `.git/`/`.github/` | `patcher.FORBIDDEN_PATHS` | Từng có lỗ chỉ chặn `.github/rulesets/`, cho phép ghi đè `ci.yml` — vô hiệu hoá cổng bằng chính bản vá |
 | I5 — không tự xoá dead code | `patcher.py` (3 thao tác, không có xoá) | Xoá sai là mất việc người khác đang làm dở |
@@ -64,8 +67,10 @@ chung của phiên khác.
   đụng checkout chính.
 - **Test**: số ca hiện tại ở dòng keeper trong `README.md` gốc (có cổng canh); `branch = true` +
   `fail_under = 100` đã bật — một trong hai package đầu tiên đạt mốc này cùng `xagents-core`.
-- **ADR**: không có `docs/adr/` riêng trong package; ADR duy nhất liên quan là `docs/adr/0006-cong-ty-bao-tri-
-  keeper.md` ở gốc repo. Đặc tả chi tiết (bất biến, lộ trình BT1–BT8) ở `docs/DAC-TA-KEEPER.md`.
+- **ADR**: quyết định chỉ chạm keeper nằm ở `docs/adr/` của package — `docs/adr/0001-bang-chung-gan-danh-tinh-
+  patch-va-thu-hoi-ben.md` (bằng chứng gắn danh tính patch, đo lại hỏng thu hồi bền qua bus) và
+  `docs/adr/0002-publish-so-noi-dung-da-do-truoc-khi-push.md` (publish so thứ sắp push với nội dung đã đo). Thiết kế công ty
+  chạm cả `xagents-core` nên ở gốc repo: `docs/adr/0006-cong-ty-bao-tri-keeper.md` (gốc). Đặc tả chi tiết (bất biến, lộ trình BT1–BT8) ở `docs/DAC-TA-KEEPER.md`.
 
 Trạng thái: BT1–BT7 đã merge, package có mã thật chạy được; phần console + tài liệu của BT8 đã merge (#223).
 Còn lại của BT8 là canary — một chu kỳ thật, người merge PR đầu tiên keeper tự mở (hai lần thử, xem `README.md`

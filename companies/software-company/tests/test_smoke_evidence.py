@@ -56,6 +56,31 @@ def test_run_smoke_ma_http_khac_ky_vong_khong_phai_ok(tmp_path):
 
 # ---------- parse_runtime ----------
 
+
+def test_run_smoke_cong_co_dinh_da_bi_chiem_khong_phai_ok(tmp_path):
+    """`runtime.port` cố định mà đã có tiến trình khác trả lời trên cổng đó (dev server cũ, release trước chưa tắt):
+    lượt poll đầu chạm KẺ CHIẾM CỔNG và ghi `ok=True` cho một sản phẩm chưa hề lên — bằng chứng "chạy cho tôi xem"
+    sai mà không ai biết. Đo hai chiều: bỏ kiểm cổng trước `spawn` thì `ok` thành True."""
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200); self.end_headers()
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        port = srv.server_address[1]
+        rt = Runtime((sys.executable, "-c", "import time; time.sleep(30)"), port=port, timeout_s=5)
+        r = run_smoke(tmp_path, rt)
+    finally:
+        srv.shutdown(); srv.server_close()
+    assert r["ok"] is False and r["http_status"] is None
+    assert "đã có tiến trình khác" in r["error"] and str(port) in r["error"]
+
 def test_parse_runtime_chuoi_hay_danh_sach_deu_duoc():
     a = parse_runtime({"runtime": {"command": "python -m app --port {port}", "health": "health", "port": 0}})
     assert a is not None and a.command == ("python", "-m", "app", "--port", "{port}") and a.path == "/health"
@@ -70,6 +95,16 @@ def test_parse_runtime_thieu_hoac_hong_thi_none():
     assert parse_runtime({"runtime": "python -m app"}) is None
     assert parse_runtime({"runtime": {"command": ""}}) is None
     assert parse_runtime({"runtime": {"command": ["x"], "port": "abc"}}) is None
+
+
+def test_parse_runtime_lenh_nhay_le_la_hong_khong_phai_crash():
+    """`runtime.command` do spec-writer (model) viết: một dấu nháy lẻ làm `shlex.split` ném `ValueError: No closing
+    quotation` xuyên qua `spec_runtime_gap` (guard Gate 1), `verify`, `dast`, `gate_brief` — event spec thành lỗi
+    agent thay vì lời nhắn "runtime hỏng" gửi lại spec-writer. Đo hai chiều: bỏ `except ValueError` thì đỏ."""
+    from company.orch.guards import spec_runtime_gap
+    hong = {"runtime": {"command": "python -c 'print(1)", "port": 0}}
+    assert parse_runtime(hong) is None
+    assert "runtime.command" in (spec_runtime_gap(hong) or "")
 
 
 def test_unverified_noi_ly_do():

@@ -119,6 +119,20 @@ class TransientError(LLMError):
     """Lỗi vận chuyển (mạng, quá tải, rate limit): thử lại được, không phải lỗi của agent."""
 
 
+# Thông điệp CLI (claude -p, codex) không mang mã có cấu trúc thì mới đọc chữ — theo CỤM có ranh giới từ, như
+# `routing.QUOTA_PATTERNS`. Chuỗi con trần "rate"/"limit"/"usage" từng khớp "generate", "context limit" (prompt
+# quá dài, lỗi NỘI DUNG) và "Usage: codex exec …" (sai cờ): backend đi nghỉ, event bị hoãn mãi, lỗi không tới agent.
+# `quota`/`timeout` lấy ranh giới là CHỮ CÁI chứ không `\b`: `\b` coi `_` là chữ nên mã lỗi snake_case
+# (`insufficient_quota`, `request_timeout`) rơi khỏi "tạm thời" — vẫn không khớp "quotation".
+TRANSIENT_TEXT = re.compile(
+    r"\b(?:429|502|503|529)\b|\brate.?limit|\boverloaded|(?<![a-z])quota(?![a-z])|\busage limit\b|\bhit your limit\b|"
+    r"\blimit reached\b|\btimed out\b|(?<![a-z])timeout(?![a-z])", re.IGNORECASE)
+
+
+def looks_transient(text: str) -> bool:
+    return TRANSIENT_TEXT.search(text) is not None
+
+
 def _check_ttl(value: str) -> str:
     if value not in CACHE_TTL:
         raise LLMError(f"cache_ttl={value!r} không hợp lệ; chỉ nhận {list(CACHE_TTL)} (llm.yaml hoặc <PREFIX>_CACHE_TTL)")
@@ -735,6 +749,10 @@ class AnthropicClient:
             raise Refused(f"model từ chối: {getattr(getattr(msg, 'stop_details', None), 'category', None)}")
         text = next((b.text for b in msg.content if b.type == "text"), "")
         calls = [ToolCall(id=b.id, name=b.name, args=dict(b.input or {})) for b in msg.content if b.type == "tool_use"]
+        if msg.stop_reason == "max_tokens" and not calls:   # cùng họ `finish_reason == "length"` của OpenAICompatClient
+            raise LLMError(f"model hết hạn mức đầu ra (stop_reason=max_tokens): max_tokens={self.cfg.max_tokens}, "
+                           f"đã sinh {msg.usage.output_tokens} token, nhận {len(text)} ký tự — tăng `max_tokens` "
+                           f"trong llm.yaml, đừng sửa prompt")
         inp, read, write = anthropic_input_tokens(msg.usage)
         return Completion(text=text, input_tokens=inp, output_tokens=msg.usage.output_tokens,
                           model=msg.model, stop_reason=msg.stop_reason or "end_turn",
@@ -813,7 +831,7 @@ class CodexClient:
         if fatal and not texts:
             msg = " | ".join(fatal)[:400]
             low = msg.lower()
-            if any(s in low for s in ("429", "rate", "limit", "quota", "overloaded", "usage", "503", "502", "timeout")):
+            if looks_transient(msg):
                 raise TransientError(f"codex exec: {msg}")
             if "not logged in" in low or "login" in low:
                 raise LLMError(f"codex exec: chưa đăng nhập (CODEX_HOME={self.env.get('CODEX_HOME', '~/.codex')}): {msg}")
@@ -1077,11 +1095,11 @@ def cli_exit_error(code: int, stdout: str, stderr: str) -> LLMError:
         # chỉ phân loại theo trường có cấu trúc (`api_error_status`), chữ model đi riêng qua `model_text`.
         from_model = data.get("subtype") in CLI_SUBTYPE_ERRORS
         transient = status in (429, 502, 503, 529) or (
-            not from_model and any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")))
+            not from_model and looks_transient(msg))
         cls = TransientError if transient else LLMError
         return cls(head, model_text=text) if from_model else cls(head + text)
     err = (stderr or stdout)[-500:]
-    if any(s in err.lower() for s in ("limit", "rate", "overloaded", "529", "503")):
+    if looks_transient(err):
         return TransientError(f"claude -p thoát mã {code}: {err}")
     return LLMError(f"claude -p thoát mã {code}: {err}")
 
@@ -1164,7 +1182,7 @@ class ClaudeCodeClient:
             raise LLMError(f"claude -p thiếu trường result (subtype={subtype or '?'}): {out[:300]}")
         if data.get("is_error"):
             msg = str(data.get("result"))[:300]
-            if any(s in msg.lower() for s in ("limit", "rate", "overloaded", "quota")):
+            if looks_transient(msg):
                 raise TransientError(f"claude -p lỗi: {msg}")
             raise LLMError(f"claude -p lỗi: {msg}")
         if data.get("stop_reason") == "refusal":

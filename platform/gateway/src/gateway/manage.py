@@ -59,6 +59,10 @@ DEFAULT_CHECK_TARGETS = [
 CMDLINE_TIMEOUT_S = 5.0
 
 
+# Đúng chuỗi `cmd_start` đặt vào `python -c`: `_pid_is_gateway` nhận daemon bằng nó, không bằng chữ "gateway".
+DAEMON_SIGNATURE = "from gateway.manage import _run_daemon"
+
+
 def _cmdline(pid: int, runner: Any = None) -> str | None:
     """Dòng lệnh của tiến trình `pid`, hoặc `""` khi tiến trình KHÔNG tồn tại, hoặc `None` khi không đọc được.
 
@@ -101,8 +105,8 @@ def _pid_is_gateway(pid: int, runner: Any = None) -> bool:
 
     | Đọc được gì | Kết luận |
     |---|---|
-    | dòng lệnh có `gateway` (Linux, macOS) | đúng gateway → giết |
-    | dòng lệnh không có `gateway` | KHÔNG giết |
+    | dòng lệnh có chữ ký daemon `DAEMON_SIGNATURE` (Linux, macOS) | đúng gateway → giết |
+    | dòng lệnh không có chữ ký đó (kể cả `api-gateway-khac.py`) | KHÔNG giết |
     | tiến trình không tồn tại (`""`) | KHÔNG giết, chỉ xoá PID file |
     | không đọc được (`None`) | giết — giữ nguyên hành vi trước K8.6 |
 
@@ -116,8 +120,9 @@ def _pid_is_gateway(pid: int, runner: Any = None) -> bool:
         return True
     if not cmd:
         return False
-    low = cmd.lower()
-    return ("python" in low) if sys.platform == "win32" else ("gateway" in low)
+    if sys.platform == "win32":
+        return "python" in cmd.lower()
+    return DAEMON_SIGNATURE in cmd   # chuỗi con "gateway" khớp cả tiến trình lạ tên có chữ ấy (khuôn 6)
 
 
 def _run_daemon(host: str, port: int) -> None:
@@ -157,7 +162,9 @@ def cmd_start(args: argparse.Namespace) -> int:
     src_dir = Path(__file__).resolve().parents[1]
     env = dict(os.environ, PYTHONUNBUFFERED="1")
     env["PYTHONPATH"] = str(src_dir) + os.pathsep + env.get("PYTHONPATH", "")
-    cmd = [sys.executable, "-u", "-c", f"from gateway.manage import _run_daemon; _run_daemon(host='{host}', port={port})"]
+    # host/port đi qua argv, KHÔNG nội suy vào mã: một dấu `'` trong `--host` từng là chạy mã tuỳ ý trong daemon.
+    code = f"import sys; {DAEMON_SIGNATURE}; _run_daemon(host=sys.argv[1], port=int(sys.argv[2]))"
+    cmd = [sys.executable, "-u", "-c", code, host, str(port)]
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW

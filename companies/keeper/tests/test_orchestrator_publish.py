@@ -16,13 +16,13 @@ from typing import Any
 import pytest
 
 from keeper import publish as publish_mod
-from keeper.events import RunOutcome, Signal
+from keeper.events import ReleaseNote, RunOutcome, Signal
 from keeper.evidence import TRUSTED_VERIFIER, TwoWayEvidence
 from keeper.fakes import FakeGitHub
 from keeper.orchestrator import KeeperOrchestrator
 from keeper.publish import PublishError
 from keeper.release import PR_PLACEHOLDER
-from keeper.worktree import open_worktree
+from keeper.worktree import content_tree, open_worktree
 
 NOW = datetime(2026, 9, 12, tzinfo=UTC)
 
@@ -70,10 +70,13 @@ def _orc_voi_ticket_du_cong(repo: Path) -> tuple[KeeperOrchestrator, str]:
     o.submit_signal(Signal.model_validate(
         {"subject": "requests", "kind": "dependency", "detail": "bump", "semver_jump": None}))
     (t,) = o.tick(now=NOW).tickets
+    # Bằng chứng gắn danh tính worktree THẬT của ticket (ADR keeper 0001): worktree phải có trước lần đo, và cổng
+    # `evidence` đo lại đúng nó lúc `tick` mở ý định PR.
+    wt = open_worktree(t.ticket_id, repo=repo)
     cmd = "uv run pytest -q"
     o.record_verification(t.ticket_id, {"ticket_id": t.ticket_id}, TwoWayEvidence(
         cmd=cmd, before=RunOutcome(cmd=cmd, exit_code=1), after=RunOutcome(cmd=cmd, exit_code=0),
-        verified_by=TRUSTED_VERIFIER))
+        verified_by=TRUSTED_VERIFIER, patch_id=content_tree(wt.path)))
     res = o.tick(now=NOW)
     assert res.notes, "ticket phải đủ cổng để có release-notes trước khi publish() có gì để làm"
     return o, t.ticket_id
@@ -97,15 +100,15 @@ class _RunSpy:
         return subprocess.CompletedProcess(argv, code, stdout=out, stderr=err)
 
 
-def _commit_dong_changelog(wt_path: Path, ticket_id: str) -> None:
-    """Mô phỏng commit đầu tiên mà `keeper run`/người đã làm trước khi gọi `publish()`: một dòng CHANGELOG
-    mang `(#PR)` — đúng thứ `release.compose()` sinh ra."""
+def _commit_dong_changelog(wt_path: Path, note: ReleaseNote) -> None:
+    """Mô phỏng commit đầu tiên mà `keeper run`/người đã làm trước khi gọi `publish()`: ĐÚNG dòng CHANGELOG của
+    note (`release.compose()`, mang `(#PR)`). Dòng khác note là thay đổi chưa đo — `publish()` từ chối (ADR keeper
+    0002, `test_publish_so_danh_tinh.py`)."""
+    assert PR_PLACEHOLDER in note.changelog_line
     changelog = wt_path / "CHANGELOG.md"
-    changelog.write_text(changelog.read_text(encoding="utf-8") +
-                         f"- fix(keeper): bump requests — bảo trì tự động, tier low {PR_PLACEHOLDER}\n",
-                         encoding="utf-8")
+    changelog.write_text(changelog.read_text(encoding="utf-8") + note.changelog_line + "\n", encoding="utf-8")
     _git(wt_path, "add", "-A")
-    _git(wt_path, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", f"vá {ticket_id}")
+    _git(wt_path, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", f"vá {note.ticket_id}")
 
 
 def test_publish_day_nhanh_tao_pr_va_dien_so_pr_that(
@@ -113,7 +116,7 @@ def test_publish_day_nhanh_tao_pr_va_dien_so_pr_that(
 ) -> None:
     o, tid = _orc_voi_ticket_du_cong(repo)
     wt = open_worktree(tid, repo=repo)
-    _commit_dong_changelog(wt.path, tid)
+    _commit_dong_changelog(wt.path, o.notes[tid])
     spy = _RunSpy(script=[(0, "https://github.com/o/r/pull/9\n", "")], calls=[])
     monkeypatch.setattr(publish_mod.subprocess, "run", spy)
 
@@ -131,7 +134,7 @@ def test_publish_day_nhanh_tao_pr_va_dien_so_pr_that(
 def test_publish_lan_hai_khong_tao_pr_trung(monkeypatch: pytest.MonkeyPatch, repo: Path, remote: Path) -> None:
     o, tid = _orc_voi_ticket_du_cong(repo)
     wt = open_worktree(tid, repo=repo)
-    _commit_dong_changelog(wt.path, tid)
+    _commit_dong_changelog(wt.path, o.notes[tid])
     spy = _RunSpy(script=[(0, "https://github.com/o/r/pull/9\n", "")], calls=[])
     monkeypatch.setattr(publish_mod.subprocess, "run", spy)
     o.publish(tid, wt)
@@ -145,7 +148,7 @@ def test_publish_khi_gh_bao_da_co_pr_thi_dung_so_do(monkeypatch: pytest.MonkeyPa
     ĐÚNG số PR đã có, không coi là lỗi (I3: idempotent, không tạo PR trùng)."""
     o, tid = _orc_voi_ticket_du_cong(repo)
     wt = open_worktree(tid, repo=repo)
-    _commit_dong_changelog(wt.path, tid)
+    _commit_dong_changelog(wt.path, o.notes[tid])
     spy = _RunSpy(script=[(1, "", f'a pull request for branch "{wt.branch}" into branch "main" already '
                                   f'exists:\nhttps://github.com/o/r/pull/5')], calls=[])
     monkeypatch.setattr(publish_mod.subprocess, "run", spy)
@@ -168,7 +171,7 @@ def test_publish_push_that_bai_khong_goi_gh(monkeypatch: pytest.MonkeyPatch, rep
     nhánh chưa thật sự lên remote)."""
     o, tid = _orc_voi_ticket_du_cong(repo)
     wt = open_worktree(tid, repo=repo)
-    _commit_dong_changelog(wt.path, tid)
+    _commit_dong_changelog(wt.path, o.notes[tid])
     spy = _RunSpy(script=[(0, "https://github.com/o/r/pull/1\n", "")], calls=[])
     monkeypatch.setattr(publish_mod.subprocess, "run", spy)
 
@@ -182,7 +185,7 @@ def test_publish_commit_va_push_so_pr_da_dien(monkeypatch: pytest.MonkeyPatch, r
     thì PR giữ `(#PR)` mãi, vì lần `publish()` sau trả sớm (note đã có `pr_number`)."""
     o, tid = _orc_voi_ticket_du_cong(repo)
     wt = open_worktree(tid, repo=repo)
-    _commit_dong_changelog(wt.path, tid)
+    _commit_dong_changelog(wt.path, o.notes[tid])
     spy = _RunSpy(script=[(0, "https://github.com/o/r/pull/9\n", "")], calls=[])
     monkeypatch.setattr(publish_mod.subprocess, "run", spy)
 
@@ -203,7 +206,7 @@ def test_publish_lan_hai_sau_khi_push_dien_so_hong_thi_hoan_tat(
     import keeper.orchestrator as orch_mod
     o, tid = _orc_voi_ticket_du_cong(repo)
     wt = open_worktree(tid, repo=repo)
-    _commit_dong_changelog(wt.path, tid)
+    _commit_dong_changelog(wt.path, o.notes[tid])
     goc_push = orch_mod.push_branch
     lan = {"n": 0}
 

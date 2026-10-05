@@ -9,7 +9,7 @@ from __future__ import annotations
 from company import gate_brief as GB
 from company.bus import InMemoryBus
 from company.events import Envelope
-from company.llm import FakeClient
+from company.llm import FakeClient, TransientError
 from company.orchestrator import SPEC_RUNTIME_REWORKS, Orchestrator, spec_runtime_gap
 from company.sqlite_bus import SQLiteBus
 from test_orchestrator import _agent_of, _inp, _product_phase, _pub, _thuoc_tinh_lech, handler
@@ -94,6 +94,30 @@ def test_ung_dung_thieu_runtime_thi_khong_mo_gate_ma_tra_lai_spec_writer_roi_esc
     assert orch.gate.pending["P1"].kind == "escalation" and "spec_runtime" in orch.gate.pending["P1"].checklist
     assert orch.unhandled["P1"]["agent"] == "product" and orch.spec_runtime_reworks["P1"] == 1 + SPEC_RUNTIME_REWORKS
     assert orch.gate.pending["P1"].created_by == "product"
+
+
+def test_thieu_runtime_ma_luot_viet_lai_gap_transient_thi_hoan_khong_mat_luot():
+    """Lượt trả spec về spec-writer gặp `TransientError`: `_act_plan` trả True nên `process()` không tự hoãn — event
+    spec từng bị đánh dấu xong, không gate, không escalation, dự án đứng im. Hoãn thôi chưa đủ: bộ đếm
+    `spec_runtime_reworks` (dựng lại từ audit `spec.runtime_missing`) không được ăn mất lượt sửa duy nhất vì một
+    lần backend nghỉ — không thì lần thử lại đi thẳng tới escalation dù spec-writer chưa từng được sửa.
+    Đo hai chiều: bỏ nhánh hoãn thì assert hoãn đỏ; hoãn mà vẫn đếm trước lời gọi thì assert escalation đỏ."""
+    def spec_fn(p, n):
+        if n == 2: raise TransientError("mọi backend đều đang nghỉ, thử lại sau 1515s")
+        return _spec("P1", kind="application", **({"runtime": RUNTIME} if n > 2 else {}))
+    h, seen = _handler_with(spec_fn)
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h))
+    _to_spec(bus, orch)
+    assert len(seen) == 2 and orch.deferred, "transient ở lượt viết lại phải hoãn event spec, không đánh dấu xong"
+    assert "SPEC-P1" not in orch.gate.pending and "spec.runtime_missing" not in _acts(bus)
+    orch.tick()
+    assert len(seen) == 2, "backend đã hẹn 1515s thì nhịp kế không hỏi lại"
+    for k in orch.defer_until: orch.defer_until[k] = 0.0
+    orch.tick()
+    assert len(seen) == 3 and "SPEC-P1" in orch.gate.pending, "backend về: viết lại xong, spec có runtime lên gate"
+    acts = _acts(bus)
+    assert acts.count("spec.runtime_missing") == 1 and "spec.runtime_escalated" not in acts
+    assert orch.spec_runtime_reworks["P1"] == 1
 
 
 def test_escalate_lan_hai_khi_gate_da_pending_khong_mo_gate_trung():

@@ -193,6 +193,26 @@ def test_scorecard_repo_khong_bat_action_thi_khong_co_phat_hien():
     assert scorecard_findings(FakeGitHub()) == []
 
 
+class _GHKhongTraLoi(FakeGitHub):
+    """`gh` chưa đăng nhập, quá giờ, hay API trả lỗi: `GitHubReader` trả `None` = KHÔNG BIẾT."""
+
+    def dependabot_alerts(self):
+        return None
+
+    def code_scanning_alerts(self):
+        return None
+
+
+def test_gh_khong_tra_loi_thi_bao_loi_cong_cu_khong_phai_sach():
+    """Trước đây `GitHubReader` nuốt lỗi `gh` thành `[]`, và hai nguồn qua `gh` đọc "không quét được" thành "không
+    có alert nào" — đúng điều docstring module cấm cho gitleaks/pip-audit ("Công cụ lỗi KHÔNG phải 'không có
+    phát hiện'"), chỉ là đi đường khác."""
+    gh = _GHKhongTraLoi()
+    _la_loi_cong_cu(dependabot_findings(gh), "dependabot", "dependency")
+    f = _la_loi_cong_cu(scorecard_findings(gh), "code-scanning", "scorecard")
+    assert "KHÔNG phải" in f.detail
+
+
 # --- gộp --------------------------------------------------------------------------------------------
 
 def test_audit_gop_ba_nguon(tmp_path):

@@ -245,7 +245,10 @@ def evidence(root: Path, sandbox: Any, sha: str) -> dict[str, Any]:
             if not (d / fname).is_file():
                 continue
             rel = (d / fname).relative_to(root).as_posix()
-            got, err = read(d, sandbox)
+            try:
+                got, err = read(d, sandbox)
+            except (ValueError, OSError) as e:  # lock file của khách hỏng (JSON/TOML/UTF-8): lý do, không ném
+                got, err = [], f"đọc không được: {type(e).__name__}: {e}"[:300]
             sources.append(rel)
             if err is not None:
                 errs.append(f"{rel}: {err}")

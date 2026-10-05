@@ -69,6 +69,16 @@ def test_pid_is_gateway_macos_hoi_ps(monkeypatch):
     assert manage._pid_is_gateway(4242, runner=_Runner(stdout="", rc=1)) is False
 
 
+def test_pid_is_gateway_khong_nhan_nham_tien_trinh_chi_vi_co_chu_gateway(monkeypatch):
+    """Khuôn 6 (TRAPS §1): `"gateway" in cmdline` khớp cả `api-gateway-unrelated.py` đang giữ PID tái dùng →
+    `stop` gửi SIGTERM cho tiến trình của người khác. Phải khớp đúng chữ ký daemon, không phải chuỗi con."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert manage._pid_is_gateway(4242, runner=_Runner(stdout="/usr/bin/python3 api-gateway-unrelated.py")) is False
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(manage, "_cmdline", lambda pid, runner=None: "python3\0/srv/my-gateway/app.py\0")
+    assert manage._pid_is_gateway(4242) is False
+
+
 def test_pid_is_gateway_khong_doc_duoc_thi_giu_hanh_vi_cu(monkeypatch):
     """Không đọc được ≠ không tồn tại. `ps`/`tasklist` thiếu hoặc treo thì K8.6 KHÔNG được biến `stop` thành
     lệnh không làm gì — giữ nguyên hành vi trước đó (giết) và để PID file dọn như cũ."""
@@ -195,6 +205,35 @@ def test_cmd_start_background_spawn_posix_uses_new_session_without_creationflags
     monkeypatch.setattr(manage.time, "sleep", lambda s: None)
     assert manage.main(["start", "--host", "127.0.0.1", "--port", "7"]) == 0
     assert seen == {"creationflags": 0, "start_new_session": True}
+
+
+def test_cmd_start_host_la_du_lieu_khong_phai_ma_python(tmp_path, monkeypatch):
+    """`--host` (hoặc `GATEWAY_HOST`) từng được nội suy vào chuỗi `python -c`: một dấu `'` là chạy mã tuỳ ý trong
+    daemon. Chạy lại đúng mã daemon sẽ chạy và kiểm `_run_daemon` nhận host NGUYÊN VĂN."""
+    monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(manage, "is_loopback_host", lambda h: True)
+    monkeypatch.setattr(manage, "is_server_running", lambda host, port: False)
+    seen: dict = {}
+
+    class FakeProc:
+        pid = 4247
+
+    def fake_popen(argv, **k):
+        seen["argv"] = list(argv)
+        return FakeProc()
+
+    monkeypatch.setattr(manage.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(manage.time, "time", iter([0.0, 99.0]).__next__)
+    host = "x'+'y"
+    manage.main(["start", "--host", host, "--port", "7"])
+    argv = seen["argv"]
+    code = argv[argv.index("-c") + 1]
+    nhan: dict = {}
+    monkeypatch.setattr(manage, "_run_daemon", lambda host, port: nhan.update(host=host, port=port))
+    monkeypatch.setattr(sys, "argv", ["-c", *argv[argv.index("-c") + 2 :]])
+    exec(code, {})
+    assert nhan == {"host": host, "port": 7}
 
 
 def test_cmd_start_background_spawn_sleeps_between_healthcheck_polls(tmp_path, monkeypatch, capsys):

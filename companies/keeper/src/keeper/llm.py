@@ -7,7 +7,8 @@
 2. **Chính sách tool của `claude-code`.** Core cố ý KHÔNG có `complete()` mặc định (docstring
    `xagents_core.llm`, K3.3c3): mỗi công ty khai chiến lược tool của mình. Chiến lược của `keeper` là
    **không có tool** — không agent nào của `keeper` khai `tools`, vì mọi thao tác đọc thật (gh, pytest, git)
-   là CODE xác định (`github.py`, `evidence.py`), không phải tool-use. Nên `complete()` ở đây luôn `--tools ""`.
+   là CODE xác định (`github.py`, `evidence.py`), không phải tool-use. Nên `complete()` ở đây luôn `--tools ""`,
+   kèm `--restricted` để plugin/hook từ settings user/project của máy không chạy trong lượt (ADR gốc 0027).
 3. **Ghép backend** khi `llm.yaml` có `backends:` (ADR-0006). Cơ chế ở `xagents_core.routing`; `keeper` không
    dựng lại `routing.py` riêng vì nó không có nhu cầu nào khác studio.
 
@@ -76,7 +77,8 @@ class ClaudeCodeClient(CoreClaudeCodeClient):
                 + json.dumps(schema, ensure_ascii=False) + "\n```")
         base = [self.binary, "-p", "--output-format", "json", "--model", model, *CLI_BASE_FLAGS,
                 "--json-schema", json.dumps(schema, ensure_ascii=False),
-                *cli_effort_args(self.cfg.effort, model_tier), "--tools", "", "--max-turns", str(CLI_NO_TOOL_TURNS)]
+                *cli_effort_args(self.cfg.effort, model_tier), "--restricted", "--tools", "",
+                "--max-turns", str(CLI_NO_TOOL_TURNS)]
         with system_prompt_args(system) as sp_args:
             args = [*base, *sp_args]
             if sum(len(a) + 1 for a in args) > ARGV_LIMIT:

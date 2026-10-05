@@ -22,6 +22,8 @@ from .roles import ROLE
 # F16: token của 3 lượt review (mỗi lượt mang system prompt + blackboard) không tính vào ngân sách ticket — delivery-lead
 # ước lượng công của engineer, còn review là chi phí cố định của quy trình; cộng chung thì mọi ticket đều bị cắt.
 REVIEW_ACTORS = frozenset({ROLE.QA, ROLE.SECURITY})
+#: Lý do escalate của `check_timeouts` — `replay` nhận ra nó để dựng lại mốc chống lặp `last_seen`.
+IDLE_REASON = "không hoạt động >"
 
 # `Budget`, `DEBT_RE`, `DEBT_HINT`, `debt_ids` và cơ chế đếm nợ (`_count_debt`/`debt_table`) ở
 # `xagents_core.supervisor` từ K3.7; re-export giữ nguyên chỗ nhập của mọi nơi gọi và của test.
@@ -78,7 +80,10 @@ class Supervisor(SupervisorBase):
         # `state == "blocked" or n`; ticket đang `paused` ở trạng thái `in_review` với n=0 nên KHÔNG có gate nào
         # được mở — không ai gỡ được pause, dự án đứng im 6 phút mà `stalled` và `gates_pending` đều rỗng.
         if env.topic == "supervisor-actions" and env.actor == ROLE.SUPERVISOR:
-            self.actions.append(SupervisorAction.model_validate(env.payload))
+            a = SupervisorAction.model_validate(env.payload); self.actions.append(a)
+            # `check_timeouts` chống lặp bằng `last_seen[key] = now`: dựng lại đúng mốc đó, không thì mỗi lần mở lại
+            # bus cùng một sự im lặng bị escalate thêm một lần (nhật ký 2026-10-02).
+            if a.action == "escalate" and a.reason.startswith(IDLE_REASON): self.last_seen[a.target] = env.ts
             return
         prev, self.replaying = self.replaying, True
         try:
@@ -190,7 +195,7 @@ class Supervisor(SupervisorBase):
             if active is not None and key not in active: continue
             if now - ts > self.ticket_timeout:
                 stuck.append(key); self.last_seen[key] = now
-                self._act(key, "escalate", f"không hoạt động > {self.ticket_timeout}")
+                self._act(key, "escalate", f"{IDLE_REASON} {self.ticket_timeout}")
         return stuck
 
     def detect_injection(self, text: str) -> bool:

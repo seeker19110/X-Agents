@@ -27,6 +27,10 @@ jobs:
         working-directory: companies/software-company
       - run: uv run mypy src/company --ignore-missing-imports
         working-directory: companies/software-company
+      # Lần hai CÓ extra `graph`: không cài langgraph thì --ignore-missing-imports biến graph.py thành Any và lệch
+      # kiểu với langgraph không bao giờ lộ (StateGraph(dict) đỏ 2 lỗi type-var chỉ khi cài, 2026-10-05).
+      - run: uv run --locked --extra graph mypy src/company --ignore-missing-imports
+        working-directory: companies/software-company
 
   unit:
     name: unit
@@ -393,6 +397,25 @@ jobs:
       # Thuần cục bộ (đọc .git + file trên đĩa), không gọi mạng, không cần token.
       - run: uv run python -m keeper.cli drift --repo .
 
+  # ECC vendor (ADR gốc 0028): `.claude/{skills,commands,agents}/ecc-*` phải đúng là output của
+  # `scripts/ecc_vendor.py` tại commit ghim trong `docs/integrations/ecc.lock.json` — sửa cả tệp lẫn sha256 trong lock
+  # vẫn lộ ở đây (cổng offline `test_cong_ecc.py` chỉ so tệp với lock). Cần github.com: fetch nông đúng một commit;
+  # mạng lỗi thì job đỏ rõ, không xanh giả.
+  ecc-check:
+    name: ecc-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv sync --locked
+      - run: uv run python scripts/ecc_vendor.py check
+
   keeper-unit:
     name: keeper-unit
     runs-on: ${{ matrix.os }}
@@ -516,7 +539,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    needs: [static, unit, eval-replay, audit, keeper-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, core-static, core-unit, keeper-static, keeper-unit, drift-check, asset-scan, protection-guard]
+    needs: [static, unit, eval-replay, audit, keeper-eval-replay, golden-check, gateway-static, gateway-unit, console-static, console-unit, core-static, core-unit, keeper-static, keeper-unit, drift-check, ecc-check, asset-scan, protection-guard]
     if: always()
     steps:
       - name: Kiểm mọi job con đã success

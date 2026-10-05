@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from itertools import pairwise
-from typing import Any
+from typing import Any, TypedDict
 
 from .registry import AgentSpec, load_agents
 from .roles import ROLE
@@ -16,6 +16,14 @@ from .roles import ROLE
 # gộp vào `researcher` và ADR-0009 bỏ hẳn `ux-designer`; ADR-0037 PR-5e gộp cả bảy vai nghiên cứu/spec/plan vào
 # `product` (bốn PHA, xem `roles.PHASE`) nên chuỗi chỉ còn hai node: danh sách là tên agent thật, kiểm lúc dựng graph.
 RESEARCH_ORDER: tuple[str, ...] = (ROLE.PRODUCT, ROLE.SECURITY)
+
+
+class GraphState(TypedDict, total=False):
+    """Trạng thái chảy qua các node. langgraph chỉ nhận TypedDict/dataclass/BaseModel làm schema, không nhận `dict` trần."""
+
+    input: str
+    last_agent: str
+    output: str
 
 
 def research_order(agents: dict[str, AgentSpec] | None = None) -> list[str]:
@@ -33,10 +41,10 @@ def build_graph(llm_factory: Callable[[AgentSpec], Callable[[str], str]]) -> Any
     except ImportError as e:  # pragma: no cover
         raise RuntimeError("cài langgraph để dùng graph: uv add langgraph") from e
     agents = load_agents()
-    g = StateGraph(dict)
+    g = StateGraph(GraphState)
     for aid, spec in agents.items():
         llm = llm_factory(spec)
-        def node(state: dict, _llm=llm, _spec=spec) -> dict:
+        def node(state: GraphState, _llm=llm, _spec=spec) -> GraphState:
             out = _llm(_spec.system_prompt() + "\n\n# Input\n" + str(state.get("input", "")))
             return {**state, "last_agent": _spec.id, "output": out}
         g.add_node(aid, node)

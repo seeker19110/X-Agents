@@ -88,7 +88,7 @@ biến, đổi tên là khoá cửa merge. Trên máy, `scripts/dev-task.sh gate
 `*-static`/`*-unit` của gói đó. Mục này có cổng (`platform/console/tests/test_cong_tai_lieu.py`): thêm workflow hay
 job mà không kể ở đây là `console-unit` đỏ.
 
-**`ci.yml`** — mỗi PR và mỗi push `main`; 18 job, `quality` (`if: always()`) gom 17 job còn lại. Ma trận `*-unit`
+**`ci.yml`** — mỗi PR và mỗi push `main`; 19 job, `quality` (`if: always()`) gom 18 job còn lại. Ma trận `*-unit`
 và `unit`: ubuntu 3.11 + 3.13, windows 3.13; `core-static`/`keeper-static`: ubuntu + windows.
 
 | Gói | Job | Chạy gì |
@@ -99,6 +99,7 @@ và `unit`: ubuntu 3.11 + 3.13, windows 3.13; `core-static`/`keeper-static`: ubu
 | xagents-core | `core-static`, `core-unit` | ruff + mypy (`strict = true` trong `pyproject.toml`) · pytest coverage 100 |
 | keeper | `keeper-static`, `keeper-unit`, `keeper-eval-replay`, `drift-check` | ruff + mypy · pytest coverage 100 · `keeper.evals all --replay --strict` · `keeper.cli drift --repo .` (ba phép so cục bộ: `sc-*` và golden lệch `version` nguồn, PR đã merge thiếu `(#n)` trong CHANGELOG) |
 | hai công ty | `golden-check` | golden agent sinh lại phải khớp bản đã commit (ma trận `software-company`, `keeper`); riêng software-company: `company.subagents check` (`.claude/agents/sc-*` khớp nguồn) |
+| phiên Claude Code | `ecc-check` | `scripts/ecc_vendor.py check`: tải nông ECC tại commit ghim, sinh lại rồi so `.claude/*/ecc-*` + lock (ADR gốc 0028; cần github.com) |
 | toàn repo | `audit`, `protection-guard`, `quality` | pip-audit (một `uv.lock`) + gitleaks cả lịch sử · ruleset trong file ↔ ruleset thật, hai chiều · gom kết quả |
 
 **`pr-policy.yml`** — mỗi PR (kể cả sửa thân PR, gắn/gỡ nhãn); job `metadata`: tiêu đề Conventional Commits, scope
@@ -132,4 +133,4 @@ software-company AI agent framework")**; `d4abda1` cùng ngày gỡ MEP-Agents. 
 | Thi hành một đề bài lớn từ đặc tả tới PR merge, một lệnh | `docs/KHUON-THI-HANH.md`, `/thi-hanh` |
 | Bốn lớp Prompt/Agent/Loop/Graph: hiện trạng, tám việc, gói việc, điều phối subagent, khuôn công ty mới | `docs/KIEN-TRUC-4-LOP.md` |
 | Bảo mật: bí mật, phòng thủ, báo lỗi | `SECURITY.md` |
-| Vì sao quyết định thế này | Bốn dãy ADR, mỗi dãy đánh số riêng từ 0001, không tiền tố: `docs/adr/` gốc (0001–0026, quyết định cấp repo/quy trình), `companies/software-company/docs/adr/` (0001–0047), `platform/console/docs/adr/` (0001–0004), `platform/gateway/docs/adr/` (0001–0004) |
+| Vì sao quyết định thế này | Bốn dãy ADR, mỗi dãy đánh số riêng từ 0001, không tiền tố: `docs/adr/` gốc (0001–0028, quyết định cấp repo/quy trình), `companies/software-company/docs/adr/` (0001–0047), `platform/console/docs/adr/` (0001–0004), `platform/gateway/docs/adr/` (0001–0004) |

@@ -101,6 +101,7 @@ def test_claude_code_luon_chay_khong_tool_va_gui_schema_hai_duong():
     args = seen["args"]
     assert args[args.index("--tools") + 1] == ""          # không tool: hợp đồng của keeper
     assert args[args.index("--max-turns") + 1] == "6"     # KHÔNG phải 1 — xem CLI_NO_TOOL_TURNS
+    assert "--restricted" in args   # ADR gốc 0027: plugin/hook từ settings user/project không chen vào lượt
     assert args[args.index("--model") + 1] == "m-light"
     assert "--json-schema" in args                        # đường 1: CLI ép và kiểm
     assert "JSON Schema bắt buộc" in seen["stdin"]        # đường 2: model thấy mô tả trường

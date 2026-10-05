@@ -110,6 +110,8 @@ class ToolBox:
                 out = f"lỗi: {e}"
             except (TypeError, ValueError) as e:
                 out = f"lỗi tham số: {e}"
+            except OSError as e:   # `strerror`, không `str(e)`: thông điệp đầy đủ mang đường dẫn tuyệt đối của máy
+                out = f"lỗi: {type(e).__name__}: {e.strerror or e}"
         out = str(out)
         # `out_hash` băm đầu ra THẬT SỰ của tool, TRƯỚC khi cắt `max_output` ở đây và TRƯỚC khi runner
         # `sanitize_tool_output` lọc payload injection (bước đó chạy sau `call()` trả về) — vết ổn định qua cả

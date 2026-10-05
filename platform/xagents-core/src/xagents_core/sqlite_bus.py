@@ -25,6 +25,7 @@ của một công ty vào mình (`config.py`).
 """
 from __future__ import annotations
 
+import errno
 import os
 import sqlite3
 import sys
@@ -174,39 +175,147 @@ def _alive(pid: int) -> bool:
     return True
 
 
+#: msvcrt khoá BẮT BUỘC theo vùng byte: khoá đè lên phần pid thì chính người đọc pid (kể cả cùng tiến trình, qua
+#: handle khác) cũng bị chặn. Khoá một byte ở xa phần pid — Windows cho khoá vùng nằm quá cuối file.
+_KHOA_TAI = 1 << 30
+#: Số lần mở lại khi khoá trúng file vừa bị gỡ tên. Mỗi lần cần một người giữ nhả đúng khoảnh khắc ấy; hết lượt mà
+#: vẫn trúng là chuyện khác (có kẻ xoá lock dồn dập, hệ tệp báo `st_nlink` sai) — nói ra, không lặp im lặng.
+_SO_LAN_MO = 5
+
+
+# no-ky-thuat: khoá OS chỉ loại trừ giữa các tiến trình của MỘT máy trên hệ tệp cục bộ (flock qua NFS/SMB tuỳ máy chủ và trình gắn — như WAL của SQLite), quay lại khi bus nằm trên thư mục mạng mà nhiều máy cùng mở
+def _lock(fd: int) -> bool:
+    """Khoá loại trừ KHÔNG chờ trên file đã mở. True = đã khoá; False = handle khác (tiến trình này hay tiến trình
+    khác) đang giữ. Lỗi khác — hệ tệp không hỗ trợ khoá — ném `OSError` để `acquire` nói đúng tên nó, không gói
+    thành "orchestrator khác đang chạy" (khuôn 1, `TRAPS.md` gốc). Rẽ theo `sys.platform` vì lý do ở `_alive`."""
+    if sys.platform == "win32":
+        import msvcrt
+        os.lseek(fd, _KHOA_TAI, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError as e:
+            if e.errno == errno.EACCES: return False   # LK_NBLCK trúng vùng đang bị khoá
+            raise
+        return True
+    else:
+        import fcntl
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        return True
+
+
+def _unlock(fd: int) -> None:
+    """Đóng fd cũng nhả khoá; nhả tường minh trước vì Windows chỉ hứa nhả "tuỳ tài nguyên hệ thống" khi đóng."""
+    if sys.platform == "win32":
+        import msvcrt
+        os.lseek(fd, _KHOA_TAI, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _con_ten(fd: int) -> bool:
+    """File đang mở còn tên trong thư mục không — hỏi thẳng `st_nlink` của chính fd. Không cần so inode với
+    `stat(path)`: chỉ `release` làm đổi tên (gỡ tên, không rename), nên còn tên ⇔ vẫn là file ở `path`."""
+    return os.fstat(fd).st_nlink > 0
+
+
+def _xoa(path: Path) -> bool:
+    """Xoá file lock. False khi Windows từ chối vì còn handle mở tới nó (kể cả handle của chính mình)."""
+    try:
+        path.unlink(missing_ok=True)
+    except PermissionError:
+        return False
+    return True
+
+
 class Lease:
-    """Một tiến trình orchestrator cho một file bus: hai tiến trình `run` trên cùng SQLite sẽ xử lý trùng event (processed
-    chỉ học qua audit sau poll). File `<db>.lock` giữ pid; pid chết → lock cũ, lấy lại được."""
+    """Một tiến trình orchestrator cho một file bus: hai tiến trình `run` trên cùng SQLite sẽ xử lý trùng event
+    (processed chỉ học qua audit sau poll). Chủ của bus là ai giữ **khoá OS** trên `<db>.lock` (`fcntl.flock` trên
+    POSIX, `msvcrt.locking` trên Windows); pid trong file để người đọc chẩn đoán và để nhận ra bản cũ (dưới).
+
+    **Vì sao khoá OS (trả nợ 2026-10-04).** Bản trước quyết chủ bằng pid trong file: tạo mới thì nguyên tử
+    (`O_EXCL`), nhưng chiếm lock CŨ (pid chết) là đọc-rồi-ghi — hai tiến trình khởi động cùng lúc sau một lần crash
+    cùng đọc "pid chết", cùng ghi, cùng giữ bus. Khoá OS là một syscall nguyên tử và OS tự nhả khi tiến trình chết,
+    nên không còn "lock cũ" phải đoán bằng pid. Đã loại: rename nguyên tử hay file mutex phụ — vẫn phải đoán chủ cũ
+    chết chưa bằng pid, cửa sổ kiểm-rồi-chiếm chỉ dời chỗ; `fcntl.lockf` — khoá theo TIẾN TRÌNH, đóng bất kỳ fd nào
+    tới file là mất khoá, và hai `Lease` trong một tiến trình không loại trừ nhau.
+
+    **Bẫy gỡ tên.** Kẻ đã mở file trước khi người giữ nhả có thể khoá được nó SAU khi khoá nhả — nếu file ấy đã bị
+    gỡ tên thì kẻ thứ ba tạo file mới và cũng khoá được: hai chủ. Nên khoá xong phải kiểm file còn tên
+    (`_con_ten`), không thì mở lại. Và POSIX phải gỡ tên KHI CÒN khoá: nhả trước thì kẻ khác khoá được file còn
+    tên, qua kiểm, rồi bị gỡ tên dưới chân. Windows ngược lại: không xoá được file còn handle mở, nên đóng rồi mới
+    xoá; kẻ vừa mở file trong khe ấy làm lần xoá thất bại và file ở lại — đúng file người ấy đang khoá. Một đường
+    cho cả hai: thử xoá khi còn giữ, bị từ chối thì xoá lại sau khi đóng. pid bị xoá khỏi file trước đó, để kẻ mở
+    trong khe không thấy pid còn sống của người vừa nhả.
+
+    **pid vẫn được đọc** (sau khi đã giữ khoá) vì orchestrator bản CŨ không lấy khoá OS: pid còn sống, không phải
+    mình ⇒ từ chối như trước. Rỗng, hỏng hay pid chết khi đã giữ khoá ⇒ rác của lần tạo dở hoặc lần nhả không xoá
+    được, chiếm được. fd từ `os.open` không kế thừa (PEP 446): tiến trình con `exec` (git, sandbox, `claude -p`)
+    không mang khoá theo; `redeploy` nhả lease trước `execv` (`cli_cmds._with_lease`)."""
 
     def __init__(self, db: str | Path):
         self.path = Path(str(db) + ".lock")
         self.held = False
+        self._fd = -1
 
     def acquire(self) -> None:
-        # Tạo mới NGUYÊN TỬ (O_EXCL): kiểm-rồi-ghi để hai tiến trình cùng thấy "chưa có lock" và cùng giữ bus.
+        if self.held: return   # gọi lại trên đối tượng đang giữ: không mở fd thứ hai — khoá của chính mình sẽ chặn nó
+        fd = self._khoa()
         try:
-            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            self._take_over()
-            return
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(str(os.getpid()))
-        self.held = True
+            self._kiem_ban_cu()
+            os.ftruncate(fd, 0); os.lseek(fd, 0, os.SEEK_SET); os.write(fd, str(os.getpid()).encode())
+        except BaseException:
+            _unlock(fd); os.close(fd)
+            raise
+        self._fd, self.held = fd, True
 
-    def _take_over(self) -> None:
+    def _khoa(self) -> int:
+        """Mở-hoặc-tạo `path` rồi khoá; trả fd đang giữ khoá trên đúng file còn mang tên `path`."""
+        for _ in range(_SO_LAN_MO):
+            fd = os.open(self.path, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0))
+            try:
+                got = _lock(fd)
+            except OSError as e:
+                os.close(fd)
+                raise LeaseError(f"không khoá được {self.path} ({e}): hệ tệp này không hỗ trợ khoá OS — đặt bus "
+                                 f"trên ổ cục bộ") from e
+            if not got:
+                os.close(fd)
+                pid = self._doc_pid()
+                ai = f"pid {pid}" if pid > 0 else "chưa ghi pid, đang được tạo"
+                raise LeaseError(f"orchestrator khác ({ai}) đang chạy trên {self.path.with_suffix('')}: dừng nó "
+                                 f"trước. Khoá OS tự nhả khi nó chết — đừng xoá {self.path} khi nó còn sống")
+            if _con_ten(fd): return fd
+            _unlock(fd); os.close(fd)   # khoá trúng file người giữ trước vừa gỡ tên: mở lại theo tên
+        raise LeaseError(f"không giữ được {self.path}: {_SO_LAN_MO} lần khoá xong thì file đều đã bị gỡ tên — có "
+                         f"tiến trình xoá lock liên tục, hoặc hệ tệp báo st_nlink sai")
+
+    def _doc_pid(self) -> int:
         try: raw = self.path.read_text(encoding="utf-8").strip()
-        except OSError: raw = "0"
-        if not raw:   # tồn tại mà rỗng: kẻ khác vừa O_EXCL xong, chưa kịp ghi pid — không phải lock cũ
-            raise LeaseError(f"lock {self.path} đang được tạo bởi tiến trình khác; thử lại, hoặc xoá nó nếu "
-                             f"chắc chắn không còn orchestrator nào")
-        try: pid = int(raw)
-        except ValueError: pid = 0
+        except OSError: return 0   # vd Windows khoá chia sẻ: như pid không đọc được
+        try: return int(raw)
+        except ValueError: return 0
+
+    def _kiem_ban_cu(self) -> None:
+        """Đã giữ khoá OS nên không tiến trình bản này nào giữ bus; còn orchestrator bản cũ (chỉ ghi pid) thì khoá
+        không thấy được — pid còn sống và không phải mình ⇒ coi như nó đang giữ."""
+        pid = self._doc_pid()
+        # no-ky-thuat: pid còn sống mà không giữ khoá OS vẫn bị coi là chủ (để không giẫm lên orchestrator bản cũ) nên pid bị tái dụng sau crash là từ chối oan tới khi xoá tay, quay lại khi không còn máy nào chạy Lease bản trước khoá OS
         if pid != os.getpid() and _alive(pid):
             raise LeaseError(f"orchestrator khác (pid {pid}) đang chạy trên {self.path.with_suffix('')}: "
                              f"dừng nó trước, hoặc xoá {self.path} nếu chắc chắn nó đã chết")
-        # no-ky-thuat: chiếm lock cũ (pid chết) vẫn là đọc-rồi-ghi, hai tiến trình cùng khởi động đúng lúc lock cũ còn nằm đó có thể cùng chiếm, quay lại khi gặp chạy trùng sau crash hoặc cần khoá mức OS (fcntl/msvcrt)
-        self.path.write_text(str(os.getpid()), encoding="utf-8"); self.held = True
 
     def release(self) -> None:
-        if self.held:
-            self.path.unlink(missing_ok=True); self.held = False
+        if not self.held: return
+        fd, self._fd, self.held = self._fd, -1, False
+        try:
+            os.ftruncate(fd, 0)          # kẻ mở file trong khe đóng-rồi-xoá (Windows) thấy rỗng, không thấy pid mình
+            da_xoa = _xoa(self.path)     # POSIX: gỡ tên khi CÒN khoá
+        finally:
+            _unlock(fd); os.close(fd)
+        if not da_xoa:
+            _xoa(self.path)              # Windows: đóng rồi mới xoá được; ai vừa mở thì file ở lại cho người đó

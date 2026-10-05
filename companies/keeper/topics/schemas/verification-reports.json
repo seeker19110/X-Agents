@@ -73,6 +73,32 @@
           },
           "title": "Family Safe",
           "type": "array"
+        },
+        "patch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Patch Id",
+          "description": "Id cây git của nội dung worktree lúc đo (ADR keeper 0001) — do code đo, không do model khai. Thiếu/null thì orchestrator từ chối báo cáo."
+        },
+        "payload_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload Error",
+          "description": "Phần model kể sai hình, không dựng được báo cáo — code điền lý do, chỉ giữ số đo. Khác null thì orchestrator từ chối báo cáo: lần đo hỏng vẫn thu hồi bền qua bus (ADR keeper 0001, mục c)."
         }
       },
       "required": [

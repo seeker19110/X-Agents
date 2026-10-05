@@ -181,16 +181,37 @@ class AntigravityAuthManager:
 
     # ---------- đọc / ghi ----------
 
-    def _read_file(self) -> dict[str, Any]:
+    def _read_file(self, *, strict: bool = False) -> dict[str, Any]:
+        """Nội dung token file; chưa có file → `{}`.
+
+        `strict=True` cho đường GHI: file có mà đọc lỗi (bị khoá, JSON hỏng, không phải object) thì NÉM. Đọc lỗi
+        mà coi là file rỗng thì lần ghi kế tiếp chỉ còn đúng một tài khoản — cả pool cùng refresh token mất im lặng.
+        """
         if not self.auth_file.is_file():
             return {}
         try:
             with open(self.auth_file, encoding="utf-8") as f:
                 data = json.load(f)
-            return data if isinstance(data, dict) else {}
+            if not isinstance(data, dict):
+                raise ValueError(f"{self.auth_file} không phải object JSON")
+            return data
         except Exception as e:
+            if strict:
+                raise
             logger.warning("Không đọc được %s: %s", self.auth_file, e)
             return {}
+
+    def _read_for_write(self) -> dict[str, Any] | None:
+        """`_read_file(strict=True)`; lỗi thì ghi log nói rõ vì sao KHÔNG ghi và trả `None`."""
+        try:
+            return self._read_file(strict=True)
+        except (OSError, ValueError) as e:
+            logger.error(
+                "Không đọc được %s nên KHÔNG ghi (ghi đè sẽ xoá mọi tài khoản khác trong pool): %s",
+                self.auth_file,
+                e,
+            )
+            return None
 
     def load_all_stored_credentials(self) -> list[AntigravityCredentials]:
         """Toàn bộ tài khoản trong file (định dạng `accounts` nhiều tài khoản, hoặc một tài khoản phẳng)."""
@@ -245,10 +266,12 @@ class AntigravityAuthManager:
                 tmp_path.unlink(missing_ok=True)
             raise
 
-    def save_credentials(self, creds: AntigravityCredentials) -> None:
-        """Ghi nguyên tử, giữ nguyên các tài khoản khác. File chỉ chủ sở hữu đọc được."""
+    def save_credentials(self, creds: AntigravityCredentials) -> bool:
+        """Ghi nguyên tử, giữ nguyên các tài khoản khác. File chỉ chủ sở hữu đọc được. `False` = chưa ghi được."""
         with self._lock:
-            existing = self._read_file()
+            existing = self._read_for_write()
+            if existing is None:
+                return False
             accounts = existing.get("accounts")
             if not isinstance(accounts, dict):
                 accounts = {}
@@ -262,6 +285,8 @@ class AntigravityAuthManager:
                 self._atomic_write(self.auth_file, out)
             except Exception as e:
                 logger.error("Không ghi được token file %s: %s", self.auth_file, e)
+                return False
+            return True
 
     def _update_account_fields(self, creds: AntigravityCredentials, **fields: Any) -> None:
         """Đọc lại file và chỉ sửa vài trường của một tài khoản, KHÔNG ghi đè cả object `creds`
@@ -269,11 +294,18 @@ class AntigravityAuthManager:
         with self._lock:
             for k, v in fields.items():
                 setattr(creds, k, v)
-            existing = self._read_file()
+            existing = self._read_for_write()
+            if existing is None:
+                return
             accounts = existing.get("accounts")
             key = creds.email or "primary"
             if not isinstance(accounts, dict) or not isinstance(accounts.get(key), dict):
-                self.save_credentials(creds)
+                if not existing.get("access_token") or (existing.get("email") or "primary") != key:
+                    # Tài khoản không còn trong file: đã `logout` trong lúc request giữ `creds` cũ còn bay.
+                    # Ghi lại ở đây là hoàn tác lệnh logout của người.
+                    logger.info("Bỏ cập nhật %s: tài khoản không còn trong pool", key)
+                    return
+                self.save_credentials(creds)  # file phẳng cũ chứa đúng tài khoản này → chuyển sang `accounts`
                 return
             accounts[key].update(fields)
             out = dict(existing)
@@ -287,8 +319,11 @@ class AntigravityAuthManager:
 
     def remove_account(self, email: str) -> bool:
         with self._lock:
-            data = self._read_file()
+            data = self._read_file(strict=True)  # đọc lỗi mà trả False thì CLI in "Không có tài khoản" — sai
             accounts = data.get("accounts")
+            if not isinstance(accounts, dict) and data.get("access_token") and (data.get("email") or "primary") == email:
+                self.auth_file.unlink(missing_ok=True)  # file phẳng cũ: một tài khoản duy nhất là chính nó
+                return True
             if not isinstance(accounts, dict) or email not in accounts:
                 return False
             del accounts[email]
@@ -590,7 +625,8 @@ class AntigravityAuthManager:
             source="oauth_pkce",
         )
         creds.project_id = self.resolve_project_id(creds)
-        self.save_credentials(creds)
+        if not self.save_credentials(creds):
+            raise RuntimeError(f"Google đã cấp token nhưng KHÔNG lưu được vào {self.auth_file} — xem log phía trên.")
         logger.info("Đăng nhập Antigravity thành công: %s", email or "user")
         return creds
 
