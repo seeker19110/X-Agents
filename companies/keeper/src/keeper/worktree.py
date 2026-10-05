@@ -90,8 +90,14 @@ def content_tree(path: Path) -> str:
         return _git(path, "write-tree", env=idx)
 
 
+def commit_of(path: Path, rev: str) -> str:
+    """Sha commit mà `rev` (vd `refs/heads/<nhánh>`) trỏ tới NGAY LÚC hỏi. Ref đi tiếp được, sha thì không: kiểm
+    rồi push phải cùng dùng sha này, không đọc lại ref (ADR keeper 0002)."""
+    return _git(path, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}")
+
+
 def tree_of(path: Path, rev: str) -> str:
-    """Id cây git của `rev` (vd `refs/heads/<nhánh>`) — cây mà `git push` của nhánh đó thật sự mang đi."""
+    """Id cây git của `rev` (vd sha commit `push_branch` sắp đẩy) — cây mà lần push ấy thật sự mang đi."""
     return _git(path, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{tree}}")
 
 

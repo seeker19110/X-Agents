@@ -52,24 +52,42 @@ def test_push_branch_day_nhanh_ticket_len_remote(repo: Path, remote: Path) -> No
     _run(wt.path, "add", "-A")
     _run(wt.path, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "vá")
 
-    push_branch(wt)
+    push_branch(wt, sha=_run(wt.path, "rev-parse", "HEAD"))
 
     ls = subprocess.run(["git", "ls-remote", str(remote), wt.branch], capture_output=True, text=True)
     assert wt.branch in ls.stdout
+
+
+def test_push_branch_day_dung_sha_duoc_dua_khong_theo_dau_nhanh(repo: Path, remote: Path) -> None:
+    """Nhánh đi tiếp sau commit đã kiểm (tiến trình khác commit chen): remote nhận ĐÚNG sha được đưa, vẫn chỉ vào
+    nhánh của worktree — không phải đầu nhánh hiện tại, không nhánh nào khác (I1)."""
+    wt = open_worktree("KEEP:6", repo=repo)
+    (wt.path / "vá.md").write_text("đã kiểm\n", encoding="utf-8")
+    _run(wt.path, "add", "-A")
+    _run(wt.path, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "vá")
+    da_kiem = _run(wt.path, "rev-parse", "HEAD")
+    (wt.path / "vá.md").write_text("chen sau khi kiểm\n", encoding="utf-8")
+    _run(wt.path, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-am", "chen")
+
+    push_branch(wt, sha=da_kiem)
+
+    dong = _run(remote, "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads").splitlines()
+    assert dict(d.split() for d in dong) == {"refs/heads/main": _run(repo, "rev-parse", "main"),
+                                             f"refs/heads/{wt.branch}": da_kiem}
 
 
 def test_push_branch_tu_choi_tren_checkout_chung(repo: Path, remote: Path) -> None:
     wt = KeeperWorktree(repo=repo, ticket_id="KEEP:2")  # chưa create() -> wt.path không tồn tại/không phải worktree phụ
     from keeper.worktree import SharedCheckoutRefused
     with pytest.raises(SharedCheckoutRefused):
-        push_branch(wt)
+        push_branch(wt, sha=_run(repo, "rev-parse", "HEAD"))
 
 
 def test_push_branch_loi_git_nem_publish_error(repo: Path) -> None:
     """Không có remote -> git push lỗi thật -> PublishError, không phải traceback trần."""
     wt = open_worktree("KEEP:3", repo=repo)
     with pytest.raises(PublishError):
-        push_branch(wt)
+        push_branch(wt, sha=_run(wt.path, "rev-parse", "HEAD"))
 
 
 def test_push_branch_idempotent_goi_hai_lan_khong_hong(repo: Path, remote: Path) -> None:
@@ -77,8 +95,9 @@ def test_push_branch_idempotent_goi_hai_lan_khong_hong(repo: Path, remote: Path)
     (wt.path / "vá.md").write_text("a\n", encoding="utf-8")
     _run(wt.path, "add", "-A")
     _run(wt.path, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "vá")
-    push_branch(wt)
-    push_branch(wt)  # cùng SHA, remote đã đúng -> không lỗi
+    sha = _run(wt.path, "rev-parse", "HEAD")
+    push_branch(wt, sha=sha)
+    push_branch(wt, sha=sha)  # cùng SHA, remote đã đúng -> không lỗi
 
 
 # ---------- create_pr (subprocess giả, không gọi gh thật) ----------
@@ -145,6 +164,7 @@ def test_push_branch_qua_han_nem_publish_error(monkeypatch: pytest.MonkeyPatch, 
     """`refuse_shared_checkout` (worktree.py) cũng gọi `subprocess.run` thật — chỉ giả timeout đúng lệnh
     `push`, để lời gọi kiểm checkout riêng trước đó không bị ăn theo."""
     wt = open_worktree("KEEP:5", repo=repo)
+    sha = _run(wt.path, "rev-parse", "HEAD")
     goc = subprocess.run
 
     def _chi_timeout_push(argv: list[str], **k: Any) -> subprocess.CompletedProcess[str]:
@@ -154,7 +174,7 @@ def test_push_branch_qua_han_nem_publish_error(monkeypatch: pytest.MonkeyPatch, 
 
     monkeypatch.setattr(publish_mod.subprocess, "run", _chi_timeout_push)
     with pytest.raises(PublishError, match="quá"):
-        push_branch(wt)
+        push_branch(wt, sha=sha)
 
 
 def test_create_pr_qua_han_nem_publish_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
