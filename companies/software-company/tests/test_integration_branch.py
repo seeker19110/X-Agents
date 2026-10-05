@@ -177,13 +177,17 @@ def test_approved_ticket_is_merged_before_dependents_start(tmp_path):
             tid = _inp(msgs[0]["content"])["ticket_id"]
             seen[tid] = sorted(p.name for p in (repo / ".worktrees" / tid).glob("f_*.py"))
         return _repo_tool_handler(msgs, tools)
-    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler, tool_handler=th), repo=repo, base="main", batch_releases=True)
+    bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=th)
+    orch = Orchestrator(bus, client, repo=repo, base="main", batch_releases=True)
     _drive_to_plan(bus, orch); orch.run()
     assert seen == {"T1": [], "T2": ["f_t1.py"]}, "T2 (depends_on T1) bắt đầu trên nền đã có code T1"
     assert orch.lead.releases == ["REL-001"] and orch.lead.release_tickets["REL-001"] == ["T1", "T2"]
     merged = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "integration.merged"]
     assert [m["ticket_id"] for m in merged] == ["T1", "T2"] and merged[0]["release_id"] is None, "merge lúc approved, không đợi RC"
     assert orch.integration.files().count("f_t1.py") == 1
+    assert [d["ticket_id"] for d in orch.supervisor.lessons()] == ["T1", "T2"], "bài học có ngay khi merge, trước nghiệm thu"
+    t2_calls = [c for c in client.calls if _agent_of(c["system"]) == "builder" and '"T2"' in c["user"]]
+    assert t2_calls and '"related_lessons"' in t2_calls[0]["user"] and '"ticket_id": "T1"' in t2_calls[0]["user"], "builder T2 nhận bài học T1 qua danh sách đã chọn"
 
 
 def test_rework_state_survives_restart_and_empty_branch_is_not_integrated(tmp_path):

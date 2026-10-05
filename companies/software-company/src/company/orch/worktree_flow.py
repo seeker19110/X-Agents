@@ -143,6 +143,7 @@ def merge_ticket_locked(o: Orchestrator, tid: str, res: StepResult, release_id: 
                                            "repo": str(integration.repo)}, ticket_id=tid)
         res.actions.append(f"integrated:{tid}@{m.sha}")
         started = o.lead.mark_integrated(tid)  # F15: ticket phụ thuộc bắt đầu trên nền đã có code này
+        o._record_lesson(tid)
         if started: res.actions.append("dispatch:" + ",".join(started))
         return True
     if not m.conflicts:

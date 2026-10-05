@@ -285,15 +285,21 @@ def _close_acceptance_gate(o: Orchestrator, env: Envelope, res: StepResult) -> N
         o._audit("handler_error", {"agent": ROLE.OPS, "error": str(e)[:300]})
 
 def _record_lessons(o: Orchestrator, rid: str) -> None:
-    """Sau nghiệm thu: estimate vs actual mỗi ticket đã closed → supervisor.knowledge + blackboard `knowledge`."""
+    """Đường nghiệm thu cũ bù bài học của ticket đã đóng trước khi hook merge được cài."""
     for tid in o.lead.release_tickets.get(rid, []):
-        if o.lead.state.get(tid) != "closed" or f"lesson:{tid}" in o.once: continue
-        o._remember(f"lesson:{tid}")
-        t = o.lead.tickets[tid]; b = o.supervisor.budgets.get(tid)
-        actual = b.used if b else 0; est = t.estimate_tokens or 0
-        lesson = {"ticket_id": tid, "assignee": t.assignee, "estimate_tokens": est, "actual_tokens": actual,
-                  "review_tokens": b.review_used if b else 0,
-                  "ratio": round(actual / est, 2) if est else None, "retry": t.retry, "risk_tags": t.risk_tags}
-        o.supervisor.record_lesson(context=f"{t.project_id}/{tid} {t.title}", problem=f"retry={t.retry}",
-                                      solution=t.hint or "", evidence=json.dumps(lesson, ensure_ascii=False))
-        o.blackboard.write(ROLE.SUPERVISOR, "knowledge", f"audit-log:lesson:{tid}", json.dumps(lesson, ensure_ascii=False))
+        if o.lead.state.get(tid) == "closed": o._record_lesson(tid)
+
+
+def _record_lesson(o: Orchestrator, tid: str) -> None:
+    """Ticket vào nhánh tích hợp: chốt estimate vs actual sớm cho lượt kế tiếp, một lần bền qua restart."""
+    # no-ky-thuat: một bài học mỗi ticket, quay lại khi cần đo lần merge thứ hai của cùng ticket sau rework
+    if f"lesson:{tid}" in o.once: return
+    o._remember(f"lesson:{tid}")
+    t = o.lead.tickets[tid]; b = o.supervisor.budgets.get(tid)
+    actual = b.used if b else 0; est = t.estimate_tokens or 0
+    lesson = {"ticket_id": tid, "assignee": t.assignee, "estimate_tokens": est, "actual_tokens": actual,
+              "review_tokens": b.review_used if b else 0,
+              "ratio": round(actual / est, 2) if est else None, "retry": t.retry, "risk_tags": t.risk_tags}
+    o.supervisor.record_lesson(context=f"{t.project_id}/{tid} {t.title}", problem=f"retry={t.retry}",
+                              solution=t.hint or "", evidence=json.dumps(lesson, ensure_ascii=False))
+    o.blackboard.write(ROLE.SUPERVISOR, "knowledge", f"audit-log:lesson:{tid}", json.dumps(lesson, ensure_ascii=False))

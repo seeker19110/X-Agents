@@ -173,7 +173,7 @@
       "observability"
     ],
     "timeout_minutes": 15,
-    "version": 14,
+    "version": 16,
     "writes": [
       "supervisor-actions"
     ]

@@ -226,9 +226,14 @@ class Orchestrator:
         # ADR-0032: ngưỡng "nợ kiến trúc treo" cấu hình cùng chỗ với trần ngân sách (llm.yaml `debt_reviews`).
         self.supervisor = Supervisor(bus, max_retries=max_retries, project_budget_usd=budget_usd,
                                      debt_threshold=int(getattr(client, "debt_reviews", None) or 3))
-        self.runner = AgentRunner(bus, client, self.agents, self.blackboard)
+        self.runner = AgentRunner(bus, client, self.agents, self.blackboard, lesson_provider=self._lessons_for_input)
         self._rehydrate()
         bus.subscribe("*", self._on_event)
+
+    def _lessons_for_input(self, inp: Envelope) -> list[dict[str, Any]]:
+        tid = str(inp.payload.get("ticket_id") or inp.key)
+        ticket = self.lead.tickets.get(tid)
+        return self.supervisor.lessons_for(ticket) if ticket is not None else []
 
     # ---------- khôi phục từ log ----------
 
@@ -468,6 +473,7 @@ class Orchestrator:
     _open_acceptance_gate = gates_flow._open_acceptance_gate
     _close_acceptance_gate = gates_flow._close_acceptance_gate
     _record_lessons = gates_flow._record_lessons
+    _record_lesson = gates_flow._record_lesson
 
 
     _release_evidence = verify.release_evidence
