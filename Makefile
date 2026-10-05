@@ -2,7 +2,7 @@
 # vẫn nằm trong Makefile của thư mục đó; `make -C platform/gateway login` hoặc `cd platform/gateway && make login`.
 MEMBERS := platform/console platform/gateway platform/xagents-core companies/keeper companies/software-company
 
-.PHONY: sync test cov lint types fix build clean $(MEMBERS)
+.PHONY: sync test cov lint types fix build clean ecc-vendor ecc-check $(MEMBERS)
 
 sync:          # một .venv chung ở root, cài cả năm package editable theo uv.lock
 	uv sync --locked
@@ -27,6 +27,12 @@ build:         # wheel + sdist của cả năm vào dist/
 
 clean:
 	rm -rf dist build */build */src/*.egg-info
+
+ecc-vendor:    # sinh lại tập ECC vendor ở .claude/ từ commit ghim trong docs/integrations/ecc.lock.json (ADR gốc 0028)
+	uv run python scripts/ecc_vendor.py build
+
+ecc-check:     # tập ECC vendor có đúng là output tại commit ghim không — cùng lệnh job CI `ecc-check`, cần github.com
+	uv run python scripts/ecc_vendor.py check
 
 # `make platform/console` = `make -C platform/console` (chạy target mặc định của package đó)
 $(MEMBERS):

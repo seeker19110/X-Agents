@@ -323,6 +323,43 @@ def test_login_pkce_prints_url_when_open_browser_false(manager, monkeypatch, cap
     assert gw_auth.AUTH_ENDPOINT in out
 
 
+def test_login_pkce_khong_luu_duoc_thi_bao_loi_khong_bao_thanh_cong(manager, monkeypatch):
+    """Token file hỏng → `save_credentials` từ chối ghi; login mà vẫn báo thành công là khuôn 1 (TRAPS §1)."""
+    port = _free_port()
+    monkeypatch.setattr(gw_auth.secrets, "token_hex", lambda n: "fixedstate9")
+    monkeypatch.setattr(gw_auth.webbrowser, "open", lambda url: True)
+    manager.token_file.parent.mkdir(parents=True, exist_ok=True)
+    manager.token_file.write_text("{hỏng", encoding="utf-8")
+
+    def fake_urlopen(req, timeout=None):
+        if req.full_url == gw_auth.TOKEN_ENDPOINT:
+            return _FakeResponse({"access_token": "tok9", "expires_in": 3600})
+        if req.full_url.startswith(gw_auth.USERINFO_ENDPOINT):
+            return _FakeResponse({"email": "x@example.com"})
+        if req.full_url == gw_auth.LOAD_CODE_ASSIST_ENDPOINT:
+            return _FakeResponse({})
+        raise AssertionError(f"unexpected urlopen: {req.full_url}")
+
+    monkeypatch.setattr(gw_auth.urllib.request, "urlopen", fake_urlopen)
+    result: dict = {}
+
+    def run():
+        try:
+            manager.login_pkce(port=port, open_browser=True, timeout_seconds=10.0)
+        except RuntimeError as e:
+            result["err"] = str(e)
+
+    t = threading.Thread(target=run)
+    t.start()
+    import time as _time
+
+    _time.sleep(0.3)
+    _drive_callback(port, code="c", state="fixedstate9")
+    t.join(timeout=15)
+
+    assert str(manager.token_file) in result["err"]
+
+
 def test_login_pkce_userinfo_failure_still_saves_with_empty_email(manager, monkeypatch):
     port = _free_port()
     monkeypatch.setattr(gw_auth.secrets, "token_hex", lambda n: "fixedstate5")

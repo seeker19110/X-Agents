@@ -38,7 +38,7 @@ from .llm import FakeClient
 from .orchestrator import Orchestrator, _evidence, spec_runtime_gap
 from .runner import artifact_store
 from .smoke import parse_runtime, run_smoke
-from .workspace import NO_HOOKS, TicketWorkspace, clean_env
+from .workspace import NO_HOOKS, RAW_PATHS, TicketWorkspace, clean_env
 
 SCHEMA_VERSION = 1
 EXCERPT = 200          # §7: trích tối đa 200 ký tự mỗi nguồn
@@ -299,8 +299,9 @@ def _endpoints(contract: str) -> list[str]:
 
 
 def _git(repo: Path, *args: str) -> str | None:
-    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       env=clean_env())
+    # RAW_PATHS: tên non-ASCII escape thành `"docs/h\341..."` thì `startswith("docs/")` sai — xem `workspace.RAW_PATHS`
+    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *RAW_PATHS, *args], capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", env=clean_env())
     return r.stdout.strip() if r.returncode == 0 else None
 
 

@@ -98,6 +98,55 @@ def test_chieu_nguoc_bo_hang_kiem_before_thi_cung_dau_vao_khong_con_nem():
     require_two_way(ev, rules=rules_without("before-must-fail"))  # không ném
 
 
+@pytest.mark.parametrize("before", [TIMEOUT_EXIT, MISSING_EXIT, -9], ids=["qua-gio", "khong-co-lenh", "bi-giet"])
+def test_lan_chay_truoc_khong_hoan_tat_khong_phai_chieu_do(before: int):
+    """Chiều ngược nghĩa là TEST chạy xong và ĐỎ. Quá giờ (cache lạnh lần đầu, cache ấm lần sau), lệnh không có
+    trên máy (script do chính patch thêm, bị stash cùng `--include-untracked`) hay tiến trình bị giết bằng tín
+    hiệu (`-9` khi OOM) đều là KHÔNG test nào chạy — nhận chúng là bằng chứng hai chiều mà không đo gì."""
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(_ev(before=before, after=0))
+    assert "before-must-fail" in str(e.value)
+
+
+def _ev_cmd(cmd: str, *, before: int) -> TwoWayEvidence:
+    return TwoWayEvidence(
+        cmd=cmd, before=RunOutcome(cmd=cmd, exit_code=before, output_tail="output THẬT trước"),
+        after=RunOutcome(cmd=cmd, exit_code=0, output_tail="output THẬT sau"), verified_by=TRUSTED_VERIFIER,
+    )
+
+
+PYTEST_CMDS = ["uv run pytest -q tests/test_moi.py", "python -m pytest tests/test_moi.py",
+               r".venv\Scripts\pytest.exe -q tests\test_moi.py", "py.test -k ca_moi"]
+
+
+@pytest.mark.parametrize("cmd", PYTEST_CMDS)
+@pytest.mark.parametrize("before", [2, 3, 4, 5], ids=["ngat-hoac-loi-thu-thap", "loi-noi-bo", "sai-cach-goi",
+                                                       "khong-thu-duoc-test"])
+def test_pytest_thoat_khac_1_khong_phai_chieu_do(cmd: str, before: int):
+    """`--include-untracked` stash luôn FILE TEST MỚI của patch: lệnh nhắm thẳng file đó (`pytest tests/test_moi.py`)
+    thoát 4 vì đường dẫn không có, `-k ca_moi` thoát 5 vì không thu được test nào — `> 0` nên từng qua I2 mà không
+    test nào chạy. Với pytest chỉ mã 1 nghĩa là "có test chạy xong và ĐỎ"."""
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(_ev_cmd(cmd, before=before))
+    assert "pytest-before-must-be-test-failure" in str(e.value)
+
+
+@pytest.mark.parametrize("cmd", PYTEST_CMDS)
+def test_pytest_thoat_1_van_la_chieu_do_va_chieu_nguoc(cmd: str):
+    require_two_way(_ev_cmd(cmd, before=1))
+    require_two_way(_ev_cmd(cmd, before=4), rules=rules_without("pytest-before-must-be-test-failure"))  # không ném
+
+
+@pytest.mark.parametrize("cmd", ["uv run ruff check src tests/test_pytest.py", "bash ci.sh"])
+def test_lenh_khong_phai_pytest_thoat_duong_phai_co_dong_tong_ket_pytest(cmd: str):
+    """Danh sách TRẮNG (fail closed): chỉ pytest gọi thẳng được tin mã thoát. `ruff`/script riêng thoát dương vì
+    lỗi lint — không test nào đỏ — nên bị `wrapped-before-must-show-test-failure` từ chối (trước đây qua với `> 0`).
+    Chi tiết các lệnh bọc lạ: `test_evidence_lenh_boc.py`."""
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(_ev_cmd(cmd, before=2))
+    assert "wrapped-before-must-show-test-failure" in str(e.value)
+
+
 def test_after_do_thi_bi_nem():
     with pytest.raises(EvidenceError) as e:
         require_two_way(_ev(before=1, after=2))
@@ -118,8 +167,10 @@ def test_rules_without_ten_la_thi_no():
 # --- lời khai verified_by ---------------------------------------------------------------------------
 
 def test_truong_tu_khai_duoc_khai_bao():
-    assert SELF_CLAIM_FIELDS == frozenset({"verified_by", "before", "after"})
-    assert [r.name for r in EVIDENCE_RULES] == ["before-must-fail", "after-must-pass", "verifier-must-be-workspace"]
+    assert SELF_CLAIM_FIELDS == frozenset({"verified_by", "before", "after", "patch_id"})
+    assert [r.name for r in EVIDENCE_RULES] == ["before-must-fail", "pytest-before-must-be-test-failure",
+                                                "wrapped-before-must-show-test-failure",
+                                                "after-must-pass", "verifier-must-be-workspace"]
 
 
 def test_drop_self_claims_bo_dung_truong_tu_khai():

@@ -486,3 +486,12 @@ def test_spawn_kill_stops_real_descendant(tmp_path):
                 os.kill(pid, signal.SIGTERM)
             except OSError:
                 pass
+
+
+def test_subprocess_thieu_binary_tra_127_nhu_container_chu_khong_nem(tmp_path):
+    """Repo khách khai stack node mà máy không có `npm`: backend container trả 127 (shell trong container báo),
+    backend subprocess từng ném FileNotFoundError xuyên qua `TicketWorkspace.lint/test` — cùng một sự kiện, hai
+    chế độ hỏng. Nay cả hai cùng khuôn `Result`, và stderr nói lệnh nào thiếu."""
+    r = SubprocessSandbox().run(RunSpec(argv=["khong-co-lenh-nay-xyz", "--version"], cwd=tmp_path, env=clean_env()))
+    assert (r.exit_code, r.timed_out, r.sandbox) == (127, False, "subprocess")
+    assert "khong-co-lenh-nay-xyz" in r.stderr and r.stdout == ""

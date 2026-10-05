@@ -20,7 +20,7 @@ from typing import get_args
 
 from pydantic import ValidationError
 
-from .drift import scan
+from .drift import history_gap, scan
 from .events import Ticket
 from .gates import GateKind
 from .patcher import HUMAN_ONLY_SEGMENTS, fix_docs
@@ -114,6 +114,7 @@ def _publish(args: argparse.Namespace) -> int:
     Đứng RIÊNG khỏi `watch` có chủ ý — vòng lặp tự động chưa nối scout→patch→verify (xem TRAPS.md), nên
     "publish" hôm nay là bước người/script gọi sau khi patch đã commit vào worktree của ticket, không phải
     một nhịp tự động."""
+    from .evidence import EvidenceError
     from .github import GitHubReader
     from .orchestrator import KeeperOrchestrator
     from .publish import PublishError
@@ -130,6 +131,9 @@ def _publish(args: argparse.Namespace) -> int:
     except PublishError as e:
         print(str(e), file=sys.stderr)
         return 3
+    except EvidenceError as e:  # thứ sắp push khác nội dung đã đo (ADR keeper 0002) — không push gì cả
+        print(str(e), file=sys.stderr)
+        return 4
     if pr is None:
         print(f"{args.ticket_id}: đã publish từ trước (idempotent) — không gọi lại push/gh")
         return 0
@@ -192,8 +196,12 @@ def _drift(args: argparse.Namespace) -> int:
 
     Bộ dò đã có từ BT-keeper và phủ 100% test, nhưng KHÔNG workflow nào gọi nó, nên ba PR (#192, #208, #209)
     merge thiếu dòng CHANGELOG mà không cổng nào đỏ — công cụ tự soi chỉ có giá trị khi có thứ chạy nó.
-    Thoát khác 0 khi còn tín hiệu, để CI dùng trực tiếp."""
+    Thoát khác 0 khi còn tín hiệu, để CI dùng trực tiếp — và thoát 2 khi không soi được lịch sử: "sạch" trên
+    một thư mục không phải git hay một clone nông là cổng xanh giả (`drift.history_gap`)."""
     repo = repo_root(Path(args.repo))
+    if (gap := history_gap(repo)) is not None:
+        print(f"drift: không soi được — {gap}", file=sys.stderr)
+        return 2
     signals = scan(
         claude_agents_dir=repo / ".claude" / "agents",
         golden_agents_dir=repo / "companies" / "software-company" / "tests" / "golden" / "agents",

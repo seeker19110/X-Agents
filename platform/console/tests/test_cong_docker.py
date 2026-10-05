@@ -33,7 +33,8 @@ DOCKERFILE = ROOT / "Dockerfile"
 
 #: File bí mật của `AGENTS.md` luật cấm 3. Cùng danh sách ấy phải bị loại khỏi ngữ cảnh build, vì `COPY . .`
 #: không biết `.gitignore` — hai cơ chế khác nhau, cùng một danh sách.
-BI_MAT = ("llm.yaml", "media.yaml", ".env")
+#: `llm.yaml.*`: bản `.bak`/`.tmp` console ghi cạnh `llm.yaml` (`console/settings.py:_atomic_write`) mang cùng khoá.
+BI_MAT = ("llm.yaml", "llm.yaml.*", "media.yaml", ".env")
 
 
 def _compose() -> dict[str, Any]:

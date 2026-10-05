@@ -14,7 +14,7 @@ from company.delivery import DeliveryLead
 from company.events import Envelope, PullRequest, ReviewResult, Task
 from company.gate_cli import PersistentGate
 from company.orch.routes import REVIEW_AGENT
-from company.workspace import TicketWorkspace, is_generated
+from company.workspace import Integration, TicketWorkspace, is_generated
 from test_tools_and_agentic import _init_repo
 
 
@@ -122,3 +122,21 @@ def test_review_van_chay_binh_thuong_voi_task_co_human_hint(tmp_path):
         bus.publish(Envelope(topic="review-results", key="T3", actor=REVIEW_AGENT[src],
                              payload=ReviewResult(ticket_id="T3", source=src, verdict="pass").model_dump()))
     assert lead.state["T3"] == "approved"
+
+
+def test_ten_file_tieng_viet_khong_bi_bo_khoi_diff_va_danh_sach_file(tmp_path):
+    """`core.quotepath` mặc định bật: `--name-only`/`ls-tree` in tên non-ASCII thành `"qlkh/kh\\303\\241ch.py"` (có
+    ngoặc kép, byte escape bát phân). Tên đó không phải đường dẫn thật: `git diff -- "<tên escape>"` rỗng nên `diff()`
+    bỏ qua file IM LẶNG — reviewer không thấy code, cũng không thấy dòng "KHÔNG có diff của". Đo hai chiều: bỏ
+    `core.quotepath=false` khỏi `_git` thì cả ba assert dưới đỏ."""
+    repo = _init_repo(tmp_path / "repo")
+    ws = TicketWorkspace(repo, "T7", base="main"); ws.create()
+    (ws.path / "qlkh").mkdir(exist_ok=True)
+    (ws.path / "qlkh" / "khách_hàng.py").write_text("def xoa():\n    return 'ma that'\n", encoding="utf-8")
+    ws.commit_all("feat(T7): khách hàng")
+
+    assert "qlkh/khách_hàng.py" in ws.changed_files()
+    assert "ma that" in ws.diff(), "file tên tiếng Việt phải có mặt trong diff gửi reviewer"
+    integ = Integration(repo, base="main")
+    assert integ.merge(ws.branch, "merge T7").ok
+    assert "qlkh/khách_hàng.py" in integ.files(), "danh sách file của nhánh tích hợp cũng phải là đường dẫn thật"

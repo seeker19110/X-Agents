@@ -32,12 +32,16 @@ class WorkspaceError(Exception): ...
 # là mã của khách chạy dưới quyền người vận hành lúc commit/merge. Orchestrator không bao giờ chạy hook: trỏ
 # hooksPath vào chỗ không tồn tại. Người muốn hook chạy thì chạy tay khi đưa nhánh tích hợp lên `main`.
 NO_HOOKS: tuple[str, ...] = ("-c", "core.hooksPath=/dev/null")
+# Tên file non-ASCII mặc định ra dạng escape `"kh\303\241ch.py"` (ngoặc kép + bát phân) — không phải đường dẫn thật:
+# `git diff -- <tên escape>` rỗng, file tiếng Việt rơi khỏi diff gửi reviewer mà không ai biết. Mọi lệnh liệt kê
+# đường dẫn đều đi qua `_git`, nên tắt ở đây là tắt cho cả họ (`changed_files`, `diff`, `files`, xung đột merge).
+RAW_PATHS: tuple[str, ...] = ("-c", "core.quotepath=false")
 
 
 def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
     # env đã lọc khoá (hook/filter/credential helper của khách không thấy secret của công ty), không hook.
-    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       input=stdin, env=clean_env())
+    r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *RAW_PATHS, *args], capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", input=stdin, env=clean_env())
     if r.returncode != 0:
         raise WorkspaceError(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout.strip()

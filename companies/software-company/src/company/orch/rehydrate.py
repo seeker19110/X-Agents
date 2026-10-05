@@ -17,6 +17,7 @@ from ..quality_floor import PROFILE_ACTION
 from ..roles import LEAD_ACTOR, ROLE
 from ..runner import CONTEXT_ONLY
 from .quality_flow import note_profile
+from .retry_flow import decide_applied
 from .routes import ACTOR, ROUTES
 
 if TYPE_CHECKING:
@@ -131,7 +132,7 @@ def rehydrate(o: Orchestrator) -> None:
                 o.unhandled.pop(str(d.get("subject")), None)
                 o.spec_runtime_reworks.pop(str(d.get("subject")), None)
                 o.plan_reworks.pop(str(d.get("event_id")), None)
-            elif a["action"] == "gate.decide":
+            elif a["action"] == "gate.decide" and env.event_id in o.gate.closers:  # như `_on_gate_decide`: bản trùng không tính
                 if d.get("subject_id"): quyet.append((env.event_id, str(d["subject_id"])))
                 sid = str(d.get("subject_id") or "")
                 if d.get("decision") == "approve" and sid in o.unhandled and (
@@ -173,9 +174,10 @@ def rehydrate(o: Orchestrator) -> None:
     o.processed -= reopened
     # Chỉ đếm quyết định ĐÃ xử lý: decide còn trong hàng đợi sẽ được `_on_gate_decide` đếm khi chạy — đếm cả hai
     # nơi là bộ đếm sống lệch bộ đếm dựng lại, restart sau đó sinh khoá escalation trùng khoá cũ và gate bị nuốt
-    # (CAMPUS-UNI/TCK-001, 2026-09-24).
+    # (CAMPUS-UNI/TCK-001, 2026-09-24). Decide đã ÁP rồi bị hoãn transient (`DECIDE_APPLIED`) cũng đã đếm: lần xử lý
+    # lại chỉ gọi lại lượt agent, không đếm nữa.
     for eid, sid in quyet:
-        if eid in o.processed: o.escalation_decided[sid] += 1
+        if eid in o.processed or decide_applied(o.once, eid) is not None: o.escalation_decided[sid] += 1
     o.partial = {k: v for k, v in o.partial.items() if k not in o.processed}
     o.queue = [e for e in log if o._actionable(e) and e.event_id not in o.processed]
     o._nap_lai_hen(hen)
@@ -245,5 +247,6 @@ def _retry_con_can(o: Orchestrator, log: list[Envelope], idx: int, rec: dict[str
             if r.topic_in == rec.get("topic") and r.agent == rec.get("agent")}
     outs.discard(CONTEXT_ONLY)
     if not outs: return True          # không suy ra được route → giữ nguyên hành vi cũ, thà chạy lại còn hơn kẹt
-    key = str(rec.get("project_id") or "")
+    # `project.retried` mang `project_id`; `unhandled`/`event.retried` chỉ mang `subject` (O6: thiếu vế này là khoá `""`).
+    key = str(rec.get("project_id") or rec.get("subject") or "")
     return not any(e.topic in outs and e.key == key for e in log[idx + 1:])

@@ -263,7 +263,10 @@ class WebTools:
         return self.add_to(ToolBox())
 
 
-_DDG = re.compile(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>.*?(?:<a[^>]+class="result__snippet"[^>]*>(.*?)</a>)?',
+# Đoạn trích nằm SAU tiêu đề, trong cùng kết quả: `(?!class="result__a")` chặn không cho nó "mượn" trích của kết quả
+# kế tiếp khi kết quả này không có. Bản cũ `.*?(?:…)?` thì `.*?` lười khớp rỗng và nhóm tuỳ chọn cũng rỗng: trích luôn "".
+_DDG = re.compile(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>'
+                  r'(?:(?:(?!class="result__a").)*?<a[^>]+class="result__snippet"[^>]*>(.*?)</a>)?',
                   re.DOTALL | re.IGNORECASE)
 
 

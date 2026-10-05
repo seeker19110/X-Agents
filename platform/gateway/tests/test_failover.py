@@ -418,6 +418,18 @@ def test_reset_hint_parses_code_assist_wording():
     assert reset_hint_seconds("") is None
 
 
+def test_reset_hint_khong_backtrack_bac_ba_tren_than_loi_dai():
+    """Ba `\\s*` kề nhau quanh nhóm tuỳ chọn → backtrack O(n³): đo 2026-10-02 1600 dấu cách mất 18,7s, chạy
+    đồng bộ trong coroutine nên cả gateway đứng. Thân 400 của upstream có thể vọng lại chuỗi do client gửi."""
+    import time
+
+    than = "thử lại sau" + " " * 1000 + "x quota"
+    t0 = time.perf_counter()
+    assert reset_hint_seconds(than) is None
+    assert time.perf_counter() - t0 < 0.5
+    assert reset_hint_seconds("thử lại sau 1h 2m 3s") == 3723
+
+
 def test_cooldown_hint_prefers_header_then_body():
     with_header = httpx.Response(429, headers={"Retry-After": "30"}, text="Resets in 7m29s.")
     assert cooldown_hint(with_header) == "30"

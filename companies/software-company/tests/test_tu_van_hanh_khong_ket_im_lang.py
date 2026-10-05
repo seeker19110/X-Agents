@@ -104,6 +104,51 @@ def test_cau_hoi_lam_ro_qua_han_thi_tu_gia_dinh_theo_default_va_di_tiep():
     assert acts.count("clarification.assumed") == _actions(bus).count("clarification.assumed") == 1, "chỉ giả định một lần"
 
 
+def test_gia_dinh_gap_transient_thi_nhip_sau_thu_lai_khong_ket_im():
+    """`_assume_clarifications` từng ghi `clarification.assumed` TRƯỚC khi gọi pha spec: spec-writer gặp
+    `TransientError` thì vòng câu hỏi đã bị coi là "đã giả định" (`pending_clarifications` bỏ qua) — không spec,
+    không gate, không nhịp nào thử lại, `clarifications_pending` rỗng: dự án đứng im mà `status` nói không chờ ai.
+    Sổ giả định chỉ được ghi khi pha spec thật sự chạy; thử lại giữ mốc hẹn của backend như mọi `transient:` khác
+    (nhịp 5s mà hỏi lại thì mỗi nhịp một dòng `llm_error`). Đo hai chiều: ghi sổ trước lời gọi thì assert đầu đỏ;
+    bỏ mốc hẹn thì assert "nhịp kế không hỏi lại" đỏ."""
+    goi = {"n": 0, "nghi": True}
+    def h(system, user):
+        if _agent_of(system) == "product" and "assumed_answers" in _inp(user):
+            goi["n"] += 1
+            if goi["nghi"]: raise TransientError("mọi backend đều đang nghỉ, thử lại sau 1515s")
+        return handler(system, user)
+    bus, orch = _orch(h)
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
+    orch.run()
+    q = next(iter(bus.replay(topic="clarification-questions")))
+    orch.tick(now=q.ts + timedelta(hours=25))
+    assert "clarification.assumed" not in _actions(bus), "pha spec chưa chạy được thì chưa được ghi là đã giả định"
+    assert "P1" in orch.status()["clarifications_pending"], "vẫn phải hiện là đang chờ, không biến mất"
+    orch.tick(now=q.ts + timedelta(hours=26))
+    assert goi["n"] == 1, "backend đã hẹn 1515s thì nhịp kế không hỏi lại"
+    goi["nghi"] = False
+    for k in orch.defer_until: orch.defer_until[k] = 0.0
+    orch.tick(now=q.ts + timedelta(hours=26))
+    assert goi["n"] == 2 and "SPEC-P1" in orch.gate.pending and _actions(bus).count("clarification.assumed") == 1
+
+
+def test_gia_dinh_gap_transient_khong_hen_gio_thi_nhip_sau_thu_lai_ngay():
+    """Backend không nói phải chờ bao lâu → như `_defer` không `wait_s`: nhịp sau thử lại luôn."""
+    goi = {"n": 0}
+    def h(system, user):
+        if _agent_of(system) == "product" and "assumed_answers" in _inp(user):
+            goi["n"] += 1
+            if goi["n"] == 1: raise TransientError("mọi backend đều đang nghỉ")
+        return handler(system, user)
+    bus, orch = _orch(h)
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
+    orch.run()
+    q = next(iter(bus.replay(topic="clarification-questions")))
+    orch.tick(now=q.ts + timedelta(hours=25))
+    orch.tick(now=q.ts + timedelta(hours=26))
+    assert goi["n"] == 2 and "SPEC-P1" in orch.gate.pending
+
+
 def test_han_cau_hoi_lam_ro_doc_tu_env(monkeypatch):
     monkeypatch.setenv("COMPANY_CLARIFY_TIMEOUT_H", "2")
     bus, orch = _orch()

@@ -583,7 +583,8 @@ uv run python -m company.gate_cli reject  REL-001 --by human:po --reason "smoke 
 
 Năm quyết định: `approve`, `request_changes`, `reject`, `hold`, `rollback` (cùng cú pháp `SUBJECT --by --reason`). Gate có hạn
 24 giờ, nhắc ở 12 giờ; quá hạn thì supervisor escalate. Ticket blocked hoặc dự án kẹt mở thêm gate `escalation` (approve = mở
-lại với hint, reject = đóng).
+lại với hint, reject = đóng). `hold` (nút "Giữ" trên console) = **chưa quyết**: orchestrator mở lại đúng gate đó (cùng
+checklist, cùng người tạo, đồng hồ 24 giờ tính lại) và không thi hành gì — không phải một cách nói khác của `reject`.
 
 `gate_cli list` chỉ hiện nửa "Code gửi kèm" của checklist. Nửa "Người tự kiểm thêm" có trợ lý chuẩn bị bằng chứng, chỉ đọc,
 không ký thay:

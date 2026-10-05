@@ -19,10 +19,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from company.events import Envelope
+from company.gate_cli import PersistentGate
+from company.gates import GateRequest
 from company.llm import FakeClient
 from company.orch.routes import ACTOR
 from company.orch.state import RAM_ONLY, OrchState
 from company.orchestrator import Orchestrator
+from company.roles import ROLE
 from company.sqlite_bus import SQLiteBus
 
 E1 = "e1111111111111111111111111111111"
@@ -34,10 +37,11 @@ def _audit(bus, action, evidence, actor=ACTOR):
 
 
 def _quyet_da_xu_ly(bus):
-    env = Envelope(topic="audit-log", key=ACTOR, actor=ACTOR,
-                   payload={"actor": ACTOR, "action": "gate.decide",
-                            "evidence": json.dumps({"subject_id": "T1", "decision": "approve"})})
-    bus.publish(env)
+    # Gate thật rồi chữ ký thật: `gate.decide` không đóng gate nào thì không phải một quyết định (O4, 2026-10-02).
+    gate = PersistentGate(bus)
+    gate.request(GateRequest(kind="escalation", subject_id="T1", checklist=["c"], created_by=ROLE.SUPERVISOR))
+    gate.decide("T1", "approve", by="human:lead", reason="đã xem root cause, cho chạy lại")
+    env = next(e for e in bus.replay(topic="audit-log") if e.payload["action"] == "gate.decide")
     _audit(bus, "orchestrated", {"event_id": env.event_id, "topic": "audit-log", "actions": []})
 
 

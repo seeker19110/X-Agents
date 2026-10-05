@@ -138,10 +138,19 @@ def deploy_script(repo_root: Path, rt: Runtime) -> str:
     return named if named and (repo_root / named).is_file() else ""
 
 
+def _split_runtime(binary: str) -> list[str]:
+    """`shlex.split` trên `COMPANY_DEPLOY_RUNTIME` — cấu hình người vận hành gõ tay. Gõ hỏng (thiếu nháy đóng) là
+    lỗi cấu hình: ném `DeployError`, đường `verify.py` bắt được, không để `ValueError` giết lượt verify."""
+    try:
+        return shlex.split(binary)
+    except ValueError as e:
+        raise DeployError(f"{ENV_RUNTIME} không tách được thành lệnh ({e}): {binary!r}") from e
+
+
 def _process_prefix(binary: str, repo_root: Path) -> list[str]:
     """Tách `binary` (chuỗi shlex, có thể nhiều token) thành argv prefix; token `.` được thay bằng `repo_root`
     (ADR-0040 §4) — `wsl.exe --cd <đường dẫn Windows>` tự dịch sang `/mnt/<ổ>/...`."""
-    return [str(repo_root) if tok == "." else tok for tok in shlex.split(binary)]
+    return [str(repo_root) if tok == "." else tok for tok in _split_runtime(binary)]
 
 
 def _process_argv(prefix: list[str], script: str, sub: str) -> list[str]:
@@ -264,7 +273,7 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
         raise DeployError(f"{ENV_MODE} không hợp lệ: {mode!r} ({' | '.join(MODES)})")
     if mode == "off":
         return rec(skipped=f"{ENV_MODE}=off")
-    check_bin = (shlex.split(binary) or [binary])[0] if mode == "process" else binary
+    check_bin = (_split_runtime(binary) or [binary])[0] if mode == "process" else binary
     if not which(check_bin):
         if mode in ("compose", "process"):
             raise DeployError(f"{ENV_MODE}={mode} nhưng không tìm thấy `{check_bin}` trên PATH; cài runtime, đặt "
