@@ -6,7 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
-- fix(core): Docker Linux đọc env của `ContainerSandbox` qua `/dev/stdin`; `--env-file -` trước đây trả mã 125 dù Engine chạy được. Ca test đỏ trước sửa và container thật xác nhận sandbox chỉ thấy mount `/w`.
+- fix(core): Docker Linux đọc env của `ContainerSandbox` qua `/dev/stdin`; `--env-file -` trước đây trả mã 125 dù Engine chạy được. Ca test đỏ trước sửa và container thật xác nhận sandbox chỉ thấy mount `/w`. (#391).
 - docs(ops): ghi nhận checkout watcher O1 đã chuẩn bị ở `origin/main` và kết quả quét canary keeper thật ngày 05/10; các bước vận hành còn chờ điều kiện an toàn được giữ trong TASK-PACK. (#390).
 - feat(company): **ghi bài học ngay khi ticket merge và chọn tối đa năm bài học liên quan cho prompt ticket sau**: hoàn tất ADR gốc 0004 quyết định 2 và ADR-0048; đường nghiệm thu bù dữ liệu cũ, runner bỏ `knowledge` thô. Prompt supervisor v16 có golden, bản ghi eval thật và subagent dẫn xuất cùng PR. (#389).
 - feat(company): **cắt PRD theo mục ưu tiên khi ngữ cảnh chạm trần**: giữ trọn tiêu chí nghiệm thu, user story và NFR nếu vừa ngân sách; mục bị bỏ mang nhãn và đường đọc bản đầy đủ. Core thêm callback tùy chọn, đường mặc định giữ nguyên; ADR gốc 0029, test đỏ cho prompt mất AC-01 trước khi sửa. (#388).
