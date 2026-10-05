@@ -223,3 +223,7 @@ ba mục đó là thứ hay bị bỏ qua nhất và đắt nhất khi bỏ qua.
 | 2026-10-05 | S2 và kiểm O1 sau S1 | S2 có test container thật PyPI 200/domain ngoài ACL 403/bypass-DNS bị chặn/smoke 200/cleanup; còn cổng all, PR và cập nhật image watcher. O1 đã ghi mode container vào bus thật sau #392. BT8 có 3 Dependabot alert urllib3 thật cần nâng lock; CAMPUS-UNI còn escalation và RC/chữ ký khách. |
 
 | 2026-10-05 | S2 PR #394 | Cổng all 4539 passed/0 fail/skip, 100% coverage; ACL thật WSL/Windows và smoke CAMPUS snapshot 200. Số PR cùng CHANGELOG/session. Còn CI/merge và cập nhật watcher image; keeper đã có ticket high/bằng chứng hai chiều cho urllib3 thật, chưa PR; CAMPUS còn RC/chữ ký khách. |
+
+| 2026-10-05 | BT8 canary urllib3 | Ba alert Dependabot thật, keeper tạo ticket high `KEEP:8ab7ab2bc2b840bf99b57008369e2b6e`; nâng lock 2.7.0 → 2.8.0. Tín hiệu nhập qua adapter bằng API thật, không tự nhận scout tự phát hiện. Publish phải đo lại đúng cây sau rebase S2 và tạo PR qua keeper; merge do chủ repo quyết định. Báo cáo: `docs/reports/2026-10-05-keeper-canary-urllib3.md`. |
+
+| 2026-10-05 | S2/O1 vận hành sau merge | PR #394 merge `5f233f00`, 35 CI check SUCCESS, cổng local 4543 passed/0 fail/skip và phủ 100% cả năm gói. Watcher Windows cập nhật checkout riêng đúng SHA, uv sync --locked exit 0, task Running và bus ghi container:xagents-campus-python:5d0d7ca. Reviewer rong/test-author/batch-release bật; giữ bước giao RC để xử lý finding DAST thật trước. |
