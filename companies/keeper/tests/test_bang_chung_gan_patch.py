@@ -218,6 +218,94 @@ def test_bang_chung_khong_gan_danh_tinh_thi_nem_va_khong_mo_cong(tmp_path: Path)
     assert t.ticket_id not in o.verified and t.ticket_id not in _orc(tmp_path, cay).verified
 
 
+# ---------- (7) danh tính ticket lấy từ ROUTE (tham số), không từ payload model kể ----------
+
+
+#: Tên action là hợp đồng với người đọc audit — viết chữ, không import, để đổi tên phải đổi cả test.
+SUBJECT_OVERRIDDEN_ACTION = "verification.subject_overridden"
+
+
+def _hai_ticket(o: KeeperOrchestrator) -> tuple[Ticket, Ticket]:
+    o.submit_signal(Signal(subject="requests", kind="dependency", detail="bump"))
+    o.submit_signal(Signal(subject="httpx", kind="dependency", detail="bump"))
+    t1, t2 = o.tick(now=NOW).tickets
+    assert t1.ticket_id != t2.ticket_id
+    return t1, t2
+
+
+def test_payload_khai_ticket_khac_khong_doi_duoc_ticket_nao_verified(tmp_path: Path):
+    """Đòn: đo trên ticket `t1` (route), model khai `ticket_id` = `t2` trong payload. Trước bản sửa báo cáo lên bus
+    dưới tên `t2` — model chọn được ticket nào `verified` — còn hàm trả báo cáo CŨ của `t1`. Route thắng, lệch thì
+    để lại một dòng `verification.subject_overridden` (khuôn `*_overridden` của company)."""
+    cay = _Cay()
+    o = _orc(tmp_path, cay)
+    t1, t2 = _hai_ticket(o)
+    o.record_verification(t1.ticket_id, {"ticket_id": t1.ticket_id}, _ev())
+
+    report = o.record_verification(t1.ticket_id, {"ticket_id": t2.ticket_id}, _ev())
+    assert report.ticket_id == t1.ticket_id
+    assert t2.ticket_id not in o.verified and t2.ticket_id not in _orc(tmp_path, cay).verified
+    assert o.bus.latest("verification-reports", t1.ticket_id) is not None
+    assert o.bus.latest("verification-reports", t2.ticket_id) is None
+    (ghi,) = [a for a in o.bus.replay(topic="audit-log") if a.payload["action"] == SUBJECT_OVERRIDDEN_ACTION]
+    assert ghi.actor == CODE_ACTOR and ghi.payload["ticket_id"] == t1.ticket_id
+    assert t2.ticket_id in ghi.payload["evidence"]
+
+
+def test_payload_khai_ticket_khac_lan_dau_khong_nem_keyerror(tmp_path: Path):
+    """Ticket route CHƯA có báo cáo nào: trước bản sửa `return self.reports[ticket_id]` ném `KeyError` SAU khi báo
+    cáo đã lên bus cho ticket kia."""
+    o = _orc(tmp_path, _Cay())
+    t1, t2 = _hai_ticket(o)
+    assert o.record_verification(t1.ticket_id, {"ticket_id": t2.ticket_id}, _ev()).ticket_id == t1.ticket_id
+    assert o.verified == {t1.ticket_id}
+
+
+def test_payload_khong_khai_ticket_id_thi_lay_tu_route_khong_ghi_overridden(tmp_path: Path):
+    o = _orc(tmp_path, _Cay())
+    t = _ticket(o)
+    assert o.record_verification(t.ticket_id, {}, _ev()).ticket_id == t.ticket_id
+    assert not [a for a in o.bus.replay(topic="audit-log") if a.payload["action"] == SUBJECT_OVERRIDDEN_ACTION]
+
+
+# ---------- (8) payload model sai hình ⇒ vẫn thu hồi BỀN qua đúng đường `_apply` → `_reject_report` ----------
+
+SAI_HINH = {"family_hits": ["src/a.py"], "family_safe": [{"path": "src/b.py"}]}  # `reason` thiếu → ValidationError
+
+
+def test_payload_sai_hinh_thu_hoi_verified_ben_qua_bus_va_nem_evidence_error(tmp_path: Path):
+    cay = _Cay()
+    o = _orc(tmp_path, cay)
+    t = _ticket(o)
+    o.record_verification(t.ticket_id, {"ticket_id": t.ticket_id}, _ev())
+    assert t.ticket_id in o.verified
+
+    with pytest.raises(EvidenceError, match="sai hình") as ei:
+        o.record_verification(t.ticket_id, {"ticket_id": t.ticket_id, **SAI_HINH}, _ev())
+    assert ei.value.__cause__ is not None, "giữ ValidationError gốc làm nguyên nhân để người gọi tra được"
+    assert t.ticket_id not in o.verified and t.ticket_id not in o.reports
+    assert "evidence" in o.pr_blockers(t)
+
+    moi = o.bus.latest("verification-reports", t.ticket_id)
+    assert moi is not None and moi.payload["payload_error"], "báo cáo hỏng là báo cáo MỚI NHẤT trên bus"
+    assert moi.payload["patch_id"] == CAY_DA_DO, "số đo vẫn đi cùng báo cáo hỏng"
+    mo_lai = _orc(tmp_path, cay)
+    assert t.ticket_id not in mo_lai.verified, "replay không được hồi sinh verified từ báo cáo cũ"
+    assert len(_rejects(_orc(tmp_path, cay))) == 1
+
+
+def test_payload_sai_hinh_lan_dau_khong_bao_gio_thanh_verified(tmp_path: Path):
+    """Không có báo cáo trước: phần model kể hỏng thì bỏ phần đó đi KHÔNG được biến thành một báo cáo đạt (rà họ
+    lỗi bị vứt cùng payload) — báo cáo dự phòng mang `payload_error` nên không bao giờ qua `_check_report`."""
+    cay = _Cay()
+    o = _orc(tmp_path, cay)
+    t = _ticket(o)
+    with pytest.raises(EvidenceError, match="sai hình"):
+        o.record_verification(t.ticket_id, SAI_HINH, _ev())
+    assert t.ticket_id not in o.verified and t.ticket_id not in _orc(tmp_path, cay).verified
+    assert len(_rejects(o)) == 1
+
+
 # ---------- (6) báo cáo trên bus cũ (trước ADR keeper 0001) không có trường danh tính ----------
 
 

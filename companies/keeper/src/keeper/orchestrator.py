@@ -43,6 +43,11 @@ Chính vì `open_pr()` không tạo PR thật mà `gh.open_prs()` vẫn trả 0 
 `keeper` đã xin mở nhưng chưa thấy số PR thật (`outstanding_pr_intents`) — trạng thái ấy dựng lại được từ bus,
 không phải một biến RAM. Không có nó, N ticket đủ cổng trong một nhịp ra N `release-notes` và I3 thủng mà
 không cần đa luồng (`sc-qa` chấm BT7).
+
+Cổng `evidence` chỉ so danh tính lúc `open_pr()`; nên `publish()` so LẠI trước mỗi lần push (ADR keeper 0002):
+cây nhánh sắp push = cây đã đo (`patch_id`) + đúng dòng release của note (`release.unmeasured_changes`), worktree
+sạch, không đo được thì từ chối. Khoảng `open_pr → publish` là nơi người commit dòng release — và cũng là nơi
+code chưa đo lọt vào nếu không ai so.
 """
 from __future__ import annotations
 
@@ -55,6 +60,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from .budget import GitHubLike, can_open_pr
 from .bus import KeeperBus
 from .core import CORE
@@ -64,12 +71,12 @@ from .gates import PersistentGate, gate_approvers, request_gate
 from .github import GitHubWriteAttempt
 from .patcher import HUMAN_ONLY_SEGMENTS
 from .publish import PullRequest, PullRequestExists, create_pr, push_branch
-from .release import compose, fill_pr_number
+from .release import compose, fill_pr_number, unmeasured_changes
 from .triage import ObservedSignal, TriageState, triager
-from .worktree import KeeperWorktree, WorktreeError, content_tree
+from .worktree import KeeperWorktree, WorktreeError, content_tree, tree_of
 
-__all__ = ["BLOCKED_ACTION", "CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "KeeperOrchestrator", "TickResult",
-           "touches_human_only"]
+__all__ = ["BLOCKED_ACTION", "CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "SUBJECT_OVERRIDDEN_ACTION",
+           "KeeperOrchestrator", "TickResult", "touches_human_only"]
 
 #: Khoá chặn "việc này của người" — hằng số chứ không chuỗi rời, vì cả `pr_blockers` lẫn test đều nêu tên nó.
 HUMAN_ONLY = "human-only"
@@ -87,6 +94,10 @@ CODE_ACTOR = "keeper-orchestrator"
 
 #: Action ghi khi một `verification-reports` đến từ bus KHÔNG qua được `require_two_way` (bất biến I2).
 REJECT_ACTION = "verification.rejected"
+
+#: Action ghi khi payload model khai `ticket_id` KHÁC ticket của route: route thắng (khuôn `*_overridden` của company,
+#: `ARCHITECTURE.md` gốc — danh tính event lấy từ ROUTE, không từ lời khai model).
+SUBJECT_OVERRIDDEN_ACTION = "verification.subject_overridden"
 
 #: Action ghi khi `open_pr` bị cổng chặn — chỉ khi tập cổng chặn ĐỔI, không phải mỗi nhịp (xem `open_pr`).
 BLOCKED_ACTION = "pr.blocked"
@@ -255,7 +266,11 @@ class KeeperOrchestrator:
     def _check_report(self, report: VerificationReport) -> None:
         """MỘT phép kiểm cho cả đường dựng (`record_verification`) lẫn đường nạp (`_apply`): hai đường mà kiểm
         khác nhau thì replay cho kết quả khác lần ghi. `check_report` (I2 + rà họ lỗi) cộng danh tính patch: báo
-        cáo không nói nó đo nội dung nào thì không mở được cổng cho nội dung nào cả (ADR keeper 0001, mục b)."""
+        cáo không nói nó đo nội dung nào thì không mở được cổng cho nội dung nào cả (ADR keeper 0001, mục b). Báo cáo
+        mang `payload_error` (phần model kể sai hình, xem `record_verification`) không bao giờ đạt."""
+        if report.payload_error is not None:
+            raise EvidenceError(f"phần model kể của {report.ticket_id} sai hình, không dựng được báo cáo — chỉ còn số "
+                                f"đo, không đủ để rời pha quality: {report.payload_error}")
         check_report(report)
         if report.patch_id is None:
             raise EvidenceError(f"báo cáo của {report.ticket_id} không mang patch_id — không biết nó đo nội dung "
@@ -269,13 +284,31 @@ class KeeperOrchestrator:
         Không đạt thì báo cáo VẪN lên bus trước khi ném: `_apply` (subscribe đồng bộ) từ chối nó qua
         `_reject_report` — thu hồi `verified` của lần đo trước, ghi đúng một `verification.rejected` — và vì nó là
         báo cáo MỚI NHẤT của ticket trên bus, replay cho cùng kết quả thay vì dựng lại `verified` từ báo cáo cũ
-        (ADR keeper 0001, mục c). Một đường thu hồi, không phải hai."""
-        # no-ky-thuat: payload model sai hình (pydantic ValidationError ở build_report) thì không có báo cáo nào lên bus nên báo cáo trước vẫn đứng — nó chỉ mở cổng cho đúng nội dung nó đã đo, quay lại khi có đường gọi record_verification từ output model thật (regression-guard)
-        report = build_report(payload, evidence=evidence)
+        (ADR keeper 0001, mục c). Một đường thu hồi, không phải hai.
+
+        **`ticket_id` là của ROUTE (tham số), không của payload.** Payload chỉ là phần model kể; để nó chọn khoá thì
+        model đổi được ticket nào `verified`. Route ghi đè, lệch thì để lại `verification.subject_overridden`.
+
+        **Payload sai hình** (pydantic `ValidationError`) cũng là một lần đo hỏng: phần kể bị bỏ hẳn, báo cáo dự
+        phòng chỉ mang số đo + `payload_error`, nên `_check_report` luôn từ chối nó và nó đi đúng đường thu hồi trên.
+        Không lên bus thì báo cáo đạt cũ đứng nguyên qua replay. Người gọi nhận `EvidenceError` (nguyên nhân là
+        `ValidationError` gốc) — cùng một loại lỗi cho mọi cách "ticket ở lại pha quality"."""
+        claimed = payload.get("ticket_id", ticket_id)
+        if claimed != ticket_id:
+            self._audit(SUBJECT_OVERRIDDEN_ACTION, {"ticket_id": ticket_id, "claimed_ticket_id": claimed},
+                        ticket_id=ticket_id)
+        cause: ValidationError | None = None
+        try:
+            report = build_report({**payload, "ticket_id": ticket_id}, evidence=evidence)
+        except ValidationError as e:
+            cause = e
+            report = build_report({"ticket_id": ticket_id, "payload_error": str(e)[:1000]}, evidence=evidence)
         try:
             self._check_report(report)
-        except EvidenceError:
+        except EvidenceError as err:
             self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
+            if cause is not None:
+                raise err from cause
             raise
         self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
         return self.reports[ticket_id]
@@ -374,8 +407,10 @@ class KeeperOrchestrator:
 
         Giả định: commit ĐẦU TIÊN (patch + dòng release mang `release.PR_PLACEHOLDER`) đã có sẵn trong
         `wt.path` — hàm này không tự vá, không tự commit lần đầu; nó chỉ publish. Idempotent: note đã có
-        `pr_number` thì trả `None` ngay, không gọi `push`/`gh` lần hai (I3)."""
-        # no-ky-thuat: không so danh tính patch lúc publish vì dòng CHANGELOG/nhật ký được ghi vào worktree SAU lần đo theo thiết kế nên khoảng open_pr → publish chưa kiểm, quay lại khi publish được nối tự động vào tick hoặc dòng release được ghi vào worktree trước lần đo
+        `pr_number` thì trả `None` ngay, không gọi `push`/`gh` lần hai (I3).
+
+        TRƯỚC MỖI lần push, `_require_measured` so thứ sắp push với nội dung đã đo (ADR keeper 0002): lệch ⇒
+        `EvidenceError`, không push. Lần push thứ hai cũng kiểm, vì commit điền số là `commit -a`."""
         note = self.notes.get(ticket_id)
         if note is None:
             raise ValueError(f"{ticket_id} chưa có release-notes — open_pr() chưa qua hết cổng?")
@@ -383,6 +418,7 @@ class KeeperOrchestrator:
             return None
         ticket = self.tickets[ticket_id]
 
+        self._require_measured(ticket_id, wt, note)
         push_branch(wt, remote=remote)
         try:
             pr = create_pr(self.repo, title=f"fix(keeper): {ticket.subject}",
@@ -396,11 +432,41 @@ class KeeperOrchestrator:
         # Điền số chỉ trong worktree là chưa xong: phải thành commit THỨ HAI và lên remote, TRƯỚC khi note mang
         # `pr_number` lên bus — note có số rồi thì lần `publish()` sau trả sớm, và PR giữ `(#PR)` mãi.
         wt.commit_tracked(f"chore(keeper): điền số PR #{pr.number} cho {ticket_id}")
+        self._require_measured(ticket_id, wt, note)
         push_branch(wt, remote=remote)
         self._publish("release-notes", ticket_id, RELEASE_ACTOR, moi.model_dump())
         self._audit("pr.created", {"ticket_id": ticket_id, "pr_number": pr.number, "url": pr.url},
                     ticket_id=ticket_id)
         return pr
+
+    def _require_measured(self, ticket_id: str, wt: KeeperWorktree, note: ReleaseNote) -> None:
+        """Chốt I2 ở bước ra ngoài máy (ADR keeper 0002): cây NHÁNH sắp push phải là cây đã đo (`patch_id`) cộng
+        đúng dòng release của `note` — không gì khác. Ném `EvidenceError` (không push) khi:
+
+        - không còn báo cáo đạt I2 mang `patch_id` (báo cáo mới hơn đã thu hồi, hay chưa từng có);
+        - worktree khác cây nhánh (thay đổi chưa commit: `commit -a` của bước điền số sẽ vơ chúng vào PR);
+        - cây nhánh khác cây đã đo ở chỗ nào ngoài dòng release (`release.unmeasured_changes`);
+        - không đo được (worktree mất, cây đã đo không còn trong kho, git lỗi) — fail closed.
+
+        Đo đúng `wt` (thứ bị push), không qua `patch_identity(ticket_id)`: hai cái chỉ trùng khi `wt` là worktree
+        mặc định của ticket, còn chốt thì phải nhìn đúng thứ nó thả đi."""
+        # no-ky-thuat: kiểm cây nhánh rồi push theo TÊN nhánh chứ không theo sha đã kiểm nên tiến trình khác commit vào nhánh ticket trong ~100 ms giữa kiểm và push thì lọt, quay lại khi publish được nối tự động vào watch hoặc có hơn một tiến trình ghi worktree của ticket
+        report = self.reports.get(ticket_id)
+        if report is None or report.patch_id is None:
+            raise EvidenceError(f"{ticket_id}: không còn báo cáo đạt I2 mang patch_id — từ chối publish; đo lại "
+                                "bằng collect_two_way rồi open_pr (ADR keeper 0002)")
+        try:
+            pushed = tree_of(wt.path, f"refs/heads/{wt.branch}")
+            if content_tree(wt.path) != pushed:
+                raise EvidenceError(f"{ticket_id}: worktree {wt.path} còn thay đổi chưa commit — bước điền số PR "
+                                    "(commit -a) sẽ đưa chúng lên PR mà không ai đo; commit hoặc bỏ rồi đo lại")
+            bad = unmeasured_changes(wt.path, report.patch_id, pushed, note)
+        except WorktreeError as e:
+            raise EvidenceError(f"{ticket_id}: không đo được thứ sắp push ở {wt.path} ({e}) — từ chối publish "
+                                "(fail closed, ADR keeper 0002)") from e
+        if bad:
+            raise EvidenceError(f"{ticket_id}: nhánh {wt.branch} khác nội dung đã đo ({report.patch_id[:12]}) ở "
+                                f"{'; '.join(bad[:5])} — đo lại bằng collect_two_way (ADR keeper 0002)")
 
     # ---------- vòng lặp ----------
 

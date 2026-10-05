@@ -1,6 +1,6 @@
 """`evidence.py` — chiều ĐỎ của lệnh BỌC (`make test`, `scripts/dev-task.sh gate`) phải là test đỏ thật.
 
-Lỗ cũ (marker `no-ky-thuat` ở `EVIDENCE_RULES`): hàng `pytest-before-must-be-test-failure` chỉ nhận ra pytest gọi
+Lỗ cũ (marker `no-ky-thuat` ở `EVIDENCE_RULES`, nay đã trả): hàng `pytest-before-must-be-test-failure` chỉ nhận ra pytest gọi
 THẲNG. Lệnh bọc nuốt mã thoát — `dev-task.sh gate` thoát 1 cho cả ruff, mypy lẫn pytest, `make` thoát 2 cho mọi
 recipe hỏng — nên một lần "đỏ" vì ruff hỏng, hay vì pytest không thu được test nào, vẫn được tính là chiều đỏ hợp
 lệ của bằng chứng hai chiều (I2). Hàng mới đòi dòng tổng kết pytest CUỐI trong `output_tail` có `N failed`, N ≥ 1.
@@ -290,24 +290,107 @@ def test_nhan_ra_lenh_boc(cmd: str):
     assert WRAPPED_RULE in str(e.value)
 
 
+# Danh sách TRẮNG (fail closed): chỉ pytest gọi THẲNG mới được tin mã thoát. Mọi lệnh khác — kể cả công cụ đơn
+# (ruff, mypy) và bọc lạ (tox, nox, hatch, just, `sh -c`, script riêng) — phải chứng minh bằng dòng tổng kết pytest.
+UNKNOWN_WRAPPERS = [
+    "tox -e py",
+    "nox -s tests",
+    "hatch run test",
+    "just test",
+    "./run_tests.sh",
+    "bash scripts/x.sh",
+    "sh -c ruff check . && pytest",
+    "bash -c pytest",
+    "bash -lc ruff check src && uv run pytest -q",
+    "uv run ruff check src tests",
+    "uv run mypy src/keeper",
+    "uv run python -m keeper.cli drift --repo .",
+    "bash ci.sh",
+    "makefile-lint src",
+    "uv run python -c 'print(1)'",
+    "git diff --exit-code",
+    "tox -e py -- pytest",
+    "make test PYTEST=pytest",
+    "env CI=1 pytest -q",
+    "uv run make test",
+]
+
+
+@pytest.mark.parametrize("code", [1, 2])
+@pytest.mark.parametrize("cmd", UNKNOWN_WRAPPERS)
+def test_lenh_la_do_o_buoc_lint_khong_co_dong_pytest_bi_tu_choi(cmd: str, code: int):
+    """Lỗ I2 còn lại của K-BOC: bọc lạ thoát 1 vì ruff hỏng, không test nào chạy — trước đây vẫn là chiều đỏ."""
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(_ev(cmd, exit_code=code, tail=GATE_RED_AT_LINT))
+    assert WRAPPED_RULE in str(e.value)
+
+
+@pytest.mark.parametrize("cmd", UNKNOWN_WRAPPERS)
+def test_lenh_la_co_dong_tong_ket_pytest_do_that_la_chieu_do_hop_le(cmd: str):
+    tail = "FAILED tests/test_a.py::test_bad - assert 1 == 2\n1 failed, 3 passed in 0.12s\n"
+    require_two_way(_ev(cmd, exit_code=1, tail=tail))  # không ném
+
+
+@pytest.mark.parametrize("cmd", ["", "   ", "uv run", "uv run --frozen", "python -m", "python -m keeper.cli"])
+def test_lenh_rong_hoac_cut_dau_bi_coi_la_lenh_la(cmd: str):
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(_ev(cmd, exit_code=1, tail=GATE_RED_AT_LINT))
+    assert WRAPPED_RULE in str(e.value)
+
+
+DIRECT_PYTEST = [
+    "pytest",
+    "pytest -q tests/test_moi.py",
+    "py.test -k ca_moi",
+    "/usr/bin/pytest -q",
+    r".venv\Scripts\pytest.exe -q tests\test_moi.py",
+    "python -m pytest -q",
+    "python3 -m pytest -q",
+    "python3.12 -m pytest -q",
+    "py -m pytest -q",
+    r"C:\Python312\python.exe -m pytest -q",
+    "uv run pytest -q",
+    "/usr/local/bin/uv run pytest -q",
+    "uv run --frozen pytest -q --cov",
+    "uv run python -m pytest -q",
+    "uv run -- pytest -q",
+    "pytest -q -k 'a or b'",
+]
+
+
+@pytest.mark.parametrize("cmd", DIRECT_PYTEST)
+def test_pytest_goi_thang_duoc_tin_ma_thoat_1_khong_can_dong_tong_ket(cmd: str):
+    require_two_way(_ev(cmd, exit_code=1, tail="output không có dòng tổng kết nào"))  # không ném
+
+
+@pytest.mark.parametrize("cmd", DIRECT_PYTEST)
+def test_pytest_goi_thang_ma_thoat_khac_1_roi_o_hang_pytest_khong_o_hang_boc(cmd: str):
+    for code in (2, 3, 4, 5):
+        with pytest.raises(EvidenceError) as e:
+            require_two_way(_ev(cmd, exit_code=code, tail="1 failed, 3 passed in 0.12s"))
+        assert DIRECT_RULE in str(e.value)
+        assert WRAPPED_RULE not in str(e.value)
+
+
 @pytest.mark.parametrize(
     "cmd",
     [
-        "uv run ruff check src tests",
-        "uv run mypy src/keeper",
-        "uv run python -m keeper.cli drift --repo .",
-        "tox -e py",
-        "bash ci.sh",
-        "makefile-lint src",
-        "uv run python -c 'print(1)'",
-        "git diff --exit-code",
+        "uv run pytest -q && ruff check .",
+        "pytest -q ; ruff check .",
+        "pytest -q;ruff check .",
+        "pytest -q | tee log.txt",
+        "pytest -q || true",
+        "pytest -q > out.txt",
+        "pytest $(ruff check .)",
+        "python -m pytest `ruff check .`",
+        "pytest -k (a or b)",
     ],
-    ids=["ruff", "mypy", "drift", "tox", "script-rieng", "ten-gan-giong-make", "python-c", "git-diff"],
 )
-def test_lenh_la_khong_phai_bao_giu_luat_lon_hon_0(cmd: str):
-    """Lệnh KHÔNG bọc (công cụ đơn, hay bọc mà repo chưa biết tên) giữ hành vi cũ: mã thoát dương là đủ — mã của
-    ruff/mypy/drift có nghĩa rõ ràng, còn bọc lạ thì chưa có cách đọc đáng tin (marker `no-ky-thuat` ở evidence.py)."""
-    require_two_way(_ev(cmd, exit_code=2, tail=GATE_RED_AT_LINT))  # không ném
+def test_pytest_kem_toan_tu_shell_khong_con_la_goi_thang(cmd: str):
+    """Chuỗi lệnh ghép: mã thoát có thể là của bước KHÁC pytest, nên không được tin."""
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(_ev(cmd, exit_code=1, tail=GATE_RED_AT_LINT))
+    assert WRAPPED_RULE in str(e.value)
 
 
 def test_pytest_goi_thang_giu_nguyen_hanh_vi_cu():
@@ -355,3 +438,13 @@ def test_ly_do_cua_hang_lenh_boc_noi_ro_vi_sao():
         require_two_way(_ev(GATE, exit_code=1, tail=GATE_RED_AT_LINT))
     msg = str(e.value)
     assert "ruff" in msg and "mypy" in msg and "N failed" in msg
+
+
+@pytest.mark.parametrize("cmd", ["tox -e py", "sh -c ruff check . && pytest", "./run_tests.sh", "uv run ruff check src"])
+def test_chieu_nguoc_bo_hang_lenh_boc_thi_lenh_la_do_vi_lint_lai_duoc_nhan(cmd: str):
+    """Chiều ngược của bản sửa fail-closed: bỏ đúng `WRAPPED_RULE` ⇒ cùng đầu vào (mã 1, chỉ có lỗi lint) lại được
+    nhận. Hàng pytest-gọi-thẳng không cứu được: các lệnh này không phải pytest gọi thẳng."""
+    ev = _ev(cmd, exit_code=1, tail=GATE_RED_AT_LINT)
+    with pytest.raises(EvidenceError):
+        require_two_way(ev)
+    require_two_way(ev, rules=rules_without(WRAPPED_RULE))  # không ném

@@ -27,6 +27,10 @@ jobs:
         working-directory: companies/software-company
       - run: uv run mypy src/company --ignore-missing-imports
         working-directory: companies/software-company
+      # Lần hai CÓ extra `graph`: không cài langgraph thì --ignore-missing-imports biến graph.py thành Any và lệch
+      # kiểu với langgraph không bao giờ lộ (StateGraph(dict) đỏ 2 lỗi type-var chỉ khi cài, 2026-10-05).
+      - run: uv run --locked --extra graph mypy src/company --ignore-missing-imports
+        working-directory: companies/software-company
 
   unit:
     name: unit

@@ -114,6 +114,7 @@ def _publish(args: argparse.Namespace) -> int:
     Đứng RIÊNG khỏi `watch` có chủ ý — vòng lặp tự động chưa nối scout→patch→verify (xem TRAPS.md), nên
     "publish" hôm nay là bước người/script gọi sau khi patch đã commit vào worktree của ticket, không phải
     một nhịp tự động."""
+    from .evidence import EvidenceError
     from .github import GitHubReader
     from .orchestrator import KeeperOrchestrator
     from .publish import PublishError
@@ -130,6 +131,9 @@ def _publish(args: argparse.Namespace) -> int:
     except PublishError as e:
         print(str(e), file=sys.stderr)
         return 3
+    except EvidenceError as e:  # thứ sắp push khác nội dung đã đo (ADR keeper 0002) — không push gì cả
+        print(str(e), file=sys.stderr)
+        return 4
     if pr is None:
         print(f"{args.ticket_id}: đã publish từ trước (idempotent) — không gọi lại push/gh")
         return 0

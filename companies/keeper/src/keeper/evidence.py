@@ -15,7 +15,7 @@ lần chạy CI thật thì tốn. Nếu trường này nhận được từ JSO
 
 Đường dữ liệu bị chặn ở ĐÚNG một chỗ, `build_report()` (gọi từ `verification_report()` và `record_verification`):
 
-    payload model trả về ──drop_self_claims()──▶ trường KỂ CHUYỆN (ticket_id, family_hits, family_safe)
+    payload model trả về ──drop_self_claims()──▶ trường KỂ CHUYỆN (family_hits, family_safe; ticket_id route ghi đè)
                                                         │
     collect_two_way() (code vừa chạy lệnh) ─────────────┴──▶ VerificationReport(before, after, verified_by,
                                                                                  patch_id)
@@ -37,7 +37,6 @@ import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from itertools import pairwise
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
@@ -140,19 +139,37 @@ class EvidenceRule:
 # gọi (đường dẫn không có), 5 không thu được test nào.
 PYTEST_TESTS_FAILED = 1
 _PYTEST_NAMES = frozenset({"pytest", "py.test"})
+_PYTHON_NAME = re.compile(r"python(?:\d+(?:\.\d+)*)?|py")
+# Toán tử shell/thay thế lệnh: có mặt sau `pytest` thì chuỗi lệnh có thể ghép bước khác, mã thoát không còn là của pytest.
+_SHELL_SYNTAX = re.compile(r"[;&|<>`$()]")
 
 
-def _is_pytest(cmd: str) -> bool:
-    """`cmd` gọi thẳng pytest: một token là tệp chạy `pytest`/`py.test` (kể cả đường dẫn, `.exe`), hoặc `-m pytest`.
-    Nhận nhầm chỉ làm luật CHẶT hơn (đòi mã 1), nên dò theo token là đủ."""
+def _exe(token: str) -> str:
+    """Tên tệp chạy của một token, bỏ đường dẫn (cả `\\` của Windows) và đuôi `.exe`."""
+    return PureWindowsPath(token).name.removesuffix(".exe")
+
+
+def _is_direct_pytest(cmd: str) -> bool:
+    """DANH SÁCH TRẮNG (fail closed): `cmd` gọi pytest THẲNG — mã thoát của lệnh chính là mã thoát của pytest. Chỉ nhận
+    `[uv run [cờ không giá trị]] pytest …` hoặc `[uv run …] python[3[.x]] -m pytest …` (tệp chạy có thể mang đường
+    dẫn, `.exe`), và không có toán tử shell sau đó. MỌI lệnh khác (`make`, `tox`, `sh -c`, script riêng, công cụ đơn
+    như `ruff`…) không được tin mã thoát: chúng thoát dương cho mọi bước hỏng, kể cả khi chữ `pytest` có mặt ở đâu
+    đó trong chuỗi lệnh (`sh -c "ruff … && pytest"`). Không nhận ra được thì coi là KHÔNG phải — chỉ làm luật CHẶT
+    hơn: pytest thật luôn in dòng tổng kết khi có test đỏ, nên hàng `wrapped-…` vẫn cho nó qua."""
     tokens = cmd.split()
-    return (any(PureWindowsPath(t).name.removesuffix(".exe") in _PYTEST_NAMES for t in tokens)
-            or ("-m", "pytest") in pairwise(tokens))
+    if tokens[:1] and _exe(tokens[0]) == "uv" and tokens[1:2] == ["run"]:
+        tokens = tokens[2:]
+        while tokens and tokens[0].startswith("-"):
+            tokens = tokens[1:]
+    if tokens[:1] and _exe(tokens[0]) in _PYTEST_NAMES:
+        rest = tokens[1:]
+    elif tokens[:1] and _PYTHON_NAME.fullmatch(_exe(tokens[0])) and tokens[1:3] == ["-m", "pytest"]:
+        rest = tokens[3:]
+    else:
+        return False
+    return _SHELL_SYNTAX.search(" ".join(rest)) is None
 
 
-# Lệnh BỌC: gom nhiều bước (ruff, mypy, pytest) vào MỘT mã thoát. `dev-task.sh gate` thoát 1 cho mọi bước hỏng,
-# `make` thoát 2 cho mọi recipe hỏng — mã dương không còn nói "có test đỏ". Nhận theo TÊN lệnh, cùng cách `_is_pytest`.
-_WRAPPER_NAMES = frozenset({"make", "gmake", "dev-task.sh"})
 # Dòng tổng kết pytest, không bản địa hoá: `1 failed, 3 passed in 0.12s` (`-q`), bọc `=====` (chế độ thường), có thể
 # kèm `(0:01:01)` sau thời gian; `no tests ran in 0.01s` khi không thu được test nào.
 _PYTEST_SUMMARY = re.compile(
@@ -160,12 +177,6 @@ _PYTEST_SUMMARY = re.compile(
 )
 # Lượt chạy bị ngắt giữa chừng (lỗi thu thập, Ctrl-C): có `failed` ở dòng tổng kết cũng không đáng tin.
 _RUN_ABORTED = ("error during collection", "Interrupted")
-
-
-def _is_wrapper(cmd: str) -> bool:
-    """`cmd` chạy qua `make` hoặc `dev-task.sh` (kể cả đường dẫn, `.exe`, `uv run make …`). Chỉ hai tên này: bọc lạ
-    (`tox`, `sh -c`, script riêng) không nhận ra được nên rơi về luật `> 0` của hàng trên."""
-    return any(PureWindowsPath(t).name.removesuffix(".exe") in _WRAPPER_NAMES for t in cmd.split())
 
 
 def _pytest_failed(output: str) -> int:
@@ -181,10 +192,10 @@ def _pytest_failed(output: str) -> int:
 
 
 def _wrapped_before_shows_test_failure(e: TwoWayEvidence) -> bool:
-    """Lệnh bọc thoát dương: chiều đỏ chỉ hợp lệ khi output có test chạy xong và đỏ, và lượt chạy không bị ngắt.
-    Mã ≤ 0 là việc của `before-must-fail`; lệnh không bọc là việc của hàng pytest-gọi-thẳng (hoặc giữ `> 0`)."""
+    """Mọi lệnh KHÔNG phải pytest gọi thẳng, thoát dương: chiều đỏ chỉ hợp lệ khi output có test chạy xong và đỏ, và
+    lượt chạy không bị ngắt. Mã ≤ 0 là việc của `before-must-fail`; pytest gọi thẳng là việc của hàng pytest-gọi-thẳng."""
     b = e.before
-    if b.exit_code <= 0 or not _is_wrapper(b.cmd):
+    if b.exit_code <= 0 or _is_direct_pytest(b.cmd):
         return True
     return _pytest_failed(b.output_tail) >= 1 and not any(m in b.output_tail for m in _RUN_ABORTED)
 
@@ -197,16 +208,17 @@ EVIDENCE_RULES: tuple[EvidenceRule, ...] = (
     # Chỉ xét mã DƯƠNG (mã ≤ 0 là việc của hàng trên): `--include-untracked` stash cả file test MỚI của patch, nên
     # lệnh nhắm thẳng nó thoát 4/5 — `> 0` mà không test nào chạy.
     EvidenceRule("pytest-before-must-be-test-failure",
-                 lambda e: e.before.exit_code <= 0 or not _is_pytest(e.before.cmd)
+                 lambda e: e.before.exit_code <= 0 or not _is_direct_pytest(e.before.cmd)
                  or e.before.exit_code == PYTEST_TESTS_FAILED,
                  f"pytest chỉ thoát {PYTEST_TESTS_FAILED} khi có test chạy xong và ĐỎ; mã khác ⇒ không test nào "
                  "đo bản sửa này (vd file test mới bị stash cùng bản sửa)"),
-    # Lệnh bọc (`make`, `dev-task.sh`) nuốt mã thoát nên hàng trên không soi được: đòi dòng tổng kết pytest ở output.
-    # no-ky-thuat: chỉ nhận bọc theo tên make/gmake/dev-task.sh và đòi dòng pytest cho mọi target của chúng kể cả `make lint`; bọc lạ (tox hay `sh -c` hay script riêng) vẫn nhận mọi mã > 0, quay lại khi keeper đo hai chiều qua một bọc khác tên đó hoặc qua target không chạy pytest
+    # Mọi lệnh KHÔNG phải pytest gọi thẳng (make, dev-task.sh, tox, `sh -c`, script riêng, ruff…) không soi được bằng
+    # mã thoát: đòi dòng tổng kết pytest ở output. Tên hàng giữ "wrapped" vì lệnh lạ coi như bọc (test/nhật ký tham chiếu).
     EvidenceRule("wrapped-before-must-show-test-failure", _wrapped_before_shows_test_failure,
-                 "lệnh bọc (make, dev-task.sh) thoát dương cho MỌI bước hỏng (ruff, mypy, thu thập, pytest): chiều đỏ "
-                 "chỉ hợp lệ khi dòng tổng kết pytest CUỐI trong output có `N failed` (N ≥ 1) và lượt chạy không bị "
-                 "ngắt (`error during collection`/`Interrupted`) — không thì chưa test nào đo bản sửa này"),
+                 "lệnh không phải pytest gọi thẳng (make, dev-task.sh, tox, `sh -c`, script riêng, ruff…) thoát dương "
+                 "cho MỌI bước hỏng (ruff, mypy, thu thập, pytest): chiều đỏ chỉ hợp lệ khi dòng tổng kết pytest CUỐI "
+                 "trong output có `N failed` (N ≥ 1) và lượt chạy không bị ngắt (`error during collection`/"
+                 "`Interrupted`) — không thì chưa test nào đo bản sửa này"),
     EvidenceRule("after-must-pass", lambda e: e.after.exit_code == 0,
                  "bật bản sửa mà lệnh CI vẫn đỏ ⇒ patch chưa xong"),
     EvidenceRule("verifier-must-be-workspace", lambda e: e.verified_by == TRUSTED_VERIFIER,

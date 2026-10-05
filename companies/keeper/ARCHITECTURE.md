@@ -28,8 +28,10 @@ evidence.require_two_way() ── BẮT BUỘC: đo trước (đỏ) và đo sau
 release-clerk ── open_pr(): soạn CHANGELOG (PR_PLACEHOLDER), ghi pr.intent vào audit-log — Ý ĐỊNH, chưa PR thật
    │
    ▼
-NGƯỜI/script gọi `keeper publish <ticket_id>` ── orchestrator.publish(): push_branch() + create_pr() (publish.py)
-   │                                              rồi fill_pr_number() điền số PR thật, ghi audit pr.created
+NGƯỜI/script gọi `keeper publish <ticket_id>` ── orchestrator.publish(): _require_measured() (cây nhánh vs
+   │                                              patch_id, ADR keeper 0002) → push_branch() + create_pr()
+   │                                              (publish.py) rồi fill_pr_number() điền số PR thật, kiểm lại,
+   │                                              push lần hai, ghi audit pr.created
    ▼
 NGƯỜI merge PR thật (I1: keeper không có quyền tự merge)
 ```
@@ -66,7 +68,8 @@ chung của phiên khác.
 - **Test**: số ca hiện tại ở dòng keeper trong `README.md` gốc (có cổng canh); `branch = true` +
   `fail_under = 100` đã bật — một trong hai package đầu tiên đạt mốc này cùng `xagents-core`.
 - **ADR**: quyết định chỉ chạm keeper nằm ở `docs/adr/` của package — `docs/adr/0001-bang-chung-gan-danh-tinh-
-  patch-va-thu-hoi-ben.md` (bằng chứng gắn danh tính patch, đo lại hỏng thu hồi bền qua bus). Thiết kế công ty
+  patch-va-thu-hoi-ben.md` (bằng chứng gắn danh tính patch, đo lại hỏng thu hồi bền qua bus) và
+  `docs/adr/0002-publish-so-noi-dung-da-do-truoc-khi-push.md` (publish so thứ sắp push với nội dung đã đo). Thiết kế công ty
   chạm cả `xagents-core` nên ở gốc repo: `docs/adr/0006-cong-ty-bao-tri-keeper.md` (gốc). Đặc tả chi tiết (bất biến, lộ trình BT1–BT8) ở `docs/DAC-TA-KEEPER.md`.
 
 Trạng thái: BT1–BT7 đã merge, package có mã thật chạy được; phần console + tài liệu của BT8 đã merge (#223).

@@ -87,10 +87,12 @@ def _ticket_du_cong(repo: Path) -> str:
 
 
 def _commit_dong_changelog(wt_path: Path, ticket_id: str) -> None:
+    """ĐÚNG dòng CHANGELOG của note trên bus (worktree nằm cạnh repo, cùng thư mục với `keeper.sqlite`) — dòng
+    khác note là thay đổi chưa đo, `publish` từ chối (ADR keeper 0002)."""
+    note = KeeperOrchestrator(wt_path.parent / "keeper.sqlite", wt_path.parent / "repo", _GH()).notes[ticket_id]
+    assert PR_PLACEHOLDER in note.changelog_line
     changelog = wt_path / "CHANGELOG.md"
-    changelog.write_text(changelog.read_text(encoding="utf-8") +
-                         f"- fix(keeper): bump requests — bảo trì tự động, tier low {PR_PLACEHOLDER}\n",
-                         encoding="utf-8")
+    changelog.write_text(changelog.read_text(encoding="utf-8") + note.changelog_line + "\n", encoding="utf-8")
     _git(wt_path, "add", "-A")
     _git(wt_path, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", f"vá {ticket_id}")
 
