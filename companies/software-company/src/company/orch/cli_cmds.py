@@ -2,8 +2,9 @@
 
 Trước đây cả 13 lệnh nằm trong một chuỗi `if ns.cmd == …` dài 162 dòng bên trong `main()`. Tách ra không đổi
 hành vi một chữ nào — mục đích là để đọc được MỘT lệnh mà không phải cuộn qua mười hai lệnh khác, và để chỗ
-dựng `Orchestrator` (đắt: cần client thật cho `run`/`redeploy`) hiện rõ là ranh giới giữa hai nhóm:
+dựng `Orchestrator` (đắt: cần client thật cho `run`/`redeploy`) hiện rõ là ranh giới giữa ba nhóm:
 
+* **Nhóm file** (`FILE_CMDS`) chỉ cần đường dẫn DB — backup dùng kết nối SQLite chỉ đọc, không dựng bus ghi.
 * **Nhóm bus** (`BUS_CMDS`) chỉ cần `SQLiteBus` — chạy trước khi dựng `Orchestrator`, nên `metrics`/`trace` trên
   một file bus của máy khác không đòi SDK hay API key.
 * **Nhóm orchestrator** (`ORCH_CMDS`) cần đối tượng đã dựng.
@@ -14,6 +15,7 @@ người dùng (in ra stderr), 3 không lấy được lease.
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -28,6 +30,20 @@ if TYPE_CHECKING:
 
     from ..orchestrator import Orchestrator, StepResult
     from ..sqlite_bus import SQLiteBus
+
+
+# ---------- nhóm file: chưa mở bus ----------
+
+def backup(source: Path, ns: argparse.Namespace) -> int:
+    from ..sqlite_bus import backup_database
+    try:
+        backup_database(source, ns.out)
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        print(f"backup lỗi: {exc}", file=sys.stderr); return 2
+    print(f"backup {source} → {ns.out}"); return 0
+
+
+FILE_CMDS: dict[str, Callable[[Path, Any], int]] = {"backup": backup}
 
 
 # ---------- nhóm bus: chưa cần Orchestrator ----------

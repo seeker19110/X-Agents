@@ -235,7 +235,7 @@ def test_k18_orchestrator_chi_con_wiring_va_dispatcher():
 
 def test_k18_main_duoi_60_dong():
     """`main` từng là chuỗi 13 nhánh `if ns.cmd == …` dài 162 dòng: thêm một lệnh là thêm một nhánh vào giữa,
-    và không đọc được MỘT lệnh mà không cuộn qua mười hai lệnh khác. Nay là parser + hai bảng dispatch."""
+    và không đọc được MỘT lệnh mà không cuộn qua mười hai lệnh khác. Nay là parser + ba bảng dispatch."""
     n = _dong_than_ham(ORCH_SRC["cli.py"], chi_ham="main")
     assert 0 < n <= MAX_DONG_MAIN, f"main = {n} dòng (trần {MAX_DONG_MAIN}); tách subcommand vào `cli_cmds.py`"
 
@@ -245,8 +245,8 @@ def test_k18_moi_lenh_cli_co_dung_mot_ham_trong_bang():
     không phải lỗi lúc nạp module. Đối chiếu thẳng với parser thay vì với một danh sách chép tay."""
     from company.orch import cli, cli_cmds
     sub = next(a for a in cli._parser()._actions if getattr(a, "choices", None) and a.dest == "cmd")
-    thieu = set(sub.choices) - set(cli_cmds.BUS_CMDS) - set(cli_cmds.ORCH_CMDS)
-    thua = (set(cli_cmds.BUS_CMDS) | set(cli_cmds.ORCH_CMDS)) - set(sub.choices)
+    thieu = set(sub.choices) - set(cli_cmds.FILE_CMDS) - set(cli_cmds.BUS_CMDS) - set(cli_cmds.ORCH_CMDS)
+    thua = (set(cli_cmds.FILE_CMDS) | set(cli_cmds.BUS_CMDS) | set(cli_cmds.ORCH_CMDS)) - set(sub.choices)
     assert not thieu, f"subcommand không có hàm trong bảng: {sorted(thieu)}"
     assert not thua, f"bảng có hàm cho lệnh không tồn tại: {sorted(thua)}"
 
