@@ -194,13 +194,14 @@ def _orc_ticket_high(db: Path, repo: Path):
         def merged_prs(self, since):
             return []
 
-    o = KeeperOrchestrator(db, repo, _GH())
+    patch_id = "c" * 40  # danh tính giả (ADR keeper 0001): worktree "hiện tại" = nội dung đã đo ⇒ chỉ kẹt cổng gate
+    o = KeeperOrchestrator(db, repo, _GH(), patch_identity=lambda _ticket_id: patch_id)
     o.submit_signal(Signal(subject="requests", kind="dependency", detail="bump", semver_jump="major"))
     (t,) = o.tick(now=datetime(2026, 9, 9, tzinfo=UTC)).tickets
     cmd = "uv run pytest -q"
     o.record_verification(t.ticket_id, {"ticket_id": t.ticket_id}, TwoWayEvidence(
         cmd=cmd, before=RunOutcome(cmd=cmd, exit_code=1), after=RunOutcome(cmd=cmd, exit_code=0),
-        verified_by=TRUSTED_VERIFIER))
+        verified_by=TRUSTED_VERIFIER, patch_id=patch_id))
     o.tick(now=datetime(2026, 9, 9, tzinfo=UTC))  # xin gate
     assert "gate" in o.pr_blockers(t)
     return o, t

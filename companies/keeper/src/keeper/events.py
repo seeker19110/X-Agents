@@ -101,6 +101,10 @@ class VerificationReport(BaseModel):
     verified_by: Literal["workspace", "orchestrator"]
     family_hits: list[str] = []
     family_safe: list[FamilySafeEntry] = []
+    #: Danh tính NỘI DUNG đã đo (`worktree.content_tree`, ADR keeper 0001): báo cáo chỉ mở cổng `evidence` khi
+    #: worktree của ticket VẪN đúng nội dung này. Do `collect_two_way` đo, không bao giờ lấy từ payload model
+    #: (`evidence.SELF_CLAIM_FIELDS`). `None` = báo cáo không nói nó đo gì (hình dạng trước ADR) ⇒ bị từ chối.
+    patch_id: str | None = None
 
 
 class SecurityFinding(BaseModel):

@@ -73,6 +73,19 @@
           },
           "title": "Family Safe",
           "type": "array"
+        },
+        "patch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Patch Id",
+          "description": "Id cây git của nội dung worktree lúc đo (ADR keeper 0001) — do code đo, không do model khai. Thiếu/null thì orchestrator từ chối báo cáo."
         }
       },
       "required": [

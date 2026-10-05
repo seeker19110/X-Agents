@@ -33,5 +33,8 @@ ticket phải đi qua `triager` để có `risk_tier`.
   tắt bản sửa mà lệnh CI vẫn xanh nghĩa là test không đo được gì.
 - `verification-reports.verified_by` chỉ được code điền sau khi vừa chạy lệnh; không bao giờ nhận từ JSON model
   trả về (`AGENTS.md` cấm §8).
+- `verification-reports.patch_id` là id cây git của nội dung worktree lúc đo (`worktree.content_tree`), do
+  `collect_two_way` điền — cùng luật với `verified_by`. Báo cáo thiếu nó (hình dạng trước ADR keeper 0001) bị
+  orchestrator từ chối; cổng `evidence` chỉ mở khi worktree của ticket VẪN đúng nội dung ấy.
 - `release-notes.pr_number` là `null` cho tới khi PR có số; điền `(#n)` rồi commit tiếp vào chính PR đó
   (`AGENTS.md` §10), không mở PR thứ hai để vá số.

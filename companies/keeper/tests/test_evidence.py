@@ -137,9 +137,10 @@ def test_pytest_thoat_1_van_la_chieu_do_va_chieu_nguoc(cmd: str):
     require_two_way(_ev_cmd(cmd, before=4), rules=rules_without("pytest-before-must-be-test-failure"))  # không ném
 
 
-@pytest.mark.parametrize("cmd", ["make test", "scripts/dev-task.sh gate keeper", "uv run ruff check src tests/test_pytest.py"])
+@pytest.mark.parametrize("cmd", ["uv run ruff check src tests/test_pytest.py", "bash ci.sh"])
 def test_lenh_khong_phai_pytest_giu_luat_lon_hon_0(cmd: str):
-    """`make` thoát 2 khi một recipe đỏ, `ruff` thoát 1 khi có lỗi lint: ngoài pytest không biết nghĩa từng mã."""
+    """`ruff` thoát 1 khi có lỗi lint: ngoài pytest không biết nghĩa từng mã. Lệnh BỌC `make`/`dev-task.sh` không
+    còn ở đây: chúng phải có dòng tổng kết pytest đỏ trong output (`test_evidence_lenh_boc.py`)."""
     require_two_way(_ev_cmd(cmd, before=2))
 
 
@@ -163,8 +164,9 @@ def test_rules_without_ten_la_thi_no():
 # --- lời khai verified_by ---------------------------------------------------------------------------
 
 def test_truong_tu_khai_duoc_khai_bao():
-    assert SELF_CLAIM_FIELDS == frozenset({"verified_by", "before", "after"})
+    assert SELF_CLAIM_FIELDS == frozenset({"verified_by", "before", "after", "patch_id"})
     assert [r.name for r in EVIDENCE_RULES] == ["before-must-fail", "pytest-before-must-be-test-failure",
+                                                "wrapped-before-must-show-test-failure",
                                                 "after-must-pass", "verifier-must-be-workspace"]
 
 
