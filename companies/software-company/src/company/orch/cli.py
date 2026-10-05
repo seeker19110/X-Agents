@@ -104,6 +104,8 @@ def _parser() -> argparse.ArgumentParser:
     rk = sub.add_parser("recheck", help="ADR-0047: chấm lại release-check của security cho một RC với bằng chứng "
                                         "máy dựng mới (SBOM/license/DAST); giữ waiver đã có")
     rk.add_argument("release_id"); rk.add_argument("--by", required=True, help="human:<tên> hoặc reviewer:<id>")
+    bk = sub.add_parser("backup", help="sao lưu nhất quán company.sqlite đang chạy, gồm cả WAL")
+    bk.add_argument("--out", type=Path, required=True, help="file đích mới; không ghi đè bản sao lưu cũ")
     sub.add_parser("status"); sub.add_parser("report", help="sprint report: estimate vs actual, chi phí, hành động supervisor")
     ru = sub.add_parser("rulings", help="sổ Ruling (ADR-0030): quyết định agent tự đưa ra thay vì chờ người, kèm 'sai thì mất gì'")
     ru.add_argument("--project"); ru.add_argument("--ticket")
@@ -133,8 +135,10 @@ def main(argv: list[str] | None = None) -> int:
     from ..sqlite_bus import SQLiteBus, missing_bus
     if ns.cmd not in NEW_BUS_CMDS and (loi := missing_bus(ns.db)):
         print(loi, file=sys.stderr); return 2
+    if (file_cmd := cli_cmds.FILE_CMDS.get(ns.cmd)) is not None:
+        return file_cmd(ns.db, ns)
     bus = SQLiteBus(ns.db)
-    # Hai nhóm lệnh, ranh giới là chỗ dựng `Orchestrator` (đắt: `run`/`redeploy` cần client thật). Nhóm bus chạy
+    # Ba nhóm lệnh, ranh giới là chỗ dựng `Orchestrator` (đắt: `run`/`redeploy` cần client thật). Nhóm bus chạy
     # TRƯỚC nên `metrics`/`trace`/`publish` trên file bus của máy khác không đòi SDK hay API key.
     if (bus_cmd := cli_cmds.BUS_CMDS.get(ns.cmd)) is not None:
         return bus_cmd(bus, ns)

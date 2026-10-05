@@ -71,6 +71,34 @@ cả hai: target trùng ticket **hoặc** trùng dự án đều bị hoãn.
 Không có lệnh CLI. Dừng tiến trình `orchestrator run`. An toàn vì mọi trạng thái nằm trong bus SQLite:
 mở lại là replay dựng lại đúng chỗ, event chưa xử lý (`deferred`) được nhận lại.
 
+### Sao lưu bus khi orchestrator còn chạy
+
+Chạy từ thư mục công ty, trỏ đúng DB đang vận hành; `--db` đứng trước subcommand. Lệnh dùng SQLite backup API,
+đọc được event còn trong WAL, kiểm `integrity_check`, rồi công bố file mới. Đích đã tồn tại sẽ bị từ chối để
+không ghi đè bản trước. Chọn đường dẫn ngoài checkout và giữ bản sao ở nơi người trực kiểm soát quyền truy cập.
+
+```bash
+cd companies/software-company
+uv run python -m company.orchestrator --db company.sqlite backup --out /duong-dan-an-toan/company-2026-10-05.sqlite
+```
+
+Nếu hub chạy trong container, dùng `--db var/company.sqlite` trên host (xem Mức 0). Bản sao này chỉ chứa bus
+SQLite; thư mục `.artifacts` của blackboard là dữ liệu riêng và cần lịch sao lưu riêng. Ca tự động đã đo backup
+khi kết nối ghi còn mở ở WAL; chưa chạy lệnh trên bus vận hành thật trong phiên này.
+
+Watcher vận hành nên chạy ở checkout riêng bám `origin/main` thay vì worktree đang sửa tính năng. Chuẩn bị khi
+watcher đã dừng, rồi khởi động lại với đúng cấu hình/DB của máy trực:
+
+```bash
+git fetch origin
+git worktree add --detach ../X-Agents-runtime-main origin/main
+cd ../X-Agents-runtime-main
+uv sync --locked
+```
+
+Chỉ tạo checkout mới sau khi kiểm `git worktree list` để không đụng checkout đã có. Các lệnh trên là quy trình
+đề xuất cho O1; chưa chuyển watcher đang chạy của máy trực trong phiên này.
+
 > **Dừng orchestrator KHÔNG còn đồng nghĩa với dừng sản phẩm** (ADR-0039, từ 2026-09-08). Khi
 > `COMPANY_DEPLOY` bật, lượt deploy dựng container **sống lâu** của khách bằng `docker compose up -d` và
 > **cố ý không giết chúng** — đó là cả điểm của "deployed là container đang chạy". Giết tiến trình
