@@ -1,5 +1,7 @@
 # Changelog
 
+- fix(keeper): urllib3 — bảo trì tự động, tier high (#PR)
+
 Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Mỗi PR merge vào `main` một dòng, scope trong
 ngoặc, số PR ở cuối. Chi tiết và lý do nằm trong PR và ADR; ở đây chỉ trả lời "đã đổi gì, khi nào".
 Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là của sản phẩm khách, ADR-0027) — nhóm theo ngày.
