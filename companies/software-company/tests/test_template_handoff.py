@@ -1,4 +1,5 @@
 """Native handoff preparation is not approval, execution, or completion."""
+
 from __future__ import annotations
 
 import copy
@@ -55,6 +56,200 @@ def test_prepares_native_contract_without_mutation(bundle: dict, tmp_path: Path)
     assert native.spec.artifact_sha256 == hashlib.sha256(SPEC).hexdigest()
     assert bundle == before
     assert prepare(bundle, tmp_path) == native
+    assert "figma_contexts" not in native.model_dump()
+
+
+def test_prepares_only_pinned_figma_context_artifacts(bundle: dict, tmp_path: Path) -> None:
+    context = b"# Checkout frame\n\nLayout: vertical, 16px gap.\n"
+    (tmp_path / "figma.md").write_bytes(context)
+    bundle["delivery"]["figma_contexts"] = [
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App?node-id=12-34",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": hashlib.sha256(context).hexdigest(),
+        }
+    ]
+    native = prepare(bundle, tmp_path)
+    assert len(native.figma_contexts) == 1
+    assert native.figma_contexts[0].artifact_sha256 == hashlib.sha256(context).hexdigest()
+    assert native.model_dump()["figma_contexts"][0]["artifact_ref"] == "figma.md"
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        {
+            "source_url": "http://www.figma.com/design/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://figma.example/design/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://user@www.figma.com/design/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com:444/design/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com:bad/design/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/proto/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App#private",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App?t=secret",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App?node-id=bad",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App?node-id=",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App?node-id=12-34&node-id=12-34",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App?node-id=12-34",
+            "node_id": "56:78",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App",
+            "node_id": "bad",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "../figma.md",
+            "artifact_sha256": "0" * 64,
+        },
+    ],
+)
+def test_rejects_untrusted_figma_context_metadata(bundle: dict, tmp_path: Path, context: dict) -> None:
+    (tmp_path / "figma.md").write_bytes(b"snapshot")
+    bundle["delivery"]["figma_contexts"] = [context]
+    with pytest.raises(ValueError):
+        prepare(bundle, tmp_path)
+
+
+def test_rejects_changed_or_missing_figma_context_snapshot(bundle: dict, tmp_path: Path) -> None:
+    (tmp_path / "figma.md").write_bytes(b"changed snapshot")
+    bundle["delivery"]["figma_contexts"] = [
+        {
+            "source_url": "https://www.figma.com/file/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": hashlib.sha256(b"original").hexdigest(),
+        }
+    ]
+    with pytest.raises(ValueError, match="Figma context"):
+        prepare(bundle, tmp_path)
+
+
+def test_rejects_missing_and_empty_figma_context_snapshot(bundle: dict, tmp_path: Path) -> None:
+    bundle["delivery"]["figma_contexts"] = [
+        {
+            "source_url": "https://www.figma.com/file/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "missing.md",
+            "artifact_sha256": hashlib.sha256(b"missing").hexdigest(),
+        }
+    ]
+    with pytest.raises(ValueError, match="Figma context"):
+        prepare(bundle, tmp_path)
+
+
+def test_rejects_oversized_figma_context_snapshot(bundle: dict, tmp_path: Path) -> None:
+    snapshot = b"x" * (1024 * 1024 + 1)
+    (tmp_path / "figma.md").write_bytes(snapshot)
+    bundle["delivery"]["figma_contexts"] = [
+        {
+            "source_url": "https://www.figma.com/file/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "figma.md",
+            "artifact_sha256": hashlib.sha256(snapshot).hexdigest(),
+        }
+    ]
+    with pytest.raises(ValueError, match="Figma context"):
+        prepare(bundle, tmp_path)
+    (tmp_path / "empty.md").write_bytes(b"")
+    bundle["delivery"]["figma_contexts"][0]["artifact_ref"] = "empty.md"
+    bundle["delivery"]["figma_contexts"][0]["artifact_sha256"] = hashlib.sha256(b"").hexdigest()
+    with pytest.raises(ValueError, match="Figma context"):
+        prepare(bundle, tmp_path)
+
+
+def test_context_limit_and_identifiers_are_enforced(bundle: dict, tmp_path: Path) -> None:
+    snapshot = b"frame"
+    (tmp_path / "figma.md").write_bytes(snapshot)
+    context = {
+        "source_url": "https://www.figma.com/design/Abc123/App",
+        "node_id": "12:34",
+        "artifact_ref": "figma.md",
+        "artifact_sha256": hashlib.sha256(snapshot).hexdigest(),
+    }
+    bundle["delivery"]["figma_contexts"] = [context] * 9
+    with pytest.raises(ValueError):
+        prepare(bundle, tmp_path)
+    bundle["delivery"]["figma_contexts"] = [context, context]
+    with pytest.raises(ValueError, match="unique"):
+        prepare(bundle, tmp_path)
+
+
+def test_rejects_figma_context_symlink_escape(bundle: dict, tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside-figma.md"
+    outside.write_bytes(b"private frame")
+    (tmp_path / "linked-figma.md").symlink_to(outside)
+    bundle["delivery"]["figma_contexts"] = [
+        {
+            "source_url": "https://www.figma.com/design/Abc123/App",
+            "node_id": "12:34",
+            "artifact_ref": "linked-figma.md",
+            "artifact_sha256": hashlib.sha256(outside.read_bytes()).hexdigest(),
+        }
+    ]
+    with pytest.raises(ValueError, match="Figma context"):
+        prepare(bundle, tmp_path)
 
 
 def test_preparation_never_grants_approval_or_completion(bundle: dict, tmp_path: Path) -> None:

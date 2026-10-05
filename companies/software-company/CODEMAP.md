@@ -75,9 +75,9 @@
 | Nối hợp đồng vào kernel thi hành (`xagents_core.execution`) | `src/company/quality_execution.py` (`compile_execution`, `evaluate_result` thuần, `commit_quality_result`; CLI `python -m company.quality_execution plan/register/status/commit`) — không scheduler/state machine thứ hai | `tests/test_quality_execution.py`, `test_quality_commit.py` |
 | Orchestrator ghim profile lúc ký spec, chiếu `lead.state` sang journal, mở `quality:accept` | `orch/quality_flow.py` (`note_profile`, `sync_quality` gọi ở cuối `scheduler._mark`, `TrustedDriver`, `submit_quality`) — không đụng `TICKET_TRANSITIONS`/`RELEASE_TRANSITIONS` | `tests/test_quality_flow.py`, `test_quality_flow_reopen.py` |
 | Gap R6 của sàn chất lượng cho một release (chỉ đọc journal) | `orch/quality_release.py` (`runs_for_release`, `release_quality`) — tách khỏi `quality_flow` vì trần 400 dòng của `orch/` | `tests/test_quality_floor_r6.py` |
-| Điều kiện Ready/Done/Complete của hợp đồng giao hàng | `src/company/delivery_contract.py` (`ready_gaps`, `delivery_gaps`, giao thức `ApprovalLookup`; thiếu lookup ⇒ fail-closed) | `tests/test_delivery_contract.py` |
+| Điều kiện Ready/Done/Complete của hợp đồng giao hàng | `src/company/delivery_contract.py` (`ready_gaps`, `delivery_gaps`, giao thức `ApprovalLookup`; thiếu lookup ⇒ fail-closed); `FigmaContextArtifact` chỉ nhận URL/node đã kiểm | `tests/test_delivery_contract.py` |
 | Ai đã duyệt spec (lookup thật cho pha Ready, đọc bus) | `src/company/spec_approval.py` (`BusApprovalLookup`) — tin `env.actor` của gate `SPEC-<pid>`, không tin lời khai `approved_by` trong profile | `tests/test_spec_approval.py` |
-| Cầu nối projects-template (chuẩn bị ≠ duyệt) | `src/company/template_handoff.py` (`prepare_handoff`, `policy_document`; CLI `python -m company.template_handoff policy/prepare`) — không lệnh, không mạng, không ghi file | `tests/test_template_handoff.py` |
+| Cầu nối projects-template (chuẩn bị ≠ duyệt) | `src/company/template_handoff.py` (`prepare_handoff`, `policy_document`; xác minh SHA/path của Figma snapshot; CLI `python -m company.template_handoff policy/prepare`) — không lệnh, không mạng, không ghi file | `tests/test_template_handoff.py` |
 
 ## Model và chi phí
 

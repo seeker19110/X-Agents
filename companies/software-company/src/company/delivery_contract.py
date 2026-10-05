@@ -6,15 +6,28 @@ ApprovalLookup confirms the approval record; a missing lookup fails closed, neve
 Done/Complete is checked within the existing authenticated quality receipt pipeline.
 Commands and references are data only. Existing quality checks cannot be waived here.
 """
+
 from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Literal, Protocol
+from urllib.parse import parse_qs, urlsplit
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    StringConstraints,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 # Ceiling for the spec artifact readability check; independent of any evidence policy.
 _MAX_SPEC_ARTIFACT_BYTES = 64 * 1024 * 1024
@@ -30,6 +43,8 @@ _SOURCE_DOCUMENTS = {
 _Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=12000)]
 _Id = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.-]{0,79}$")]
 _Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+_FIGMA_NODE_ID_PATTERN = r"^I?\d+[:\-]\d+(?:;\d+[:\-]\d+)*$"
+_FigmaNodeId = Annotated[str, StringConstraints(pattern=_FIGMA_NODE_ID_PATTERN)]
 _Level = Literal["done", "complete"]
 
 
@@ -56,6 +71,48 @@ class ApprovedSpec(_Strict):
 class AcceptanceTest(_Strict):
     acceptance_id: _Text
     test_ref: _Text
+
+
+class FigmaContextArtifact(_Strict):
+    """A frame's external source and the exact local snapshot used by delivery."""
+
+    source_url: _Text
+    node_id: _FigmaNodeId
+    artifact_ref: _Text
+    artifact_sha256: _Digest
+
+    @field_validator("source_url")
+    @classmethod
+    def valid_figma_url(cls, value: str) -> str:
+        try:
+            parsed = urlsplit(value)
+            host = parsed.hostname
+            port = parsed.port
+            query = parse_qs(parsed.query, keep_blank_values=True)
+        except ValueError as error:
+            raise ValueError("invalid Figma source URL") from error
+        if (
+            parsed.scheme != "https"
+            or host not in {"figma.com", "www.figma.com"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or port not in {None, 443}
+            or parsed.fragment
+            or re.fullmatch(r"/(?:design|file)/[A-Za-z0-9]+(?:/[^?#]*)?", parsed.path) is None
+        ):
+            raise ValueError("source URL must be an HTTPS Figma design or file URL")
+        if set(query) - {"node-id"} or any(len(values) != 1 or not values[0] for values in query.values()):
+            raise ValueError("Figma source URL may contain only one node-id query")
+        if "node-id" in query and re.fullmatch(_FIGMA_NODE_ID_PATTERN, query["node-id"][0].replace("-", ":")) is None:
+            raise ValueError("Figma source URL contains an invalid node-id")
+        return value
+
+    @model_validator(mode="after")
+    def node_matches_url(self) -> FigmaContextArtifact:
+        query = parse_qs(urlsplit(self.source_url).query)
+        if query and query["node-id"][0].replace("-", ":") != self.node_id.replace("-", ":"):
+            raise ValueError("Figma URL node-id must match the manifest node_id")
+        return self
 
 
 class DeliveryGate(_Strict):
@@ -87,6 +144,7 @@ class DeliveryContract(_Strict):
     alternatives_and_tradeoffs: _Text
     baseline_ref: _Text | None = None
     blocking_decisions: tuple[_Text, ...] = ()
+    figma_contexts: tuple[FigmaContextArtifact, ...] = Field(default_factory=tuple, max_length=8)
     acceptance_tests: tuple[AcceptanceTest, ...] = Field(min_length=1)
     gates: tuple[DeliveryGate, ...] = Field(min_length=1)
 
@@ -98,13 +156,25 @@ class DeliveryContract(_Strict):
             raise ValueError("incremental adoption requires an existing-system baseline")
         if self.blocking_decisions:
             raise ValueError("blocking decisions must be resolved before implementation")
-        for values in ([g.id for g in self.gates], [a.acceptance_id for a in self.acceptance_tests]):
-            if len(values) != len(set(values)):
-                raise ValueError("gate and acceptance IDs must be unique")
+        values = (
+            [g.id for g in self.gates],
+            [a.acceptance_id for a in self.acceptance_tests],
+            [(item.source_url, item.node_id) for item in self.figma_contexts],
+        )
+        for identifiers in values:
+            if len(identifiers) != len(set(identifiers)):
+                raise ValueError("gate, acceptance, and Figma context IDs must be unique")
         phases = {g.phase for g in self.gates if g.applicable}
         if "done" not in phases or (self.completion_level == "complete" and "complete" not in phases):
             raise ValueError("every required delivery level needs an applicable gate")
         return self
+
+    @model_serializer(mode="wrap")
+    def serialize_contract(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        document = handler(self)
+        if not self.figma_contexts:
+            document.pop("figma_contexts", None)
+        return document
 
     def validate_acceptance(self, identifiers: set[str]) -> None:
         if {a.acceptance_id for a in self.acceptance_tests} != identifiers:

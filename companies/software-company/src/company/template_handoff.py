@@ -5,6 +5,7 @@ network requests, journal transitions, file writes or new permissions occur here
 A coordinator pins the bundle separately, then uses the returned contract in its
 normal profile/ApprovalLookup/authenticated-evidence pipeline.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -102,8 +103,15 @@ def prepare_handoff(
         raise ValueError("consumer policy changed; re-export and review the policy")
     contract = DeliveryContract.model_validate_json(canonical(document["delivery"]))
     contract.validate_acceptance(acceptance_ids)
-    if not artifact_matches(evidence_root, contract.spec.artifact_ref, contract.spec.artifact_sha256, MAX_DOCUMENT_BYTES):
+    if not artifact_matches(
+        evidence_root, contract.spec.artifact_ref, contract.spec.artifact_sha256, MAX_DOCUMENT_BYTES
+    ):
         raise ValueError("spec artifact missing, changed, unsafe, empty or oversized")
+    if any(
+        not artifact_matches(evidence_root, item.artifact_ref, item.artifact_sha256, MAX_DOCUMENT_BYTES)
+        for item in contract.figma_contexts
+    ):
+        raise ValueError("Figma context artifact missing, changed, unsafe, empty or oversized")
     return contract
 
 
