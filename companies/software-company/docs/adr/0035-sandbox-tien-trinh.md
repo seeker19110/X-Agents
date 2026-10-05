@@ -30,9 +30,9 @@ quyết được việc mã khách đọc file ngoài worktree.
    (`poll`/`kill`/`stderr_tail`) cho `smoke.py` vốn cần tiến trình sống trong lúc probe HTTP.
 2. **Hai backend.** `SubprocessSandbox` gói **đúng hành vi hiện có** (cùng cắt output, cùng timeout, cùng
    `clean_env`) — mục tiêu là không đổi hành vi ở bước gói. `ContainerSandbox` chạy
-   `docker|podman run --rm --pids-limit 256 --cpus … --memory … -u uid:gid -v <cwd>:/w:rw -w /w --env-file -`,
+   `docker|podman run --rm --pids-limit 256 --cpus … --memory … -u uid:gid -v <cwd>:/w:rw -w /w --env-file /dev/stdin`,
    `--network none` mặc định và `--network bridge -p 127.0.0.1:<port>:<port>` khi `spec.network` (smoke vẫn probe
-   được `127.0.0.1`). Env đi qua `--env-file -` (stdin) chứ không phải `-e`: giá trị không lộ trong `ps`.
+   được `127.0.0.1`). Env đi qua `--env-file /dev/stdin` (stdin) chứ không phải `-e`: giá trị không lộ trong `ps`.
 3. **Chế độ `auto`, nhưng fail-closed.** Thứ tự: `COMPANY_SANDBOX` env → `cfg.sandbox` → `"auto"`. `auto` dùng
    container nếu tìm thấy runtime trên PATH, ngược lại subprocess. Khai đích danh `container` mà thiếu binary thì
    **`SandboxError`**, tuyệt đối không âm thầm tụt về subprocess: một hệ bảo vệ tự hạ cấp trong im lặng còn tệ hơn

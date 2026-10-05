@@ -14,7 +14,7 @@ Git KHÔNG đi qua đây (ADR-0035): argv hard-code, hook đã bị vô hiệu, 
 
 - `network` + `port` — `company.smoke` probe 127.0.0.1 trong container.
 - `stdin` — `studio.media.CommandTTS` đưa văn bản vào stdin lệnh TTS. Với `ContainerSandbox`, stdin đã bị
-  `--env-file -` chiếm, nên khi có `stdin` thì env buộc quay về `-e KEY=VALUE` (giá trị **hiện trong danh sách
+  `--env-file /dev/stdin` chiếm, nên khi có `stdin` thì env buộc quay về `-e KEY=VALUE` (giá trị **hiện trong danh sách
   tiến trình** của máy — đánh đổi ghi ở đây để không ai tưởng là kín).
 - `read_only` — `studio.qc` chỉ đo file, mount `:ro`.
 
@@ -217,7 +217,7 @@ def _container_name() -> str:
 class ContainerSandbox:
     """`docker`/`podman run --rm` với cwd mount vào `/w`, mạng tắt, hạn mức pid/cpu/ram.
 
-    Env đi qua `--env-file -` (stdin) chứ không phải `-e`: giá trị không hiện trong danh sách tiến trình của máy.
+    Env đi qua `--env-file /dev/stdin` (stdin) chứ không phải `-e`: giá trị không hiện trong danh sách tiến trình của máy.
     Ngoại lệ: `RunSpec.stdin` cần chính stdin đó, lúc ấy env buộc phải quay về `-e` (xem docstring module)."""
 
     def __init__(self, runtime: str, image: str, cpus: str = "2", memory: str = "2g",
@@ -225,8 +225,7 @@ class ContainerSandbox:
                  env_via_stdin: bool | None = None):
         self.runtime, self.image, self.cpus, self.memory = runtime, image, cpus, memory
         self._runner, self._popen = runner, popen
-        # Windows: docker CLI coi `-` của `--env-file` là TÊN FILE (đo 2026-09-14: "open -: The system cannot find
-        # the file specified") — mọi lệnh chết trước khi chạy. Env ra `-e` như ca stdin (cùng đánh đổi, xem docstring
+        # Windows không có `/dev/stdin` cho Docker CLI; env ra `-e` như ca stdin (cùng đánh đổi, xem docstring
         # module); `None` = tự chọn theo hệ điều hành, đặt tường minh để test không phụ thuộc máy chạy. Tên mang
         # `:env-argv` cùng khuôn `:no-uid`: audit đọc tên là biết cách ly còn gì.
         self.env_via_stdin = (os.name != "nt") if env_via_stdin is None else env_via_stdin
@@ -256,7 +255,7 @@ class ContainerSandbox:
         if uid: base += ["-u", uid]
         base += ["-v", f"{spec.cwd}:/w:{'ro' if spec.read_only else 'rw'}", "-w", "/w"]
         if spec.stdin is None and self.env_via_stdin:
-            base += ["--env-file", "-"]
+            base += ["--env-file", "/dev/stdin"]
         else:
             if spec.stdin is not None: base += ["-i"]
             for k, v in sanitize_env(spec.env).items():
@@ -266,7 +265,7 @@ class ContainerSandbox:
         return [*base, self.image, *spec.argv]
 
     def _input(self, spec: RunSpec) -> str:
-        # `--env-file -` đọc từng dòng KEY=VALUE trên stdin; giá trị nhiều dòng không hợp lệ nên bỏ.
+        # `/dev/stdin` đọc từng dòng KEY=VALUE trên stdin; giá trị nhiều dòng không hợp lệ nên bỏ.
         if spec.stdin is not None:
             return spec.stdin
         if not self.env_via_stdin:

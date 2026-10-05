@@ -122,6 +122,14 @@ def test_container_argv_mount_rw_mang_tat_va_env_qua_stdin(tmp_path):
     assert "LANG=vi" in rec[0]["input"]        # env đi qua stdin, không hiện trong danh sách tiến trình
 
 
+def test_container_env_file_doc_stdin_qua_dev_stdin(tmp_path):
+    rec: list[dict[str, Any]] = []
+    ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), env_via_stdin=True).run(
+        RunSpec(argv=["python", "-V"], cwd=tmp_path, env={"LANG": "vi"}))
+    argv = rec[0]["argv"]
+    assert argv[argv.index("--env-file") + 1] == "/dev/stdin"
+
+
 def test_container_mount_chi_doc_cho_qc_va_mo_cong_khi_can_mang(tmp_path):
     rec: list[dict[str, Any]] = []
     sb = ContainerSandbox("docker", "img:1", runner=_fake_runner(rec))
@@ -133,7 +141,7 @@ def test_container_mount_chi_doc_cho_qc_va_mo_cong_khi_can_mang(tmp_path):
 
 
 def test_container_khi_can_stdin_thi_env_buoc_phai_ra_dong_lenh(tmp_path):
-    """`--env-file -` chiếm stdin, mà CommandTTS cần stdin cho văn bản → env quay về `-e` (đánh đổi có chủ ý)."""
+    """`--env-file /dev/stdin` chiếm stdin, mà CommandTTS cần văn bản → env quay về `-e` (đánh đổi có chủ ý)."""
     rec: list[dict[str, Any]] = []
     ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), env_via_stdin=True).run(
         RunSpec(argv=["tts"], cwd=tmp_path, env={"LANG": "vi"}, stdin="xin chào"))

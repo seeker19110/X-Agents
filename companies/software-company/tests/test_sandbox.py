@@ -168,7 +168,7 @@ def test_container_argv_mac_dinh_khong_mang(tmp_path, monkeypatch):
     name = argv[argv.index("--name") + 1]   # tên sinh mỗi lần chạy để dọn được container khi timeout/kill
     assert name.startswith("xagents-") and argv == [
         "docker", "run", "--rm", "--name", name, "--pids-limit", "256", "--cpus", "2", "--memory", "2g",
-        "-u", "1000:1000", "-v", f"{tmp_path}:/w:rw", "-w", "/w", "--env-file", "-",
+        "-u", "1000:1000", "-v", f"{tmp_path}:/w:rw", "-w", "/w", "--env-file", "/dev/stdin",
         "--network", "none", "python:3.12-slim", "pytest", "-q"]
     assert sb.name == "container:python:3.12-slim"
 
