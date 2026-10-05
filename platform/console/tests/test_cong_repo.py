@@ -121,7 +121,7 @@ TRAN_SKIP = {                        # skip/xfail trong tests/ của từng pack
                                     # module khi máy thiếu bash) và hai `@POSIX_ONLY` của test_server.py;
                                     # +1 (2026-10-02): test_settings.py quyền nhóm/người khác của `.bak` —
                                     # Windows không có khái niệm đó (chmod chỉ đổi cờ read-only)
-    "companies/software-company": 3,  # thêm ca symlink thư mục: chỉ skip khi OS không cấp quyền tạo symlink
+    "companies/software-company": 4,  # S1/ADR 0023: +1 ca F1 container thật, skip có lý do khi thiếu Engine/image
     "companies/keeper": 0,
 }
 TRAN_OMIT = 2                        # dòng `omit` trong pyproject.toml của các package

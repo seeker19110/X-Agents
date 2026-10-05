@@ -712,11 +712,9 @@ _CONG_TAC_VIEN = {"bus", "gate", "lead", "supervisor", "runner", "blackboard", "
 _CAU_HINH = {"integration", "repo", "base", "integration_branch", "workers", "web", "max_turns", "max_retries",
              "batch_releases", "require_integration", "replaying", "ticket_timeout", "review_timeout",
              "project_budget_usd",
-             # ADR-0035: backend sandbox do cấu hình/CLI chọn lúc khởi động, không nằm trong log và không cần
-             # nằm trong log — mở lại bus KHÔNG được khôi phục lớp bảo vệ của phiên trước, nó phải đọc lại cấu
-             # hình HIỆN TẠI (người vận hành vừa cài docker thì lượt sau phải vào container, không phải tiếp tục
-             # subprocess vì log cũ ghi thế). Hai instance khác nhau là ĐÚNG, không phải mất trạng thái.
-             "sandbox"}
+             # ADR-0035/0023: backend sandbox do cấu hình/CLI chọn lúc khởi động. Audit `sandbox.mode` chỉ để
+             # status/console đọc, KHÔNG khôi phục backend của phiên trước; lượt mới phải đọc cấu hình hiện tại.
+             "sandbox", "_sandbox_mode_recorded"}  # cờ audit một lần của phiên hiện tại, không phục hồi từ bus
 _CO_Y_KHONG_DUNG_LAI = {
     "queue",        # dựng lại bằng công thức riêng (event chưa `orchestrated`), không phải bản sao
     # `deferred` dựng lại MỘT PHẦN, có chủ ý: chỉ event nào backend hẹn giờ rõ ràng (`defer.until` trong

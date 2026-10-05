@@ -244,8 +244,14 @@ def test_stderr_tail_rong_khi_khong_lay_duoc_dau_ra():
 
 def test_subprocess_va_auto_theo_binary_co_hay_khong():
     assert sandbox_from_settings("subprocess", "docker", "img", "X_SANDBOX", which=lambda _: "/usr/bin/docker").name == "subprocess"
-    assert sandbox_from_settings("auto", "docker", "img", "X_SANDBOX", which=lambda _: None).name == "subprocess"
     assert sandbox_from_settings("auto", "docker", "img", "X_SANDBOX", which=lambda _: "/x").name.startswith("container:")
+
+
+def test_auto_thieu_runtime_phai_dung_va_noi_cach_chon_tuong_minh():
+    with pytest.raises(SandboxError) as e:
+        sandbox_from_settings("auto", "docker", "img", "X_SANDBOX", which=lambda _: None)
+    assert "docker" in str(e.value)
+    assert "X_SANDBOX=subprocess" in str(e.value)
 
 
 def test_khai_container_va_co_binary_thi_dung_image_da_khai():

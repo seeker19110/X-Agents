@@ -41,19 +41,17 @@ export function renderSilent(){
       ${d.integrated?'<span class="tag ok">code đã ở integration</span>':""}</span></div>`).join("");
 }
 
-/* K2.7 — lệnh của khách chạy trong lớp bảo vệ nào (ADR-0035). Ô này CHỈ sáng khi máy có docker/podman mà lượt
-   gần đây vẫn chạy `subprocess`: đó là lúc người vận hành có sẵn hàng rào tốt hơn nhưng không bật. Máy không có
-   runtime thì im — nhắc một việc người không làm được ngay là nhiễu, không phải cảnh báo. */
+/* K2.7/S1 — chế độ đã khai và bằng chứng chạy mã khách. Subprocess tường minh luôn cần cảnh báo gate. */
 export function renderSandbox(){
   const sb=st().sandbox, host=$("#sandbox"), sect=$("#s-sandbox");
   const co=(source(SC)||{}).sandbox_available===true;
-  if(!sb||!sb.runs||!sb.unsandboxed||!co){sect.hidden=true;host.innerHTML="";return;}
+  if(!sb||!(sb.mode==="subprocess"||sb.unsandboxed)){sect.hidden=true;host.innerHTML="";return;}
   sect.hidden=false;
   const names=Object.entries(sb.by_name||{}).map(([k,v])=>`${esc(k)} ×${num(v)}`).join(" · ");
-  host.innerHTML=`<h2>⚠ ${num(sb.unsandboxed)}/${num(sb.runs)} lượt chạy mã của khách trong ${num(sb.window_h)}h qua KHÔNG trong container</h2>
+  host.innerHTML=`<h2>⚠ sandbox=${esc(sb.mode||"chưa ghi nhận")} · ${num(sb.unsandboxed)}/${num(sb.runs)} lượt chạy mã khách trong ${num(sb.window_h)}h qua KHÔNG trong container</h2>
     <div class="row"><code>sandbox=subprocess</code>
-    <span>Máy này có container runtime nhưng lint/test và lệnh khởi động của repo khách vẫn chạy bằng quyền người
-    vận hành và thấy <code>HOME</code> (<code>~/.ssh</code>, <code>~/.claude</code>). Việc của bạn: đặt
+    <span>Gate không chống được mã khách khi chạy subprocess: lệnh của repo khách có quyền người vận hành và thấy
+    <code>HOME</code> (<code>~/.ssh</code>, <code>~/.claude</code>). ${co?"Máy này có container runtime.":"Cần cài Docker hoặc Podman."} Việc của bạn: đặt
     <code>COMPANY_SANDBOX=container</code> (hoặc <code>sandbox: container</code> trong <code>llm.yaml</code>) rồi
     khởi động lại orchestrator. Đã dùng: ${names}.${sb.last_at?" Lượt gần nhất: "+esc(sb.last_at)+".":""}</span></div>`;
 }

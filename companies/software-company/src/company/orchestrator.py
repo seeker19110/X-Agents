@@ -191,6 +191,7 @@ class Orchestrator:
         # trăm test, và `auto` sẽ chọn container ngay khi máy có docker — CI ubuntu có. Tiến trình thật đọc cấu
         # hình ở `orch/cli.py` cho đúng hai lệnh chạy model (`run`, `redeploy`) rồi truyền xuống đây.
         self.sandbox: Sandbox = sandbox if sandbox is not None else SubprocessSandbox()
+        self._sandbox_mode_recorded = False
         # ADR-0028: bật vai viết test độc lập. Mặc định TẮT — nó thêm một lượt model mỗi ticket, nên phải là
         # lựa chọn có ý thức của người vận hành, không phải thứ tự bật lên sau một lần `git pull`.
         self.test_author = bool(test_author)
@@ -289,6 +290,7 @@ class Orchestrator:
     _mark = scheduler._mark
     _remember = scheduler._remember
     _audit = scheduler._audit
+    record_sandbox_mode = scheduler.record_sandbox_mode
     _resume_overdue = scheduler._resume_overdue
 
 
@@ -517,6 +519,7 @@ class Orchestrator:
 
     def status(self) -> dict[str, Any]:
         return {"warnings": self._deadlock_warnings(), "rulings": len(self.rulings()),
+                "sandbox_mode": scheduler.sandbox_mode(self),
                 "queue": len(self.queue), "deferred": {k: v[1] for k, v in self.deferred.items()},
                 "paused": sorted(self.paused), "tickets": dict(self.lead.state), "waiting": self.lead.waiting(),
                 "blocked": self.lead.blocked(), "releases": self.lead.releases,

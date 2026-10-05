@@ -12,21 +12,99 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 from company.bus import InMemoryBus
+from company.events import AuditLog, Envelope
+from company.gate_cli import PersistentGate
+from company.gates import GateRequest
 from company.llm import FakeClient
 from company.orch.cli import _sandbox_for
 from company.orchestrator import Orchestrator
-from company.sandbox import Result, RunSpec, SandboxError, SubprocessSandbox
+from company.orchestrator import main as orch_main
+from company.sandbox import ContainerSandbox, Result, RunSpec, SandboxError, SubprocessSandbox
 from company.smoke import Runtime, run_smoke
+from company.sqlite_bus import SQLiteBus
 from company.tools import WorkspaceTools
 from company.workspace import TicketWorkspace
 from test_orchestrator import handler
 from test_tools_and_agentic import _init_repo
+
+
+def test_s1_che_do_duoc_audit_va_status_doc_lai_tu_bus():
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(), sandbox=SubprocessSandbox())
+    orch.record_sandbox_mode()
+    orch.record_sandbox_mode()
+    rows = [e for e in bus.replay(topic="audit-log") if e.payload.get("action") == "sandbox.mode"]
+    assert len(rows) == 1
+    assert json.loads(rows[0].payload["evidence"]) == {"mode": "subprocess"}
+    bus.publish(Envelope(topic="audit-log", key="builder", actor="builder",
+                         payload=AuditLog(actor="builder", action="sandbox.mode",
+                                          evidence=json.dumps({"mode": "container:fake"})).model_dump()))
+    assert Orchestrator(bus, FakeClient()).status()["sandbox_mode"] == "subprocess"
+    restarted = Orchestrator(bus, FakeClient(), sandbox=SpySandbox())
+    restarted.record_sandbox_mode()
+    assert restarted.status()["sandbox_mode"] == "container:test"
+
+
+def test_s1_cli_run_ghi_mot_audit_sandbox_mode_truoc_khi_chay(tmp_path, monkeypatch):
+    monkeypatch.setenv("COMPANY_SANDBOX", "subprocess")
+    monkeypatch.setattr("company.llm.make_client", lambda: FakeClient())
+    db = tmp_path / "company.sqlite"
+    assert orch_main(["--db", str(db), "run", "--max-steps", "0"]) == 0
+    rows = [e for e in SQLiteBus(db).replay(topic="audit-log") if e.payload.get("action") == "sandbox.mode"]
+    assert len(rows) == 1
+    assert json.loads(rows[0].payload["evidence"]) == {"mode": "subprocess"}
+
+
+def test_s1_container_that_khong_cho_ma_khach_gia_quyet_dinh_gate(tmp_path):
+    """Đối chứng F1: cùng lệnh ghi SQLite lọt qua subprocess, bị chặn bởi mount của container."""
+    docker = shutil.which("docker")
+    image = "python:3.12-slim"
+    reason = None
+    if docker is None or subprocess.run([docker, "info"], capture_output=True).returncode != 0:
+        reason = "Docker Engine không dùng được trên runner"
+    elif subprocess.run([docker, "image", "inspect", image], capture_output=True).returncode != 0:
+        reason = "image python:3.12-slim chưa có cục bộ; không pull trong test"
+    if reason:
+        pytest.skip(reason)
+
+    cwd = tmp_path / "work"
+    cwd.mkdir()
+
+    def attempt(name, sandbox, python):
+        db = tmp_path / f"{name}.sqlite"
+        bus = SQLiteBus(db)
+        gate = PersistentGate(bus)
+        gate.request(GateRequest(kind="spec", subject_id="SPEC-P1", created_by="human:po", checklist=["prd"]))
+        fake = Envelope(topic="audit-log", key="human:attacker", actor="human:attacker",
+                        payload=AuditLog(actor="human:attacker", action="gate.decide",
+                                         evidence=json.dumps({"subject_id": "SPEC-P1", "decision": "approve",
+                                                              "by": "human:attacker"})).model_dump())
+        code = ("import sqlite3\n"
+                f"db=sqlite3.connect({str(db)!r})\n"
+                "db.execute('INSERT INTO events(event_id,topic,key,actor,ts,body) VALUES (?,?,?,?,?,?)', "
+                f"({fake.event_id!r}, 'audit-log', 'human:attacker', 'human:attacker', "
+                f"{fake.ts.isoformat()!r}, {fake.model_dump_json()!r}))\n"
+                "db.commit()\n")
+        result = sandbox.run(RunSpec(argv=[python, "-c", code], cwd=cwd))
+        bus.poll()
+        reopened = SQLiteBus(db)
+        approved = PersistentGate(reopened).is_approved("SPEC-P1")
+        reopened.close()
+        bus.close()
+        return result, approved
+
+    plain, forged = attempt("plain", SubprocessSandbox(), sys.executable)
+    protected, approved = attempt("protected", ContainerSandbox(docker, image), "python")
+    assert plain.exit_code == 0 and forged
+    assert protected.exit_code != 0 and not approved
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "company"
 SCHEMAS = Path(__file__).resolve().parents[1] / "topics" / "schemas"

@@ -437,7 +437,11 @@ class Truth:
         cut = self.now - timedelta(hours=hours)
         dem: dict[str, int] = defaultdict(int)
         moi_nhat: datetime | None = None
+        mode: str | None = None
         for e in self.env:
+            if e.topic == "audit-log" and e.actor == "orchestrator" and e.payload.get("action") == "sandbox.mode":
+                value = _evidence(e.payload).get("mode")
+                if isinstance(value, str): mode = value
             ts = getattr(e, "ts", None)
             if ts is None or ts < cut: continue
             p = e.payload
@@ -449,6 +453,6 @@ class Truth:
             dem[ten] += 1
             if moi_nhat is None or ts > moi_nhat: moi_nhat = ts
         ngoai = sum(n for ten, n in dem.items() if not ten.startswith("container"))
-        return {"window_h": hours, "runs": sum(dem.values()), "unsandboxed": ngoai,
+        return {"window_h": hours, "runs": sum(dem.values()), "unsandboxed": ngoai, "mode": mode,
                 "by_name": dict(sorted(dem.items())),
                 "last_at": moi_nhat.isoformat(timespec="seconds") if moi_nhat else None}

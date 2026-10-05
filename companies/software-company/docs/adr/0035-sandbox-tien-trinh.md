@@ -34,9 +34,9 @@ quyết được việc mã khách đọc file ngoài worktree.
    `--network none` mặc định và `--network bridge -p 127.0.0.1:<port>:<port>` khi `spec.network` (smoke vẫn probe
    được `127.0.0.1`). Env đi qua `--env-file /dev/stdin` (stdin) chứ không phải `-e`: giá trị không lộ trong `ps`.
 3. **Chế độ `auto`, nhưng fail-closed.** Thứ tự: `COMPANY_SANDBOX` env → `cfg.sandbox` → `"auto"`. `auto` dùng
-   container nếu tìm thấy runtime trên PATH, ngược lại subprocess. Khai đích danh `container` mà thiếu binary thì
-   **`SandboxError`**, tuyệt đối không âm thầm tụt về subprocess: một hệ bảo vệ tự hạ cấp trong im lặng còn tệ hơn
-   không có, vì người vận hành tin là mình đang được bảo vệ.
+   container nếu tìm thấy runtime trên PATH. **ADR gốc 0023 (Accepted 2026-10-05) sửa quy tắc thiếu runtime:**
+   cả `auto` lẫn `container` đều ném `SandboxError`; chỉ `subprocess` khai tường minh mới chạy ngoài container.
+   Cách này ngăn một hệ bảo vệ tự hạ cấp trong im lặng.
 4. **Git ở lại subprocess.** Ba lý do: argv của git là hard-code (model không viết được), hook của khách đã bị vô
    hiệu bằng `core.hooksPath`, và `deliver --push` cần credential helper của chính người vận hành — thứ không nên
    và không thể mang vào container. Ranh giới này ghi rõ để lần sau không ai "gói nốt cho đều".
@@ -49,8 +49,8 @@ quyết được việc mã khách đọc file ngoài worktree.
 
 - `Result.sandbox` thành một trường bằng chứng: `local_checks.sandbox`, `smoke.sandbox`, `calls[].sandbox` trong
   audit sẽ nói lần chạy đó được cô lập tới mức nào (PR K2.2).
-- Console đọc audit 24h + `shutil.which("docker")` để cảnh báo khi công ty đang chạy hoàn toàn không sandbox
-  (K2.7). Không chặn — máy dev không có docker vẫn phải làm việc được.
+- Console đọc audit `sandbox.mode` và bằng chứng chạy mã khách để cảnh báo khi có `subprocess` (ADR gốc 0023).
+  Máy dev không có Docker vẫn chạy được khi khai `COMPANY_SANDBOX=subprocess` tường minh và chấp nhận giới hạn gate.
 - Image mặc định `python:3.12-slim` chỉ đúng cho repo Python; repo stack khác phải khai `sandbox_image`. Đây là
   giới hạn đã biết, không phải bug: chọn image là quyết định của người vận hành, công ty không đoán hộ.
 - Ba trường cấu hình mới (`sandbox`, `sandbox_image`, `sandbox_runtime`) + ba biến môi trường tương ứng.

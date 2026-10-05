@@ -186,6 +186,15 @@ def test_k27_dem_theo_ten_sandbox_tu_ca_ba_nguon_bang_chung() -> None:
     assert sb["last_at"] == NOW.isoformat(timespec="seconds")
 
 
+def test_s1_sandbox_mode_doc_audit_moi_nhat_ke_ca_khi_chua_co_luot_chay() -> None:
+    env = [audit("orchestrator", "sandbox.mode", {"mode": "container:old"}, ts=NOW - timedelta(minutes=2)),
+           audit("orchestrator", "sandbox.mode", {"mode": "subprocess"}),
+           audit("builder", "sandbox.mode", {"mode": "container:fake"})]
+    sb = Truth(env, lead_stub(), HumanGate(), NOW).sandbox()
+    assert sb["mode"] == "subprocess"
+    assert sb["runs"] == 0
+
+
 def test_k27_moi_luot_trong_container_thi_khong_con_gi_de_canh_bao() -> None:
     env = [_pr("T1", "container:img"), _pr("T2", "container:img")]
     sb = Truth(env, lead_stub(), HumanGate(), NOW).sandbox()
@@ -209,4 +218,4 @@ def test_k27_luot_khong_khai_sandbox_khong_bi_dem_nham() -> None:
     """PR từ trước ADR-0035 (hoặc bảng tool `allow_run=False`) không có trường `sandbox`. Đếm nó là `subprocess`
     thì log cũ làm cảnh báo sáng vĩnh viễn; đếm nó là `container` thì che mất lượt thật. Không đếm."""
     sb = Truth([_pr("T1", None), _pr("T2", "")], lead_stub(), HumanGate(), NOW).sandbox()
-    assert sb == {"window_h": 24, "runs": 0, "unsandboxed": 0, "by_name": {}, "last_at": None}
+    assert sb == {"window_h": 24, "runs": 0, "unsandboxed": 0, "mode": None, "by_name": {}, "last_at": None}

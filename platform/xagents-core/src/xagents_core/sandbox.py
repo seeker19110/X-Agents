@@ -301,8 +301,8 @@ def sandbox_from_settings(mode: str, runtime: str, image: str, env_var: str,
     `env_var` chỉ để dựng câu lỗi đúng tên biến người vận hành phải đặt — người đọc lỗi cần biết gõ gì, và tên đó
     là của công ty gọi (`COMPANY_SANDBOX`), core không tự đoán.
 
-    `auto` chọn container nếu có binary; `container` khai đích danh mà thiếu binary → `SandboxError`
-    (fail-closed — không bao giờ âm thầm tụt về subprocess)."""
+    `auto` và `container` đều cần runtime; thiếu binary → `SandboxError`.
+    Chỉ `subprocess` khai tường minh mới chạy không cô lập file."""
     if mode == "subprocess":
         return SubprocessSandbox()
     if mode == "container":
@@ -312,4 +312,7 @@ def sandbox_from_settings(mode: str, runtime: str, image: str, env_var: str,
         return ContainerSandbox(runtime, image)
     if mode != "auto":
         raise SandboxError(f"chế độ sandbox không hợp lệ: {mode!r} (auto | container | subprocess)")
-    return ContainerSandbox(runtime, image) if which(runtime) else SubprocessSandbox()
+    if not which(runtime):
+        raise SandboxError(f"{env_var}=auto nhưng không tìm thấy `{runtime}` trên PATH; "
+                           f"cài runtime hoặc đặt {env_var}=subprocess (gate không chống được mã khách)")
+    return ContainerSandbox(runtime, image)
