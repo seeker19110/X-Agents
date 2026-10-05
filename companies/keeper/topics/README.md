@@ -36,5 +36,8 @@ ticket phải đi qua `triager` để có `risk_tier`.
 - `verification-reports.patch_id` là id cây git của nội dung worktree lúc đo (`worktree.content_tree`), do
   `collect_two_way` điền — cùng luật với `verified_by`. Báo cáo thiếu nó (hình dạng trước ADR keeper 0001) bị
   orchestrator từ chối; cổng `evidence` chỉ mở khi worktree của ticket VẪN đúng nội dung ấy.
+- `verification-reports.payload_error` chỉ có khi payload model sai hình: báo cáo dự phòng mang số đo, bỏ phần kể,
+  và luôn bị orchestrator từ chối — thu hồi `verified` bền qua bus. `ticket_id` của báo cáo lấy từ route
+  `record_verification`, không từ payload.
 - `release-notes.pr_number` là `null` cho tới khi PR có số; điền `(#n)` rồi commit tiếp vào chính PR đó
   (`AGENTS.md` §10), không mở PR thứ hai để vá số.

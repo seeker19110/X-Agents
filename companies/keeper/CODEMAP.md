@@ -17,6 +17,7 @@ sâu hơn bảng này.
 | Ba thao tác vá hợp lệ | `patcher.py` — `bump_dependency`, `regen_derived`, `fix_docs`; `FORBIDDEN_PATHS` chặn `.git/`+`.github/` (I4) | `tests/test_patcher.py` |
 | Bằng chứng đo hai chiều | `evidence.require_two_way()` — ném `EvidenceError` nếu chưa từng đỏ hoặc chưa xanh (I2) | `tests/test_evidence.py` |
 | Bằng chứng gắn danh tính patch, thu hồi bền | `worktree.content_tree()` (id cây nội dung worktree) đo trong `collect_two_way`; `orchestrator._check_report`/`_evidence_current` — cổng `evidence` đóng khi worktree khác `patch_id` đã đo; đo lại hỏng vẫn lên bus để `_reject_report` thu hồi (ADR keeper 0001) | `tests/test_bang_chung_gan_patch.py` |
+| Danh tính ticket của báo cáo xác minh; payload model sai hình | `orchestrator.record_verification` — route ghi đè `ticket_id` (lệch → audit `verification.subject_overridden`), payload sai hình → báo cáo dự phòng `payload_error`; phép từ chối ở `_check_report` (chung cho đường dựng và `_apply`) | `tests/test_bang_chung_gan_patch.py` |
 | Ngân sách PR/tuần | `budget.can_open_pr()` — LUÔN hỏi GitHub thật, không đếm RAM (I3) | `tests/test_budget.py` |
 | Sổ nợ kiến trúc, hạn đáo | `ledger.py` — `DebtEntry(due_at=...)`, cơ chế RIÊNG của keeper, không dùng `debt_due` của core | `tests/test_ledger.py` |
 | Soạn dòng CHANGELOG + điền số PR | `release-clerk` (`release.py`) — `compose()` soạn với `PR_PLACEHOLDER`; `fill_pr_number()` điền `(#n)` sau khi có PR thật | `tests/test_release.py` |

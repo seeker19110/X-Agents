@@ -55,6 +55,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from .budget import GitHubLike, can_open_pr
 from .bus import KeeperBus
 from .core import CORE
@@ -68,8 +70,8 @@ from .release import compose, fill_pr_number
 from .triage import ObservedSignal, TriageState, triager
 from .worktree import KeeperWorktree, WorktreeError, content_tree
 
-__all__ = ["BLOCKED_ACTION", "CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "KeeperOrchestrator", "TickResult",
-           "touches_human_only"]
+__all__ = ["BLOCKED_ACTION", "CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "SUBJECT_OVERRIDDEN_ACTION",
+           "KeeperOrchestrator", "TickResult", "touches_human_only"]
 
 #: Khoá chặn "việc này của người" — hằng số chứ không chuỗi rời, vì cả `pr_blockers` lẫn test đều nêu tên nó.
 HUMAN_ONLY = "human-only"
@@ -87,6 +89,10 @@ CODE_ACTOR = "keeper-orchestrator"
 
 #: Action ghi khi một `verification-reports` đến từ bus KHÔNG qua được `require_two_way` (bất biến I2).
 REJECT_ACTION = "verification.rejected"
+
+#: Action ghi khi payload model khai `ticket_id` KHÁC ticket của route: route thắng (khuôn `*_overridden` của company,
+#: `ARCHITECTURE.md` gốc — danh tính event lấy từ ROUTE, không từ lời khai model).
+SUBJECT_OVERRIDDEN_ACTION = "verification.subject_overridden"
 
 #: Action ghi khi `open_pr` bị cổng chặn — chỉ khi tập cổng chặn ĐỔI, không phải mỗi nhịp (xem `open_pr`).
 BLOCKED_ACTION = "pr.blocked"
@@ -255,7 +261,11 @@ class KeeperOrchestrator:
     def _check_report(self, report: VerificationReport) -> None:
         """MỘT phép kiểm cho cả đường dựng (`record_verification`) lẫn đường nạp (`_apply`): hai đường mà kiểm
         khác nhau thì replay cho kết quả khác lần ghi. `check_report` (I2 + rà họ lỗi) cộng danh tính patch: báo
-        cáo không nói nó đo nội dung nào thì không mở được cổng cho nội dung nào cả (ADR keeper 0001, mục b)."""
+        cáo không nói nó đo nội dung nào thì không mở được cổng cho nội dung nào cả (ADR keeper 0001, mục b). Báo cáo
+        mang `payload_error` (phần model kể sai hình, xem `record_verification`) không bao giờ đạt."""
+        if report.payload_error is not None:
+            raise EvidenceError(f"phần model kể của {report.ticket_id} sai hình, không dựng được báo cáo — chỉ còn số "
+                                f"đo, không đủ để rời pha quality: {report.payload_error}")
         check_report(report)
         if report.patch_id is None:
             raise EvidenceError(f"báo cáo của {report.ticket_id} không mang patch_id — không biết nó đo nội dung "
@@ -269,13 +279,31 @@ class KeeperOrchestrator:
         Không đạt thì báo cáo VẪN lên bus trước khi ném: `_apply` (subscribe đồng bộ) từ chối nó qua
         `_reject_report` — thu hồi `verified` của lần đo trước, ghi đúng một `verification.rejected` — và vì nó là
         báo cáo MỚI NHẤT của ticket trên bus, replay cho cùng kết quả thay vì dựng lại `verified` từ báo cáo cũ
-        (ADR keeper 0001, mục c). Một đường thu hồi, không phải hai."""
-        # no-ky-thuat: payload model sai hình (pydantic ValidationError ở build_report) thì không có báo cáo nào lên bus nên báo cáo trước vẫn đứng — nó chỉ mở cổng cho đúng nội dung nó đã đo, quay lại khi có đường gọi record_verification từ output model thật (regression-guard)
-        report = build_report(payload, evidence=evidence)
+        (ADR keeper 0001, mục c). Một đường thu hồi, không phải hai.
+
+        **`ticket_id` là của ROUTE (tham số), không của payload.** Payload chỉ là phần model kể; để nó chọn khoá thì
+        model đổi được ticket nào `verified`. Route ghi đè, lệch thì để lại `verification.subject_overridden`.
+
+        **Payload sai hình** (pydantic `ValidationError`) cũng là một lần đo hỏng: phần kể bị bỏ hẳn, báo cáo dự
+        phòng chỉ mang số đo + `payload_error`, nên `_check_report` luôn từ chối nó và nó đi đúng đường thu hồi trên.
+        Không lên bus thì báo cáo đạt cũ đứng nguyên qua replay. Người gọi nhận `EvidenceError` (nguyên nhân là
+        `ValidationError` gốc) — cùng một loại lỗi cho mọi cách "ticket ở lại pha quality"."""
+        claimed = payload.get("ticket_id", ticket_id)
+        if claimed != ticket_id:
+            self._audit(SUBJECT_OVERRIDDEN_ACTION, {"ticket_id": ticket_id, "claimed_ticket_id": claimed},
+                        ticket_id=ticket_id)
+        cause: ValidationError | None = None
+        try:
+            report = build_report({**payload, "ticket_id": ticket_id}, evidence=evidence)
+        except ValidationError as e:
+            cause = e
+            report = build_report({"ticket_id": ticket_id, "payload_error": str(e)[:1000]}, evidence=evidence)
         try:
             self._check_report(report)
-        except EvidenceError:
+        except EvidenceError as err:
             self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
+            if cause is not None:
+                raise err from cause
             raise
         self._publish("verification-reports", report.ticket_id, VERIFIER_ACTOR, report.model_dump())
         return self.reports[ticket_id]

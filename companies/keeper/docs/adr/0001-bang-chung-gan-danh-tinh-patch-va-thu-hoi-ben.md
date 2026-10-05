@@ -123,9 +123,11 @@ Marker `no-ky-thuat` ở `orchestrator.py:256` bị xoá vì nợ đã trả.
   - `publish()` không so danh tính. Dòng CHANGELOG và nhật ký phiên được ghi vào worktree **sau** khi đo, theo
     thiết kế (`release.compose` chạy sau cổng). Khoảng `open_pr → publish` vì thế chưa kiểm. Có marker tại
     `publish()`.
-  - Payload của model hỏng ở lớp pydantic (ví dụ `family_safe` thiếu `reason`) thì không dựng được báo cáo nào
-    để lên bus, nên báo cáo trước vẫn đứng. Nó chỉ mở cổng cho đúng nội dung nó đã đo, nên đây không phải lỗ
-    mang code chưa đo. Có marker tại `record_verification`.
+  - ~~Payload của model hỏng ở lớp pydantic thì không có báo cáo nào lên bus, báo cáo trước vẫn đứng.~~ Đã trả
+    2026-10-05: phần kể bị bỏ, báo cáo dự phòng chỉ mang số đo + `VerificationReport.payload_error` và luôn bị
+    `_check_report` từ chối, nên thu hồi bền qua cùng đường (c); người gọi nhận `EvidenceError` (cause là
+    `ValidationError`). Cùng đợt: `ticket_id` của báo cáo lấy từ tham số route, không từ payload; lệch thì audit
+    `verification.subject_overridden` (khuôn `*_overridden` của company).
 - **Prompt agent.** `agents/` của `regression-guard` không nhắc `patch_id`. Sửa prompt cần đủ bảy bước
   `CONTRIBUTING.md` §3, nên để PR riêng. Lời khai của model về trường này dù sao cũng bị bỏ.
 - **Nhận biết nếu sai:**

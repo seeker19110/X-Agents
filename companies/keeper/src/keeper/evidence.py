@@ -15,7 +15,7 @@ lần chạy CI thật thì tốn. Nếu trường này nhận được từ JSO
 
 Đường dữ liệu bị chặn ở ĐÚNG một chỗ, `build_report()` (gọi từ `verification_report()` và `record_verification`):
 
-    payload model trả về ──drop_self_claims()──▶ trường KỂ CHUYỆN (ticket_id, family_hits, family_safe)
+    payload model trả về ──drop_self_claims()──▶ trường KỂ CHUYỆN (family_hits, family_safe; ticket_id route ghi đè)
                                                         │
     collect_two_way() (code vừa chạy lệnh) ─────────────┴──▶ VerificationReport(before, after, verified_by,
                                                                                  patch_id)
