@@ -45,6 +45,7 @@ def collect(bus: InMemoryBus) -> dict[str, Any]:
     health: dict[str, int] = defaultdict(int)
     topics: dict[str, int] = defaultdict(int)
     gate_req: dict[str, datetime] = {}; gate_wait: list[tuple[str, str, float]] = []
+    gate_events: list[Any] = []
     t_open: dict[str, datetime] = {}; t_close: dict[str, datetime] = {}
     loop_records: list[dict[str, Any]] = []            # 4L-5: một bản ghi mỗi audit `tools_used`
     tickets_with_tasks: set[str] = set(); tickets_blocked: set[str] = set()
@@ -89,11 +90,8 @@ def collect(bus: InMemoryBus) -> dict[str, Any]:
         elif act == "ticket.blocked":
             tid = d.get("ticket_id") or a.get("ticket_id")
             if tid: tickets_blocked.add(str(tid))
-        elif act == "gate.request":
-            gate_req[d.get("subject_id", "")] = env.ts
-        elif act == "gate.decide":
-            sid = d.get("subject_id", "")
-            if sid in gate_req: gate_wait.append((sid, d.get("decision", ""), (env.ts - gate_req.pop(sid)).total_seconds()))
+        elif act in {"gate.request", "gate.decide"}:
+            gate_events.append(env)
         elif act == "orchestrated" and d.get("topic") == "acceptance-results":
             pass
         if act == "integration.merged" and a.get("ticket_id"):
@@ -113,9 +111,23 @@ def collect(bus: InMemoryBus) -> dict[str, Any]:
         for k in ("calls", "tokens", "cost_usd", "duration_ms", "errors", "retries", "tool_calls", "unpriced"): total[k] += s[k]
     total.pop("cache_hit_sum"); total["cost_usd"] = round(total["cost_usd"], 4)
     lead = {tid: round((t_close[tid] - t_open[tid]).total_seconds()) for tid in t_close if tid in t_open}
+    from .gate_cli import PersistentGate
+    # Replay trên bus RAM riêng: PersistentGate subscribe vào bus nhận, không giữ kết nối SQLite của lệnh metrics.
+    gate_bus = InMemoryBus(enforce_owners=False)
+    for env in bus.replay(topic="audit-log"):
+        gate_bus.publish(env)
+    gate = PersistentGate(gate_bus)
+    signed = gate.reviewer_signed_pending()
+    for env in gate_events:
+        d = _ev(env.payload); sid = d.get("subject_id", "")
+        if env.payload["action"] == "gate.request":
+            gate_req[sid] = env.ts
+        elif env.event_id in gate.closers and sid in gate_req:
+            gate_wait.append((sid, d.get("decision", ""), (env.ts - gate_req.pop(sid)).total_seconds()))
     return {"total": total, "agents": finish(agents), "models": finish(models), "tickets": finish(tickets),
             "projects": finish(projects), "health": dict(sorted(health.items())), "topics": dict(sorted(topics.items())),
-            "gates": {"decided": len(gate_wait), "pending": len(gate_req),
+            "gates": {"decided": len(gate.history), "pending": len(gate.pending),
+                      "reviewer_signed_unapplied": len(signed), "awaiting_human": len(gate.pending) - len(signed),
                       "wait_seconds_avg": round(sum(w for _, _, w in gate_wait) / len(gate_wait)) if gate_wait else None,
                       "wait_seconds_max": round(max((w for _, _, w in gate_wait), default=0))},
             "ticket_lead_seconds": lead,
@@ -181,7 +193,9 @@ def prometheus(m: dict[str, Any], prefix: str = "company") -> str:
     for topic, n in m["topics"].items():
         emit("topic_events", n, "số event theo topic", {"topic": topic}, kind="counter")
     g = m["gates"]
-    emit("gates_pending", g["pending"], "gate đang chờ người")
+    emit("gates_pending", g["pending"], "gate chưa được tiến trình này áp quyết định")
+    emit("gates_reviewer_signed_unapplied", g["reviewer_signed_unapplied"], "reviewer đã ký, cờ tắt, chưa áp")
+    emit("gates_awaiting_human", g["awaiting_human"], "gate thực sự chờ người")
     emit("gates_decided", g["decided"], "gate đã quyết", kind="counter")
     if g["wait_seconds_avg"] is not None: emit("gate_wait_seconds_avg", g["wait_seconds_avg"], "thời gian chờ gate trung bình")
     for tid, sec in m["ticket_lead_seconds"].items():

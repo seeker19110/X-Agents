@@ -11,9 +11,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from company import gate_reviewer as reviewer
 from company.events import AuditLog as CompanyAudit
 from company.events import Envelope as CompanyEnvelope
 from company.events import PullRequest, Task
+from company.gate_cli import PersistentGate as CompanyPersistentGate
+from company.gates import GateRequest as CompanyGateRequest
 from company.gates import HumanGate as CompanyHumanGate
 from company.sqlite_bus import SQLiteBus as CompanySQLiteBus
 from xagents_core.execution import ExecutionEvent, ExecutionEventKind, ExecutionJournal, RunSpec, TaskSpec
@@ -131,6 +134,31 @@ def test_gate_da_quyet_khong_con_trong_danh_sach(company_db: Path) -> None:
     gate_decide(bus, CompanyEnvelope, CompanyAudit, subject_id="REL-001", decision="request_changes", by="human:owner")
     bus.close()
     assert "REL-001" not in {g["id"] for g in state(company_db)["gates"]}
+
+
+def test_gate_reviewer_da_ky_khi_co_tat_duoc_hien_la_chua_ap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = tmp_path / "company.sqlite"
+    registry = tmp_path / "reviewers.json"
+    monkeypatch.setenv(reviewer.FLAG_ENV, "1")
+    monkeypatch.setenv(reviewer.REGISTRY_ENV, str(registry))
+    key = reviewer.new_key("reviewer:doc-lap", registry, tmp_path / "keys")
+    bus = CompanySQLiteBus(db)
+    gate = CompanyPersistentGate(bus)
+    gate.request(CompanyGateRequest(kind="escalation", subject_id="T1", created_by="supervisor",
+                                   checklist=["root_cause", "decision:reopen|close", "hint"]))
+    reason = "root_cause: lỗi; decision: reopen; hint: làm tiếp"
+    signed = reviewer.sign_decision("T1", "approve", "reviewer:doc-lap", reason,
+                                    reviewer.generation_of(gate.pending["T1"]), "0" * 64,
+                                    reviewer.load_private_key(key))
+    payload = {"subject_id": "T1", "decision": "approve", "by": "reviewer:doc-lap", "reason": reason, **signed}
+    bus.publish(CompanyEnvelope(topic="audit-log", key="reviewer:doc-lap", actor="reviewer:doc-lap",
+                                payload=CompanyAudit(actor="reviewer:doc-lap", action="gate.decide",
+                                                     evidence=json.dumps(payload)).model_dump()))
+    bus.close()
+    monkeypatch.delenv(reviewer.FLAG_ENV)
+    row = next(g for g in state(db)["gates"] if g["id"] == "T1")
+    assert row["reviewer_signed"] == {"decision": "approve", "by": "reviewer:doc-lap"}
+    assert row["sev"] == "signed" and row["decidable"] is False
 
 
 @pytest.fixture()

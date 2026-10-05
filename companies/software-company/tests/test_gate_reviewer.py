@@ -18,6 +18,7 @@ from company import gate_reviewer as gr
 from company.bus import InMemoryBus, PermissionDenied
 from company.events import AuditLog, Envelope
 from company.gate_cli import PersistentGate
+from company.gate_cli import main as gate_main
 from company.gates import GateRequest
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
@@ -88,10 +89,48 @@ def test_reviewer_co_chu_ky_dong_gate_escalation_ticket(khoa, brief):
     g = _gate()
     gr.decide(g, "T1", ID, LY_DO, khoa, brief)
     assert "T1" not in g.pending and g.history[-1].decided_by == ID
+    assert g.reviewer_signed_pending() == {}, "cờ bật và quyết định đã áp thì không gắn nhãn chờ"
     ev = json.loads(
         next(e for e in g.bus.replay(topic="audit-log") if e.payload["action"] == "gate.decide").payload["evidence"]
     )
     assert ev["brief_sha256"] == hashlib.sha256(brief.read_bytes()).hexdigest() and len(ev["signature"]) == 128
+
+
+def test_tat_co_van_nhin_thay_chu_ky_reviewer_nhung_gate_khong_duoc_ap(khoa, monkeypatch):
+    g = _gate()
+    _publish_signed(g, "T1", khoa)
+    monkeypatch.delenv(gr.FLAG_ENV)
+    reader = PersistentGate(g.bus)
+    assert "T1" in reader.pending
+    assert reader.reviewer_signed_pending() == {"T1": {"decision": "approve", "by": ID}}
+    orch = Orchestrator(g.bus, FakeClient(handler=handler))
+    assert orch.status()["gates_reviewer_signed_unapplied"] == {"T1": {"decision": "approve", "by": ID}}
+    from company.metrics import collect
+    assert collect(g.bus)["gates"]["pending"] == 1
+    assert collect(g.bus)["gates"]["reviewer_signed_unapplied"] == 1
+    assert collect(g.bus)["gates"]["awaiting_human"] == 0
+    assert collect(g.bus)["gates"]["wait_seconds_avg"] is None
+
+
+def test_gate_cli_list_hien_reviewer_da_ky_khi_co_tat(tmp_path, khoa, monkeypatch, capsys):
+    db = tmp_path / "company.sqlite"
+    gate = PersistentGate(SQLiteBus(db))
+    gate.request(GateRequest(kind="escalation", subject_id="T1", created_by=ROLE.SUPERVISOR, checklist=TICKET))
+    _publish_signed(gate, "T1", khoa)
+    monkeypatch.delenv(gr.FLAG_ENV)
+    assert gate_main(["--db", str(db), "list"]) == 0
+    assert "đã ký bởi reviewer:doc-lap; cờ tắt" in capsys.readouterr().out
+
+
+def test_man_doc_nhin_thay_chu_ky_khi_ca_pham_vi_rong_da_tat(khoa, monkeypatch):
+    monkeypatch.setenv(gr.SCOPE_ENV, gr.SCOPE_RONG)
+    gate = _gate("REL-1", checklist=["release"])
+    _publish_signed(gate, "REL-1", khoa)
+    monkeypatch.delenv(gr.FLAG_ENV)
+    monkeypatch.delenv(gr.SCOPE_ENV)
+    reader = PersistentGate(gate.bus)
+    assert "REL-1" in reader.pending
+    assert reader.reviewer_signed_pending() == {"REL-1": {"decision": "approve", "by": ID}}
 
 
 def test_reviewer_mo_lai_ticket_that_va_ben_qua_restart(tmp_path, khoa, brief, monkeypatch):

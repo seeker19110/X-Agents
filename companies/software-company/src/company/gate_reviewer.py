@@ -198,12 +198,13 @@ def refusal(req: GateRequest, history: list[GateRequest], decision: object) -> s
 
 
 def trusted_reviewer(
-    env: Envelope, req: GateRequest | None, history: list[GateRequest], *, now: datetime | None = None
+    env: Envelope, req: GateRequest | None, history: list[GateRequest], *, now: datetime | None = None,
+    for_display: bool = False,
 ) -> dict[str, Any] | None:
-    """Nhánh tin cậy cho `gate.decide` của reviewer; `None` = không tin (gate tiếp tục chờ)."""
+    """Xác minh chữ ký reviewer; `for_display` bỏ cờ/phạm vi hiện tại, tuyệt đối không dùng để áp gate."""
     if env.topic != "audit-log" or env.payload.get("action") != "gate.decide" or not env.actor.startswith(PREFIX):
         return None
-    if req is None or not enabled():
+    if req is None or (not enabled() and not for_display):
         return None
     try:
         d = json.loads(env.payload.get("evidence") or "{}")
@@ -213,7 +214,7 @@ def trusted_reviewer(
         return None
     reason = d.get("reason")
     if (
-        refusal(req, history, d.get("decision"))
+        (not for_display and refusal(req, history, d.get("decision")))
         or d.get("generation") != generation_of(req)
         or not isinstance(reason, str)
         or not all(p in reason for p in REASON_PARTS)
