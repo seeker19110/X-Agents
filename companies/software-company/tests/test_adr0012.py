@@ -8,6 +8,7 @@ import socket
 import threading
 import urllib.error
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -616,8 +617,9 @@ def test_metrics_collect_and_prometheus(tmp_path, capsys):
     _drive_to_plan(bus, orch); orch.run()
     m = collect(bus)
     produced = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"].startswith("produced:")]
-    assert m["total"]["calls"] == len(produced) and m["total"]["tokens"] == sum(a["tokens"] for a in produced)
-    assert m["total"]["cost_usd"] == pytest.approx(sum(a["cost_usd"] for a in produced)) and m["total"]["unpriced"] == 0
+    measured = [e.payload for e in bus.replay(topic="audit-log")]
+    assert m["total"]["calls"] == len(produced) and m["total"]["tokens"] == sum(a.get("tokens") or 0 for a in measured)
+    assert m["total"]["cost_usd"] == pytest.approx(sum(a.get("cost_usd") or 0 for a in measured)) and m["total"]["unpriced"] == 0
     # ADR-0037: `qa` gộp reviewer + qa-debugger nên nó chạy ở CẢ hai PR lẫn hồi quy staging của hai release
     assert m["agents"]["qa"]["calls"] == 4 and m["models"]["fake-strong"]["calls"] > 0 and m["tickets"]["T1"]["calls"] >= 2
     # ADR-0037: chỉ còn gate spec được quyết trên đường này (gate plan biến mất); hai gate release còn chờ.
@@ -651,17 +653,31 @@ def test_metrics_health_events_ghi_loi_theo_ticket_va_dem_retry():
     assert m["agents"]["qa"]["retries"] == 1
 
 
-def test_prometheus_xuat_lead_time_ticket_da_dong():
+def test_prometheus_xuat_lead_time_ticket_da_merge_vao_nhanh_tich_hop():
     from company.metrics import prometheus
 
+    bus = InMemoryBus()
+    started = datetime(2026, 10, 5, tzinfo=UTC)
+    bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", ts=started, payload=Task(
+        ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="x", acceptance=["a"]).model_dump()))
+    bus.publish(Envelope(topic="audit-log", key="orchestrator", actor="orchestrator",
+                         ts=started + timedelta(seconds=10),
+                         payload={"actor": "orchestrator", "action": "integration.merged", "ticket_id": "T1"}))
+    bus.publish(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
+                         ts=started + timedelta(seconds=30),
+                         payload={"actor": "delivery-lead", "action": "ticket.closed", "ticket_id": "T1"}))
+    m = collect(bus)
+    assert m["ticket_lead_seconds"]["T1"] == 10
+    assert 'company_ticket_lead_seconds{ticket="T1"}' in prometheus(m)
+
+
+def test_lead_time_chua_co_khi_ticket_chi_moi_dong():
     bus = InMemoryBus()
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=Task(
         ticket_id="T1", project_id="P", requirement_id="R1", assignee="builder", title="x", acceptance=["a"]).model_dump()))
     bus.publish(Envelope(topic="audit-log", key="delivery-lead", actor="delivery-lead",
                          payload={"actor": "delivery-lead", "action": "ticket.closed", "ticket_id": "T1"}))
-    m = collect(bus)
-    assert m["ticket_lead_seconds"]["T1"] == 0
-    assert 'company_ticket_lead_seconds{ticket="T1"}' in prometheus(m)
+    assert "T1" not in collect(bus)["ticket_lead_seconds"]
 
 
 # ---------- người can thiệp giữa vòng ----------
