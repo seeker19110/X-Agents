@@ -71,7 +71,11 @@ def _require_docker():
     else:
         for args in [['info'], ['image', 'inspect', 'python:3.12-slim'],
                      ['image', 'inspect', 'ubuntu/squid:6.6-24.04_beta']]:
-            r = subprocess.run(['docker', *args], capture_output=True, timeout=30)
+            try:
+                r = subprocess.run(['docker', *args], capture_output=True, timeout=30)
+            except (OSError, subprocess.SubprocessError):
+                reason = 'S2 cần Docker Engine phản hồi; test không tự khởi động daemon'
+                break
             if r.returncode:
                 reason = 'S2 cần Engine/python/Squid image cài trước, test không tự pull'
                 break
@@ -181,3 +185,12 @@ def test_s2_default_proxy_uses_injected_container_runner(tmp_path, monkeypatch, 
         assert sb.run(spec).exit_code == 0
     assert run.calls[0][0][1:4] == ['network', 'create', '--internal']
     assert run.calls[-1][0][1:3] == ['network', 'rm']
+
+@pytest.mark.parametrize('error', [OSError('daemon unavailable'), subprocess.TimeoutExpired(['docker','info'],30)])
+def test_s2_docker_prerequisite_unavailable_is_skip(monkeypatch, error):
+    monkeypatch.setattr('shutil.which', lambda name: 'docker')
+    def unavailable(*args, **kwargs):
+        raise error
+    monkeypatch.setattr(subprocess, 'run', unavailable)
+    with pytest.raises(pytest.skip.Exception, match='Engine'):
+        _require_docker()
