@@ -16,7 +16,7 @@ services:
   hub:
     build: .
     ports:
-      - "8200:8200"
+      - "127.0.0.1:8200:8200"
     # Gateway (`platform/gateway`) là tiến trình trên HOST — nó cần trình duyệt thật để `gateway login`, nên
     # không chạy trong container này. Trong container `127.0.0.1:1123` trỏ về chính container, nên `llm.yaml`
     # của bản container phải khai `base_url: http://host.docker.internal:1123/v1` (ADR-0014 quyết định 3).

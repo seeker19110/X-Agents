@@ -51,11 +51,14 @@ Ba ràng buộc không được phá (kế thừa từ ADR-0039 và `AGENTS.md`)
    `<db>.artifacts/`, `.console-token`, `.engine/`. Xoá/rebuild container không mất dữ liệu công ty.
 5. **Repo khách mount từ ngoài** (bind mount đường dẫn WSL, ví dụ `/mnt/d/khach/qlkh`), không copy vào image —
    orchestrator phải ghi worktree/commit thật lên đó, và nhiều repo khách phải mount được đồng thời khi cần.
-6. **Cổng `8200`** expose và publish qua compose `ports:`. Giữ bind `127.0.0.1` mặc định trong container (không
-   cần `--i-know`) — WSL2 tự forward cổng cho Windows host, không cần bind `0.0.0.0`.
+6. **Cổng `8200`** expose và publish qua compose `127.0.0.1:8200:8200`. Trong container, console bind
+   `0.0.0.0` với `--i-know`; loopback được giữ ở phía host. Đo O3 ngày 2026-10-05 bác bỏ quyết định cũ:
+   bind `127.0.0.1` trong container trả 200 từ bên trong nhưng host không nhận được traffic publish.
 7. **Git identity + `gh auth` qua env/volume, không bake vào image**: `GH_TOKEN` qua biến môi trường (đọc từ
    `.env` không commit, đúng luật cấm 3), `~/.gitconfig` của host mount read-only để orchestrator có
    `user.name`/`user.email` khi commit lên repo khách.
+   Không ghi `git config --global` vào mount chỉ đọc: author đi qua env, committer dùng cùng identity nếu chưa
+   được khai riêng. Image cài cả `docker-ce-cli` và `docker-compose-plugin` để đường deploy có lệnh compose.
 8. **File cấu hình thuần, không TDD**: Dockerfile/compose/entrypoint là "file cấu hình thuần" — một trong các
    ngoại lệ luật bắt buộc 4 (`AGENTS.md`) cần hỏi người trước khi áp dụng; đã hỏi phạm vi tổng thể (chọn
    "hub-only"), coi đây là xác nhận đủ cho việc miễn TDD ở các file thuần cấu hình này. Thay test đơn vị bằng

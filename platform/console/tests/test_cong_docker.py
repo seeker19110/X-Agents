@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[3]
 DOCKERIGNORE = ROOT / ".dockerignore"
 COMPOSE = ROOT / "docker-compose.yml"
 DOCKERFILE = ROOT / "Dockerfile"
+ENTRYPOINT = ROOT / "docker" / "entrypoint.sh"
 
 #: File bí mật của `AGENTS.md` luật cấm 3. Cùng danh sách ấy phải bị loại khỏi ngữ cảnh build, vì `COPY . .`
 #: không biết `.gitignore` — hai cơ chế khác nhau, cùng một danh sách.
@@ -97,3 +98,22 @@ def test_compose_co_duong_toi_gateway_tren_host() -> None:
         "service `hub` không có đường tới host: thiếu cả `network_mode: host` lẫn `extra_hosts` với "
         "`host.docker.internal`. Gateway (`127.0.0.1:1123`) là tiến trình trên HOST — trong container địa chỉ "
         "đó là chính container, nên hub không dùng được pool tài khoản của chính dự án.")
+
+
+def test_o3_image_cai_plugin_compose_cho_deploy_khach() -> None:
+    install = next(line for line in DOCKERFILE.read_text(encoding="utf-8").splitlines()
+                   if "apt-get install" in line and "docker-ce-cli" in line)
+    assert "docker-compose-plugin" in install, "docker-ce-cli riêng không cung cấp lệnh docker compose"
+
+
+def test_o3_console_nhan_port_publish_va_chi_mo_loopback_tren_host() -> None:
+    entry = ENTRYPOINT.read_text(encoding="utf-8")
+    assert "--host 0.0.0.0" in entry, "bind loopback trong container không nhận traffic cổng publish"
+    assert "--i-know" in entry, "console cần opt-in tường minh cho bind ngoài loopback nội bộ container"
+    assert _hub()["ports"] == ["127.0.0.1:8200:8200"], "cổng trên host chỉ dành cho người vận hành cục bộ"
+
+
+def test_o3_git_identity_khong_ghi_vao_config_mount_chi_doc() -> None:
+    entry = ENTRYPOINT.read_text(encoding="utf-8")
+    assert "git config --global" not in entry, "compose mount .gitconfig chỉ đọc; ghi làm hub chết trước khởi động"
+    assert "export GIT_COMMITTER_NAME=" in entry and "export GIT_COMMITTER_EMAIL=" in entry
