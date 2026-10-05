@@ -216,3 +216,6 @@ CHANGELOG.
 Sửa tài liệu một file, đổi một chuỗi, trả lời câu hỏi. Còn lại — kể cả "sửa lỗi nhỏ" — điền mục 1, 2, 3 tối thiểu;
 ba mục đó là thứ hay bị bỏ qua nhất và đắt nhất khi bỏ qua.
 | 2026-10-05 | S1 và O1 trên Docker Engine thật | Docker Desktop Engine 29.8.0 (Windows) và Engine 29.1.3 (WSL) đã chạy container thật. Watcher chuyển sang checkout Windows `X-Agents-runtime-main`, cấu hình LLM thật, bus và repo CAMPUS-UNI thật; tác vụ `XAgents-Company-Watcher` báo Running, Python đọc 4554 event, integration `5d0d7ca`, queue 0. PR S1: ADR 0023 Accepted (a), auto fail-closed, audit/status/console và ca F1 container thật. Sau merge phải cập nhật checkout watcher và kiểm audit mới. O3 build hub thành công nhưng HTTP ngoài container lỗi (bên trong 200) và image thiếu `docker compose`; còn phải sửa/đo lại. S2 cần egress enforce thật; BT8 chưa có tín hiệu keeper vá được; CAMPUS-UNI còn 6 escalation, chưa RC mới/chữ ký khách. |
+
+
+| 2026-10-05 | O3 runtime hub | Đo ba lỗi thật: bind container, thiếu Compose plugin, ghi Git config chỉ đọc. Bản sửa build/compose fixture trả HTTP 200, socket Engine dùng được; cổng/PR còn cần hoàn tất. Đây không phải RC CAMPUS-UNI hay chữ ký khách. |
