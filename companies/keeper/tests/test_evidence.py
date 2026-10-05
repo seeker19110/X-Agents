@@ -138,10 +138,13 @@ def test_pytest_thoat_1_van_la_chieu_do_va_chieu_nguoc(cmd: str):
 
 
 @pytest.mark.parametrize("cmd", ["uv run ruff check src tests/test_pytest.py", "bash ci.sh"])
-def test_lenh_khong_phai_pytest_giu_luat_lon_hon_0(cmd: str):
-    """`ruff` thoát 1 khi có lỗi lint: ngoài pytest không biết nghĩa từng mã. Lệnh BỌC `make`/`dev-task.sh` không
-    còn ở đây: chúng phải có dòng tổng kết pytest đỏ trong output (`test_evidence_lenh_boc.py`)."""
-    require_two_way(_ev_cmd(cmd, before=2))
+def test_lenh_khong_phai_pytest_thoat_duong_phai_co_dong_tong_ket_pytest(cmd: str):
+    """Danh sách TRẮNG (fail closed): chỉ pytest gọi thẳng được tin mã thoát. `ruff`/script riêng thoát dương vì
+    lỗi lint — không test nào đỏ — nên bị `wrapped-before-must-show-test-failure` từ chối (trước đây qua với `> 0`).
+    Chi tiết các lệnh bọc lạ: `test_evidence_lenh_boc.py`."""
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(_ev_cmd(cmd, before=2))
+    assert "wrapped-before-must-show-test-failure" in str(e.value)
 
 
 def test_after_do_thi_bi_nem():
