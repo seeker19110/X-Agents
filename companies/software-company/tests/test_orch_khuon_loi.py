@@ -200,6 +200,13 @@ def test_khuon5_moi_sorted_theo_at_hoac_ts_co_khoa_phu():
 # khó đọc — THÂN HÀM — thay vì tổng số dòng vốn phạt đúng cái refactor đã làm đúng.
 MAX_THAN_HAM_ORCHESTRATOR = 260
 MAX_DONG_MODULE_ORCH = 400
+
+
+def test_xu_ly_loi_agent_tach_khoi_gate_decision():
+    from company.orchestrator import Orchestrator
+
+    assert Orchestrator._after_error.__module__ == "company.orch.error_flow"
+    assert Orchestrator._on_gate_decide.__module__ == "company.orch.gates_flow"
 MAX_DONG_MAIN = 60
 
 

@@ -64,6 +64,7 @@ from .gate_cli import PersistentGate
 from .gates import gate_approvers
 from .llm import LLMError, ModelClient, TransientError
 from .orch import (
+    error_flow,
     fsm,
     gates_flow,
     guards,
@@ -451,13 +452,13 @@ class Orchestrator:
             with self._lock: self.stats["errors"] += 1; self.partial.setdefault(env.event_id, set()).add(slot)
             self._after_error(env, agent, e, r, res)
 
-    # ---------- lỗi agent không nhánh nào nhận, quyết định gate (ADR-0034: orch/gates_flow.py) ----------
+    # ---------- lỗi agent và quyết định gate (ADR-0034: orch/error_flow.py, gates_flow.py) ----------
 
-    _after_error = gates_flow._after_error
-    _autoretry_once = gates_flow._autoretry_once
-    _mark_unhandled = gates_flow._mark_unhandled
-    _rework_after_error = gates_flow._rework_after_error
-    _stall = gates_flow._stall
+    _after_error = error_flow._after_error
+    _autoretry_once = error_flow._autoretry_once
+    _mark_unhandled = error_flow._mark_unhandled
+    _rework_after_error = error_flow._rework_after_error
+    _stall = error_flow._stall
     _retry_stalled = retry_flow._retry_stalled
     _retry_unhandled = retry_flow._retry_unhandled
     _on_gate_decide = gates_flow._on_gate_decide
