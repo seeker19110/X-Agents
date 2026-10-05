@@ -41,5 +41,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "ecc@xagents-ecc": false,
+    "ecc@ecc": false
   }
 }

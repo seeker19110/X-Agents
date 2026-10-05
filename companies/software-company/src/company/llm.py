@@ -459,7 +459,10 @@ class ClaudeCodeClient(CoreClaudeCodeClient):
             # một prompt trivial đã thấy `num_turns: 2`. `--max-turns 1` thì lượt ép đó bị cắt → `error_max_turns`,
             # không có `result`. Đo được (2026-09-05): reviewer/security-engineer trên QLKH-005/013 chết 3/4 lượt
             # ở effort low, mỗi lần một escalation.
-            args += ["--tools", "", "--max-turns", str(CLI_NO_TOOL_TURNS)]
+            # --restricted cả khi không tool (ADR gốc 0027): bỏ qua settings user/project của máy, nên plugin/hook mà
+            # người vận hành bật cho phiên của mình (vd. ECC: SessionStart chèn ngữ cảnh, Stop chạy cost-tracker) không chạy
+            # trong lượt agent. Không có tool nào để khoá, cờ này chỉ cắt nguồn settings.
+            args += ["--restricted", "--tools", "", "--max-turns", str(CLI_NO_TOOL_TURNS)]
         with system_prompt_args(system) as sp_args:
             args += sp_args
             check_argv(args)
@@ -473,13 +476,14 @@ class ClaudeCodeClient(CoreClaudeCodeClient):
         from .mcp_bridge import ToolBridge
         assert self._toolbox is not None
         with ToolBridge(self._toolbox) as bridge, bridge.config_file() as cfg_path:
-            # --strict-mcp-config: chỉ server của ta, không kéo MCP server nào của người dùng vào phiên.
+            # --restricted: bỏ qua settings user/project (plugin/hook của máy, ADR gốc 0027); tool MCP không phải tool
+            # gốc nên không bị cờ này gỡ. --strict-mcp-config: chỉ server của ta, không kéo MCP server nào của người dùng.
             # --allowedTools: đúng bảng tool công ty, nên tool riêng của CLI (Read/Write/Bash) không được gọi.
             # --tools "": KHÔNG tool gốc nào của CLI (Read/Glob/Grep/Bash…) — chúng đọc được `.env`, `~/.ssh` ngoài
             # sandbox tools.py và không để dấu trong ToolBox.calls. --allowedTools chỉ liệt kê tool MCP của công ty; deny
             # file bí mật qua --settings là lớp chặn thứ hai nếu CLI vẫn nạp tool gốc.
             with system_prompt_args(system) as sp_args:
-                full = [*args, "--mcp-config", str(cfg_path), "--strict-mcp-config", "--tools", "",
+                full = [*args, "--restricted", "--mcp-config", str(cfg_path), "--strict-mcp-config", "--tools", "",
                         "--allowedTools", bridge.allowed_tools(), "--settings", cli_settings_json(),
                         "--max-turns", str(self.cfg.mcp_max_turns), *sp_args]
                 check_argv(full)

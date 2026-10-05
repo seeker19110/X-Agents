@@ -117,8 +117,10 @@ TRAN_PRAGMA = {                      # `# pragma: no cover` / `no branch` trong 
 TRAN_SKIP = {                        # skip/xfail trong tests/ của từng package
     "platform/xagents-core": 0,
     "platform/gateway": 3,
-    "platform/console": 4,          # +3 (#366): regex cũ bỏ sót `pytestmark` của test_cong_khung.py (bỏ CẢ
-                                    # module khi máy thiếu bash) và hai `@POSIX_ONLY` của test_server.py
+    "platform/console": 5,          # +3 (#366): regex cũ bỏ sót `pytestmark` của test_cong_khung.py (bỏ CẢ
+                                    # module khi máy thiếu bash) và hai `@POSIX_ONLY` của test_server.py;
+                                    # +1 (2026-10-02): test_settings.py quyền nhóm/người khác của `.bak` —
+                                    # Windows không có khái niệm đó (chmod chỉ đổi cờ read-only)
     "companies/software-company": 3,  # thêm ca symlink thư mục: chỉ skip khi OS không cấp quyền tạo symlink
     "companies/keeper": 0,
 }
@@ -326,6 +328,18 @@ def test_file_anh_em_cua_bus_bi_gitignore(ten):
     """Audit 2026-09-27 (H): bus chạy WAL (`xagents_core/sqlite_bus.py`) nên mỗi `*.sqlite` có hai file anh em
     `-wal`/`-shm`, cộng `.lock` của lease. `.gitignore` bắt `*.sqlite` mà không bắt ba đuôi đó → chạy nhầm một lệnh
     ở gốc là `git status` bẩn, và `git add -A` là commit một mảnh bus (luật cấm 3)."""
+    import subprocess
+
+    r = subprocess.run(["git", "check-ignore", "-q", "--no-index", ten], cwd=ROOT, capture_output=True)
+    assert r.returncode == 0, f"{ten} chưa bị .gitignore bắt"
+
+
+@pytest.mark.parametrize("ten", ["companies/software-company/llm.yaml.tmp", "companies/keeper/llm.yaml.tmp",
+                                 "companies/software-company/llm.yaml.bak", "companies/keeper/llm.yaml.bak"])
+def test_ban_tam_cua_llm_yaml_bi_gitignore(ten):
+    """Console ghi `llm.yaml` qua `.tmp` rồi `os.replace`, sao lưu ra `.bak` (`console/settings.py:_atomic_write`):
+    cả hai mang khoá API như bản gốc. Chết giữa hai bước là `.tmp` nằm lại — `.gitignore` không bắt thì `git add
+    -A` commit khoá (luật cấm 3)."""
     import subprocess
 
     r = subprocess.run(["git", "check-ignore", "-q", "--no-index", ten], cwd=ROOT, capture_output=True)

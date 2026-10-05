@@ -153,6 +153,23 @@ def test_process_khai_dich_danh_ma_thieu_binary_thi_raise(tmp_path):
         )
 
 
+def test_runtime_thieu_dau_nhay_dong_thi_deploy_error_khong_phai_value_error(tmp_path):
+    """`COMPANY_DEPLOY_RUNTIME` là cấu hình người vận hành gõ tay (đường dẫn Windows có dấu nháy). Gõ thiếu nháy
+    đóng thì `shlex.split` ném `ValueError` — `verify.py` chỉ bắt `DeployError` (fail-closed nhưng không giết
+    orchestrator), nên lỗi cấu hình phải đi đúng đường đó và nói rõ biến nào hỏng."""
+    with pytest.raises(DeployError, match=ENV_RUNTIME):
+        deploy(
+            _repo(tmp_path),
+            "P1",
+            "staging",
+            RT,
+            mode="process",
+            binary='wsl.exe --cd "C:\\khach bash',
+            run=FakeProcess(),
+            which=lambda b: b,
+        )
+
+
 def test_mac_dinh_binary_process_la_cau_noi_wsl(monkeypatch):
     monkeypatch.delenv(ENV_MODE, raising=False)
     monkeypatch.delenv(ENV_RUNTIME, raising=False)

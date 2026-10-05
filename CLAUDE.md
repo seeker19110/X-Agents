@@ -54,6 +54,24 @@ oan thì sửa hook kèm test trong `test_cong_khung.py`.
 
 - `/product-goal <mã> <mục tiêu>` — hợp đồng chất lượng theo dự án/ngành, nối `/thi-hanh`; xem `docs/PRODUCT-EXCELLENCE.md`. Không che `/goal` native.
 
+## ECC — vendor chọn lọc, lớp thêm chứ không phải luật (ADR gốc 0028)
+
+23 mục chọn lọc của ECC (`affaan-m/ECC`, MIT) nằm thẳng trong `.claude/` với tiền tố `ecc-`. Ghim đúng một commit ở
+`docs/integrations/ecc.lock.json`. Không có plugin, hook hay `node`. Phiên Claude Code on the web nạp đủ (đo
+2026-10-02, ADR 0028 §"Đo").
+
+- **Gọi:** lệnh `/ecc-python-review`, `/ecc-review-pr`, `/ecc-build-fix`; skill `/ecc-python-testing`,
+  `/ecc-security-review`, `/ecc-agent-introspection-debugging`…; agent `ecc-code-reviewer`, `ecc-silent-failure-hunter`…
+  Danh sách kèm lý do: `select` trong lock. Tiền tố `ecc:` của plugin cũ (ADR 0027) không còn.
+- **Luật repo thắng khi trùng.** Coverage `fail_under = 100`, không phải 80%. Test đỏ trước. PR theo
+  `docs/QUY-TRINH-GIT.md`. Không xoá code ngoài yêu cầu. Mỗi tệp vendor mang câu này ngay đầu.
+- **Mục ECC bị nhắc mà không có tệp `ecc-<tên>`** là mục repo không vendor, có lý do trong `rejected` của lock (vd
+  `tdd-workflow` lấy 80% làm trục, `orch-*` trùng `/thi-hanh`). Dùng `/gate`, `/debug`, `/adr`, `/thi-hanh` hoặc bỏ qua.
+- **Bản dẫn xuất, không sửa tay** (luật cấm 5). Muốn thêm/bớt mục hay nâng bản: sửa lock, chạy `make ecc-vendor`, đọc
+  diff `.claude/` như mã người lạ, mở PR. `test_cong_ecc.py` đỏ ngay khi sha256 lệch lock; job CI `ecc-check` sinh
+  lại từ commit ghim rồi so.
+- Agent của công ty (`claude -p`) **không** thấy mục `ecc-*`: mọi chế độ chạy `--restricted` (đo được 0, giống `sc-*`).
+
 ## Thao tác trên Windows
 
 - Shell chính là PowerShell 7; Bash tool là Git Bash. `cd` trong Bash **không giữ** qua lệnh sau — dùng đường dẫn

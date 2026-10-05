@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,15 +61,50 @@ def git_env() -> dict[str, str]:
     return {k: v for k, v in clean_env().items() if not k.startswith("GIT_")}
 
 
-def _git(repo: Path, *args: str, timeout: int = 120) -> str:
+def _git(repo: Path, *args: str, timeout: int = 120, env: Mapping[str, str] | None = None) -> str:
+    """`env` chỉ để THÊM biến sau khi `git_env()` đã bỏ mọi `GIT_*` của tiến trình cha — vd `GIT_INDEX_FILE` của
+    `content_tree`. Thứ tự hợp nhất cố ý: biến của chính hàm gọi thắng, biến thừa kế không lọt vào."""
     try:
         r = subprocess.run(["git", "-C", str(repo), *NO_HOOKS, *args], capture_output=True, text=True,
-                           encoding="utf-8", env=git_env(), timeout=timeout)
+                           encoding="utf-8", env=git_env() | dict(env or {}), timeout=timeout)
     except subprocess.TimeoutExpired as e:  # pragma: no cover - chỉ xảy ra khi git treo thật
         raise WorktreeError(f"git {' '.join(args)}: quá {timeout}s") from e
     if r.returncode != 0:
         raise WorktreeError(f"git {' '.join(args)}: {(r.stderr or r.stdout).strip()}")
     return r.stdout.strip()
+
+
+def content_tree(path: Path) -> str:
+    """Danh tính NỘI DUNG của worktree `path`: id cây git của mọi file track + chưa track (trừ file bị
+    `.gitignore`), như thể `git add -A` rồi `write-tree` — nhưng trên một index TẠM, index thật không đổi.
+
+    Đây là danh tính patch mà bằng chứng hai chiều gắn vào (ADR keeper 0001): xác định (cùng nội dung ⇒ cùng id,
+    không phụ thuộc giờ hay locale), không phụ thuộc commit (worktree sạch ⇒ bằng `HEAD^{tree}`, nên commit đúng
+    nội dung đã đo không làm đổi danh tính). `read-tree HEAD` trước `add -A` để file đã track mà khớp
+    `.gitignore` vẫn được tính, đúng như index thật. Chỉ ghi blob rời vào kho object chung (git gc tự dọn).
+    Lỗi git (thư mục không có, không phải repo) ⇒ `WorktreeError`."""
+    with tempfile.TemporaryDirectory(prefix="keeper-index-") as tmp:
+        idx = {"GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        _git(path, "read-tree", "HEAD", env=idx)
+        _git(path, "add", "-A", env=idx)
+        return _git(path, "write-tree", env=idx)
+
+
+def tree_of(path: Path, rev: str) -> str:
+    """Id cây git của `rev` (vd `refs/heads/<nhánh>`) — cây mà `git push` của nhánh đó thật sự mang đi."""
+    return _git(path, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{tree}}")
+
+
+def tree_changes(path: Path, old: str, new: str) -> list[tuple[str, str]]:
+    """`(trạng thái, đường dẫn)` của mọi file khác nhau giữa hai cây — `A`/`M`/`D`/`T`, không dò đổi tên. `-z` để
+    đường dẫn non-ASCII không bị escape. Cây không có trong kho object ⇒ `WorktreeError`."""
+    parts = _git(path, "diff-tree", "-r", "-z", "--no-renames", "--name-status", old, new).split("\0")
+    return list(zip(parts[0:-1:2], parts[1::2], strict=True))
+
+
+def blob_text(path: Path, tree: str, rel: str) -> str:
+    """Nội dung file `rel` trong cây `tree`, đọc thẳng từ kho object (không qua diff, không phụ thuộc cấu hình)."""
+    return _git(path, "cat-file", "blob", f"{tree}:{rel}")
 
 
 def repo_root(path: Path) -> Path:

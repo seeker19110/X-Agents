@@ -6,7 +6,7 @@
 # vĩnh viễn). Thứ tự rẻ-trước: ba phép kiểm tĩnh chạy trong mili-giây, cổng nặng chạy sau cùng.
 #
 #   1. Đang đứng trên `main`/`master`      → chặn (luật cấm 1)
-#   2. Staged có file cấm commit           → chặn (luật cấm 3: llm.yaml, media.yaml, *.sqlite*, company.artifacts/)
+#   2. Staged có file cấm commit           → chặn (luật cấm 3: llm.yaml[.bak*|.tmp], media.yaml, *.sqlite*, company.artifacts/)
 #   3. Diff staged HẠ `fail_under`         → chặn (luật cấm 6: thêm test, không hạ số)
 #   4. `scripts/dev-task.sh gate` đỏ       → chặn (luật bắt buộc 3): gói bị đụng + gói import nó + console
 #
@@ -97,7 +97,7 @@ fi
 
 # --- 2. file cấm commit ---
 if [ -n "$staged" ]; then
-  cam="$(printf '%s\n' "$staged" | grep -E '(^|/)(llm\.yaml|media\.yaml)$|\.sqlite|(^|/)company\.artifacts/' || true)"
+  cam="$(printf '%s\n' "$staged" | grep -E '(^|/)(llm|media)\.yaml(\.tmp|\.bak[^/]*)?$|\.sqlite|(^|/)company\.artifacts/' || true)"
   if [ -n "$cam" ]; then
     chan "staged có file cấm commit: $(printf '%s' "$cam" | tr '\n' ' ')" \
          "Luật cấm 3: chỉ commit *.example.yaml. gitleaks quét CẢ LỊCH SỬ — commit rồi xoá vẫn đỏ mãi."

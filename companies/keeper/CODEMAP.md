@@ -16,11 +16,13 @@ sâu hơn bảng này.
 | Bậc rủi ro → tự động vá hay cần người | `risk_tier()` (`risk.py`) — bảng `RISK_RULES` tra theo tên hàng, khớp hàng ĐẦU TIÊN, `high` luôn trước `low` | `tests/test_risk.py` |
 | Ba thao tác vá hợp lệ | `patcher.py` — `bump_dependency`, `regen_derived`, `fix_docs`; `FORBIDDEN_PATHS` chặn `.git/`+`.github/` (I4) | `tests/test_patcher.py` |
 | Bằng chứng đo hai chiều | `evidence.require_two_way()` — ném `EvidenceError` nếu chưa từng đỏ hoặc chưa xanh (I2) | `tests/test_evidence.py` |
+| Bằng chứng gắn danh tính patch, thu hồi bền | `worktree.content_tree()` (id cây nội dung worktree) đo trong `collect_two_way`; `orchestrator._check_report`/`_evidence_current` — cổng `evidence` đóng khi worktree khác `patch_id` đã đo; đo lại hỏng vẫn lên bus để `_reject_report` thu hồi (ADR keeper 0001) | `tests/test_bang_chung_gan_patch.py` |
+| Danh tính ticket của báo cáo xác minh; payload model sai hình | `orchestrator.record_verification` — route ghi đè `ticket_id` (lệch → audit `verification.subject_overridden`), payload sai hình → báo cáo dự phòng `payload_error`; phép từ chối ở `_check_report` (chung cho đường dựng và `_apply`) | `tests/test_bang_chung_gan_patch.py` |
 | Ngân sách PR/tuần | `budget.can_open_pr()` — LUÔN hỏi GitHub thật, không đếm RAM (I3) | `tests/test_budget.py` |
 | Sổ nợ kiến trúc, hạn đáo | `ledger.py` — `DebtEntry(due_at=...)`, cơ chế RIÊNG của keeper, không dùng `debt_due` của core | `tests/test_ledger.py` |
 | Soạn dòng CHANGELOG + điền số PR | `release-clerk` (`release.py`) — `compose()` soạn với `PR_PLACEHOLDER`; `fill_pr_number()` điền `(#n)` sau khi có PR thật | `tests/test_release.py` |
 | Push nhánh ticket + `gh pr create` THẬT | `publish.py` (`push_branch`, `create_pr`) — capability ghi thứ ba của I1, tách khỏi `github.py` (giữ nguyên "chỉ đọc") | `tests/test_publish.py` |
-| Biến ý định PR thành PR thật cho một ticket | `KeeperOrchestrator.publish()` (`orchestrator.py`) — push + tạo PR + `fill_pr_number`, qua CLI `keeper publish <ticket_id>` | `tests/test_orchestrator_publish.py`, `tests/test_cli_publish.py` |
+| Biến ý định PR thành PR thật cho một ticket | `KeeperOrchestrator.publish()` (`orchestrator.py`) — push + tạo PR + `fill_pr_number`, qua CLI `keeper publish <ticket_id>`; trước mỗi push `_require_measured` + `release.unmeasured_changes`: cây nhánh = `patch_id` + dòng release của note, không thì từ chối (ADR keeper 0002) | `tests/test_orchestrator_publish.py`, `tests/test_cli_publish.py`, `tests/test_publish_so_danh_tinh.py` |
 | Đọc GitHub chỉ đọc (không ghi) | `GitHubReader` (`github.py`) — `_run()` ném `GitHubWriteAttempt` khi argv có cờ ghi (I1) | `tests/test_github.py` |
 | Worktree riêng mỗi ticket | `worktree.py` — luật tuyệt đối: không bao giờ `reset --hard`/`clean` trên checkout CHUNG | `tests/test_worktree.py` |
 | Gate của keeper | `gates.py` — bọc `HumanGate`/`PersistentGate` của lõi | `tests/test_gates.py` |

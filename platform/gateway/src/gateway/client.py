@@ -104,7 +104,8 @@ def _should_fail_over(response: httpx.Response) -> bool:
 # được — lãng phí hạn mức gấp nhiều lần trên pool nhiều tài khoản.
 _RESET_HINTS = (
     re.compile(r"resets?\s+in\s+(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?", re.I),   # Code Assist (tiếng Anh)
-    re.compile(r"thử lại sau(?:\s+khoảng)?\s+(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)", re.I),  # gateway tự sinh
+    # khoảng trắng sau mỗi đơn vị nằm TRONG nhóm của nó: `\s*` đứng giữa các nhóm tuỳ chọn thì backtrack O(n³)
+    re.compile(r"thử lại sau(?:\s+khoảng)?\s+(?:(\d+)\s*h\s*)?(?:(\d+)\s*m\s*)?(?:(\d+)\s*s)", re.I),  # gateway tự sinh
 )
 
 

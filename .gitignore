@@ -21,6 +21,7 @@ companies/software-company/.worktrees/
 companies/software-company/llm.yaml
 companies/software-company/llm.yaml.bak
 companies/software-company/llm.yaml.bak*
+companies/software-company/llm.yaml.tmp
 
 # đầu ra mô phỏng examples/donghanhcungban_demo.py — `--out` đặt tên gì cũng được, nên bắt cả các tên hay dùng.
 # Thiếu mấy dòng này thì PRD/threat model do model sinh nằm dạng untracked và rất dễ bị `git add` diện rộng
@@ -70,3 +71,4 @@ companies/keeper/keeper.sqlite*
 companies/keeper/llm.yaml
 companies/keeper/llm.yaml.bak
 companies/keeper/llm.yaml.bak*
+companies/keeper/llm.yaml.tmp

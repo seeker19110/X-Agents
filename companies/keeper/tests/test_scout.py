@@ -155,3 +155,14 @@ def test_dev_package_names_bo_qua_entry_khong_co_ten(tmp_path: Path) -> None:
         '[dependency-groups]\ndev = [">=1.0", "pytest>=8"]\n', encoding="utf-8")
 
     assert scout.dev_package_names(tmp_path) == {"pytest"}
+
+
+class _GHKhongTraLoi(FakeGitHub):
+    def dependabot_alerts(self) -> None:
+        return None
+
+
+def test_gh_khong_tra_loi_thi_scout_khong_phat_tin_hieu_va_khong_no(tmp_path: Path) -> None:
+    """Scout chỉ QUAN SÁT (không mở cổng nào, như `health.pr_age_signals`): không biết thì không phát gì. Phần
+    "không quét được ≠ sạch" thuộc `audit`, nơi có kết luận."""
+    assert scout.scan(tmp_path, _GHKhongTraLoi()) == []

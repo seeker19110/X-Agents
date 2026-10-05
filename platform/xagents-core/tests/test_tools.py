@@ -66,6 +66,10 @@ def test_args_khong_phai_dict_thi_coi_nhu_rong():
     (ToolError("hết hạn mức"), "lỗi: hết hạn mức"),
     (ValueError("số âm"), "lỗi tham số: số âm"),
     (TypeError("sai kiểu"), "lỗi tham số: sai kiểu"),
+    # lời hứa 2 cho lỗi hệ tệp: `write_file("src")` khi `src/` là thư mục, `mkdir` qua một file… Đường dẫn tuyệt
+    # đối của máy vận hành (`filename`) không đi vào chuỗi trả model — model chỉ biết đường tương đối nó đã gọi.
+    (IsADirectoryError(21, "Is a directory", "/home/van-hanh/wt/src"), "lỗi: IsADirectoryError: Is a directory"),
+    (OSError("hết chỗ trên đĩa"), "lỗi: OSError: hết chỗ trên đĩa"),
 ])
 def test_tool_hong_tra_chuoi_cho_model_chu_khong_giet_luot(boom, dau_hieu):
     def fn(s):

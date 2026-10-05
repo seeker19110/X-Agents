@@ -17,13 +17,19 @@ from typing import TYPE_CHECKING, Any
 
 from ..delivery import DONE_STATES
 from ..events import AuditLog, Envelope
+from ..roles import resume_actor
+from ..routing import retry_after_seconds
 from .cli import _fmt, source_fingerprint
 from .guards import clarification_warnings
 from .quality_flow import note_env, sync_quality
 from .routes import ACTIVE_STATES, ACTOR, CONTROL_TOPICS, PAUSING, PLAN_INPUTS, REVIEW_AGENT, review_route
 
 if TYPE_CHECKING:
+    from ..gates import GateRequest
     from ..orchestrator import Orchestrator, StepResult
+
+#: Lý do supervisor escalate một gate quá hạn — `_resume_overdue` nhận ra lần dừng do quá hạn qua tiền tố này.
+GATE_OVERDUE = "gate quá hạn"
 
 
 def _actionable(o: Orchestrator, env: Envelope) -> bool:
@@ -108,6 +114,21 @@ def _integrate_pending(o: Orchestrator, out: list[StepResult]) -> None:
     o._integrate_approved(res)
     if res.actions: out.append(res)
 
+def _resume_overdue(o: Orchestrator, g: GateRequest | None, by: str, res: StepResult) -> None:
+    """Người ký muộn một gate đã bị escalate vì quá hạn → `resume` chủ thể (O1, nhật ký 2026-10-02).
+
+    Escalate vì quá hạn là để phá sự im lặng của người duyệt, và gate đang chờ thì `_check_escalations` không mở
+    gate escalation — nên trước đây nó chỉ mở SAU khi người đã ký, hỏi lại đúng việc vừa quyết, còn chủ thể bị
+    giam `paused` (event production hoãn, nghiệm thu không mở). Chỉ gỡ khi lần dừng CUỐI của chủ thể trên bus là
+    chính lần escalate quá hạn: bị dừng vì lý do khác sau đó thì vẫn để gate escalation hỏi người."""
+    if g is None or g.subject_id not in o.paused: return  # không bị dừng: khỏi replay bus ở mọi lượt ký
+    last = next((e.payload for e in reversed(list(o.bus.replay(topic="supervisor-actions")))
+                 if e.payload.get("target") == g.subject_id and e.payload.get("action") in PAUSING), None)
+    if last is None or last["action"] != "escalate" or not str(last.get("reason", "")).startswith(GATE_OVERDUE): return
+    o.bus.publish(Envelope(topic="supervisor-actions", key=g.subject_id, actor=resume_actor(by), payload={
+        "target": g.subject_id, "action": "resume", "reason": f"{GATE_OVERDUE}, đã ký muộn: {g.kind} {g.decision}"}))
+    res.actions.append(f"overdue_resolved:{g.subject_id}")
+
 def _the_he(o: Orchestrator, sid: str) -> str:
     """Thế hệ của gate đang mở cho `sid`: số thứ tự `GateRequest.seq` do `HumanGate.request()` gán. Cùng một
     subject có thể mở gate NHIỀU LẦN trong đời (duyệt → hỏng → mở lại; `escalation` sau `release`), và
@@ -142,7 +163,12 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
         pha = "overdue" if sid in overdue else "remind"
         o._audit(f"gate.{pha}", {"subject_id": sid}, once=f"gate:{sid}:{pha}:{_the_he(o, sid)}")
     for sid in overdue:  # quá hạn không tự đi tiếp, nhưng cũng không im lặng: supervisor nhận việc
-        o.supervisor.escalate_gate(sid, f"gate quá hạn {o.gate.timeout}", once_key=f"gate.escalate:{sid}:{_the_he(o, sid)}")
+        # Khoá chống lặp của supervisor (`_escalated_once`) chỉ sống trong RAM: mở lại bus là escalate lại cùng gate
+        # (khuôn 2). `o.once` dựng lại từ audit nên mới là thứ chặn được lần thứ hai.
+        key = f"gate.escalate:{sid}:{_the_he(o, sid)}"
+        if key in o.once: continue
+        o._remember(key)
+        o.supervisor.escalate_gate(sid, f"{GATE_OVERDUE} {o.gate.timeout}", once_key=key)
     for tid, missing in o.lead.overdue_reviews(now).items():
         pr = o.latest("pull-requests", tid)
         since = o.lead.review_since[tid].isoformat()  # đọc trước: _call bên dưới có thể đóng vòng review và xoá nó
@@ -244,6 +270,13 @@ def _defer(o: Orchestrator, env: Envelope, res: StepResult, reason: str, wait_s:
                                     "until": (datetime.now(UTC) + timedelta(seconds=float(wait_s or 0))).isoformat()},
                     ticket_id=env.payload.get("ticket_id"), project_id=env.payload.get("project_id"))
     return res
+
+def _defer_transient(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
+    """Hoãn event vì một lượt agent gặp `TransientError` (`res.transient`), giữ mốc hẹn của backend ("thử lại sau
+    1515s"). Một đường cho `process()` và các hành động tự `_mark` (`_plan`): bên đó `process()` không thấy
+    `res.transient` vì hành động đã trả True — tự `_mark` thì event bị coi là xong và dự án đứng im."""
+    stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
+    return _defer(o, env, res, ":".join(stuck.split(":")[:2]), wait_s=retry_after_seconds(stuck))
 
 def _retry_deferred(o: Orchestrator, only: str | None = None) -> None:
     """Đưa event hoãn về đầu hàng đợi; `only` = tiền tố lý do (vd. "transient:") để chỉ thử lại loại đó.
