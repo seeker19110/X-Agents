@@ -287,7 +287,7 @@ class ContainerSandbox:
         if not spec.network and not spec.allowed_domains:
             return spec, None
         from .egress import DockerSquidProxy
-        proxy = self._egress or DockerSquidProxy(self.runtime)
+        proxy = self._egress or DockerSquidProxy(self.runtime, runner=self._runner)
         session = proxy.open(name, spec.allowed_domains, port=spec.port if spec.network else None)
         return replace(spec, env=sanitize_env(spec.env) | session.env), session
 

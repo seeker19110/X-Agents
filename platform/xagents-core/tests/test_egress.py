@@ -159,3 +159,25 @@ def test_s2_runtime_exception_fail_closed_cleanup_khong_che_loi(failure):
     with pytest.raises(SandboxError, match='egress'):
         DockerSquidProxy('docker', runner=run).open('check', ('pypi.org',))
     assert calls[-1] == ['docker','network','rm','check-net']
+
+@pytest.mark.parametrize('operation', ['run', 'spawn'])
+def test_s2_default_proxy_uses_injected_container_runner(tmp_path, monkeypatch, operation):
+    from xagents_core.sandbox import ContainerSandbox, RunSpec
+    run = Runner()
+    original = DockerSquidProxy.__init__
+
+    def checked_init(self, runtime, **kwargs):
+        assert kwargs.get('runner') is run, 'proxy must share the container runner'
+        original(self, runtime, **kwargs)
+
+    monkeypatch.setattr(DockerSquidProxy, '__init__', checked_init)
+    sb = ContainerSandbox('docker', 'image', runner=run)
+    spec = RunSpec(argv=['python'], cwd=tmp_path, allowed_domains=('pypi.org',))
+    if operation == 'spawn':
+        monkeypatch.setattr(sb, '_popen', lambda *a, **k: (_ for _ in ()).throw(OSError('stop before workload')))
+        with pytest.raises(OSError, match='stop before workload'):
+            sb.spawn(spec)
+    else:
+        assert sb.run(spec).exit_code == 0
+    assert run.calls[0][0][1:4] == ['network', 'create', '--internal']
+    assert run.calls[-1][0][1:3] == ['network', 'rm']
