@@ -24,6 +24,7 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
@@ -210,10 +211,12 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
     wants_content = True   # ADR-0012: `context_writes` của company mang toàn văn artifact
 
     def __init__(self, bus: InMemoryBus, client: ModelClient, agents: dict[str, AgentSpec] | None = None,
-                 blackboard: Blackboard | None = None, max_input_chars: int | None = None):
+                 blackboard: Blackboard | None = None, max_input_chars: int | None = None,
+                 lesson_provider: Callable[[Envelope], list[dict[str, Any]]] | None = None):
         super().__init__(bus, client, agents or load_agents(), blackboard, max_input_chars,
                          default_max_input_chars=DEFAULT_MAX_INPUT_CHARS)
         self.pricing = getattr(client, "pricing", None)
+        self.lesson_provider = lesson_provider
         # Input token THẬT của lượt ĐẦU trong bước hiện tại, để đối chiếu với ước lượng của `fit` (p3.2a).
         # Phải là lượt đầu chứ không phải lượt cuối: từ lượt hai trở đi prompt đã mang thêm cả hội thoại
         # tool, mà `fit` chỉ đo prompt ban đầu — so lượt cuối là so hai thứ khác nhau rồi gọi đó là sai số.
@@ -461,6 +464,10 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
 
         schema = None if context_only else payload_schema(topic_out)
         raw_ctx, paths = self._context(project_of(inp), spec)
+        raw_ctx.pop("knowledge", None); paths.pop("knowledge", None)
+        lessons = self.lesson_provider(inp) if self.lesson_provider is not None else []
+        if lessons:
+            inp = inp.model_copy(update={"payload": {**inp.payload, "related_lessons": lessons}})
         self._first_input = None   # `_complete` ghi vào đây ở lượt đầu của CHÍNH bước này
         payload, context, budget_ = fit(spec.system_prompt(phase), inp.payload, raw_ctx,
                                         min(spec.max_input_chars or self.max_input_chars, self.max_input_chars),

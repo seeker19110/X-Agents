@@ -39,7 +39,7 @@ bế tắc. Không đường nào được kết thúc trong im lặng (`../../T
 | Bus | `bus.py`, `sqlite_bus.py`, `blackboard.py` | publish có kiểm producer + schema; replay; artifact theo namespace |
 | Điều phối | `orchestrator.py`, `delivery.py`, `gates.py`, `gate_cli.py`, `supervisor.py` | route, máy trạng thái ticket/release, human gate bền, watchdog |
 | Tự duyệt theo sàn | `quality_floor.py`, `gate_risk.py` | ADR-0043: bằng chứng máy + mức nâng dự án → release/nghiệm thu tự duyệt; thiếu → người |
-| Chạy agent | `runner.py`, `tools.py`, `guard.py`, `context.py`, `subagents.py` | vòng lặp tool, ranh giới tin cậy, injection, hạn mức ngữ cảnh |
+| Chạy agent | `runner.py`, `tools.py`, `guard.py`, `context.py`, `subagents.py` | vòng lặp tool, ranh giới tin cậy, injection, hạn mức ngữ cảnh; bài học chọn lọc từ ticket đã merge (ADR-0048) |
 | Bằng chứng | `workspace.py`, `stacks.py`, `smoke.py` | worktree, lint/test thật, merge/deliver, smoke |
 | Model | `llm.py`, `routing.py`, `mcp_bridge.py`, `probe.py`, `web.py` | adapter, tier, xoay quota, cầu MCP |
 | Quan sát | `metrics.py`, `evals.py`, `assetscan.py`, `gate_brief.py`, `gate_checklists.py` | số liệu, eval ghi/phát lại, quét prompt, hồ sơ gate |

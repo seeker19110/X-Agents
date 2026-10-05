@@ -1,10 +1,11 @@
 {
  "agent": "supervisor",
- "prompt_version": 14,
- "recorded_at": "2026-09-12T14:37:43.913526+00:00",
+ "prompt_version": 16,
+ "recorded_at": "2026-10-05T11:46:42.174546+00:00",
  "models": [
   "claude-haiku-4-5",
-  "claude-sonnet-5"
+  "claude-sonnet-5",
+  "gpt-5.6-sol"
  ],
  "cases": {
   "d08f710a0948af4aa8a849c8": {
@@ -76,6 +77,54 @@
    "model": "claude-haiku-4-5",
    "input_tokens": 17315,
    "output_tokens": 1539,
+   "score": 1.0,
+   "runs": 1
+  },
+  "9b7df5cbcf0f5c0a88e3e9e2": {
+   "text": "{\"payload\":{\"target\":\"backend\",\"action\":\"budget_cut\",\"reason\":\"TCK-10 đã vượt trần ngân sách token (128000/90000 = 142%) và retry lần 3 với cùng lỗi đầu ra; phải dừng agent, không thử tiếp. Lỗi lặp cần kèm version để đánh giá rollback prompt qua human gate, nhưng audit hiện không cung cấp version.\",\"evidence\":\"audit-log key=backend actor=backend: action=produced:pull-requests; project_id=P1; ticket_id=TCK-10; budget_tokens=90000; tokens=128000 (142%); retry lần 3 cùng lỗi 'đầu ra không hợp lệ cho pull-requests'.\",\"project_id\":\"P1\",\"rulings\":[]},\"context_writes\":[]}",
+   "model": "gpt-5.6-sol",
+   "input_tokens": 20229,
+   "output_tokens": 167,
+   "score": 1.0,
+   "runs": 1
+  },
+  "c3dd8fbc3d0b765a2d8cadc6": {
+   "text": "{\"payload\":{\"target\":\"P1\",\"action\":\"escalate\",\"reason\":\"DEF-01 đã được nhắc trong 3 review liên tiếp, đạt ngưỡng 3; audit có debt.escalated nhưng chưa có debt.decided. Cần mở human gate cấp dự án: tạo ticket ADR và chỉ định người ký quyết định kiến trúc.\",\"evidence\":\"{\\\"audit_action\\\":\\\"debt.escalated\\\",\\\"debt_id\\\":\\\"DEF-01\\\",\\\"mentions\\\":3,\\\"consecutive\\\":3,\\\"threshold\\\":3,\\\"escalated\\\":1,\\\"sources\\\":[\\\"security\\\"],\\\"tickets\\\":[\\\"QLKH-004\\\",\\\"QLKH-007\\\",\\\"QLKH-012\\\"],\\\"debt_decided_present\\\":false,\\\"hint\\\":\\\"cần ticket ADR + người ký: quyết định kiến trúc này đang bị né qua từng ticket\\\"}\",\"project_id\":\"P1\",\"rulings\":[]},\"context_writes\":[]}",
+   "model": "gpt-5.6-sol",
+   "input_tokens": 20044,
+   "output_tokens": 334,
+   "score": 0.0,
+   "runs": 1
+  },
+  "1c55ec838ce258eb5f509cfc": {
+   "text": "{\"payload\":{\"target\":\"qa\",\"action\":\"warn\",\"reason\":\"TCK-11 đã ở trạng thái in_review 2 giờ 20 phút và thiếu nguồn review qa; theo quy tắc overdue_reviews, quá 2 giờ phải cảnh báo agent qa.\",\"evidence\":\"audit-log: actor=delivery-lead; action=overdue_reviews; project_id=P1; ticket_id=TCK-11; evidence=\\\"TCK-11 ở in_review 2 giờ 20 phút; đã có review của reviewer, thiếu nguồn qa\\\"\",\"project_id\":\"P1\",\"rulings\":[]},\"context_writes\":[]}",
+   "model": "gpt-5.6-sol",
+   "input_tokens": 20222,
+   "output_tokens": 130,
+   "score": 1.0,
+   "runs": 1
+  },
+  "657682dcac53f66a6f6db10d": {
+   "text": "{\"payload\":{\"target\":\"backend\",\"action\":\"budget_cut\",\"reason\":\"Dừng ngay TCK-10 vì đã vượt 100% ngân sách token; đồng thời phát hiện vòng lặp cùng lỗi 3 lần. Cần human gate xem xét rollback prompt, nhưng audit-log không cung cấp version của agent backend nên không được suy đoán version.\",\"evidence\":\"audit-log: ticket_id=TCK-10, project_id=P1, actor=backend, budget_tokens=90000, tokens=128000 (142%), retry lần 3 cùng lỗi 'đầu ra không hợp lệ cho pull-requests'.\",\"project_id\":\"P1\",\"rulings\":[{\"decision\":\"Áp dụng budget_cut cho agent backend trên TCK-10 thay vì cho phép retry tiếp.\",\"why\":\"Quy tắc ngân sách bắt buộc cắt ở 100%; mức sử dụng đã đạt 142%. Cùng lỗi lặp 3 lần cũng vượt ngưỡng phát hiện vòng lặp ≥2.\",\"cost_if_wrong\":\"TCK-10 tạm dừng và cần human gate để tiếp tục; đổi lại ngăn phát sinh thêm token và retry không hiệu quả.\"}]},\"context_writes\":[]}",
+   "model": "gpt-5.6-sol",
+   "input_tokens": 20294,
+   "output_tokens": 408,
+   "score": 1.0,
+   "runs": 1
+  },
+  "53c54194a2444ea27a7cbde7": {
+   "text": "{\"payload\":{\"target\":\"P1\",\"action\":\"escalate\",\"reason\":\"Nợ kiến trúc DEF-01 đã được nhắc 3 review liên tiếp, đạt ngưỡng 3; audit debt.escalated chưa có debt.decided. Cần mở ticket ADR và chỉ định người ký quyết định kiến trúc ở cấp dự án.\",\"evidence\":\"audit-log P1 action=debt.escalated; architecture_debt: debt_id=DEF-01, mentions=3, consecutive=3, threshold=3, escalated=1, tickets=[QLKH-004,QLKH-007,QLKH-012], sources=[security]; hint=\\\"cần ticket ADR + người ký: quyết định kiến trúc này đang bị né qua từng ticket\\\". SD-2: mentions=1, consecutive=1, threshold=3, escalated=0, tickets=[QLKH-012], sources=[reviewer], chưa đạt ngưỡng.\",\"project_id\":\"P1\",\"rulings\":[{\"decision\":\"Chuyển DEF-01 lên cấp dự án P1 để human gate mở ticket ADR và chỉ định người ký; không coi debt.escalated là debt.decided.\",\"why\":\"Bảng architecture_debt do orchestrator cung cấp ghi DEF-01 có consecutive=3 bằng threshold=3 và audit hiện tại là debt.escalated, chưa có bằng chứng debt.decided.\",\"cost_if_wrong\":\"Nếu không chuyển cấp, nợ đã lặp qua QLKH-004, QLKH-007 và QLKH-012 có thể tiếp tục phát sinh chi phí sửa lại, review bảo mật và trì hoãn các ticket sau; người xử lý cấp dự án chịu chi phí điều tra và quyết định ADR.\"}]},\"context_writes\":[]}",
+   "model": "gpt-5.6-sol",
+   "input_tokens": 20513,
+   "output_tokens": 436,
+   "score": 1.0,
+   "runs": 1
+  },
+  "dc621180653cf1786132912d": {
+   "text": "{\"payload\":{\"target\":\"qa\",\"action\":\"warn\",\"reason\":\"TCK-11 đã ở trạng thái in_review quá 2 giờ và thiếu nguồn review qa; theo ngưỡng overdue_reviews, cảnh báo agent qa thực hiện pha review.\",\"evidence\":\"Audit-log từ delivery-lead: \\\"TCK-11 ở in_review 2 giờ 20 phút; đã có review của reviewer, thiếu nguồn qa\\\".\",\"project_id\":\"P1\",\"rulings\":[]},\"context_writes\":[]}",
+   "model": "gpt-5.6-sol",
+   "input_tokens": 20287,
+   "output_tokens": 106,
    "score": 1.0,
    "runs": 1
   }

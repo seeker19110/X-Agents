@@ -78,6 +78,22 @@ def test_lessons_bo_qua_ban_ghi_content_ref_khong_phai_lesson():
     assert sup.lessons() == []
 
 
+def test_lessons_for_loc_theo_assignee_risk_hoac_retry_va_giu_nam_ban_moi():
+    from company.blackboard import Blackboard
+
+    bus = InMemoryBus(); sup = Supervisor(bus); bb = Blackboard(bus)
+    rows = [
+        ("A", "qa", [], 0), ("B", "builder", [], 0), ("C", "qa", ["auth"], 0),
+        ("D", "qa", [], 1), ("E", "builder", [], 0), ("F", "builder", [], 0),
+        ("G", "builder", [], 0), ("H", "builder", [], 0),
+    ]
+    for tid, assignee, tags, retry in rows:
+        bb.write("supervisor", "knowledge", f"audit-log:lesson:{tid}", json.dumps(
+            {"ticket_id": tid, "assignee": assignee, "risk_tags": tags, "retry": retry}))
+    target = _task(); target.risk_tags = ["auth"]
+    assert [d["ticket_id"] for d in sup.lessons_for(target)] == ["H", "G", "F", "E", "D"]
+
+
 def test_sprint_report_model_khong_xac_dinh_khi_evidence_hong():
     """`cost_by_model` phải dùng khoá `"?"` khi `evidence` của một lượt `produced:*` không phải JSON hợp lệ."""
     bus = InMemoryBus(); sup = Supervisor(bus)

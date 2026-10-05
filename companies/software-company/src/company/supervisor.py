@@ -214,6 +214,13 @@ class Supervisor(SupervisorBase):
             if isinstance(d, dict) and d.get("ticket_id"): out.append(d)
         return out
 
+    def lessons_for(self, ticket: Task) -> list[dict]:
+        """Tối đa năm bài học mới nhất cùng người làm, rủi ro, hoặc từng phải làm lại."""
+        tags = set(ticket.risk_tags)
+        return [d for d in reversed(self.lessons())
+                if d.get("assignee") == ticket.assignee or tags.intersection(d.get("risk_tags") or [])
+                or (d.get("retry") or 0) > 0][:5]
+
     def calibration(self) -> dict[str, dict]:
         """Hệ số hiệu chỉnh ước lượng theo assignee: median(actual/estimate) và số mẫu, từ bài học đã ghi.
         Delivery-lead nhận bảng này khi lập kế hoạch để ước lượng lần sau sát hơn (vòng học đóng lại ở đây)."""
