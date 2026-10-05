@@ -5,6 +5,8 @@ Ngày: 2026-10-04 · Trạng thái: được chấp nhận · Phạm vi: `compan
 (`docs/adr/README.md` gốc). ADR thiết kế công ty, `docs/adr/0006-cong-ty-bao-tri-keeper.md`, ở gốc vì nó chạm
 cả keeper lẫn `xagents-core`. Trong mã keeper, ADR này được gọi là "ADR keeper 0001".
 
+Được bổ sung bởi ADR 0002 (`0002-publish-so-noi-dung-da-do-truoc-khi-push.md`): mục "Cố ý chưa làm" về `publish()` không so danh tính đã được lấp; định nghĩa `patch_id` giữ nguyên.
+
 ## Bối cảnh
 
 Sau #379, I2 còn hai nợ cố ý. Đo trên `main@c9b6a4d`:
@@ -120,9 +122,10 @@ Marker `no-ky-thuat` ở `orchestrator.py:256` bị xoá vì nợ đã trả.
   - Lệnh CI ghi ra file không bị `.gitignore` sẽ làm `collect_two_way` ném "đổi trong lúc đo". Đây là chặt hơn
     có chủ ý; repo khách có `.gitignore` lỏng sẽ thấy nó trước tiên.
 - **Cố ý chưa làm:**
-  - `publish()` không so danh tính. Dòng CHANGELOG và nhật ký phiên được ghi vào worktree **sau** khi đo, theo
+  - ~~`publish()` không so danh tính. Dòng CHANGELOG và nhật ký phiên được ghi vào worktree **sau** khi đo, theo
     thiết kế (`release.compose` chạy sau cổng). Khoảng `open_pr → publish` vì thế chưa kiểm. Có marker tại
-    `publish()`.
+    `publish()`.~~ Đã trả 2026-10-05 bằng ADR 0002: so cây nhánh với `patch_id` trước mỗi lần push, chỉ cho THÊM
+    đúng dòng release của note.
   - ~~Payload của model hỏng ở lớp pydantic thì không có báo cáo nào lên bus, báo cáo trước vẫn đứng.~~ Đã trả
     2026-10-05: phần kể bị bỏ, báo cáo dự phòng chỉ mang số đo + `VerificationReport.payload_error` và luôn bị
     `_check_report` từ chối, nên thu hồi bền qua cùng đường (c); người gọi nhận `EvidenceError` (cause là

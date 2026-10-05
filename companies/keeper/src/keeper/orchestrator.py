@@ -43,6 +43,11 @@ Chính vì `open_pr()` không tạo PR thật mà `gh.open_prs()` vẫn trả 0 
 `keeper` đã xin mở nhưng chưa thấy số PR thật (`outstanding_pr_intents`) — trạng thái ấy dựng lại được từ bus,
 không phải một biến RAM. Không có nó, N ticket đủ cổng trong một nhịp ra N `release-notes` và I3 thủng mà
 không cần đa luồng (`sc-qa` chấm BT7).
+
+Cổng `evidence` chỉ so danh tính lúc `open_pr()`; nên `publish()` so LẠI trước mỗi lần push (ADR keeper 0002):
+cây nhánh sắp push = cây đã đo (`patch_id`) + đúng dòng release của note (`release.unmeasured_changes`), worktree
+sạch, không đo được thì từ chối. Khoảng `open_pr → publish` là nơi người commit dòng release — và cũng là nơi
+code chưa đo lọt vào nếu không ai so.
 """
 from __future__ import annotations
 
@@ -66,9 +71,9 @@ from .gates import PersistentGate, gate_approvers, request_gate
 from .github import GitHubWriteAttempt
 from .patcher import HUMAN_ONLY_SEGMENTS
 from .publish import PullRequest, PullRequestExists, create_pr, push_branch
-from .release import compose, fill_pr_number
+from .release import compose, fill_pr_number, unmeasured_changes
 from .triage import ObservedSignal, TriageState, triager
-from .worktree import KeeperWorktree, WorktreeError, content_tree
+from .worktree import KeeperWorktree, WorktreeError, content_tree, tree_of
 
 __all__ = ["BLOCKED_ACTION", "CODE_ACTOR", "HUMAN_ONLY", "REJECT_ACTION", "SUBJECT_OVERRIDDEN_ACTION",
            "KeeperOrchestrator", "TickResult", "touches_human_only"]
@@ -402,8 +407,10 @@ class KeeperOrchestrator:
 
         Giả định: commit ĐẦU TIÊN (patch + dòng release mang `release.PR_PLACEHOLDER`) đã có sẵn trong
         `wt.path` — hàm này không tự vá, không tự commit lần đầu; nó chỉ publish. Idempotent: note đã có
-        `pr_number` thì trả `None` ngay, không gọi `push`/`gh` lần hai (I3)."""
-        # no-ky-thuat: không so danh tính patch lúc publish vì dòng CHANGELOG/nhật ký được ghi vào worktree SAU lần đo theo thiết kế nên khoảng open_pr → publish chưa kiểm, quay lại khi publish được nối tự động vào tick hoặc dòng release được ghi vào worktree trước lần đo
+        `pr_number` thì trả `None` ngay, không gọi `push`/`gh` lần hai (I3).
+
+        TRƯỚC MỖI lần push, `_require_measured` so thứ sắp push với nội dung đã đo (ADR keeper 0002): lệch ⇒
+        `EvidenceError`, không push. Lần push thứ hai cũng kiểm, vì commit điền số là `commit -a`."""
         note = self.notes.get(ticket_id)
         if note is None:
             raise ValueError(f"{ticket_id} chưa có release-notes — open_pr() chưa qua hết cổng?")
@@ -411,6 +418,7 @@ class KeeperOrchestrator:
             return None
         ticket = self.tickets[ticket_id]
 
+        self._require_measured(ticket_id, wt, note)
         push_branch(wt, remote=remote)
         try:
             pr = create_pr(self.repo, title=f"fix(keeper): {ticket.subject}",
@@ -424,11 +432,41 @@ class KeeperOrchestrator:
         # Điền số chỉ trong worktree là chưa xong: phải thành commit THỨ HAI và lên remote, TRƯỚC khi note mang
         # `pr_number` lên bus — note có số rồi thì lần `publish()` sau trả sớm, và PR giữ `(#PR)` mãi.
         wt.commit_tracked(f"chore(keeper): điền số PR #{pr.number} cho {ticket_id}")
+        self._require_measured(ticket_id, wt, note)
         push_branch(wt, remote=remote)
         self._publish("release-notes", ticket_id, RELEASE_ACTOR, moi.model_dump())
         self._audit("pr.created", {"ticket_id": ticket_id, "pr_number": pr.number, "url": pr.url},
                     ticket_id=ticket_id)
         return pr
+
+    def _require_measured(self, ticket_id: str, wt: KeeperWorktree, note: ReleaseNote) -> None:
+        """Chốt I2 ở bước ra ngoài máy (ADR keeper 0002): cây NHÁNH sắp push phải là cây đã đo (`patch_id`) cộng
+        đúng dòng release của `note` — không gì khác. Ném `EvidenceError` (không push) khi:
+
+        - không còn báo cáo đạt I2 mang `patch_id` (báo cáo mới hơn đã thu hồi, hay chưa từng có);
+        - worktree khác cây nhánh (thay đổi chưa commit: `commit -a` của bước điền số sẽ vơ chúng vào PR);
+        - cây nhánh khác cây đã đo ở chỗ nào ngoài dòng release (`release.unmeasured_changes`);
+        - không đo được (worktree mất, cây đã đo không còn trong kho, git lỗi) — fail closed.
+
+        Đo đúng `wt` (thứ bị push), không qua `patch_identity(ticket_id)`: hai cái chỉ trùng khi `wt` là worktree
+        mặc định của ticket, còn chốt thì phải nhìn đúng thứ nó thả đi."""
+        # no-ky-thuat: kiểm cây nhánh rồi push theo TÊN nhánh chứ không theo sha đã kiểm nên tiến trình khác commit vào nhánh ticket trong ~100 ms giữa kiểm và push thì lọt, quay lại khi publish được nối tự động vào watch hoặc có hơn một tiến trình ghi worktree của ticket
+        report = self.reports.get(ticket_id)
+        if report is None or report.patch_id is None:
+            raise EvidenceError(f"{ticket_id}: không còn báo cáo đạt I2 mang patch_id — từ chối publish; đo lại "
+                                "bằng collect_two_way rồi open_pr (ADR keeper 0002)")
+        try:
+            pushed = tree_of(wt.path, f"refs/heads/{wt.branch}")
+            if content_tree(wt.path) != pushed:
+                raise EvidenceError(f"{ticket_id}: worktree {wt.path} còn thay đổi chưa commit — bước điền số PR "
+                                    "(commit -a) sẽ đưa chúng lên PR mà không ai đo; commit hoặc bỏ rồi đo lại")
+            bad = unmeasured_changes(wt.path, report.patch_id, pushed, note)
+        except WorktreeError as e:
+            raise EvidenceError(f"{ticket_id}: không đo được thứ sắp push ở {wt.path} ({e}) — từ chối publish "
+                                "(fail closed, ADR keeper 0002)") from e
+        if bad:
+            raise EvidenceError(f"{ticket_id}: nhánh {wt.branch} khác nội dung đã đo ({report.patch_id[:12]}) ở "
+                                f"{'; '.join(bad[:5])} — đo lại bằng collect_two_way (ADR keeper 0002)")
 
     # ---------- vòng lặp ----------
 

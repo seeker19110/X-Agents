@@ -90,6 +90,23 @@ def content_tree(path: Path) -> str:
         return _git(path, "write-tree", env=idx)
 
 
+def tree_of(path: Path, rev: str) -> str:
+    """Id cây git của `rev` (vd `refs/heads/<nhánh>`) — cây mà `git push` của nhánh đó thật sự mang đi."""
+    return _git(path, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{tree}}")
+
+
+def tree_changes(path: Path, old: str, new: str) -> list[tuple[str, str]]:
+    """`(trạng thái, đường dẫn)` của mọi file khác nhau giữa hai cây — `A`/`M`/`D`/`T`, không dò đổi tên. `-z` để
+    đường dẫn non-ASCII không bị escape. Cây không có trong kho object ⇒ `WorktreeError`."""
+    parts = _git(path, "diff-tree", "-r", "-z", "--no-renames", "--name-status", old, new).split("\0")
+    return list(zip(parts[0:-1:2], parts[1::2], strict=True))
+
+
+def blob_text(path: Path, tree: str, rel: str) -> str:
+    """Nội dung file `rel` trong cây `tree`, đọc thẳng từ kho object (không qua diff, không phụ thuộc cấu hình)."""
+    return _git(path, "cat-file", "blob", f"{tree}:{rel}")
+
+
 def repo_root(path: Path) -> Path:
     """Gốc cây git chứa `path`; `path` nguyên trạng khi nó không nằm trong repo git nào.
 
