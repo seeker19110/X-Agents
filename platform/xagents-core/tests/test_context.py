@@ -114,6 +114,20 @@ def test_namespace_khong_co_content_giu_nguyen_phan_con_lai():
     assert "content" not in c["prd"] and not b.trimmed
 
 
+def test_fit_cho_company_cat_namespace_bang_callback():
+    seen = []
+
+    def cut(ns: str, content: str, limit: int, note: str) -> str:
+        seen.append((ns, limit, note))
+        return content[:limit]
+
+    ctx = {"prd": {"content": "P" * 5000}}
+    _, result, budget = fit("system", {}, ctx, max_input_chars=2500, context_cutter=cut)
+    assert seen and seen[0][0] == "prd"
+    assert len(result["prd"]["content"]) <= seen[0][1]
+    assert budget.trimmed_context["prd"] > 0
+
+
 def test_bao_cao_ngan_sach_du_truong_cho_audit():
     """`report()` là thứ đi vào audit `context_trimmed`; thiếu trường là người đọc audit mất manh mối."""
     b = ContextBudget(max_input_chars=10_000, system_chars=100, payload_chars=200, context_chars=300)

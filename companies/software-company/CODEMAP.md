@@ -65,7 +65,7 @@
 | Tool agent được cấp, allowlist `run`, khoá đường dẫn, lọc env | `src/company/tools.py`; `SECRET_ENV`/`clean_env` ở `platform/xagents-core/src/xagents_core/sandbox.py` (K3.2, `workspace.py` nhập lại), `NO_HOOKS` trong `workspace.py` |
 | Vùng ghi của `qa[author]` vs `builder` (ADR-0028) | `Stack.test_globs` (`stacks.py`); phân quyền trong `tools.py`; lượt mù ở `runner.py` |
 | Chống prompt injection | Bảng mẫu + lọc: `platform/xagents-core/src/xagents_core/guard.py` (K3.4, chung hai công ty). CHÍNH SÁCH của company — topic nào ngoài/dẫn xuất, trường nào không tin cậy — ở `src/company/core.py` (`CORE`); `src/company/guard.py` chỉ còn là shim gắn `CORE`. Gọi từ `runner.py`, `web.py`, `supervisor.py`, `mcp_bridge.py`; `assetscan.py` quét file prompt bằng `guard.COMPILED` | `tests/test_adr0012.py`, `platform/xagents-core/tests/test_guard.py` |
-| Hạn mức ngữ cảnh, cắt | `src/company/context.py` |
+| Hạn mức ngữ cảnh, cắt | `src/company/context.py` (shim core); `src/company/prd_context.py` chọn trọn mục PRD qua callback từ `runner.py` (ADR gốc 0029) |
 
 ## Hợp đồng chất lượng sản phẩm (ADR gốc 0018/0021, `../../docs/PRODUCT-EXCELLENCE.md`)
 

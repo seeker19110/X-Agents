@@ -139,7 +139,9 @@ class ContextBudget:
 
 def fit(system: str, payload: dict[str, Any], context: dict[str, dict[str, Any]], max_input_chars: int,
         payload_share: float = 0.6, paths: dict[str, str] | None = None,
-        counter: TokenCounter | None = None) -> tuple[dict[str, Any], dict[str, dict[str, Any]], ContextBudget]:
+        counter: TokenCounter | None = None,
+        context_cutter: Callable[[str, str, int, str], str] | None = None,
+        ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], ContextBudget]:
     """Ép payload + blackboard vào hạn mức. `context` = {namespace: {version, content_ref, summary, content?}}.
     `paths` = {namespace: đường dẫn artifact} để nhãn cắt chỉ chỗ đọc thêm.
 
@@ -147,6 +149,8 @@ def fit(system: str, payload: dict[str, Any], context: dict[str, dict[str, Any]]
     p3.2 — ràng buộc số một, vì `context` trả về đi thẳng vào prompt và lệch một byte là lệch mọi bản ghi
     eval. Truyền counter đo token thật thì `max_input_chars` cũng phải tính bằng token: `fit` không quy đổi
     giúp, và một quy đổi ngầm ở đây sẽ là đúng cái sai số mà `estimate_error` sinh ra để đo.
+    `context_cutter` cho package chọn cách cắt một namespace đã được phân chỗ; không truyền thì mọi chuỗi
+    tiếp tục đi qua `cut_middle` như trước.
     """
     measure = counter or chars_counter
     b = ContextBudget(max_input_chars=max_input_chars, system_chars=len(system))
@@ -179,7 +183,9 @@ def fit(system: str, payload: dict[str, Any], context: dict[str, dict[str, Any]]
             lim = alloc.get(ns, 0)
             if lim < len(s):
                 note = f"đọc đầy đủ ở {paths[ns]}" if paths and paths.get(ns) else "artifact đầy đủ trên blackboard"
-                cut = cut_middle(s, max(lim, MIN_KEEP), note=note) if lim >= MIN_KEEP else f"… (bỏ {len(s)} ký tự; {note}) …"
+                cut = ((context_cutter(ns, s, lim, note) if context_cutter is not None
+                        else cut_middle(s, lim, note=note)) if lim >= MIN_KEEP
+                       else f"… (bỏ {len(s)} ký tự; {note}) …")
                 b.trimmed_context[ns] = len(s) - len(cut); s = cut
             item["content"] = s
         out[ns] = item

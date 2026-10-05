@@ -43,6 +43,7 @@ from .context import _prune, fit
 from .events import AuditLog, Envelope
 from .guard import guard_payload, sanitize_tool_output
 from .llm import Completion, LLMError, ModelClient
+from .prd_context import cut_prd_sections
 from .registry import AgentSpec, load_agents
 from .tools import ToolBox, ToolError, WorkspaceTools, dump_calls, tools_prompt
 from .workspace import TicketWorkspace, WorkspaceError
@@ -462,7 +463,8 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         raw_ctx, paths = self._context(project_of(inp), spec)
         self._first_input = None   # `_complete` ghi vào đây ở lượt đầu của CHÍNH bước này
         payload, context, budget_ = fit(spec.system_prompt(phase), inp.payload, raw_ctx,
-                                        min(spec.max_input_chars or self.max_input_chars, self.max_input_chars), paths=paths)
+                                        min(spec.max_input_chars or self.max_input_chars, self.max_input_chars),
+                                        paths=paths, context_cutter=cut_prd_sections)
         if budget_.trimmed:
             self._audit(spec, "context_trimmed", inp, evidence=json.dumps(budget_.report(), ensure_ascii=False))
             inp = inp.model_copy(update={"payload": payload})
