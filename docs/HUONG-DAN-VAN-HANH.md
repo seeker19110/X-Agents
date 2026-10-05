@@ -83,10 +83,10 @@ published research-requests key=THU-1 event=245ecda8...
 ### Bước 4 — chạy orchestrator offline và gặp một bế tắc thật (≈ 2 phút)
 
 ```bash
-COMPANY_LLM_PROVIDER=fake uv run python -m company.orchestrator --db thu.sqlite run --max-steps 40
+COMPANY_LLM_PROVIDER=fake COMPANY_SANDBOX=subprocess uv run python -m company.orchestrator --db thu.sqlite run --max-steps 40
 ```
 
-PowerShell: `$env:COMPANY_LLM_PROVIDER="fake"` trên một dòng riêng trước lệnh.
+PowerShell: đặt `$env:COMPANY_LLM_PROVIDER="fake"` và `$env:COMPANY_SANDBOX="subprocess"` trên hai dòng riêng trước lệnh. Đây là demo với client giả; khi chạy repo khách thật, cài Docker/Podman và dùng `COMPANY_SANDBOX=container` (hoặc mặc định `auto`). Nếu thiếu runtime, `auto` dừng theo ADR gốc 0023; `subprocess` tường minh không bảo vệ human gate khỏi mã khách ghi thẳng bus.
 
 Ra:
 

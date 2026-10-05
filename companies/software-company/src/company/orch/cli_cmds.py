@@ -164,6 +164,7 @@ def _step_failed(res: StepResult, what: str) -> bool:
 
 def redeploy(orch: Orchestrator, ns: argparse.Namespace) -> int:
     def body() -> int:
+        orch.record_sandbox_mode()
         try:
             res = orch.redeploy(ns.release_id, ns.by)
         except ValueError as e:
@@ -176,6 +177,7 @@ def redeploy(orch: Orchestrator, ns: argparse.Namespace) -> int:
 
 def recheck(orch: Orchestrator, ns: argparse.Namespace) -> int:
     def body() -> int:
+        orch.record_sandbox_mode()
         try:
             res = orch.recheck(ns.release_id, ns.by)
         except ValueError as e:
@@ -195,6 +197,7 @@ def run(orch: Orchestrator, ns: argparse.Namespace) -> int:
 
     def body() -> int:
         nonlocal reload
+        orch.record_sandbox_mode()
         if ns.watch:
             try: orch.watch(interval=ns.watch, reload=not ns.no_reload)
             except KeyboardInterrupt: pass

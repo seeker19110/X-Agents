@@ -249,8 +249,9 @@ def test_from_config_auto_chon_container_khi_co_binary():
     assert isinstance(sandbox_from_config(LLMConfig(), which=lambda _: "/usr/bin/docker"), ContainerSandbox)
 
 
-def test_from_config_auto_chon_subprocess_khi_khong_co():
-    assert isinstance(sandbox_from_config(LLMConfig(), which=lambda _: None), SubprocessSandbox)
+def test_from_config_auto_thieu_runtime_phai_dung():
+    with pytest.raises(SandboxError, match="COMPANY_SANDBOX=subprocess"):
+        sandbox_from_config(LLMConfig(), which=lambda _: None)
 
 
 def test_from_config_subprocess_khai_dich_danh():
@@ -276,8 +277,8 @@ def test_from_config_che_do_la_thi_loi():
 
 
 def test_from_config_cfg_rong_thi_ve_auto():
-    assert isinstance(sandbox_from_config(LLMConfig(sandbox="", sandbox_runtime="", sandbox_image=""),
-                                          which=lambda _: None), SubprocessSandbox)
+    with pytest.raises(SandboxError, match="COMPANY_SANDBOX=subprocess"):
+        sandbox_from_config(LLMConfig(sandbox="", sandbox_runtime="", sandbox_image=""), which=lambda _: None)
 
 
 # ---------- cấu hình đọc từ yaml + env ----------

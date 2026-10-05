@@ -86,11 +86,10 @@ công ty đó bao giờ).
                {"stage":"staging","label":"Staging (smoke)","n":1,"empty":false,"smoke":"ok"},   // ok|fail|unverified|""
                …]}],                                   // `empty` (n===0) → trang tô XÁM, không bao giờ xanh
   "silent_deadlocks": [{"kind":"ticket","id":"QLKH-010","state":"blocked","why":"…","integrated":true}],  // C4
-  // K2.7 (ADR-0035): lượt CHẠY MÃ CỦA KHÁCH trong 24h, đếm theo tên sandbox. Nguồn là bằng chứng do code điền
-  // (`local_checks.sandbox`, `smoke.sandbox`, audit `tools_used`), KHÔNG phải cấu hình đọc lại lúc mở trang.
-  // Trang chỉ cảnh báo khi `unsandboxed > 0` VÀ `sources.<công ty>.sandbox_available` — máy không có runtime
-  // thì im. `null` khi xưởng không đọc được.
-  "sandbox": {"window_h":24,"runs":12,"unsandboxed":9,"by_name":{"subprocess":9,"container:python:3.12-slim":3},
+  // S1 (ADR gốc 0023): lượt CHẠY MÃ CỦA KHÁCH trong 24h từ bằng chứng do code điền; `mode` là audit
+  // `sandbox.mode` của lần khởi động gần nhất, không đọc cấu hình hiện tại. `subprocess` hiện cảnh báo gate
+  // kể cả khi chưa có lượt chạy hoặc máy thiếu runtime. `null` khi xưởng không đọc được.
+  "sandbox": {"window_h":24,"runs":12,"unsandboxed":9,"mode":"subprocess","by_name":{"subprocess":9,"container:python:3.12-slim":3},
               "last_at":"2026-09-07T03:11:28+00:00"},
   "supervisor":[{"t":"TCK-118","a":"budget_cut","r":"…","w":"08:12"}],
   "log":     [{"t":"08:41","a":"backend","ac":"produced:pull-requests","k":"TCK-112","tok":8420,"c":0.21}],

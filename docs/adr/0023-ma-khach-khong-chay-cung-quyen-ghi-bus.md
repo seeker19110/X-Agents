@@ -1,6 +1,6 @@
 # ADR-0023: mã của khách không được chạy cùng quyền ghi bus — `sandbox: auto` hết tụt ngầm về `subprocess`
 
-Ngày: 2026-09-25. Trạng thái: **Proposed**, chờ người chọn phương án (mục "Câu hỏi cho người").
+Ngày: 2026-09-25. Trạng thái: **Accepted** (phương án a, 2026-10-05).
 
 Phát hiện F1 của `sc-security` khi chấm PR #343: `human:*` trên bus chỉ là một chuỗi tự khai. ADR này đo phát
 hiện đó, và cho thấy nó rộng hơn tên người: **mọi** actor trên bus chỉ đáng tin tới đâu quyền ghi file bus còn kín.
@@ -176,7 +176,11 @@ Hai phương án bị bỏ sót, phải thêm vào mục Phương án:
   mọi dòng chèn ngoài `publish()`, với mọi actor. Điểm yếu giống (b): khoá phải mở sẵn khi chạy không người trông,
   nên cùng user đọc được.
 
-## Câu hỏi cho người
+## Quyết định 2026-10-05
+
+Người vận hành chọn (a) và yêu cầu tự khôi phục Docker. Docker Engine đã chạy được từ tiến trình orchestrator trên Windows và WSL; ca hồi quy F1 dùng container thật chứng minh file bus ngoài mount không bị mã khách ghi. `auto` thiếu runtime nay dừng; `subprocess` chỉ chạy khi khai tường minh, ghi audit và hiện cảnh báo gate. Các câu hỏi dưới đây lưu lại bối cảnh khi ADR còn Proposed.
+
+## Câu hỏi khi còn Proposed
 
 1. Chọn (a), (b), cả (a) lẫn (b), hay (e) chỉ sửa tài liệu? Nếu mọi repo đưa vào công ty đều là repo của chính
    bạn, tức mã khách luôn tin cậy, thì (e) có thể là đủ.

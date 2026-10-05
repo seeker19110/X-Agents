@@ -316,6 +316,20 @@ def _audit(o: Orchestrator, action: str, data: dict[str, Any], actor: str = ACTO
     o.bus.publish(Envelope(topic="audit-log", key=actor, actor=actor, payload=a.model_dump()))
 
 
+def record_sandbox_mode(o: Orchestrator) -> None:
+    """CLI gọi đúng một lần sau khi lấy lease, trước khi chạy bất kỳ mã khách nào."""
+    if o._sandbox_mode_recorded: return
+    o._audit("sandbox.mode", {"mode": o.sandbox.name})
+    o._sandbox_mode_recorded = True
+
+
+def sandbox_mode(o: Orchestrator) -> Any:
+    """Status đọc lần khởi động ghi nhận gần nhất, chỉ tin actor orchestrator."""
+    from ..orchestrator import _evidence
+    return next((_evidence(e.payload).get("mode") for e in reversed(list(o.bus.replay(topic="audit-log")))
+                 if e.actor == ACTOR and e.payload.get("action") == "sandbox.mode"), None)
+
+
 def _deadlock_warnings(o: Orchestrator) -> list[str]:
     """Còn ticket chưa xong mà KHÔNG đường nào có thể chạy tiếp → nói thẳng ra.
 

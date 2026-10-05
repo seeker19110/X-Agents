@@ -266,21 +266,13 @@ def test_nut_tick_tat_ca_chi_hien_khi_nhieu_muc_va_khong_qua_mat_khoa_ly_do(page
     assert gate.count("drawer.querySelector('[data-d=\"approve\"]').disabled=") == 1
 
 
-def test_k27_o_sandbox_chi_sang_khi_may_co_runtime_ma_van_chay_ngoai_container(page: str) -> None:
-    """K2.7. Ô này phải im ở hai trường hợp, và im vì hai lý do KHÁC nhau:
-
-    - `unsandboxed === 0` — không có gì để nói.
-    - `sandbox_available !== true` — máy không có docker/podman: nhắc một việc người không làm được ngay là
-      nhiễu. Cảnh báo không hành động được thì lần sau người bỏ qua cả những cảnh báo hành động được.
-
-    Và khi sáng, nó phải nói ĐÚNG LỆNH cần gõ, không chỉ nói "có vấn đề" — đây là ghi nhận từ đêm QLKH
-    (`console/TRAPS.md`): ô báo động không kèm việc phải làm thì người trực đọc xong vẫn đứng yên.
-    """
+def test_k27_o_sandbox_canh_bao_tuong_minh_khi_chay_ngoai_container(page: str) -> None:
+    """S1: subprocess tường minh phải báo rủi ro gate kể cả khi chưa có lượt chạy hay máy thiếu runtime."""
     assert 'id="s-sandbox"' in page and 'id="sandbox"' in page
     body = page[page.index('<section class="view on" id="v-truc-ban">'):]
     assert body.index('id="s-sandbox"') < body.index('id="s-dead"'), "ô sandbox đứng trước bảng bế tắc chung"
     fn = page[page.index("function renderSandbox()"):page.index("function renderDeadlocks()")]
-    assert "sandbox_available===true" in fn, "phải kiểm cờ của MÁY, không chỉ đếm lượt"
-    assert "!sb.unsandboxed" in fn, "mọi lượt trong container thì ô phải tắt"
+    assert "sb.mode" in fn, "phải hiện chế độ từ audit của tiến trình đang chạy"
+    assert "gate không chống được mã khách" in fn.lower()
     assert "COMPANY_SANDBOX=container" in fn, "phải nói đúng lệnh cần gõ, không chỉ nói có vấn đề"
     assert "renderSandbox();" in page[page.index("function render(){"):page.index("function render(){") + 900]

@@ -64,22 +64,21 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
 - **Sandbox tiến trình** (ADR-0035): ba điểm chạy mã của khách — tool `run` của model (`tools.py`), lint/test của
   `run_checks` (`workspace.py`), lệnh khởi động smoke theo `runtime` của spec (`smoke.py`) — đi qua một giao diện
   `Sandbox` duy nhất. Backend `container` (docker/podman `run --rm`) chạy chúng với **mạng tắt**, hạn mức
-  cpu/ram/pid, cwd mount vào `/w`, env qua `--env-file -` (không hiện trong danh sách tiến trình của máy); backend
+  cpu/ram/pid, cwd mount vào `/w`, env qua `/dev/stdin` trên POSIX (Windows truyền env trong argv và ghi rõ `:env-argv`); backend
   `subprocess` giữ nguyên hành vi cũ. Chọn bằng `COMPANY_SANDBOX` (env) hoặc `sandbox:` trong `llm.yaml`:
-  `auto` (mặc định — container nếu máy có runtime), `container`, `subprocess`. **Fail-closed**: khai đích danh
-  `container` mà thiếu binary thì `SandboxError` ngay lúc khởi động `run`/`redeploy`, không bao giờ âm thầm tụt
-  hạng bảo vệ. Lớp bảo vệ đã dùng được ghi vào chính bằng chứng: `pull-requests.local_checks.sandbox` và
+  `auto` (mặc định — yêu cầu container runtime), `container`, `subprocess`. **Fail-closed**: `auto` hoặc
+  `container` mà thiếu binary đều ném `SandboxError` ngay lúc khởi động `run`/`redeploy`/`recheck`; chỉ khai
+  `subprocess` tường minh mới chạy ngoài container. Chế độ được ghi audit `sandbox.mode` khi bắt đầu lệnh. Lớp bảo vệ đã dùng được ghi vào chính bằng chứng: `pull-requests.local_checks.sandbox` và
   `release-events.smoke.sandbox` — người ký gate đọc được lint/test vừa chạy trong container hay bằng quyền người
   vận hành, thay vì phải suy từ tài liệu này.
   **Giới hạn còn lại**: (1) `git` KHÔNG đi qua sandbox — argv hard-code, hook đã bị vô hiệu, và push cần credential
   của người vận hành; (2) CLI model (`claude`/`codex`) cũng không — nó là đường ra API, nhốt vào mạng tắt là cắt
-  chính nó; tool nó xin chạy vẫn quay về `tools.py` qua cầu MCP nên vẫn trong sandbox; (3) `subprocess` (kể cả khi
-  `auto` chọn nó vì máy không có docker) vẫn là mã của khách chạy bằng quyền người vận hành và thấy `HOME`
+  chính nó; tool nó xin chạy vẫn quay về `tools.py` qua cầu MCP nên vẫn trong sandbox; (3) `subprocess` khi người vận hành khai tường minh vẫn là mã của khách chạy bằng quyền người vận hành và thấy `HOME`
   (`~/.ssh`, `~/.claude`) — repo khách không tin cậy thì đặt `COMPANY_SANDBOX=container`, hoặc chạy cả orchestrator
   trong container/user riêng. Nó cũng ghi thẳng được vào `company.sqlite`: ACL của bus chỉ chạy lúc `publish`,
   nên một dòng `gate.decide` mang actor `human:*` (hay `orchestrator` trên gate `UAT-*`) do mã khách tự chèn vào
   file vẫn được tin như quyết định thật. Ở chế độ này, human gate **không** phải ranh giới chống mã khách. Đã tái
-  hiện có đối chứng; phương án sửa đang chờ người chọn ở ADR gốc 0023
+  hiện có đối chứng; phương án (a) đã được chọn trong ADR gốc 0023; container chỉ mount cwd của khách, không mount bus
   (`docs/adr/0023-ma-khach-khong-chay-cung-quyen-ghi-bus.md`).
 - **Guardrail chi phí**: ước lượng token trước khi dispatch, ngân sách theo việc, supervisor cắt khi vượt hạn mức;
   audit-log ghi token thật và quy ra USD.

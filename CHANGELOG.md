@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(core): S1 theo ADR gốc 0023 — `auto` thiếu Docker/Podman dừng trước khi chạy mã khách; CLI ghi `sandbox.mode`, status và console hiện cảnh báo cho `subprocess` tường minh; ca F1 dùng container thật kiểm bus ngoài mount. (#392).
 - fix(core): Docker Linux đọc env của `ContainerSandbox` qua `/dev/stdin`; `--env-file -` trước đây trả mã 125 dù Engine chạy được. Ca test đỏ trước sửa và container thật xác nhận sandbox chỉ thấy mount `/w`. (#391).
 - docs(ops): ghi nhận checkout watcher O1 đã chuẩn bị ở `origin/main` và kết quả quét canary keeper thật ngày 05/10; các bước vận hành còn chờ điều kiện an toàn được giữ trong TASK-PACK. (#390).
 - feat(company): **ghi bài học ngay khi ticket merge và chọn tối đa năm bài học liên quan cho prompt ticket sau**: hoàn tất ADR gốc 0004 quyết định 2 và ADR-0048; đường nghiệm thu bù dữ liệu cũ, runner bỏ `knowledge` thô. Prompt supervisor v16 có golden, bản ghi eval thật và subagent dẫn xuất cùng PR. (#389).
