@@ -6,6 +6,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- refactor(company): **tách xử lý lỗi agent khỏi quyết định gate (O4)**: `orch/error_flow.py` giữ stall, rework, autoretry và unhandled; `orch/gates_flow.py` còn 299 dòng, sẵn chỗ cho thay đổi tiếp theo. Bảng chuyển trạng thái và hành vi cũ giữ nguyên; test ràng buộc method của `Orchestrator` vào đúng module. PR đang chờ hàng đợi.
 - feat(company): **sao lưu `company.sqlite` đang chạy bằng SQLite backup API**: lệnh `orchestrator backup --out <file mới>` đọc cả WAL, kiểm toàn vẹn, công bố bản sao sau khi hoàn tất và không ghi đè đích; hướng dẫn checkout watcher riêng ở runbook. Test đỏ trước khi có lệnh, test WAL mở và các nhánh lỗi. (#386).
 - fix(company): **màn đọc gate reviewer có chữ ký khi cờ tắt**: gate vẫn fail closed nhưng `gate_cli list`, `status`, `metrics` và console phân biệt quyết định đã ký nhưng chưa áp với việc chờ người; metrics đếm gate từ cùng `PersistentGate` và tách số thực sự chờ người. (#385).
 - fix(company): **đối chiếu token/chi phí giữa `report` và `metrics`**: cộng mọi audit mang số đo, gồm lượt PR bị kiểm cục bộ từ chối; `report.ratio` dùng token đầu ra trên ngân sách như cổng budget; lead time kết thúc ở `integration.merged` theo quyết định của người dùng. Ca hồi quy đo 140/40 token trước sửa, 140/140 sau sửa. Test sandbox gọi đúng Python của môi trường hiện tại để chạy được trên máy không có alias `python` toàn hệ thống. (#384).
