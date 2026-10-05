@@ -4,7 +4,8 @@ Trước đây muốn biết agent nào chậm, tốn, hay lỗi phải tự tru
 `orchestrator metrics`; `prometheus(m)` xuất text exposition (đặt vào node_exporter textfile collector hay scrape qua
 file) để nối dashboard sẵn có. Nguồn số liệu:
 
-- audit `produced:*` (evidence JSON: model, duration_ms, cache_hit, turns, tool_calls) → gọi, token, chi phí, thời gian
+- audit có số đo token/chi phí (kể cả lượt bị từ chối); `produced:*` (evidence JSON: model,
+  duration_ms, cache_hit, turns, tool_calls) → số lượt hoàn thành và thời gian
 - audit `llm_error|invalid_output|budget_exhausted|injection_*|llm_retry|context_trimmed` → sức khoẻ
 - audit `gate.request` / `gate.decide` → thời gian chờ người
 - topic `tasks` (đầu) → trạng thái cuối theo audit/ticket → lead time ticket
@@ -56,12 +57,19 @@ def collect(bus: InMemoryBus) -> dict[str, Any]:
             pass  # đóng ticket ghi ở audit của orchestrator (orchestrated) — dùng closed_at bên dưới
         if env.topic != "audit-log": continue
         a = env.payload; act = a.get("action", ""); d = _ev(a)
+        # Cùng sổ token với Supervisor: lượt bị từ chối hoặc đầu ra hỏng vẫn tiêu token và có audit riêng.
+        # `calls`/latency chỉ có ở `produced:*`; tổng token bao gồm mọi audit mang số đo token.
+        if a.get("tokens") or a.get("cost_usd"):
+            for bucket in (agents[a["actor"]], models[d.get("model") or "?"],
+                           *([tickets[a["ticket_id"]]] if a.get("ticket_id") else []),
+                           *([projects[a["project_id"]]] if a.get("project_id") else [])):
+                bucket["tokens"] += int(a.get("tokens") or 0)
+                bucket["cost_usd"] += float(a.get("cost_usd") or 0.0)
         if act.startswith("produced:"):
             for bucket in (agents[a["actor"]], models[d.get("model") or "?"],
                            *( [tickets[a["ticket_id"]]] if a.get("ticket_id") else []),
                            *( [projects[a["project_id"]]] if a.get("project_id") else [])):
-                bucket["calls"] += 1; bucket["tokens"] += int(a.get("tokens") or 0)
-                bucket["cost_usd"] += float(a.get("cost_usd") or 0.0)
+                bucket["calls"] += 1
                 bucket["duration_ms"] += int(d.get("duration_ms") or 0)
                 bucket["cache_hit_sum"] += float(d.get("cache_hit") or 0.0)
                 bucket["tool_calls"] += int(d.get("tool_calls") or 0)

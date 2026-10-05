@@ -239,17 +239,17 @@ class Supervisor(SupervisorBase):
             t = Task.tu_log(env.payload); b = self.budgets.get(t.ticket_id)   # duyệt lại CẢ lịch sử `tasks`
             tickets[t.ticket_id] = {"estimate_tokens": t.estimate_tokens, "budget_tokens": t.budget_tokens,
                                     "retry": t.retry, "actual_tokens": b.used if b else 0,
+                                    "output_tokens": b.output_used if b else 0,
                                     "review_tokens": b.review_used if b else 0,
                                     "budget_usd": t.budget_usd, "cost_usd": round(b.cost_usd, 4) if b else 0.0}
         for row in tickets.values():
-            est = row["estimate_tokens"]
-            row["ratio"] = round(row["actual_tokens"] / est, 2) if est else None
+            row["ratio"] = round(row["output_tokens"] / row["budget_tokens"], 2) if row["budget_tokens"] else None
         actions: defaultdict[str, int] = defaultdict(int)
         for act in self.actions: actions[act.action] += 1
         cost_by_agent: dict[str, float] = defaultdict(float); cost_by_model: dict[str, float] = defaultdict(float)
         for e in self.bus.replay(topic="audit-log"):
             log = e.payload
-            if not str(log.get("action", "")).startswith("produced:"): continue
+            if not log.get("cost_usd"): continue
             cost_by_agent[log["actor"]] += float(log.get("cost_usd") or 0.0)
             try: model = json.loads(log.get("evidence") or "{}").get("model") or "?"
             except (json.JSONDecodeError, AttributeError): model = "?"

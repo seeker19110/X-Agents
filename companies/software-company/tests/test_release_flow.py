@@ -189,7 +189,7 @@ def test_sprint_report_estimate_vs_actual():
                          payload=AuditLog(actor="builder", action="code", ticket_id="T1",
                                           tokens=12_500, output_tokens=12_500).model_dump()))
     r = sup.sprint_report()
-    assert r["tickets"]["T1"]["actual_tokens"] == 12_500 and r["tickets"]["T1"]["ratio"] == 1.25
+    assert r["tickets"]["T1"]["actual_tokens"] == 12_500 and r["tickets"]["T1"]["ratio"] == 0.83
     # ngưỡng cảnh báo đo theo ĐẦU RA (12_500/15_000 = 83%), còn `actual_tokens` vẫn là tổng cho báo cáo chi phí
     assert r["actions"] == {"warn": 1}
 

@@ -616,8 +616,9 @@ def test_metrics_collect_and_prometheus(tmp_path, capsys):
     _drive_to_plan(bus, orch); orch.run()
     m = collect(bus)
     produced = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"].startswith("produced:")]
-    assert m["total"]["calls"] == len(produced) and m["total"]["tokens"] == sum(a["tokens"] for a in produced)
-    assert m["total"]["cost_usd"] == pytest.approx(sum(a["cost_usd"] for a in produced)) and m["total"]["unpriced"] == 0
+    measured = [e.payload for e in bus.replay(topic="audit-log")]
+    assert m["total"]["calls"] == len(produced) and m["total"]["tokens"] == sum(a.get("tokens") or 0 for a in measured)
+    assert m["total"]["cost_usd"] == pytest.approx(sum(a.get("cost_usd") or 0 for a in measured)) and m["total"]["unpriced"] == 0
     # ADR-0037: `qa` gộp reviewer + qa-debugger nên nó chạy ở CẢ hai PR lẫn hồi quy staging của hai release
     assert m["agents"]["qa"]["calls"] == 4 and m["models"]["fake-strong"]["calls"] > 0 and m["tickets"]["T1"]["calls"] >= 2
     # ADR-0037: chỉ còn gate spec được quyết trên đường này (gate plan biến mất); hai gate release còn chờ.

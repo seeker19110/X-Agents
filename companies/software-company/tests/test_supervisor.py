@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from company.bus import InMemoryBus
 from company.events import AuditLog, Envelope, ReviewResult, Task
+from company.metrics import collect
 from company.supervisor import Supervisor
 
 
@@ -116,3 +117,23 @@ def test_review_tokens_do_not_count_against_ticket_budget():
     assert sup.sprint_report()["tickets"]["T1"]["review_tokens"] == 1500
     _audit(bus, "builder", 700)
     assert sup.actions[-1].action == "budget_cut", "engineer vượt trần vẫn bị cắt"
+
+
+def test_report_va_metrics_cung_dem_token_cua_luot_bi_tu_choi():
+    bus = InMemoryBus(); sup = Supervisor(bus)
+    task = _task(budget=1000).model_copy(update={"estimate_tokens": 200})
+    bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=task.model_dump()))
+    for action, tokens, output, cost in (("pr.rejected_local_checks", 100, 20, 1.5),
+                                         ("produced:pull-requests", 40, 5, 0.5)):
+        bus.publish(Envelope(topic="audit-log", key="builder", actor="builder",
+                             payload=AuditLog(actor="builder", action=action, ticket_id="T1",
+                                              project_id="P", tokens=tokens,
+                                              output_tokens=output, cost_usd=cost).model_dump()))
+    row = sup.sprint_report()["tickets"]["T1"]
+    metric = collect(bus)
+    assert row["actual_tokens"] == metric["tickets"]["T1"]["tokens"] == 140
+    assert metric["total"]["tokens"] == 140
+    assert row["cost_usd"] == metric["tickets"]["T1"]["cost_usd"] == 2.0
+    assert sup.sprint_report()["cost_usd_total"] == metric["total"]["cost_usd"] == 2.0
+    assert row["output_tokens"] == 25
+    assert row["ratio"] == 0.03, "tỉ lệ ngân sách phải đo output/budget, không lấy input+output/estimate"
