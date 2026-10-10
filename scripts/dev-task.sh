@@ -10,9 +10,10 @@
 # thì nó chạy một lệnh KHÁC lệnh CI mà không ai biết.
 #
 # Dùng:  scripts/dev-task.sh <task> [gói]
-#   task: format | format-file <path> | lint | typecheck | test | gate
+#   task: format | format-file <path> | lint | typecheck | test | gate | repo-gate
 #   gói : company | gateway | console | core | keeper | all (mặc định: all)
 #   gate = lint → typecheck → test, đỏ một bước là dừng ngay ở bước đó.
+#   repo-gate (không nhận gói) = `pytest -m cong_repo` của console — chế độ nhanh cho hook commit (F6).
 #
 # DEV_TASK_DRY_RUN=1 → chỉ IN lệnh sẽ chạy, không chạy. Dùng cho test và cho lúc muốn xem trước.
 set -uo pipefail   # cố ý KHÔNG -e: script tự kiểm mã trả về từng bước, -e sẽ cắt mất dòng tổng kết
@@ -75,6 +76,8 @@ lenh_cho() {
       fi
       ;;
     test)      goi_lenh_test "$2" ;;
+    # Chỉ console: tập test cổng cấp repo, KHÔNG `--cov` (một tập con thì `fail_under = 100` chắc chắn đỏ).
+    repo-gate) [ "$2" = "console" ] || return 1; echo "uv run pytest -q -m cong_repo" ;;
     *)         return 1 ;;
   esac
 }
@@ -135,7 +138,7 @@ chay_task() {
 
 case "$TASK" in
   "")
-    log "thiếu tên task. Dùng: dev-task.sh format|format-file|lint|typecheck|test|gate [gói]"
+    log "thiếu tên task. Dùng: dev-task.sh format|format-file|lint|typecheck|test|gate|repo-gate [gói]"
     exit 2
     ;;
 
@@ -174,8 +177,18 @@ case "$TASK" in
     exit 0
     ;;
 
+  repo-gate)
+    # Chế độ nhanh của cổng console cho commit chỉ đụng tài liệu/config NGOÀI mọi gói (hook commit gọi, F6):
+    # chỉ các test đọc file ngoài gói (marker `cong_repo`), ~10 s thay cho ~110 s. Không lint/typecheck: commit ấy
+    # không có `.py`. Không thay `gate console` ở chỗ nào khác — CI vẫn chạy đủ.
+    chay_trong_goi repo-gate console || { log "CỔNG REPO ĐỎ (pytest -m cong_repo ở platform/console)"; exit 1; }
+    if [ "${DEV_TASK_DRY_RUN:-0}" = "1" ]; then log "dry-run: chỉ in lệnh, CHƯA chạy gì"; exit 0; fi
+    log "cổng repo XANH (pytest -m cong_repo, không --cov)"
+    exit 0
+    ;;
+
   *)
-    log "task lạ: $TASK. Dùng: format|format-file|lint|typecheck|test|gate"
+    log "task lạ: $TASK. Dùng: format|format-file|lint|typecheck|test|gate|repo-gate"
     exit 2
     ;;
 esac

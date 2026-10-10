@@ -29,6 +29,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 
 # Thư mục bản ghi lịch sử: chụp repo tại một thời điểm, dẫn chiếu chết ở đó là sự thật của lúc ấy.
 _THU_MUC_LICH_SU = frozenset({"adr", "sessions", "reports", "archive", "thi-hanh", "specs"})

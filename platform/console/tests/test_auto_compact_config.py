@@ -10,7 +10,10 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 SETTINGS = ROOT / ".claude" / "settings.json"
 GUIDE = ROOT / "docs" / "AUTO-COMPACT.md"
 WINDOW_ENV = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
