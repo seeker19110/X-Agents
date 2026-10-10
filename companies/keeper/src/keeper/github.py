@@ -18,6 +18,8 @@ from time import monotonic
 from pydantic import BaseModel
 from xagents_core.sandbox import clean_env
 
+from .worktree import BRANCH_PREFIX
+
 # Từ khoá GHI. "-X"/"--method" là cờ HTTP tuỳ ý của `gh api` (có thể là -X DELETE, -X POST...) — luôn nguy hiểm
 # dù verb là gì, nên chặn chính cờ chứ không chặn verb. "merge"/"close"/"delete"/"edit" là SUBCOMMAND ghi của
 # `gh pr`/`gh issue`/`gh repo` (`gh pr merge`, `gh issue close`, `gh repo delete`, `gh pr edit`...).
@@ -46,6 +48,9 @@ _VALUE_FLAGS = frozenset({
 })
 
 CACHE_TTL_SECONDS = 60.0
+# `gh pr list` mặc định cắt 30 dòng — đúng bằng số PR repo merge tuần 04→10/10/2026, nên cắt ở đó là đếm thiếu.
+# no-ky-thuat: đếm thiếu khi hơn 500 PR keeper merge/tuần, quay lại khi KEEPER_MAX_PR_PER_WEEK đặt trên 500
+MERGED_PR_LIMIT = 500
 
 
 class GitHubWriteAttempt(Exception):
@@ -284,10 +289,13 @@ class GitHubReader:
         return [WorkflowRun.model_validate(row) for row in self._parse_list(out)]
 
     def merged_prs(self, since: str) -> list[PullRequest] | None:
-        """`None` = không biết, như `open_prs`."""
+        """PR CỦA KEEPER đã merge từ `since` — chỉ nhánh `BRANCH_PREFIX` (`budget.is_keeper_pr` lọc lại lần nữa).
+        Hỏi cả repo rồi lọc sau thì PR keeper nằm ngoài `--limit` bị đếm thiếu = fail OPEN cho hạn mức tuần (I3).
+        `head:` của GitHub search khớp TIỀN TỐ — đo 2026-10-10 trên X-Agents: `head:chore/keeper-` ra đúng #395,
+        `head:dependabot` ra đủ PR `dependabot/uv/*`. `None` = không biết, như `open_prs`."""
         ok, out = self._run(
-            "pr", "list", "--state", "merged", "--search", f"merged:>={since}",
-            "--json", "number,title,url,headRefName,mergedAt",
+            "pr", "list", "--state", "merged", "--search", f"merged:>={since} head:{BRANCH_PREFIX}",
+            "--limit", str(MERGED_PR_LIMIT), "--json", "number,title,url,headRefName,mergedAt",
         )
         rows = self._parse_list_strict(ok, out)
         return None if rows is None else [PullRequest.model_validate(row) for row in rows]

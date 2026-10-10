@@ -266,6 +266,22 @@ def test_merged_prs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert "--search" in spy.calls[0]
 
 
+def test_merged_prs_chi_hoi_nhanh_keeper_va_nang_tran_30_dong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`gh pr list` mặc định cắt 30 dòng; đo 2026-10-10 tuần 04→10/10 repo merge ĐÚNG 30 PR, 1 của keeper. Hỏi cả
+    repo rồi lọc sau thì PR keeper nằm ngoài 30 dòng đầu bị đếm thiếu = fail OPEN (I3). Hỏi thẳng nhánh keeper
+    (`head:` khớp tiền tố — đo trên X-Agents: `head:chore/keeper-` ra đúng #395) và nâng trần."""
+    from keeper.github import MERGED_PR_LIMIT
+    from keeper.worktree import BRANCH_PREFIX
+
+    spy = _RunSpy(stdout="[]")
+    reader = _reader(tmp_path, spy, monkeypatch)
+    assert reader.merged_prs("2026-09-01") == []
+    argv = spy.calls[0]
+    assert argv[argv.index("--search") + 1] == f"merged:>=2026-09-01 head:{BRANCH_PREFIX}"
+    assert argv[argv.index("--limit") + 1] == str(MERGED_PR_LIMIT)
+    assert MERGED_PR_LIMIT > 30
+
+
 def test_pr_age_days(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import datetime as dt
 
