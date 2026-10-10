@@ -18,6 +18,18 @@ from xagents_core.bus import is_human
 COMPANY = "software-company"
 KEEPER = "keeper"
 XUONG = (COMPANY, KEEPER)
+MAX_ACTOR_LEN = 80
+
+
+def actor_problem(actor: str, field: str) -> str | None:
+    """Vì sao `actor` (đã strip) không làm trường danh tính được, hoặc `None`. Chung cho `by` của decide/engine và
+    `actor` của submit (audit 2026-10-10, G4): `is_human` chỉ soi tiền tố, phần sau là chữ tự do — engine ghi
+    thẳng `by` vào một dòng log nên xuống dòng giả được dòng log khác, và trường danh tính không cần dài hơn tên."""
+    if len(actor) > MAX_ACTOR_LEN:
+        return f"`{field}` quá dài (tối đa {MAX_ACTOR_LEN} ký tự)"
+    if not actor.isprintable():
+        return f"`{field}` có ký tự điều khiển (xuống dòng, tab…)"
+    return None
 
 
 class GateError(Exception):
@@ -67,6 +79,8 @@ def decide(company_db: Path | None, keeper_db: Path | None = None, *,
         raise ValueError("thiếu subject_id")
     if not by.strip():
         raise ValueError("thiếu người duyệt (`by`)")
+    if (why := actor_problem(by.strip(), "by")) is not None:
+        raise ValueError(why)
     if not is_human(by):
         # Audit 2026-09-27 (F-A): ô "Bạn là" là chữ tự do. `by` không hình người thì bản ghi hoặc bị ACL bus của
         # company chặn bằng `PermissionDenied` (không phải `PermissionError` ⇒ HTTP 500), hoặc lọt bus (`reviewer:*`,

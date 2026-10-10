@@ -145,6 +145,15 @@ def test_gh_khong_co_tren_may(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert reader.open_prs() is None, "gh vắng mặt = KHÔNG BIẾT số PR mở, không phải 0 (I3 phải đóng)"
 
 
+def test_gh_co_that_ma_khong_chay_duoc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`gh` CÓ trên máy mà không chạy được (quyền, binary hỏng) ném `OSError` khác `FileNotFoundError`: `_run`
+    phải trả `(False, lý do)` như khi vắng mặt, không để ngoại lệ thô thoát ra và giết lượt đọc."""
+    spy = _RunSpy(raise_exc=PermissionError(13, "Permission denied", "gh"))
+    reader = _reader(tmp_path, spy, monkeypatch)
+    assert reader.open_prs() is None, "gh hỏng = KHÔNG BIẾT số PR mở, không phải 0 (I3 phải đóng)"
+    assert reader._run("pr", "list") == (False, "gh: không chạy được (Permission denied)")
+
+
 def test_gh_qua_thoi_gian(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     spy = _RunSpy(raise_exc=subprocess.TimeoutExpired(cmd="gh", timeout=60))
     reader = _reader(tmp_path, spy, monkeypatch)

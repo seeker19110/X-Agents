@@ -20,6 +20,7 @@ from keeper.evidence import (
     STASH_MESSAGE,
     TIMEOUT_EXIT,
     TRUSTED_VERIFIER,
+    UNRUNNABLE_EXIT,
     EvidenceError,
     TwoWayEvidence,
     _measured,
@@ -368,6 +369,18 @@ def test_run_command_chay_that_va_cat_duoi(tmp_path):
 def test_run_command_cong_cu_khong_co_tren_may_thi_khong_nem(tmp_path):
     r = run_command(("keeper-khong-ton-tai-tren-may-nay",), tmp_path)
     assert r.exit_code == MISSING_EXIT and "không có trên máy" in r.output_tail
+
+
+def test_run_command_cong_cu_co_that_ma_khong_chay_duoc_thi_khong_nem(tmp_path):
+    """Docstring hứa "không ném ngoại lệ tiến trình" nhưng chỉ bắt `FileNotFoundError`: công cụ CÓ trên đĩa mà
+    không chạy được (thiếu quyền thực thi, không phải Win32 app) ném `OSError` khác thẳng vào audit/đo hai chiều.
+    Mã phải là mã âm (lần chạy không hoàn tất) và KHÁC `MISSING_EXIT`: `audit.py` đọc `MISSING_EXIT` là "vắng
+    mặt" rồi trả `[]` — công cụ hỏng mà đọc thành "sạch" là khuôn 1 `TRAPS.md`. File thật, tiến trình thật."""
+    f = tmp_path / "khong-chay.exe"   # đuôi `.exe`: thiếu đuôi thì Windows tự thêm rồi đọc thành "không có"
+    f.write_text("khong phai binary\n", encoding="utf-8")   # 0o644: không ai chạy được, kể cả root
+    r = run_command((str(f), "--version"), tmp_path)
+    assert r.exit_code == UNRUNNABLE_EXIT and "không chạy được" in r.output_tail
+    assert len({MISSING_EXIT, TIMEOUT_EXIT, UNRUNNABLE_EXIT}) == 3 and UNRUNNABLE_EXIT < 0
 
 
 def test_run_command_qua_gio_thi_khong_nem(tmp_path):

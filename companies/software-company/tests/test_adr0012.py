@@ -671,6 +671,25 @@ def test_prometheus_xuat_lead_time_ticket_da_merge_vao_nhanh_tich_hop():
     assert 'company_ticket_lead_seconds{ticket="T1"}' in prometheus(m)
 
 
+def test_prometheus_thoat_nhan_dung_text_format():
+    """Audit 2026-10-10: `ticket_id`/`project_id` là chuỗi tự do (khách nạp qua console/CLI), mà nhãn chỉ bỏ `"`.
+    `\\` thành escape lạ, xuống dòng cắt đôi dòng mẫu — Prometheus bỏ CẢ trang scrape, không chỉ dòng đó. Text
+    format quy định đúng ba escape trong giá trị nhãn: `\\` → `\\\\`, `"` → `\\"`, xuống dòng → `\\n`."""
+    from company.metrics import prometheus
+
+    xau = 'T\\1"x\ny'
+    bus = InMemoryBus()
+    started = datetime(2026, 10, 5, tzinfo=UTC)
+    bus.publish(Envelope(topic="tasks", key=xau, actor="delivery-lead", ts=started, payload=Task(
+        ticket_id=xau, project_id="P", requirement_id="R1", assignee="builder", title="x", acceptance=["a"]).model_dump()))
+    bus.publish(Envelope(topic="audit-log", key="orchestrator", actor="orchestrator",
+                         ts=started + timedelta(seconds=10),
+                         payload={"actor": "orchestrator", "action": "integration.merged", "ticket_id": xau}))
+    dong = prometheus(collect(bus)).splitlines()
+    assert 'company_ticket_lead_seconds{ticket="T\\\\1\\"x\\ny"} 10' in dong
+    assert all(d.startswith(("#", "company_")) for d in dong), "xuống dòng trong nhãn đã cắt đôi một dòng mẫu"
+
+
 def test_lead_time_chua_co_khi_ticket_chi_moi_dong():
     bus = InMemoryBus()
     bus.publish(Envelope(topic="tasks", key="T1", actor="delivery-lead", payload=Task(

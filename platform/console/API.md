@@ -156,6 +156,8 @@ def decide(company_db: Path | None, keeper_db: Path | None = None, *,
 
 - `xuong` ∈ `{"software-company", "keeper"}` chọn DB và lớp `HumanGate` tương ứng.
 - `decision` phải nằm trong `Decision` của công ty đó; sai thì `ValueError`.
+- `by` phải là người (`human` / `human:<tên>`), ≤ `MAX_ACTOR_LEN` (80) ký tự, không ký tự điều khiển; sai thì
+  `ValueError`. Cùng luật `actor_problem` áp cho `actor` của `submit.py` và `by` của `/api/engine`.
 - Gọi đúng `HumanGate.decide(...)` của công ty, **không tự dựng event**, để four-eyes,
   allowlist người duyệt và ghi audit đi qua đúng đường của repo.
 - Trả `{"ok": true, "subject_id": …, "decision": …, "event_id": …}` hoặc ném
