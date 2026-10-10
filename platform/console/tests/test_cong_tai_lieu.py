@@ -259,6 +259,19 @@ def test_mau_pr_mang_nguyen_van_khoi_bao_cao_xac_thuc() -> None:
     assert _khoi_bao_cao(mau) == goc, "khối BÁO CÁO XÁC THỰC trong mẫu PR lệch khối trong AGENTS.md"
 
 
+def test_khoi_bao_cao_mot_lenh_gate_va_mau_pr_khong_khai_trung() -> None:
+    """Audit 2026-10-10 F5: khối BÁO CÁO bắt ghi `make lint`/`make test`/`make cov` — ba lệnh, pytest chạy hai lần,
+    ngược `CLAUDE.md` điều 6 ("một lệnh cho cổng"). Nay MỘT dòng `scripts/dev-task.sh gate <gói>`. Mục `## Validation`
+    của mẫu PR hỏi lại đúng điều khối BÁO CÁO hỏi nên bỏ. Nhật ký phiên là luật 9 (cuối phiên), không thuộc khối."""
+    goc = _khoi_bao_cao((ROOT / "AGENTS.md").read_text(encoding="utf-8"))
+    assert goc
+    assert "\nscripts/dev-task.sh gate <gói> ✅/❌" in goc, goc
+    assert not re.search(r"^make (lint|test|cov)\b", goc, re.MULTILINE), goc
+    assert "docs/sessions" not in goc, goc
+    mau = (ROOT / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+    assert "\n## Validation\n" not in mau
+
+
 # --- bảng markdown ---------------------------------------------------------------------------------------------
 
 _HANG_PHAN_CACH = re.compile(r"^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$")

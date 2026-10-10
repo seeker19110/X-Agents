@@ -48,6 +48,6 @@ Rủi ro: ... | KẾT LUẬN: sẵn sàng commit  /  cần xử lý: [...]
 
 Một mục ❌ → sửa, chạy **lại toàn bộ**, không commit. `/gate pr` thì thêm: `git fetch` + rebase
 `origin/main`, `gh pr list --state open` (luật 2b: chỉ một PR mở), tìm PR/issue trùng (luật 11), và dòng
-`CHANGELOG.md` + `docs/sessions/<ngày>.md` phải nằm trong **chính PR này** (luật 10).
+`CHANGELOG.md` phải nằm trong **chính PR này** (luật 10; không cần `(#n)`). Nhật ký phiên theo luật 9 (cuối phiên).
 
 Bắt đầu Bước 1 ngay.

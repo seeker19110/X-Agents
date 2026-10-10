@@ -66,13 +66,11 @@ là chưa đạt, không hạ chuẩn để kết thúc. Nguồn template: `docs
 
    ```
    BÁO CÁO XÁC THỰC — <nhánh> @ <sha>
-   make lint ✅/❌ (ruff: .. | mypy: .. file)
-   make test ✅/❌ (X passed, Y failed, Z skipped)
-   make cov  ✅/❌ (fail_under = 100 — đạt/thiếu <n> dòng ở <file>)
+   scripts/dev-task.sh gate <gói> ✅/❌ (X passed, Y failed; phủ 100% đạt/thiếu <n> dòng ở <file>)
    evals --replay --strict ✅/❌/n-a   | subagents check ✅/❌/n-a   | assetscan scan ✅/❌/n-a
    Test đỏ TRƯỚC khi sửa (luật bắt buộc 4, đo hai chiều) ✅/❌/n-a — tên ca: <..>
    Bảy bước CONTRIBUTING §3 (nếu chạm agents/ hoặc skills/) ✅/n-a
-   CHANGELOG + docs/sessions/<ngày>.md trong CHÍNH PR này (luật 10) ✅/❌
+   Dòng CHANGELOG.md trong CHÍNH PR này (luật 10) ✅/❌
    KẾT LUẬN: Sẵn sàng  /  Cần xử lý: <..>
    ```
 
@@ -123,9 +121,11 @@ là chưa đạt, không hạ chuẩn để kết thúc. Nguồn template: `docs
 8. **Sau `git push`, kiểm commit đã vào PR** (`gh pr view <n> --json commits`) trước khi báo xong.
 9. **Cuối phiên**: ghi `docs/sessions/<ngày>.md` (việc dở, PR mở, thứ người sau không được quên) và một dòng
    `CHANGELOG.md` cho mỗi PR đã merge.
-10. **Tài liệu đi CÙNG PR, không đi sau nó**: dòng `CHANGELOG.md`, `docs/sessions/<ngày>.md` và số liệu
-   `README.md` nằm trong **chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp (cổng `metadata` đỏ khi PR
-   không thêm dòng CHANGELOG nào; nhãn `no-changelog` để miễn). Số PR **không cần ghi tay**: commit squash trên
+10. **Tài liệu đi CÙNG PR, không đi sau nó**: dòng `CHANGELOG.md`, tài liệu bị thay đổi làm cũ (`docs/`, ADR,
+   CODEMAP…) và số liệu `README.md` nằm trong **chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp (cổng
+   `metadata` đỏ khi PR không thêm dòng CHANGELOG nào; nhãn `no-changelog` để miễn). Nhật ký phiên
+   `docs/sessions/<ngày>.md` **không** thuộc luật này mà theo luật 9 (cuối phiên): CI chỉ cảnh báo khi thiếu
+   (K8.4), mẫu PR không có ô chặn nào cho nó. Số PR **không cần ghi tay**: commit squash trên
    `main` đã mang `(#n)`, nên tra dòng ↔ PR bằng `git blame CHANGELOG.md` hoặc `git log -S"<dòng>"`. Đừng đặt
    chỗ giữ kiểu `(#PENDING)` — `drift-check` đỏ (`TRAPS.md` §3). Dòng CHANGELOG xếp mới nhất trên cùng theo
    **thời điểm merge**, không theo thứ tự tạo PR.
