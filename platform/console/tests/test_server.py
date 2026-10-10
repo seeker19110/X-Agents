@@ -1263,5 +1263,8 @@ def test_dong_request_sai_cu_phap_tra_400_khong_dut_ket_noi(make_console) -> Non
         raw = b""
         while chunk := s.recv(65536):
             raw += chunk
-    assert raw.startswith(b"HTTP/1.1 400 ")
+    # Thân HTML `Error code: 400` có ở mọi bản Python; dòng trạng thái thì KHÔNG: 3.11 giữ `request_version`
+    # = "HTTP/0.9" cho dòng request không parse được nên `send_response_only` bỏ qua nó, 3.13 đặt về "" trước
+    # `send_error` nên có "HTTP/1.1 400". Cổng cục bộ 3.13 xanh, CI 3.11 đỏ (`platform/console/TRAPS.md`).
+    assert b"Error code: 400" in raw
     assert c.token.encode() not in raw
