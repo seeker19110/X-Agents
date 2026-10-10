@@ -384,3 +384,19 @@ def test_protection_guard_so_ca_allowed_merge_methods() -> None:
     steps = _ci()["jobs"]["protection-guard"]["steps"]
     run = "\n".join(s.get("run", "") for s in steps)
     assert "allowed_merge_methods" in run, "protection-guard chưa so `allowed_merge_methods` giữa file và ruleset thật"
+
+
+@pytest.mark.parametrize("tham_so", [
+    "dismiss_stale_reviews_on_push", "required_review_thread_resolution",
+    "require_extra_approval_for_unattributed_changes", "require_code_owner_review", "require_last_push_approval",
+    "strict_required_status_checks_policy",
+])
+def test_protection_guard_so_ca_tham_so_review_cua_ruleset(tham_so: str) -> None:
+    """Cùng họ với `allowed_merge_methods`: đo 2026-10-10 (`GET /repos/.../rules/branches/main`) ba cờ
+    `dismiss_stale_reviews_on_push`, `required_review_thread_resolution`, `require_extra_approval_for_unattributed_changes`
+    thật là `false`, file khai `true`, mà guard vẫn xanh vì chỉ so loại rule và phương pháp merge. Mọi tham số
+    bật/tắt của `pull_request` và `required_status_checks` phải được so; riêng `required_approving_review_count` cố ý
+    không so (`docs/QUY-TRINH-GIT.md` §8)."""
+    steps = _ci()["jobs"]["protection-guard"]["steps"]
+    run = "\n".join(s.get("run", "") for s in steps)
+    assert tham_so in run, f"protection-guard chưa so `{tham_so}` giữa file và ruleset thật"

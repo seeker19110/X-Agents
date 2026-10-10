@@ -223,7 +223,7 @@ bằng máy, không chỉ là lời hứa (chuyện đã xảy ra: `TRAPS.md` §
 
 1. **Ruleset import được** — `.github/rulesets/main.json` là nguồn sự thật, đi qua PR như code.
    Bật: Settings → Rules → Rulesets → **New ruleset → Import a ruleset** → chọn file đó → Create.
-   Nội dung: bắt buộc PR (**0 approval** — xem ô dưới, thread review phải resolve) ·
+   Nội dung: bắt buộc PR (**0 approval** — xem ô dưới; ba cờ review đang tắt, xem vế 2) ·
    required status checks `quality` + `metadata` · cấm xoá và cấm force-push `main` ·
    **không ai được bypass, kể cả admin** (`bypass_actors` rỗng) · **tắt** "up to date" (`strict: false`) để PR khác
    merge không bắt mọi PR đang mở gộp `main` rồi chờ CI lại.
@@ -242,6 +242,13 @@ bằng máy, không chỉ là lời hứa (chuyện đã xảy ra: `TRAPS.md` §
      thì chủ repo sửa trong Settings → Rules → Rulesets → ruleset `main` → "Allowed merge methods" chỉ còn
      Squash, **rồi** đổi file về `["squash"]` trong cùng một PR — job này đỏ ngay khi hai bên lệch, theo cả hai
      chiều.
+     Cùng họ, cũng **đỏ** khi lệch: năm cờ của `pull_request` (`dismiss_stale_reviews_on_push`,
+     `required_review_thread_resolution`, `require_extra_approval_for_unattributed_changes`,
+     `require_code_owner_review`, `require_last_push_approval`) và `strict_required_status_checks_policy`. Đo
+     2026-10-10: ba cờ đầu thật là `false` trong khi file khai `true`, guard vẫn xanh vì chưa so. File nay khai
+     `false` theo thứ đang áp. Muốn bật lại (vd buộc resolve thread review trước khi merge): chủ repo bật trong
+     ruleset `main` trước, **rồi** đổi file về `true` trong cùng một PR. `required_approving_review_count` cố ý
+     không so (ô dưới).
      Cần vế này vì sửa ruleset trong UI có thể làm rơi một rule mà không báo gì (`TRAPS.md` §3).
 
 Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và
@@ -271,7 +278,7 @@ của rule `pull_request`).
 `copilot_code_review` **đã quyết định không dùng** (2026-09-05), gỡ khỏi cả ruleset lẫn file. Muốn dùng lại thì
 thêm vào **cả hai chỗ** — thêm một chỗ thôi sẽ bị vế 2 của `protection-guard` bắt.
 
-🔍 PR **vẫn** `blocked` dù mọi check xanh và approval = 0 → nghi `require_extra_approval_for_unattributed_changes =
-true` trước tiên: nó đòi thêm một approval khi PR chứa thay đổi không gán được cho một tài khoản (`author.login`
-của API commit), nhất là khi người mở PR và người tạo commit là hai tài khoản khác nhau. Hiện không cắn: commit
-gán đúng vào tài khoản `claude`.
+🔍 PR **vẫn** `blocked` dù mọi check xanh và approval = 0 → nếu cờ `require_extra_approval_for_unattributed_changes`
+đã được bật lại thì nghi nó trước tiên: nó đòi thêm một approval khi PR chứa thay đổi không gán được cho một tài khoản
+(`author.login` của API commit), nhất là khi người mở PR và người tạo commit là hai tài khoản khác nhau. Hiện cờ này
+đang `false` (đo 2026-10-10) nên không cắn.
