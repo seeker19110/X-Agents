@@ -9,6 +9,7 @@
 #   2. Staged có file cấm commit           → chặn (luật cấm 3: llm.yaml[.bak*|.tmp], media.yaml, *.sqlite*, company.artifacts/)
 #   3. Diff staged HẠ `fail_under`         → chặn (luật cấm 6: thêm test, không hạ số)
 #   4. `scripts/dev-task.sh gate` đỏ       → chặn (luật bắt buộc 3): gói bị đụng + gói import nó + console
+#      (commit chỉ đụng tài liệu/config ngoài mọi gói: console chỉ chạy `dev-task.sh repo-gate`, F6)
 #
 # Lấy từ `seeker19110/project-template` (`.claude/hooks/pre-commit-gate.sh`); ba phép kiểm đầu là của repo này.
 # Bỏ qua có chủ đích: thêm `--no-verify` vào lệnh commit.
@@ -16,7 +17,7 @@ set -uo pipefail   # cố ý KHÔNG -e: hook không được làm chết phiên
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
-# CÂY ĐANG COMMIT ≠ CHECKOUT CHÍNH. `CLAUDE.md` luật 2 bắt mỗi phiên một `git worktree`, nên `CLAUDE_PROJECT_DIR`
+# CÂY ĐANG COMMIT ≠ CHECKOUT CHÍNH. `AGENTS.md` luật cấm 2 bắt mỗi phiên một `git worktree`, nên `CLAUDE_PROJECT_DIR`
 # (checkout chính) và cây mà `git commit` sắp chạy trên đó thường là HAI thư mục khác nhau. Dùng chung một biến
 # cho hai nghĩa làm hàng rào hỏng cả hai chiều: phép 1 đọc nhánh của checkout chính (`main`) → chặn oan mọi
 # commit đúng luật; phép 2-4 đọc index của checkout chính (rỗng) → file cấm và `fail_under` bị buông.
@@ -120,7 +121,8 @@ fi
 #     keeper) — `test_cong_khung.py` tính kỳ vọng từ pyproject, thêm phụ thuộc mà quên dòng dưới là đỏ;
 #   - console LUÔN chạy: nó giữ cổng cấp repo (README đếm test mọi gói, trần pragma/skip, link tài liệu, hook,
 #     workflow, mẫu PR). Commit chỉ sửa tài liệu trước đây bỏ qua mọi cổng — đo 2026-09-28: sửa một dòng README
-#     làm đỏ test ở gói khác, commit chỉ đụng README ấy sẽ lọt;
+#     làm đỏ test ở gói khác, commit chỉ đụng README ấy sẽ lọt. Commit như vậy nay chạy console CHẾ ĐỘ NHANH
+#     (chỉ test marker `cong_repo`, xem khối `console_nhanh` dưới) thay cho cả suite có `--cov`;
 #   - file ngoài company mà test company đọc: lock template (`test_delivery_contract.py`), subagent sinh ra
 #     (`assetscan` quét `.claude/agents/`) → kéo company;
 #   - file ở GỐC không phải `.md` (pyproject, uv.lock, Makefile) ảnh hưởng mọi gói → `all`.
@@ -163,8 +165,22 @@ if [ ! -x "$GOC_CONG/scripts/dev-task.sh" ]; then
   exit 0
 fi
 
+# Console CHẾ ĐỘ NHANH (F6, audit 2026-10-10): commit chỉ đụng tài liệu/config NGOÀI mọi gói (không `.py`, không
+# file nào dưới `companies/`/`platform/`, không file gốc kéo `all`) không đổi được mã lẫn độ phủ — phần console có
+# thể đỏ vì nó chỉ là các test đọc file ngoài gói, marker `cong_repo`. Chạy `dev-task.sh repo-gate` (~10 s) thay cho
+# `gate console` (~110 s). File không phải `.py` TRONG gói (schema, prompt, mẫu của company/keeper) vẫn cổng đầy
+# đủ: chúng chảy vào test console qua import, marker không phủ. `dev-task.sh` cũ chưa có task → cổng đầy đủ.
+console_nhanh=0
+if [ "${can_chay% }" = "console" ] \
+   && ! printf '%s\n' "$staged" | grep -Eq '\.py$|^(companies|platform)/' \
+   && grep -Eq '^[[:space:]]*repo-gate\)' "$GOC_CONG/scripts/dev-task.sh" 2>/dev/null; then
+  console_nhanh=1
+  echo "[pre-commit-gate] commit chỉ đụng tài liệu/config ngoài gói → console chế độ nhanh (pytest -m cong_repo)" >&2
+fi
+
 for g in $can_chay; do
-  CLAUDE_PROJECT_DIR="$GOC_CONG" "$GOC_CONG/scripts/dev-task.sh" gate "$g" && continue
+  if [ "$g" = "console" ] && [ "$console_nhanh" = 1 ]; then set -- repo-gate; else set -- gate "$g"; fi
+  CLAUDE_PROJECT_DIR="$GOC_CONG" "$GOC_CONG/scripts/dev-task.sh" "$@" && continue
   echo "❌ Cổng ĐỎ ở gói '$g' (lint/typecheck/test). Sửa hết rồi commit lại — AGENTS.md luật bắt buộc 3." >&2
   echo "   Bỏ qua có chủ đích: thêm --no-verify vào lệnh git commit." >&2
   exit 2

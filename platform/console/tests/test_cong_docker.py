@@ -27,6 +27,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 DOCKERIGNORE = ROOT / ".dockerignore"
 COMPOSE = ROOT / "docker-compose.yml"
 DOCKERFILE = ROOT / "Dockerfile"

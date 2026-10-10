@@ -57,8 +57,9 @@ def _in_segment(path: str, segment: str) -> bool:
 
 
 def _is_doc(path: str) -> bool:
-    """Dấu vết "tài liệu thuần": đuôi tài liệu, thư mục `docs/`, hoặc dấu tham chiếu PR `(#n)` mà
-    `drift.changelog_drift` đặt vào `evidence` khi thiếu một dòng CHANGELOG."""
+    """Dấu vết "tài liệu thuần": đuôi tài liệu, thư mục `docs/`, hoặc dấu tham chiếu PR `(#n)` — khuôn `evidence`
+    của tín hiệu "thiếu dòng CHANGELOG" (phép (c) cũ của `drift.py`, đã bỏ ở audit 2026-10-10 F1; hiện không
+    còn nơi phát nào đặt `(#n)` vào `evidence` của tín hiệu drift)."""
     return path.endswith(_DOC_SUFFIXES) or _in_segment(path, "docs") or path.startswith("(#")
 
 

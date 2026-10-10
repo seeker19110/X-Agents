@@ -1,11 +1,12 @@
-"""CHANGELOG — cổng chặn PR khi dòng CHANGELOG của nó chưa mang `(#<số PR này>)` (audit 2026-09-27 C1).
+"""CHANGELOG — cổng chặn PR khi nó không THÊM dòng nào vào `CHANGELOG.md` (AGENTS.md luật bắt buộc 10).
 
-Bước cũ của `pr-policy.yml` chỉ kiểm CHANGELOG.md CÓ ĐỔI. Job `drift-check` (keeper, phép c) tìm `(#n)` SAU merge,
-nên quên điền số chỉ lộ khi `main` đã đỏ (run 36253134720 của #353, 36261710782 của #357). Script này tìm đúng
-chuỗi drift-check tìm — `(#n)`, có ngoặc — nhưng trên dòng THÊM của diff, trước merge.
+Chỉ kiểm "có dòng thêm" trên diff `origin/<base>...HEAD`, không kiểm `(#<số PR>)`: số PR đã nằm trong subject
+commit squash trên `main` (`… (#395)`), tra bằng `git blame CHANGELOG.md` hoặc `git log -S"<dòng>"`. Bắt điền tay
+số làm mỗi PR tốn thêm một lượt đẩy và một lượt CI (audit 2026-10-10 F4). Chỗ trống kiểu `(#PENDING)` vẫn bị
+phép (d) của `keeper drift` bắt.
 
-Python stdlib thuần: `python3 scripts/pr_changelog_check.py`. Env: `BASE` (nhánh đích), `PR` (số PR), `LABELS`
-(nhãn, phẩy ngăn cách; `no-changelog` miễn). Exit 1 và in lý do trên stderr, hoặc exit 0.
+Python stdlib thuần: `python3 scripts/pr_changelog_check.py`. Env: `BASE` (nhánh đích), `LABELS` (nhãn, phẩy ngăn
+cách; `no-changelog` miễn). Exit 1 và in lý do trên stderr, hoặc exit 0.
 """
 
 from __future__ import annotations
@@ -19,34 +20,23 @@ def _exempt(labels: str) -> bool:
     return "no-changelog" in {x.strip() for x in labels.split(",")}
 
 
-def check(diff: str, pr: str, labels: str) -> str | None:
+def check(diff: str, labels: str) -> str | None:
     """Lý do đỏ, hoặc `None` nếu PR qua. `diff` là `git diff <base>...HEAD -- CHANGELOG.md`."""
     if _exempt(labels):
         return None
-    added = [
-        ln[1:]
+    if any(
+        ln.startswith("+") and not ln.startswith("+++")
         for ln in diff.replace("\r\n", "\n").split("\n")
-        if ln.startswith("+") and not ln.startswith("+++")
-    ]
-    if not added:
-        return (
-            "PR không đổi CHANGELOG.md. Thêm một dòng ở 'Chưa phát hành' (AGENTS.md luật bắt buộc 10), "
-            "hoặc gắn nhãn no-changelog."
-        )
-    if not any(f"(#{pr})" in ln for ln in added):
-        return (
-            f"Dòng CHANGELOG.md của PR chưa mang (#{pr}). Điền số rồi commit tiếp vào CHÍNH PR này (AGENTS.md "
-            "luật bắt buộc 10) — thiếu nó thì job drift-check đỏ trên main ngay sau merge."
-        )
-    return None
+    ):
+        return None
+    return (
+        "PR không thêm dòng nào vào CHANGELOG.md. Thêm một dòng ở 'Chưa phát hành' (AGENTS.md luật bắt buộc 10), "
+        "hoặc gắn nhãn no-changelog."
+    )
 
 
 def main() -> int:
-    base, pr, labels = (
-        os.environ["BASE"],
-        os.environ["PR"],
-        os.environ.get("LABELS", ""),
-    )
+    base, labels = os.environ["BASE"], os.environ.get("LABELS", "")
     if _exempt(labels):
         print("miễn theo nhãn no-changelog")
         return 0
@@ -58,10 +48,10 @@ def main() -> int:
         text=True,
         encoding="utf-8",
     ).stdout
-    if loi := check(diff, pr, labels):
+    if loi := check(diff, labels):
         print(loi, file=sys.stderr)
         return 1
-    print(f"OK: CHANGELOG.md có dòng mang (#{pr})")
+    print("OK: CHANGELOG.md có dòng thêm")
     return 0
 
 

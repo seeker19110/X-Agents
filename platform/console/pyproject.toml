@@ -52,6 +52,11 @@ filterwarnings = [
     "error",
     "ignore:.*found in sys.modules after import of package.*:RuntimeWarning",
 ]
+# Hook commit chạy riêng `-m cong_repo` (`dev-task.sh repo-gate`) khi commit chỉ đụng tài liệu/config ngoài gói —
+# F6, audit 2026-10-10. `test_cong_khung.py` đỏ khi một test đọc file ngoài gói mà thiếu marker này.
+markers = [
+    "cong_repo: test đọc file ngoài gói console (tài liệu, workflow, script, hook) — cổng cấp repo",
+]
 
 [tool.coverage.run]
 source = ["src/console"]

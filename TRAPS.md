@@ -94,9 +94,9 @@ chỉ lo `tools="rw"`). Cái rơi ra ngoài luôn rơi vào im lặng.
 **`(#PENDING)` trong CHANGELOG nay là CI ĐỎ — để TRỐNG, đừng đặt chỗ giữ.** Từ phép (d) của `keeper drift`,
 mọi `(#PRNUM)`/`(#PENDING)`/`(#n)` **ngoài dấu backtick** trong `CHANGELOG.md` làm job `drift-check` đỏ. Lý do
 có phép này: 3/4 ca thiếu dòng CHANGELOG (2026-09-09) là *quên điền số* chứ không phải quên viết dòng, và một
-chỗ giữ chỗ không ai quay lại điền thì tệ hơn không có gì — nó trông như đã xong. *Cách làm đúng theo luật 10*:
-commit 1 viết dòng CHANGELOG **kết thúc không có số**; sau `gh pr create` thì commit 2 thêm `(#<n>)` vào chính
-PR đó. Muốn NHẮC TỚI một placeholder trong văn xuôi (kể lại một bug, trích luật) thì bọc backtick — phép (d)
+chỗ giữ chỗ không ai quay lại điền thì tệ hơn không có gì — nó trông như đã xong. *Cách làm đúng theo luật 10*
+(từ 2026-10-10, audit F4): viết dòng CHANGELOG **không có số** và dừng ở đó — commit squash trên `main` đã mang
+`(#n)`, tra bằng `git blame CHANGELOG.md`. Muốn NHẮC TỚI một placeholder trong văn xuôi (kể lại một bug, trích luật) thì bọc backtick — phép (d)
 bỏ qua code span, đúng để tài liệu mô tả được nó mà không tự làm mình đỏ.
 
 **`sed 's/(#<n>)/(#N)/'` để điền số PR sửa nhầm lịch sử CHANGELOG.** Mắc **hai lần trong cùng một ngày**
@@ -109,13 +109,14 @@ Cách rà: sau khi điền số, `grep -n '(#<n>)\|(#N)' CHANGELOG.md` và `git 
 toàn bộ chỗ khớp trước khi commit**, hoặc neo lệnh theo số dòng thay vì theo chuỗi.
 
 **`quality` đỏ với 0 failure — run đã bị thay thế, không phải lỗi.** Mắc ba lần trong phiên 2026-09-08 (#172,
-#173, #174). Luật 10 bắt điền `(#<n>)` vào chính PR đó, mà số PR chỉ có sau khi tạo PR — nên luôn có commit thứ
-hai đẩy sau commit thứ nhất vài chục giây. `concurrency: cancel-in-progress` cắt run đầu, và `quality` **cố ý**
+#173, #174). Hồi đó luật 10 bắt điền `(#<n>)` vào chính PR đó, mà số PR chỉ có sau khi tạo PR — nên luôn có
+commit thứ hai đẩy sau commit thứ nhất vài chục giây (bỏ từ 2026-10-10, audit F4; mọi lần đẩy thêm vào PR đang
+chạy CI vẫn sinh đúng hiện tượng này). `concurrency: cancel-in-progress` cắt run đầu, và `quality` **cố ý**
 coi `cancelled` là đỏ (job bị bỏ qua không được tính là qua cổng). Kết quả: mỗi PR sinh đúng một `quality` đỏ
 trên head CŨ. *Cách nhận ra*: mở log job `quality` và đọc mảng `RESULTS` — có `failure` mới là lỗi thật; toàn
 `success` + `cancelled` là run đã bị thay thế, và bản đúng là run trên head hiện tại. Nó **không chặn merge**
-(required check chấm trên head SHA hiện tại), nên đừng đi tìm lỗi trong diff. Đã cân nhắc sửa `ci.yml` hoặc luật
-10 và **quyết định không**: cả hai đánh đổi đều tệ hơn cái giá vài phút CI.
+(required check chấm trên head SHA hiện tại), nên đừng đi tìm lỗi trong diff. Đã cân nhắc sửa `ci.yml` và
+**quyết định không**: đánh đổi tệ hơn cái giá vài phút CI. Luật 10 thì đã bỏ phần điền số (2026-10-10, F4).
 
 
 | Bẫy | Đã xảy ra | Lần sau |
@@ -132,7 +133,10 @@ trên head CŨ. *Cách nhận ra*: mở log job `quality` và đọc mảng `RES
 | **`cmd \| tail` nuốt mã thoát** | 2026-09-07: `pytest … 2>&1 \| tail -12` báo "exit code 0" trong khi pytest lỗi `unrecognized arguments: -n` | Ghi ra file rồi `echo EXIT=$?`. Đừng đọc mã thoát qua ống dẫn |
 | **`.pyc` cũ sống sót sau khi khôi phục file (đo hai chiều)** | 2026-09-07 (K3.3b): kịch bản đo hai chiều đổi mã → chạy test → `cp file.bak file` khôi phục. Ca vừa xanh thành **đỏ vĩnh viễn** sau khi khôi phục; `inspect.getsource` in ra mã ĐÚNG nhưng chương trình chạy mã CŨ. Đột biến chỉ đảo chỗ hai dòng nên file khôi phục **cùng kích thước**, và cả hai thao tác nằm trong **cùng một giây** — `__pycache__` khoá theo (mtime, size) nên `.pyc` của bản đột biến được coi là còn hợp lệ. Lặp lại 2026-09-28 (#366) ở dạng khác: kịch bản chạy lần lượt nhiều **đột biến**, hai đột biến khác nhau cùng kích thước (xoá hai dòng dài bằng nhau) ghi trong cùng một giây ⇒ ca sau chạy mã của ca trước và báo xanh giả. Chiều ngược lại — đỏ giả — là bằng chứng bịa rằng test bắt được đột biến | Sau mỗi lần khôi phục file trong kịch bản đo hai chiều: `find . -name __pycache__ -not -path './.venv/*' -exec rm -rf {} +`, hoặc chạy pytest với `PYTHONDONTWRITEBYTECODE=1` ngay từ ca đầu. Kịch bản nhiều đột biến: mỗi ca `PYTHONPYCACHEPREFIX` trỏ vào một thư mục mới (`mktemp -d`). Dấu hiệu nhận ra: mã trên đĩa và hành vi lệch nhau, `inspect.getsource` vô can |
 | **Worktree mới thiếu nhóm `dev`** | 2026-09-07: `uv run pytest -n auto` trong worktree vừa tạo báo `unrecognized arguments: -n` — `.venv` riêng của worktree chưa có `pytest-xdist` | `uv sync` ở **gốc worktree** (không phải trong thư mục package) ngay sau `git worktree add` |
-| Hai phiên chung một clone | 2026-09-06 15:07: phiên B checkout `main`, commit của phiên A rơi vào `main`, nhánh A rỗng (#86) | `git worktree add` cho mỗi phiên; `git worktree list` trước khi bắt đầu |
+| Hai phiên chung một clone | 2026-09-06 (#86), đọc nguyên vẹn trong `git reflog`, cách nhau vài chục giây: 15:05:42 phiên A `checkout` tạo nhánh `docs/danh-gia-superpowers...` → 15:06:23 phiên B commit `fix(company): HEAD là commit WIP...` vào nhánh của A → 15:07:06 B `reset` gỡ ra, tạo nhánh riêng → 15:07:14 B `checkout main` → 15:07:16 commit `docs(company): đối chiếu superpowers...` của A rơi vào `main`. Kết quả: nhánh A rỗng (`gh pr create` báo *No commits between main and ...*), `main` local mang một commit chưa qua PR, phải `git branch -f` hai lần mới trả về đúng chỗ. Không xung đột, không cảnh báo — chỉ có commit nằm sai nhánh | Mỗi phiên một worktree (`docs/QUY-TRINH-GIT.md` §2b; Claude Code: `EnterWorktree`); `git worktree list` trước khi bắt đầu. Nhánh mình không tạo hay `checkout` lạ trong `git reflog` → dừng, đừng commit |
+| **"Đã bật bảo vệ nhánh" chỉ là lời hứa — ruleset không nằm trong git** | Đường cơ sở đo 2026-09-04: PR #29 merge 23 giây sau khi mở, job `quality` xanh **3 phút sau khi đã merge**; **35% commit** đẩy thẳng vào `main`. Cấu hình bảo vệ nhánh nằm ở Settings, không ai kiểm được nó có thật | Ruleset là file `.github/rulesets/main.json` đi qua PR như code, job `protection-guard` đọc rule đang áp qua API và đỏ khi thiếu (#40, `docs/QUY-TRINH-GIT.md` §8). `required_status_checks` chặn kiểu #29; rule `pull_request` chặn đẩy thẳng — số approval chỉ là một tham số của rule đó |
+| **Ruleset đặt 1 approval khi repo chỉ có một cộng tác viên — khoá mọi PR** | 2026-09-05 (#40): lần import ruleset đầu với `required_approving_review_count = 1`. GitHub không cho tự duyệt PR của chính mình, `bypass_actors` cố ý rỗng ⇒ không PR nào vào được `main`, auto-merge bật cũng không kích hoạt. Sửa file JSON cũng không được vì sửa nó cần một PR | Số approval không vượt số người thật duyệt được (hiện 0). Lỡ khoá: sửa ruleset đang chạy trong Settings **trước**, rồi mới sửa file qua PR (`docs/QUY-TRINH-GIT.md` §8) |
+| **Sửa ruleset trong UI làm rơi một rule mà CI vẫn xanh** | 2026-09-05: lần đổi `required_approving_review_count` về 0 làm mất `copilot_code_review`; guard bản cũ **vẫn xanh** vì chỉ kiểm bốn rule bất biến. Kiểu trôi này không ai phát hiện cho tới khi cần đến rule đó. Kết cục: sau khi guard chỉ ra, quyết định không dùng Copilot code review, file cũng bỏ rule đó cho khớp | Guard đối chiếu hai chiều file ↔ ruleset thật (#61, vế 2 của `protection-guard`, `docs/QUY-TRINH-GIT.md` §8). Thêm/bỏ rule thì sửa **cả hai chỗ**; viết file thì đối chiếu với `GET /repos/:owner/:repo/rulesets/:id`, không theo trí nhớ |
 | Push sau khi auto-merge đã bật | #77 thiếu sweep, commit rơi khỏi PR, phải mở #78 | `gh pr view --json commits` sau push; hoặc bật auto-merge sau commit cuối |
 | Chạy test không `--cov` rồi tin là xanh | CI Linux đỏ coverage (#78) | Chạy đúng lệnh CI: `pytest -n auto --cov` |
 | Scope PR hai từ | `fix(company,console)` bị `metadata` chặn (#80) | Một từ, chữ thường |

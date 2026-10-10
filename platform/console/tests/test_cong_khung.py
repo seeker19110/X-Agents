@@ -22,6 +22,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 DEV_TASK = ROOT / "scripts" / "dev-task.sh"
@@ -76,7 +77,11 @@ def _tim_bash() -> str | None:
 
 
 BASH = _tim_bash()
-pytestmark = pytest.mark.skipif(BASH is None, reason="cần bash (Git Bash trên Windows) để chạy hook")
+# cong_repo: file này đọc script, hook, workflow ở gốc repo → hook chạy nó cả ở chế độ nhanh (F6).
+pytestmark = [
+    pytest.mark.skipif(BASH is None, reason="cần bash (Git Bash trên Windows) để chạy hook"),
+    pytest.mark.cong_repo,
+]
 
 # Năm package của workspace và module mypy tương ứng — nguồn đối chiếu cho dev-task.sh.
 GOI = {
@@ -175,6 +180,60 @@ def test_dev_task_typecheck_dung_module(goi: str) -> None:
     assert ("--ignore-missing-imports" in kq.stdout) == (goi != "core")
 
 
+def _mypy_ci() -> dict[str, list[str]]:
+    """Thư mục gói → mọi lệnh mypy `ci.yml` chạy ở đó, đúng thứ tự (mọi job, kể cả `static`)."""
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    kq: dict[str, list[str]] = {}
+    for job in ci["jobs"].values():
+        for buoc in job.get("steps", []):
+            run = buoc.get("run")
+            if isinstance(run, str) and re.search(r"\bmypy\b", run):
+                kq.setdefault(buoc.get("working-directory", "."), []).append(run.strip())
+    return kq
+
+
+@pytest.mark.parametrize("goi", sorted(GOI))
+def test_dev_task_typecheck_chay_du_moi_lenh_mypy_cua_ci(goi: str) -> None:
+    """F2 (audit 2026-10-10): từ #381 job `static` chạy mypy company HAI lần (lần hai `--extra graph`), còn
+    `dev-task.sh typecheck company` chỉ một — lỗi kiểu ở `graph.py` lọt cổng cục bộ lẫn hook, chỉ lộ trên CI. Phép
+    kiểm chuỗi `mypy src/<module>` ở trên không thấy vì lần một vẫn khớp. Đối chiếu nguyên danh sách: CI thêm lệnh
+    mypy mà quên `dev-task.sh` thì đỏ ở đây."""
+    thu_muc, _ = GOI[goi]
+    kq = _chay(DEV_TASK, "typecheck", goi, DEV_TASK_DRY_RUN="1")
+    assert kq.returncode == 0, kq.stderr
+    cuc_bo = [d.removeprefix(f"{thu_muc}: ") for d in kq.stdout.splitlines() if d.strip()]
+    assert cuc_bo == _mypy_ci()[thu_muc]
+
+
+@pytest.mark.parametrize(("do_o", "con_chay_lan_hai"), [("lan-mot", False), ("lan-hai", True)])
+def test_dev_task_typecheck_company_do_lan_nao_thi_do(tmp_path: Path, do_o: str, con_chay_lan_hai: bool) -> None:
+    """Hai lệnh mypy cùng một task: lệnh nào đỏ thì task đỏ. `eval` cả khối hai dòng chỉ trả mã của dòng CUỐI —
+    lần một đỏ, lần hai xanh là cổng báo xanh. `uv` giả ghi lại từng lần gọi, đỏ đúng ở lần được chọn."""
+    bin_gia = tmp_path / "bin"
+    bin_gia.mkdir()
+    nhat_ky = tmp_path / "goi.txt"
+    uv = bin_gia / "uv"
+    uv.write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "$*" >> "{nhat_ky.as_posix()}"\n'
+        'case "$*" in *"--extra graph"*) lan=lan-hai ;; *) lan=lan-mot ;; esac\n'
+        f'[ "$lan" = "{do_o}" ] && exit 1\n'
+        "exit 0\n",
+        encoding="utf-8", newline="\n",
+    )
+    uv.chmod(0o755)
+    kq = _chay(DEV_TASK, "typecheck", "company", PATH=f"{bin_gia}{os.pathsep}{os.environ['PATH']}")
+    assert kq.returncode != 0, f"mypy {do_o} đỏ mà typecheck company xanh: {kq.stderr}"
+    assert ("--extra graph" in nhat_ky.read_text(encoding="utf-8")) is con_chay_lan_hai
+
+
+def test_mypy_ci_doc_du_hai_lan_cua_job_static() -> None:
+    """Chốt bộ đọc trước khi tin nó: đọc hụt thì phép đối chiếu trên xanh vì cả hai vế cùng ngắn."""
+    static = [b["run"].strip() for b in yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml")
+              .read_text(encoding="utf-8"))["jobs"]["static"]["steps"] if "mypy" in b.get("run", "")]
+    assert len(static) == 2 and static == _mypy_ci()["companies/software-company"]
+
+
 @pytest.mark.parametrize("goi", sorted(GOI))
 def test_dev_task_test_luon_do_coverage(goi: str) -> None:
     """CI chạy `--cov` cho CẢ NĂM package (ci.yml) — cổng cục bộ thiếu `--cov` là cổng khác cổng CI.
@@ -205,6 +264,15 @@ def test_dev_task_gate_dry_run_khong_bao_xanh() -> None:
     assert kq.returncode == 0, kq.stderr
     assert "XANH" not in kq.stdout + kq.stderr, f"dry-run không chạy gì mà báo xanh: {kq.stderr}"
     assert "dry-run" in kq.stderr, f"dry-run phải nói rõ là chưa chạy gì: {kq.stderr}"
+
+
+def test_dev_task_repo_gate_chi_chay_test_cong_repo_cua_console() -> None:
+    """F6 (audit 2026-10-10): chế độ nhanh của cổng console cho commit chỉ sửa tài liệu/config ngoài gói. Không
+    `--cov`: chạy một tập con thì `fail_under = 100` chắc chắn đỏ, và commit như vậy không đổi được độ phủ mã."""
+    kq = _chay(DEV_TASK, "repo-gate", DEV_TASK_DRY_RUN="1")
+    assert kq.returncode == 0, kq.stderr
+    assert kq.stdout == "platform/console: uv run pytest -q -m cong_repo\n"
+    assert "XANH" not in kq.stdout + kq.stderr, f"dry-run không chạy gì mà báo xanh: {kq.stderr}"
 
 
 def test_dev_task_gate_khong_goi_chay_ca_nam_package() -> None:
@@ -298,7 +366,7 @@ CHAN_GIT = HOOKS / "block-dangerous-git.sh"
     ],
 )
 def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
-    """Luật cấm 1 (`main`) và `CLAUDE.md` §8 (`reset --hard`, `--abort`) — exit 2 = chặn."""
+    """Luật cấm 1 (`main`) và `AGENTS.md` §"Hàng rào thi hành" (`reset --hard`, `--abort`) — exit 2 = chặn."""
     kq = _chay(CHAN_GIT, stdin=_payload(cmd))
     assert kq.returncode == 2, f"đáng lẽ chặn: {cmd} (exit {kq.returncode})"
 
@@ -606,11 +674,51 @@ def test_bo_do_voi_ra_ngoai_goi_dung_y() -> None:
         assert _voi_ra_ngoai_goi(t, van) is ra, van
 
 
+CONSOLE_TESTS = ROOT / "platform" / "console" / "tests"
+
+
+def _mang_cong_repo(van: str) -> bool:
+    """Module gán `pytestmark` ở cấp module có `pytest.mark.cong_repo` (một marker, hay một phần tử của danh sách)."""
+    return any(isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in n.targets)
+               and "pytest.mark.cong_repo" in ast.unparse(n.value) for n in ast.parse(van).body)
+
+
+def test_test_console_doc_file_ngoai_goi_mang_marker_cong_repo() -> None:
+    """F6: commit chỉ sửa tài liệu/config ngoài gói thì hook chỉ chạy `pytest -m cong_repo` của console. Một test
+    console đọc file ngoài gói mà thiếu marker thì commit đổi đúng file ấy lọt cổng nhanh — dò bằng cùng bộ dò
+    `parents[k]` với danh sách trên. Không phải test đọc file ngoài gói nào cũng tên `test_cong_*`
+    (`test_static_ui.py` đọc ví dụ của company, `test_hop_dong_schema.py` đọc schema topic)."""
+    doc_ngoai = {p.name: p for p in CONSOLE_TESTS.rglob("*.py") if _voi_ra_ngoai_goi(p)}
+    assert {"test_cong_repo.py", "test_readme_goc.py", "test_static_ui.py"} <= set(doc_ngoai), "bộ dò mù"
+    thieu = sorted(ten for ten, p in doc_ngoai.items() if not _mang_cong_repo(p.read_text(encoding="utf-8")))
+    assert not thieu, f"test console đọc file ngoài gói mà thiếu `pytestmark` có `pytest.mark.cong_repo`: {thieu}"
+
+
+def test_marker_cong_repo_dang_ky_trong_pyproject_console() -> None:
+    """Marker chưa đăng ký thì `-m cong_repo` vẫn chạy nhưng mỗi file gắn nó sinh PytestUnknownMarkWarning."""
+    cfg = tomllib.loads((ROOT / "platform" / "console" / "pyproject.toml").read_text(encoding="utf-8"))
+    assert any(m.startswith("cong_repo:") for m in cfg["tool"]["pytest"]["ini_options"].get("markers", []))
+
+
+def test_bo_do_marker_cong_repo_dung_y() -> None:
+    """Chốt hai bộ dò trên mẫu biết trước, ở đường dẫn console (gốc gói sâu khác companies/<gói>)."""
+    t = CONSOLE_TESTS / "test_mau.py"
+    assert _voi_ra_ngoai_goi(t, "Path(__file__).resolve().parents[1] / 'src'") is False
+    assert _voi_ra_ngoai_goi(t, "Path(__file__).resolve().parents[3] / 'README.md'") is True
+    assert _voi_ra_ngoai_goi(t, "PAGE.parents[5] / 'companies'") is True
+    ca = {"pytestmark = pytest.mark.cong_repo": True,
+          "pytestmark = [pytest.mark.usefixtures('x'), pytest.mark.cong_repo]": True,
+          "@pytest.mark.cong_repo\ndef test_a(): pass": False, "x = pytest.mark.cong_repo": False,
+          "pytestmark = pytest.mark.usefixtures('x')": False}
+    for van, co in ca.items():
+        assert _mang_cong_repo(van) is co, van
+
+
 @pytest.fixture
 def kho_worktree(kho_main: Path, tmp_path: Path) -> tuple[Path, Path]:
     """Checkout chính đứng trên `main` + một worktree trên nhánh riêng.
 
-    Đúng hoàn cảnh `CLAUDE.md` luật 2 bắt buộc: mỗi phiên một worktree. Trả `(chinh, worktree)`.
+    Đúng hoàn cảnh `AGENTS.md` luật cấm 2 bắt buộc: mỗi phiên một worktree. Trả `(chinh, worktree)`.
     """
     (kho_main / "nen.txt").write_text("x", encoding="utf-8")
     _git(kho_main, "add", "-A")
@@ -626,7 +734,7 @@ def test_cong_commit_khong_chan_oan_trong_worktree(kho_worktree: tuple[Path, Pat
     """Hook phải đọc nhánh của CÂY ĐANG COMMIT, không phải của checkout chính.
 
     Checkout chính đứng trên `main`; worktree đứng trên `fix/thu`. Đọc nhầm cây ⇒ chặn oan mọi commit
-    đúng luật — hàng rào cản chính quy trình mà `CLAUDE.md` luật 2 bắt buộc.
+    đúng luật — hàng rào cản chính quy trình mà `AGENTS.md` luật cấm 2 bắt buộc.
     """
     chinh, wt = kho_worktree
     (wt / "a.txt").write_text("x", encoding="utf-8")
@@ -658,19 +766,21 @@ def test_cong_commit_van_chan_ha_nguong_trong_worktree(kho_worktree: tuple[Path,
     assert "fail_under" in kq.stderr
 
 
-def _dat_dev_task_gia(cay: Path, nhan: str, ma_thoat: int) -> None:
+def _dat_dev_task_gia(cay: Path, nhan: str, ma_thoat: int, biet_repo_gate: bool = True) -> None:
     """`scripts/dev-task.sh` giả cho một cây: khai nó là bản của cây nào, và `CLAUDE_PROJECT_DIR` trỏ cây nào.
 
     Cả hai đều phải là worktree: `dev-task.sh` thật lấy cây để `cd` từ `CLAUDE_PROJECT_DIR`, không từ vị trí của
     chính nó — gọi đúng bản của worktree mà để biến trỏ checkout chính vẫn là chạy cổng trên code khác.
-    `nhan-cay.txt` không staged, nên không làm hook đổi gói phải chạy.
+    `nhan-cay.txt` không staged, nên không làm hook đổi gói phải chạy. `biet_repo_gate=False` giả bản dev-task cũ
+    (nhánh tạo trước F6) chưa có task `repo-gate`.
     """
     (cay / "nhan-cay.txt").write_text(nhan, encoding="utf-8")
     s = cay / "scripts" / "dev-task.sh"
     s.parent.mkdir(parents=True, exist_ok=True)
     s.write_text(
         "#!/usr/bin/env bash\n"
-        f'echo "dev-task-gia ban={nhan} du_an=$(cat "$CLAUDE_PROJECT_DIR/nhan-cay.txt" 2>/dev/null) $*" >&2\n'
+        + ('case "$1" in\n  repo-gate) : ;;\nesac\n' if biet_repo_gate else "")
+        + f'echo "dev-task-gia ban={nhan} du_an=$(cat "$CLAUDE_PROJECT_DIR/nhan-cay.txt" 2>/dev/null) $*" >&2\n'
         f"exit {ma_thoat}\n",
         encoding="utf-8",
         newline="\n",
@@ -738,6 +848,40 @@ def test_cong_commit_lui_ve_root_khi_cwd_khong_phai_repo(kho_main: Path, tmp_pat
     kq = _cong("git commit -m 'x'", kho_main, _cwd=str(ngoai))
     assert kq.returncode == 2, f"mất phép kiểm nhánh khi cwd ngoài repo: {kq.stderr}"
     assert "main" in kq.stderr
+
+
+# F6 (audit 2026-10-10): commit chỉ đụng tài liệu/config NGOÀI mọi gói thì console chạy chế độ nhanh
+# (`dev-task.sh repo-gate` = `pytest -m cong_repo`, ~10 s) thay cho cả suite có `--cov` (~110 s). Mọi trường hợp
+# khác giữ cổng đầy đủ. Ngoài console còn phải loại file trong gói khác: schema/prompt/mẫu (không phải `.py`) của
+# company/keeper chảy vào test console qua import, không qua `ROOT/…`, nên marker không phủ được.
+def _cong_console_chay(kho: Path, *ten: str, biet_repo_gate: bool = True) -> str:
+    """Console chạy ở chế độ nào: `repo-gate` (nhanh) hay `day-du` (`gate console`, hoặc `gate all` có console)."""
+    _stage(kho, *ten)
+    _dat_dev_task_gia(kho, "chinh", 0, biet_repo_gate)
+    kq = _cong("git commit -m 'x'", kho)
+    assert kq.returncode == 0, kq.stderr
+    goi = re.findall(r"dev-task-gia ban=chinh du_an=chinh (.*)", kq.stderr)
+    if "repo-gate" in goi:
+        assert not {"gate console", "gate all"} & set(goi), f"chạy cả hai chế độ: {goi}"
+        return "repo-gate"
+    return "day-du" if {"gate console", "gate all"} & set(goi) else repr(goi)
+
+
+@pytest.mark.parametrize("ten", [("README.md",), ("docs/x.md",), ("README.md", "docs/x.md", ".github/workflows/ci.yml")])
+def test_cong_commit_chi_tai_lieu_ngoai_goi_chay_console_che_do_nhanh(kho_main: Path, ten: tuple[str, ...]) -> None:
+    assert _cong_console_chay(kho_main, *ten) == "repo-gate"
+
+
+@pytest.mark.parametrize("ten", [("scripts/x.py",), ("README.md", "scripts/x.py"), ("platform/console/README.md",),
+                                 ("companies/keeper/CLAUDE.md",), ("Makefile",)])
+def test_cong_commit_dung_ma_hoac_goi_giu_cong_console_day_du(kho_main: Path, ten: tuple[str, ...]) -> None:
+    assert _cong_console_chay(kho_main, *ten) == "day-du"
+
+
+def test_cong_commit_dev_task_cu_chua_co_repo_gate_thi_chay_day_du(kho_main: Path) -> None:
+    """Hook đến từ checkout chính, `dev-task.sh` từ cây đang commit: worktree tạo trước F6 chưa có `repo-gate` —
+    gọi nó là `task lạ` → exit 2 → chặn mọi commit tài liệu ở đó. Không có task thì lùi về cổng đầy đủ."""
+    assert _cong_console_chay(kho_main, "README.md", biet_repo_gate=False) == "day-du"
 
 
 # --- .claude/hooks/auto-format.sh -------------------------------------------

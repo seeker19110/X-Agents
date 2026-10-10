@@ -27,21 +27,7 @@ test, hoặc nguồn chính thống có ngày truy cập.
 
 Một clone chỉ có **một** HEAD. Hai phiên agent cùng mở một thư mục clone là hai tiến trình
 lần lượt `git checkout` đè lên nhau, và commit của phiên này rơi vào nhánh của phiên kia — không lệnh nào
-báo lỗi.
-
-Chuyện đã xảy ra ngày 2026-09-06, đọc được nguyên vẹn trong `git reflog` (cách nhau vài chục giây):
-
-```
-15:05:42 checkout: moving from fix/wip-head-is-pr to docs/danh-gia-superpowers...   ← phiên A tạo nhánh
-15:06:23 commit: fix(company): HEAD là commit WIP...                                ← phiên B commit vào nhánh A
-15:07:06 reset: moving to b95710d                                                   ← B gỡ, tạo nhánh riêng
-15:07:14 checkout: moving from fix/wip-head-is-pr to main                           ← B chuyển sang main
-15:07:16 commit: docs(company): đối chiếu superpowers...                            ← commit của A rơi vào main
-```
-
-Kết quả: nhánh của A rỗng (`gh pr create` báo *No commits between main and ...*), còn `main` local mang một
-commit chưa qua PR. Phải `git branch -f` hai lần mới trả về đúng chỗ. Không có xung đột, không có cảnh báo —
-chỉ có commit nằm sai nhánh.
+báo lỗi. Chuyện đã xảy ra (reflog 2026-09-06): `TRAPS.md` §3, dòng "Hai phiên chung một clone".
 
 **Quy tắc: phiên nào không phải phiên đầu tiên thì làm trong worktree riêng.** Harness có tool worktree riêng
 (Claude Code: `EnterWorktree`) thì dùng nó trước — nó lo cả đặt chỗ, tạo nhánh và dọn dẹp; không có thì tự tạo:
@@ -111,8 +97,8 @@ yêu cầu → phân tích hiện trạng → chốt yêu cầu → đặc tả 
   CI đỏ ở cuối phải tháo ngược nhiều commit.
 - **Mở PR ở trạng thái NHÁP ngay sau task đầu tiên**, không chờ xong cả hạng mục. Lý do: `pull_request.synchronize`
   vẫn kích CI thật trên PR nháp (không job nào lọc theo `draft`), nên mỗi task push lên vẫn có CI thật — không
-  cần vòng "PR nháp riêng cho mỗi task rồi gộp lại". Có số PR từ đầu còn giải quyết dứt điểm luật bắt buộc 10:
-  điền `(#n)` vào CHANGELOG ngay từ commit thứ hai, không phải vá số sau khi mở PR.
+  cần vòng "PR nháp riêng cho mỗi task rồi gộp lại". (Dòng CHANGELOG không cần mang `(#n)` — luật bắt buộc 10:
+  commit squash trên `main` đã mang số.)
 - **§5 bước 2 "không để nháp" vẫn đúng, chỉ đúng ở bước merge**: nháp trong lúc làm task, `gh pr ready` **rồi
   mới** bật auto-merge khi hạng mục xong — không mâu thuẫn với "GitHub từ chối bật auto-merge trên PR nháp".
 - **§2c "chỉ một PR mở" áp nguyên vẹn cho cả PR nháp** — nháp vẫn tính là một PR đang mở. Nhánh khác (kể cả
@@ -160,8 +146,8 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
      sửa — dẫn chiếu chết ở ADR, session log, CHANGELOG cũ vẫn được phép còn (đó là bản ghi lịch sử), nhưng
      dẫn chiếu ở tài liệu **đang sống** (README, ARCHITECTURE, CODEMAP, `.claude/`, `.gitattributes`) phải sửa.
    - `docs/thi-hanh/<mã>.md` hoặc bảng theo dõi liên quan (nếu có) đã cập nhật cột "khi nào" chưa.
-   - Dòng CHANGELOG ở "Chưa phát hành" đã có cho đúng thay đổi này chưa, và mang `(#<số PR>)` sau khi tạo PR
-     (cổng `metadata` đỏ nếu thiếu dòng hoặc thiếu số).
+   - Dòng CHANGELOG ở "Chưa phát hành" đã có cho đúng thay đổi này chưa (cổng `metadata` đỏ nếu PR không thêm
+     dòng nào). Không cần ghi `(#<số PR>)`: commit squash trên `main` đã mang số.
    - `git status` sạch (không sót file định thêm mà quên `git add`, không sót file tạm không định commit).
    - `git diff --check` sạch trên **toàn diff** so với `main`, không chỉ file vừa sửa gần nhất.
    - `gh pr list --state open` — còn PR khác mở thì làm theo §2c, không tạo PR mới.
@@ -175,9 +161,10 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
    Bẫy: scope chỉ nhận chữ thường — `fix(skillTiering)` trượt, `fix(skills)` đạt.
 
    Cổng `metadata` (`.github/workflows/pr-policy.yml`) còn bốn bước nữa, đọc trước khi viết thân PR:
-   - **Dòng CHANGELOG** thêm vào mục "Chưa phát hành" phải mang `(#<số PR này>)` (`scripts/pr_changelog_check.py`;
-     nhãn `no-changelog` để miễn) — đỏ nếu thiếu dòng hoặc thiếu số. Số chỉ có sau `gh pr create`: tạo PR rồi
-     commit dòng có số vào chính PR đó (`AGENTS.md` luật bắt buộc 10).
+   - **Dòng CHANGELOG**: PR phải thêm ít nhất một dòng vào `CHANGELOG.md` (`scripts/pr_changelog_check.py`;
+     nhãn `no-changelog` để miễn) — đỏ nếu không thêm dòng nào. Không bắt `(#<số PR>)`: số đã nằm trong subject
+     commit squash trên `main`, tra bằng `git blame CHANGELOG.md`/`git log -S"<dòng>"` (`AGENTS.md` luật bắt buộc
+     10). Đừng đặt chỗ giữ kiểu `(#PENDING)` — `drift-check` đỏ.
    - **PR `fix(` chạm `companies/software-company/src/company/orchestrator.py` hoặc `orch/` phải dẫn `ADR-0034`**
      trong thân, nói rõ đụng bảng chuyển nào (K8.3). `refactor(` không bị soi: tách module là làm ĐÚNG
      theo ADR, còn `fix(` là sửa hành vi máy trạng thái — chỗ dễ lặng lẽ phá bảng chuyển nhất. Đặc tả
@@ -231,8 +218,8 @@ Merge sạch (không xung đột) thì **không** chạy lại toàn bộ cổng
 
 ## 8. Việc cần bật trên GitHub (một lần) — và cách biết nó CÓ THẬT
 
-Quy trình trên giả định `main` có bảo vệ nhánh. Cấu hình này **không nằm trong git**, nên trước đây "đã bật"
-chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **3 phút sau khi đã merge**. Từ nay có hai lớp:
+Quy trình trên giả định `main` có bảo vệ nhánh. Cấu hình này **không nằm trong git**, nên "đã bật" phải kiểm được
+bằng máy, không chỉ là lời hứa (chuyện đã xảy ra: `TRAPS.md` §3, ba dòng "ruleset"). Hai lớp:
 
 1. **Ruleset import được** — `.github/rulesets/main.json` là nguồn sự thật, đi qua PR như code.
    Bật: Settings → Rules → Rulesets → **New ruleset → Import a ruleset** → chọn file đó → Create.
@@ -247,30 +234,17 @@ chỉ là lời hứa: PR #29 merge 23 giây sau khi mở, job `quality` xanh **
    - **Vế 2 — file và ruleset thật có khớp không (đối chiếu hai chiều):**
      rule khai trong file mà **không** áp trên nhánh ⇒ **đỏ** (bảo vệ yếu hơn thứ repo khai);
      rule đang áp mà **không** có trong file ⇒ **cảnh báo** (không yếu đi, nhưng import lại sẽ xoá mất nó).
-
-   > **Vì sao cần vế 2.** Sửa ruleset trong UI có thể **làm rơi một rule mà không báo gì**. Đã xảy ra thật ngày
-   > 2026-09-05: lần đổi `required_approving_review_count` về 0 làm mất `copilot_code_review`, và guard bản cũ
-   > **vẫn xanh** vì nó chỉ kiểm bốn rule bất biến. Kiểu trôi này không ai phát hiện cho tới khi cần đến rule đó.
-   > *(Kết cục: sau khi guard chỉ ra, đã quyết định **không dùng** Copilot code review — nên file cũng bỏ luôn
-   > rule đó cho khớp. Điều đáng giữ lại là bài học: mất một rule mà CI vẫn xanh là chuyện có thật.)*
+     Cần vế này vì sửa ruleset trong UI có thể làm rơi một rule mà không báo gì (`TRAPS.md` §3).
 
 Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và
 **Automatically delete head branches**.
 
 ### Vì sao `required_approving_review_count` = 0
 
-> **Không phải hạ tiêu chuẩn — là ghi nhận thực tế.** Repo hiện có **đúng một cộng tác viên**. GitHub không cho
-> tự duyệt PR của chính mình, và `bypass_actors` cố ý để rỗng, nên đặt 1 approval sẽ **khoá vĩnh viễn mọi PR**
-> vào `main` — auto-merge bật cũng không kích hoạt. Lần đầu import với số 1 đã tạo đúng thế kẹt đó (PR #40).
-
-Đặt 0 **vẫn chặn nguyên hai vấn đề** mà đường cơ sở đo được ngày 2026-09-04:
-
-| Vấn đề đo được | Rule nào chặn |
-|---|---|
-| PR #29 merge sau 23 giây, `quality` xanh **3 phút sau khi merge** | `required_status_checks` |
-| **35% commit** đẩy thẳng vào `main` | rule `pull_request` — nó bắt buộc phải qua PR; số approval chỉ là **một tham số** của rule đó |
-
-Thứ mất đi là **four-eyes**, và four-eyes vốn không tồn tại khi chỉ có một người.
+Không phải hạ tiêu chuẩn: repo có **đúng một cộng tác viên**, GitHub không cho tự duyệt PR của chính mình và
+`bypass_actors` cố ý rỗng, nên 1 approval **khoá vĩnh viễn mọi PR** vào `main`. Đặt 0 vẫn giữ
+`required_status_checks` và rule `pull_request` (bắt buộc qua PR — số approval chỉ là một tham số của nó); thứ mất
+đi là **four-eyes**, vốn không tồn tại khi chỉ có một người. Chuyện đã xảy ra (PR #29, #40): `TRAPS.md` §3.
 
 **Nâng lại lên 1 (hoặc 2) ngay khi có người thứ hai thật** trong repo — lúc đó nó mới có nghĩa. Cách đổi: sửa
 `required_approving_review_count` trong file JSON qua PR **rồi import lại** (ruleset cùng tên sẽ được cập nhật).
@@ -281,17 +255,15 @@ mà PR thì đang bị khoá. Phải **sửa ruleset đang chạy trong Settings
 
 ### File và ruleset thật phải khớp
 
-File này được **đối chiếu với `GET /repos/:owner/:repo/rulesets/:id`** bằng máy, không viết theo trí nhớ.
-Hai tham số GitHub tự thêm khi tạo ruleset mà bản viết tay ban đầu thiếu — nay đã bổ sung:
-`required_reviewers` và `require_extra_approval_for_unattributed_changes` của rule `pull_request`.
+File này được **đối chiếu với `GET /repos/:owner/:repo/rulesets/:id`** bằng máy, không viết theo trí nhớ — GitHub
+tự thêm tham số mà bản viết tay hay thiếu (`required_reviewers`, `require_extra_approval_for_unattributed_changes`
+của rule `pull_request`).
 
 **Bốn rule là đủ:** `deletion` · `non_fast_forward` · `pull_request` · `required_status_checks`.
-`copilot_code_review` từng được GitHub thêm vào lúc tạo ruleset, nhưng **đã quyết định không dùng** (2026-09-05)
-nên gỡ khỏi cả ruleset lẫn file. Muốn dùng lại thì thêm vào **cả hai chỗ** — thêm một chỗ thôi sẽ bị vế 2 của
-`protection-guard` bắt.
+`copilot_code_review` **đã quyết định không dùng** (2026-09-05), gỡ khỏi cả ruleset lẫn file. Muốn dùng lại thì
+thêm vào **cả hai chỗ** — thêm một chỗ thôi sẽ bị vế 2 của `protection-guard` bắt.
 
-🔍 **Điểm cần theo dõi:** `require_extra_approval_for_unattributed_changes = true` đòi **thêm một approval** khi PR
-chứa thay đổi không gán được cho một tài khoản. Hiện không cắn: commit trên nhánh này gán đúng vào tài khoản
-`claude` (kiểm bằng trường `author.login` của API commit). Nhưng nếu sau khi hạ approval về 0 mà PR **vẫn**
-`blocked` dù mọi check xanh, hãy nghi tham số này trước tiên — nhất là khi người mở PR và người tạo commit là
-hai tài khoản khác nhau.
+🔍 PR **vẫn** `blocked` dù mọi check xanh và approval = 0 → nghi `require_extra_approval_for_unattributed_changes =
+true` trước tiên: nó đòi thêm một approval khi PR chứa thay đổi không gán được cho một tài khoản (`author.login`
+của API commit), nhất là khi người mở PR và người tạo commit là hai tài khoản khác nhau. Hiện không cắn: commit
+gán đúng vào tài khoản `claude`.

@@ -26,6 +26,7 @@ import yaml
 from company.assetscan import SEVERITY, scan_text
 
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 CLAUDE = ROOT / ".claude"
 SETTINGS = CLAUDE / "settings.json"
 LOCK = ROOT / "docs" / "integrations" / "ecc.lock.json"

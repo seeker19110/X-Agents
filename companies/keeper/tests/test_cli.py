@@ -9,13 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
 from keeper.cli import Plan, main, plan_for
-from keeper.drift import CHANGELOG_RULE_CUTOFF
 from keeper.events import Signal, Ticket
 
 
@@ -252,11 +250,11 @@ def test_gate_request_boi_vai_ngoai_allowlist_bi_tu_choi(tmp_path: Path, khong_a
     assert "quyền" in capsys.readouterr().err
 
 
-# --- lệnh `drift`: cổng máy cho luật cấm §5 + luật bắt buộc §10 (bộ dò đã có từ BT-keeper nhưng
-# --- không workflow nào gọi, nên #192/#208/#209 merge thiếu dòng CHANGELOG mà CI vẫn xanh).
+# --- lệnh `drift`: cổng máy cho luật cấm §5 + chỗ trống số PR trong CHANGELOG (bộ dò đã có từ BT-keeper nhưng
+# --- không workflow nào gọi, nên công cụ tự soi không canh được gì).
 
 def _repo_sach(tmp_path: Path) -> Path:
-    """Repo tối thiểu mà cả ba phép của `drift.scan` đều không có gì để nói."""
+    """Repo tối thiểu mà ba phép của `drift.scan` đều không có gì để nói."""
     repo = tmp_path / "repo"
     (repo / ".claude" / "agents").mkdir(parents=True)
     (repo / "companies" / "software-company" / "tests" / "golden" / "agents").mkdir(parents=True)
@@ -304,30 +302,22 @@ def test_drift_co_tin_hieu_thi_thoat_1_va_in_ra(tmp_path: Path, capsys):
 def test_drift_tu_thu_muc_con_ra_dung_ket_qua_nhu_o_goc(tmp_path: Path, capsys):
     """`--repo` là thư mục con (mặc định `.` khi đứng ở `companies/keeper`) phải soi đúng repo như ở gốc.
 
-    Trước đây `git log` tự dò lên gốc còn mọi đường dẫn file ghép từ `--repo` nguyên văn. Đo 2026-09-28 từ
-    `companies/keeper`: 200 tín hiệu "thiếu dòng CHANGELOG" giả, còn ba phép kia lặng lẽ không soi gì. Ca này
-    có đủ hai chiều hỏng: một lệch THẬT chỉ phép (a) thấy (mất nó là âm tính giả) và một PR ĐÃ có
-    dòng CHANGELOG (báo thiếu là dương tính giả)."""
+    Trước đây mọi đường dẫn file ghép từ `--repo` nguyên văn. Đo 2026-09-28 từ `companies/keeper`: các phép
+    đọc file lặng lẽ không soi gì. Ca này giữ một lệch THẬT chỉ phép (a) thấy — mất nó là âm tính giả."""
     repo = _repo_sach(tmp_path)
     (repo / ".claude" / "agents" / "sc-foo.md").write_text(
         "<!-- SINH TỰ ĐỘNG từ agents/supervision/foo.md version=1 -->\n", encoding="utf-8")
-    (repo / "CHANGELOG.md").write_text("# Changelog\n\n- feat: x (#7)\n", encoding="utf-8")
-    _git(repo, "init", "-b", "main")
-    _git(repo, "add", "-A")
-    ngay = (CHANGELOG_RULE_CUTOFF + timedelta(days=1)).isoformat()
-    _git(repo, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "feat: x (#7)", "--date", ngay)
 
     assert main(["drift", "--repo", str(repo)]) == 1
     o_goc = capsys.readouterr().out
-    assert "DRIFT sc-foo.md" in o_goc and "pr-7" not in o_goc
+    assert "DRIFT sc-foo.md" in o_goc
     assert main(["drift", "--repo", str(repo / "companies" / "software-company")]) == 1
     assert capsys.readouterr().out == o_goc
 
 
 def test_drift_thu_muc_khong_phai_git_khong_duoc_bao_sach(tmp_path: Path, capsys):
-    """`--repo` trỏ sai chỗ (không phải repo git) thì phép (c) không đọc được `git log` nào và ba phép kia
-    không thấy file nào — trước đây in "sạch" và thoát 0: cổng CI xanh giả, đúng thứ comment job `drift-check`
-    trong `ci.yml` cảnh báo. Không soi được thì phải nói là không soi được."""
+    """`--repo` trỏ sai chỗ (không phải repo git) thì ba phép không thấy file nào — trước đây in "sạch" và
+    thoát 0: cổng CI xanh giả. Không soi được thì phải nói là không soi được."""
     repo = tmp_path / "khong-phai-git"
     repo.mkdir()
     assert main(["drift", "--repo", str(repo)]) == 2
@@ -335,20 +325,32 @@ def test_drift_thu_muc_khong_phai_git_khong_duoc_bao_sach(tmp_path: Path, capsys
     assert "sạch" not in cap.out and "không phải repo git" in cap.err
 
 
-def test_drift_clone_nong_khong_duoc_bao_sach(tmp_path: Path, capsys):
-    """Clone `--depth 1` chỉ có một commit: phép (c) không thấy PR nào đã merge và im lặng — cùng họ xanh giả
-    với ca trên, trước đây chỉ có một dòng comment trong `ci.yml` canh."""
+def test_drift_khong_doi_dong_changelog_cho_pr_da_merge(tmp_path: Path, capsys):
+    """Phép (c) cũ (mọi `(#n)` trong `git log` phải có trong CHANGELOG) đã bỏ — audit 2026-10-10 F1.
+
+    `scripts/pr_changelog_check.py` + ruleset không bypass đã chặn TRƯỚC merge, nên sau merge phép (c) chỉ còn
+    bắt PR được miễn hợp lệ (dependabot, eval-record gắn `no-changelog`): main đỏ giả ở #333, #383. Commit
+    squash `(#7)` thiếu dòng CHANGELOG nay không phải tín hiệu lệch."""
+    repo = _repo_sach(tmp_path)
+    _git(repo, "add", "-A")
+    _git(repo, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "build(deps): bump x (#7)",
+         "--date", "2026-10-01T00:00:00+07:00")
+    assert main(["drift", "--repo", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "sạch" in out and "pr-7" not in out
+
+
+def test_drift_clone_nong_van_soi_duoc(tmp_path: Path, capsys):
+    """Ba phép còn lại (a)(b)(d) chỉ đọc file trên đĩa, không đọc `git log` — clone `--depth 1` (mặc định của
+    `actions/checkout`, của phiên web) soi được như clone đủ, không phải lỗ hổng thoát 2."""
     goc = _repo_sach(tmp_path)
-    for i in (1, 2):  # PR #1 THIẾU dòng CHANGELOG, PR #2 có — chỉ commit #2 còn lại trong clone nông
-        (goc / "CHANGELOG.md").write_text("# Changelog\n\n- feat: 2 (#2)\n" if i == 2 else "# Changelog\n",
-                                          encoding="utf-8")
-        _git(goc, "add", "-A")
-        _git(goc, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", f"feat: {i} (#{i})")
-    assert main(["drift", "--repo", str(goc)]) == 1, "đối chứng: lịch sử đủ thì thấy PR #1 thiếu dòng"
-    assert "pr-1" in capsys.readouterr().out
+    (goc / "CHANGELOG.md").write_text("# Changelog\n\n- feat: x (#PENDING)\n", encoding="utf-8")
+    _git(goc, "add", "-A")
+    for i in (1, 2):
+        _git(goc, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--allow-empty", "-am", f"feat: {i} (#{i})")
     nong = tmp_path / "nong"
     r = subprocess.run(["git", "clone", "--depth", "1", f"file://{goc}", str(nong)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert main(["drift", "--repo", str(nong)]) == 2
+    assert main(["drift", "--repo", str(nong)]) == 1
     cap = capsys.readouterr()
-    assert "sạch" not in cap.out and "clone nông" in cap.err
+    assert "DRIFT changelog-L3" in cap.out and cap.err == ""

@@ -383,18 +383,16 @@ jobs:
     permissions:
       contents: read
     steps:
-      # `fetch-depth: 0` LÀ ĐIỀU KIỆN ĐÚNG SAI, không phải tinh chỉnh: phép (c) đọc `git log` tìm mọi commit
-      # `(#n)` đã merge. Với depth mặc định (1) `git log` chỉ có một commit, không PR nào bị soi, và cổng này
-      # sẽ XANH GIẢ — tệ hơn không có cổng, vì nó tạo cảm giác đã được canh.
+      # Checkout nông là đủ: ba phép còn lại (`sc-*`/golden lệch nguồn, chỗ trống số PR trong CHANGELOG) chỉ
+      # đọc file trên đĩa. Phép (c) đọc `git log` — lý do cũ của `fetch-depth: 0` — đã bỏ ở audit 2026-10-10 F1:
+      # `pr-policy` chặn thiếu dòng CHANGELOG trước merge, sau merge nó chỉ còn báo giả cho PR `no-changelog`.
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: "3.13"
       - run: uv sync --locked
-      # Thuần cục bộ (đọc .git + file trên đĩa), không gọi mạng, không cần token.
+      # Thuần cục bộ (đọc file trên đĩa), không gọi mạng, không cần token.
       - run: uv run python -m keeper.cli drift --repo .
 
   # ECC vendor (ADR gốc 0028): `.claude/{skills,commands,agents}/ecc-*` phải đúng là output của

@@ -66,13 +66,11 @@ là chưa đạt, không hạ chuẩn để kết thúc. Nguồn template: `docs
 
    ```
    BÁO CÁO XÁC THỰC — <nhánh> @ <sha>
-   make lint ✅/❌ (ruff: .. | mypy: .. file)
-   make test ✅/❌ (X passed, Y failed, Z skipped)
-   make cov  ✅/❌ (fail_under = 100 — đạt/thiếu <n> dòng ở <file>)
+   scripts/dev-task.sh gate <gói> ✅/❌ (X passed, Y failed; phủ 100% đạt/thiếu <n> dòng ở <file>)
    evals --replay --strict ✅/❌/n-a   | subagents check ✅/❌/n-a   | assetscan scan ✅/❌/n-a
    Test đỏ TRƯỚC khi sửa (luật bắt buộc 4, đo hai chiều) ✅/❌/n-a — tên ca: <..>
    Bảy bước CONTRIBUTING §3 (nếu chạm agents/ hoặc skills/) ✅/n-a
-   CHANGELOG + docs/sessions/<ngày>.md trong CHÍNH PR này (luật 10) ✅/❌
+   Dòng CHANGELOG.md trong CHÍNH PR này (luật 10) ✅/❌
    KẾT LUẬN: Sẵn sàng  /  Cần xử lý: <..>
    ```
 
@@ -123,11 +121,14 @@ là chưa đạt, không hạ chuẩn để kết thúc. Nguồn template: `docs
 8. **Sau `git push`, kiểm commit đã vào PR** (`gh pr view <n> --json commits`) trước khi báo xong.
 9. **Cuối phiên**: ghi `docs/sessions/<ngày>.md` (việc dở, PR mở, thứ người sau không được quên) và một dòng
    `CHANGELOG.md` cho mỗi PR đã merge.
-10. **Tài liệu đi CÙNG PR, không đi sau nó**: dòng `CHANGELOG.md`, `docs/sessions/<ngày>.md` và số liệu
-   `README.md` nằm trong **chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp. Số PR chỉ có sau khi
-   tạo PR, nên ngay sau `gh pr create`: điền `(#<n>)` vào dòng CHANGELOG (và nhật ký phiên) rồi **commit tiếp
-   vào chính PR đó** trước khi nó merge — không phải mở PR khác để vá số. Đẩy xong thì kiểm commit đã vào PR
-   (luật 8). Dòng CHANGELOG xếp mới nhất trên cùng theo **thời điểm merge**, không theo thứ tự tạo PR.
+10. **Tài liệu đi CÙNG PR, không đi sau nó**: dòng `CHANGELOG.md`, tài liệu bị thay đổi làm cũ (`docs/`, ADR,
+   CODEMAP…) và số liệu `README.md` nằm trong **chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp (cổng
+   `metadata` đỏ khi PR không thêm dòng CHANGELOG nào; nhãn `no-changelog` để miễn). Nhật ký phiên
+   `docs/sessions/<ngày>.md` **không** thuộc luật này mà theo luật 9 (cuối phiên): CI chỉ cảnh báo khi thiếu
+   (K8.4), mẫu PR không có ô chặn nào cho nó. Số PR **không cần ghi tay**: commit squash trên
+   `main` đã mang `(#n)`, nên tra dòng ↔ PR bằng `git blame CHANGELOG.md` hoặc `git log -S"<dòng>"`. Đừng đặt
+   chỗ giữ kiểu `(#PENDING)` — `drift-check` đỏ (`TRAPS.md` §3). Dòng CHANGELOG xếp mới nhất trên cùng theo
+   **thời điểm merge**, không theo thứ tự tạo PR.
 11. **Trước khi mở PR, tìm PR/issue trùng — đóng hay mở đều tính.** `gh pr list --state all --search "<từ khoá>"`
    và `gh issue list --state all --search "<từ khoá>"`. Có PR cũ từng đóng vì cùng vấn đề → đọc lý do đóng, nói
    rõ trong PR mới cái gì khác đi khiến lần này nên qua; không lặng lẽ mở PR thứ hai cho cùng một việc.
@@ -172,7 +173,7 @@ Luật cấm 1, 3, 6 và luật bắt buộc 3 ở trên **có cơ chế chặn*
 | Hook | Chặn gì |
 |---|---|
 | `block-dangerous-git.sh` | `git push` (kể cả force) vào `main`/`master`; `reset --hard`; `merge\|rebase\|cherry-pick --abort` |
-| `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · diff hạ `fail_under` · cổng đỏ ở gói bị đụng, gói import nó, hoặc console (luôn chạy, kể cả commit chỉ sửa tài liệu) |
+| `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · diff hạ `fail_under` · cổng đỏ ở gói bị đụng, gói import nó, hoặc console (luôn chạy; commit chỉ đụng tài liệu/config ngoài mọi gói, không `.py`, thì chỉ chạy chế độ nhanh `dev-task.sh repo-gate` = `pytest -m cong_repo`) |
 | `auto-format.sh` | (không chặn) format file vừa sửa qua `dev-task.sh format-file` — chỉ khi bản trong index vốn đã sạch `ruff format` hoặc file mới chưa track |
 
 Đường thoát tường minh: `ALLOW_DANGEROUS_GIT=1`, hoặc `--no-verify` trong lệnh commit — dùng thì **phải nói rõ
