@@ -538,8 +538,21 @@ jobs:
             echo "::error::Sửa ruleset trong Settings → Rules → Rulesets cho khớp file (hoặc sửa file nếu đã cố ý đổi)."
             fail=1
           fi
+          # Cùng họ: các cờ bật/tắt của `pull_request` và `required_status_checks`. Đo 2026-10-10 ba cờ review thật là
+          # false trong khi file khai true, guard vẫn xanh. `required_approving_review_count` cố ý không so
+          # (docs/QUY-TRINH-GIT.md §8: đổi số không làm CI đỏ).
+          for k in dismiss_stale_reviews_on_push required_review_thread_resolution \
+                   require_extra_approval_for_unattributed_changes require_code_owner_review require_last_push_approval; do
+            lv=$(jq -c --arg k "$k" '[.[] | select(.type == "pull_request") | .parameters[$k]]' /tmp/live-rules.json)
+            wv=$(jq -c --arg k "$k" '[.rules[] | select(.type == "pull_request") | .parameters[$k]]' .github/rulesets/main.json)
+            [ "$lv" = "$wv" ] || { echo "::error::pull_request.$k trên $BRANCH là $lv, file khai $wv."; fail=1; }
+          done
+          k=strict_required_status_checks_policy
+          lv=$(jq -c --arg k "$k" '[.[] | select(.type == "required_status_checks") | .parameters[$k]]' /tmp/live-rules.json)
+          wv=$(jq -c --arg k "$k" '[.rules[] | select(.type == "required_status_checks") | .parameters[$k]]' .github/rulesets/main.json)
+          [ "$lv" = "$wv" ] || { echo "::error::required_status_checks.$k trên $BRANCH là $lv, file khai $wv."; fail=1; }
           [ "$fail" = 0 ] || exit 1
-          echo "OK — mọi rule khai trong file đều đang áp trên $BRANCH, phương pháp merge khớp $want_mm."
+          echo "OK — mọi rule khai trong file đều đang áp trên $BRANCH, phương pháp merge và cờ review khớp file."
 
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
