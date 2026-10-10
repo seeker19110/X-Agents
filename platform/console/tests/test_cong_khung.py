@@ -1063,6 +1063,30 @@ def test_bo_loc_dung_chung_lib_sh_duoc_ca_hai_hook_soi_lenh_source() -> None:
     assert not any("_lib.sh" in mot_lenh for mot_lenh in lenh), "_lib.sh là thư viện source, không phải hook"
 
 
+@pytest.mark.parametrize("hook", [CHAN_GIT, CONG_COMMIT], ids=lambda h: h.name)
+def test_hook_tim_duoc_lib_sh_khi_dollar0_la_duong_dan_windows(hook: Path, tmp_path: Path) -> None:
+    """Git Bash trên Windows đưa `$0` = `D:\\a\\…\\hooks\\x.sh` (dấu `\\`): `${0%/*}` không cắt được, `HOOK_DIR` rơi về
+    `.` và `./_lib.sh` không có → hook fail-open cho MỌI lệnh (CI windows 2026-10-10: 78 ca đỏ, exit 0 cả
+    `git push origin main`). Giả `$0` kiểu Windows trên mọi hệ bằng `bash -c '. "$1"' '<\\-path>' <hook>`, cwd
+    không phải thư mục hook: hook phải vẫn tìm ra `_lib.sh` (cắt theo cả `/` lẫn `\\`, hoặc lùi về
+    `$CLAUDE_PROJECT_DIR/.claude/hooks`), không được bỏ qua kiểm tra."""
+    assert BASH is not None
+    gia_dollar0 = "D:\\a\\X-Agents\\X-Agents\\.claude\\hooks\\" + hook.name
+    kq = subprocess.run(
+        [BASH, "-c", '. "$1"', gia_dollar0, str(hook)],
+        input=_payload("git push origin main"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(ROOT), "DEV_TASK_DRY_RUN": "1"},
+        cwd=str(tmp_path),
+    )
+    assert "thiếu .claude/hooks/_lib.sh" not in kq.stderr, f"{hook.name} không tìm ra _lib.sh: {kq.stderr}"
+    if hook == CHAN_GIT:
+        assert kq.returncode == 2, f"đáng lẽ chặn git push origin main (exit {kq.returncode}): {kq.stderr}"
+
+
 def test_moi_hook_deu_co_test_trong_file_nay() -> None:
     """Thêm hook mà quên test = thêm một cổng không ai biết nó còn sống không."""
     than = Path(__file__).read_text(encoding="utf-8")

@@ -23,7 +23,10 @@ set -uo pipefail   # cố ý KHÔNG -e: hook không được làm chết phiên
 # Bộ lọc dùng chung với pre-commit-gate.sh: đọc lệnh từ payload (jq, thiếu thì Python), bỏ thân heredoc, bỏ phần
 # trong nháy, mở vỏ bọc `bash -c '…'`/`eval "…"` — một bản duy nhất, xem chú thích ở `_lib.sh`.
 # `${0%/*}` thay `$(dirname "$0")`: hook phải đọc được lệnh cả khi PATH hỏng (ca `thieu_jq_thi_noi_ra`).
-HOOK_DIR="${0%/*}"; [ "$HOOK_DIR" = "$0" ] && HOOK_DIR=.
+# Git Bash trên Windows đưa `$0` với dấu `\` → cắt theo cả `/` lẫn `\`; không thấy `_lib.sh` thì lùi về
+# `$CLAUDE_PROJECT_DIR/.claude/hooks` (CI windows 2026-10-10: `${0%/*}` không cắt được → fail-open 78 ca).
+HOOK_DIR="${0%[/\\]*}"; [ "$HOOK_DIR" = "$0" ] && HOOK_DIR=.
+[ -f "$HOOK_DIR/_lib.sh" ] || HOOK_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/hooks"
 # shellcheck source=_lib.sh
 source "$HOOK_DIR/_lib.sh" || { echo "[block-dangerous-git] thiếu .claude/hooks/_lib.sh → không đọc được lệnh, bỏ qua kiểm tra." >&2; exit 0; }
 
