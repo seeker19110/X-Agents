@@ -9,6 +9,12 @@ không phải một biến đếm do `keeper` tự cộng.
 
 Bảng kiểm cũng tra cứu được theo tên (`BUDGET_CHECKS` + `checks_without`), cùng lý do như `risk.RISK_RULES`:
 ca chiều ngược phải bỏ được ĐÚNG một hàng kiểm rồi đo lại.
+
+**Hạn mức tuần chỉ đếm PR CỦA KEEPER** (nhánh `worktree.BRANCH_PREFIX`, `is_keeper_pr`), không đếm PR của người
+hay dependabot. Đo canary 2026-10-05 (`docs/reports/2026-10-05-keeper-canary-urllib3.md`): 28 PR của repo merge
+trong tuần làm hạn mức 5 cạn dù keeper chưa mở PR nào, phải nâng tay `KEEPER_MAX_PR_PER_WEEK=30` cho một bản vá
+bảo mật. Đo lại 2026-10-10: 30 PR merge/7 ngày, đúng 1 của keeper. Hạn mức là trần cho THAY ĐỔI TỰ ĐỘNG, không
+phải cho độ bận của repo — cùng cách Renovate chỉ đếm PR mang `branchPrefix` của nó.
 """
 from __future__ import annotations
 
@@ -24,6 +30,7 @@ from .core import CORE
 from .events import RiskTier, Signal
 from .github import PullRequest
 from .risk import risk_tier
+from .worktree import BRANCH_PREFIX
 
 MAX_PR_ENV = CORE.env_name("MAX_PR_PER_WEEK")  # "KEEPER_MAX_PR_PER_WEEK" — ghép tiền tố ở MỘT chỗ (config.py:90)
 DEFAULT_MAX_PR_PER_WEEK = 5
@@ -45,7 +52,7 @@ class BudgetContext:
     `None` = `gh` không trả lời được. Mọi hàng kiểm coi `None` là KHÔNG QUA (fail closed, I3): không biết có
     PR nào đang mở hay không thì không được mở thêm."""
     open_pr_count: int | None
-    merged_last_week: int | None
+    merged_last_week: int | None  # chỉ PR của keeper (`is_keeper_pr`), không phải mọi PR của repo
     max_per_week: int
 
 
@@ -83,6 +90,13 @@ def max_pr_per_week(env: Mapping[str, str] | None = None) -> int:
         return DEFAULT_MAX_PR_PER_WEEK
 
 
+def is_keeper_pr(pr: PullRequest) -> bool:
+    """PR do keeper mở = nhánh nguồn mang đúng tiền tố `worktree.BRANCH_PREFIX` (cách `KeeperWorktree.branch` đặt
+    tên, cũng là nhánh `publish.push_branch` đẩy). Không nhìn tiêu đề (`fix(keeper)` là của người viết về keeper)
+    hay tên có chữ "keeper" ở chỗ khác."""
+    return pr.headRefName.startswith(BRANCH_PREFIX)
+
+
 def since_iso(now: datetime) -> str:
     """Mốc `merged:>=` cho `gh pr list --search`: `gh` nhận NGÀY (`YYYY-MM-DD`), không nhận timestamp đầy đủ."""
     return (_as_aware(now) - timedelta(days=WINDOW_DAYS)).date().isoformat()
@@ -95,13 +109,14 @@ def _as_aware(now: datetime) -> datetime:
 def budget_context(
     gh: GitHubLike, *, now: datetime | None = None, env: Mapping[str, str] | None = None,
 ) -> BudgetContext:
-    """Hai câu hỏi tới `gh` + một lần đọc biến môi trường, mỗi lần gọi."""
+    """Hai câu hỏi tới `gh` + một lần đọc biến môi trường, mỗi lần gọi. `GitHubReader.merged_prs` đã hỏi thẳng
+    nhánh keeper; lọc lại ở đây để luật đúng với MỌI `GitHubLike` (fake, reader khác), không phụ thuộc câu hỏi."""
     reference = now or datetime.now(UTC)
     open_prs = gh.open_prs()
     merged = gh.merged_prs(since_iso(reference))
     return BudgetContext(
         open_pr_count=None if open_prs is None else len(open_prs),
-        merged_last_week=None if merged is None else len(merged),
+        merged_last_week=None if merged is None else sum(1 for pr in merged if is_keeper_pr(pr)),
         max_per_week=max_pr_per_week(env),
     )
 

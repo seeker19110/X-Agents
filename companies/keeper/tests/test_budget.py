@@ -21,6 +21,7 @@ from keeper.budget import (
 from keeper.events import Signal
 from keeper.fakes import FakeGitHub
 from keeper.github import PullRequest
+from keeper.worktree import BRANCH_PREFIX
 
 NOW = datetime(2026, 9, 9, 12, tzinfo=UTC)
 
@@ -44,7 +45,13 @@ class _GH(FakeGitHub):
 
 
 def _pr(n: int) -> PullRequest:
-    return PullRequest(number=n, title=f"pr {n}")
+    """PR CỦA KEEPER: nhánh mang `BRANCH_PREFIX` như `KeeperWorktree.branch` đặt — thứ hạn mức tuần đếm."""
+    return PullRequest(number=n, title=f"pr {n}", headRefName=f"{BRANCH_PREFIX}pr-{n}")
+
+
+def _pr_khac(n: int, branch: str = "dependabot/uv/goi-x") -> PullRequest:
+    """PR KHÔNG phải của keeper (người, dependabot): repo bận tới đâu cũng không được ăn vào hạn mức của keeper."""
+    return PullRequest(number=n, title=f"pr {n}", headRefName=branch)
 
 
 def test_ten_bien_moi_truong_qua_env_name():
@@ -83,6 +90,29 @@ def test_dat_han_muc_thi_chan(monkeypatch):
     monkeypatch.setenv(MAX_PR_ENV, "2")
     gh = _GH([], [_pr(1), _pr(2)])
     assert can_open_pr(gh, now=NOW) is False
+
+
+def test_han_muc_tuan_chi_dem_pr_nhanh_keeper(monkeypatch):
+    """Canary 2026-10-05 (`docs/reports/2026-10-05-keeper-canary-urllib3.md`): 28 PR của repo merge trong tuần làm
+    hạn mức 5 cạn dù keeper chưa mở PR nào — phải nâng tay `KEEPER_MAX_PR_PER_WEEK=30`. Đo lại 2026-10-10: 30 PR
+    merge/7 ngày, đúng 1 của keeper. Chiều đỏ là bản cũ: đếm mọi PR của repo → 4 ≥ 2 → chặn oan."""
+    monkeypatch.setenv(MAX_PR_ENV, "2")
+    gh = _GH([], [_pr_khac(1), _pr_khac(2, "claude/nhanh-nguoi"), _pr_khac(3, "dependabot/uv/goi-y"), _pr(4)])
+    assert budget_context(gh, now=NOW).merged_last_week == 1
+    assert can_open_pr(gh, now=NOW) is True
+    gh.merged_list.append(_pr(5))  # PR keeper thứ hai chạm trần 2 → chặn: bộ lọc không được nuốt PR của keeper
+    assert can_open_pr(gh, now=NOW) is False
+
+
+@pytest.mark.parametrize(
+    ("branch", "la_keeper"),
+    [(f"{BRANCH_PREFIX}bump-urllib3", True), ("chore/keeper", False), ("fix/keeper-mau", False), ("", False)],
+)
+def test_nhan_dien_pr_keeper_theo_tien_to_nhanh(branch, la_keeper):
+    """Chỉ tiền tố ĐÚNG của `worktree.BRANCH_PREFIX` — tiêu đề `fix(keeper)` hay tên có chữ keeper không tính."""
+    from keeper.budget import is_keeper_pr
+
+    assert is_keeper_pr(PullRequest(number=1, title="fix(keeper): x", headRefName=branch)) is la_keeper
 
 
 def test_bien_moi_truong_hong_thi_dung_mac_dinh(monkeypatch):

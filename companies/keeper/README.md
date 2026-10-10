@@ -88,7 +88,8 @@ Hai cổng, hai lý do đỏ: `evals/recordings/REQUIRED.txt` gác **bản ghi**
 và `evals/thresholds.yaml` gác **điểm chấm** (tụt dưới sàn đã đo, hoặc bộ ca bị thu nhỏ). Đổi prompt mà chưa
 ghi lại eval thì job CI `keeper-eval-replay` đỏ — đó là răng của luật "prompt là code".
 
-Hai biến môi trường: `KEEPER_MAX_PR_PER_WEEK` (trần PR bảo trì mỗi tuần, mặc định 5) và
+Hai biến môi trường: `KEEPER_MAX_PR_PER_WEEK` (trần PR bảo trì mỗi tuần, mặc định 5 — chỉ đếm PR nhánh
+`chore/keeper-*` của keeper; PR của người hay dependabot không ăn vào trần này) và
 `KEEPER_GATE_APPROVERS` (danh sách người duyệt gate). Không đặt biến thứ hai thì allowlist TẮT — four-eyes vẫn
 còn, nhưng bất kỳ ai khác người tạo gate cũng ký được. Chi tiết ở `HUONG-DAN-VAN-HANH.md` §6.4.
 

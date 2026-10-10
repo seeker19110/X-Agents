@@ -725,7 +725,7 @@ Duyệt trên console cũng đi đúng đường này (cùng `PersistentGate`, c
 
 | Biến | Mặc định | Nghĩa |
 |---|---|---|
-| `KEEPER_MAX_PR_PER_WEEK` | `5` | trần PR bảo trì merge trong 7 ngày. Đọc **mỗi lần** hỏi ngân sách, nên hạ giữa đêm có hiệu lực ngay. Gõ sai kiểu (không phải số) → quay về mặc định, không nổ và cũng không thành "không giới hạn". |
+| `KEEPER_MAX_PR_PER_WEEK` | `5` | trần PR bảo trì merge trong 7 ngày — chỉ đếm PR nhánh `chore/keeper-*` của keeper, không đếm PR của người hay dependabot (canary 2026-10-05 bị chặn oan vì đếm cả repo). Đọc **mỗi lần** hỏi ngân sách, nên hạ giữa đêm có hiệu lực ngay. Gõ sai kiểu (không phải số) → quay về mặc định, không nổ và cũng không thành "không giới hạn". |
 | `KEEPER_GATE_APPROVERS` | **rỗng** | danh sách người được duyệt gate `keeper`, ngăn cách bằng dấu phẩy. |
 
 ```bash
