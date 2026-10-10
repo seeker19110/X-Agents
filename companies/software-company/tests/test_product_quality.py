@@ -310,6 +310,26 @@ def test_nonvisual_product_does_not_get_visual_theatre(surface):
     assert not any(check.id == "design.visual" for check in required_checks(make_profile(surfaces=[surface])))
 
 
+@pytest.mark.parametrize("changes,expected", [
+    ({"surfaces": ["library"]}, {"contract.public_surface", "contract.compatibility"}),
+    ({"surfaces": ["cli"]}, {"cli.contract"}),
+    ({"surfaces": ["api"], "operates_service": True}, {"api.contract"}),
+])
+def test_be_mat_phi_ui_co_check_hop_dong_rieng(changes, expected):
+    # PRODUCT-EXCELLENCE §4 đòi "versioning và compatibility", "lỗi có nghĩa" cho API/CLI/library; trước đây cả ba
+    # chỉ ra đúng 15 check BASE_CHECKS, không gì phân biệt một thư viện với một CLI.
+    assert expected <= {check.id for check in required_checks(make_profile(**changes))}
+
+
+@pytest.mark.parametrize("changes,absent", [
+    ({"surfaces": ["web"], "design": DESIGN}, {"contract.public_surface", "contract.compatibility", "cli.contract", "api.contract"}),
+    ({"surfaces": ["api"]}, {"api.contract"}),
+    ({"surfaces": ["cli"]}, {"contract.compatibility", "api.contract"}),
+])
+def test_check_hop_dong_chi_them_dung_be_mat_ap_dung(changes, absent):
+    assert not absent & {check.id for check in required_checks(make_profile(**changes))}
+
+
 @pytest.mark.parametrize("domain", ["general", "education", "healthcare", "finance", "commerce", "enterprise", "industrial", "content"])
 def test_industry_applicability(domain):
     ids = {check.id for check in required_checks(make_profile(domains=[domain]))}
