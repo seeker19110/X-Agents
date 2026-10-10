@@ -12,7 +12,10 @@ from .events import Signal, SignalKind
 
 def dedupe(signals: list[Signal]) -> list[Signal]:
     """Gộp theo `(kind, subject)`: giữ mọi trường của bản MỚI NHẤT (phần tử cuối cùng trong nhóm), cộng dồn
-    `seen_count` của tất cả bản trùng. Thứ tự nhóm đầu ra theo lần xuất hiện ĐẦU TIÊN của mỗi khoá."""
+    `seen_count` của tất cả bản trùng. Thứ tự nhóm đầu ra theo lần xuất hiện ĐẦU TIÊN của mỗi khoá.
+
+    Đừng xếp tier trên kết quả này: bản mới nhất có thể nhẹ hơn bản trước. `triage.triager` lấy bậc cao nhất
+    của cả nhóm (K3, audit 2026-10-10)."""
     order: list[tuple[SignalKind, str]] = []
     groups: dict[tuple[SignalKind, str], list[Signal]] = {}
     for s in signals:

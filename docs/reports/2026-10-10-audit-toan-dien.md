@@ -126,6 +126,10 @@ xếp hàng; `HumanGate.request` ghi đè `pending` nhưng mọi caller đều `
    bản ghi eval mới.
    *K5 đã làm 2026-10-10 (dòng `fix(keeper)` K5 trong `CHANGELOG.md`): sửa ở `evidence.py`, code chứ không phải
    prompt agent, nên không cần ghi lại eval. K3 vẫn chờ quyết luật gộp.*
+   *K3 đã làm 2026-10-10 (dòng `fix(keeper)` K3 trong `CHANGELOG.md`): luật gộp chọn là **tier = bậc cao nhất của
+   cả nhóm**, sửa ở `triage.triager` chứ không ở `dedupe` — nội dung vẫn của bản mới nhất, nhưng mọi trường
+   ảnh hưởng tier (`severity`, `semver_jump`, `is_dev`, `evidence`, `detail`) đều được tính, không riêng severity.
+   Code, không phải prompt agent: eval replay không đổi, không ghi lại eval.*
 3. **G4** (`MAX_ACTOR_LEN` + chặn `\r\n` cho `by`/`reason` ở decide/engine) và **K9** (neo regex `bump_dependency`) —
    nhỏ, mỗi cái một PR, test đỏ trước.
 4. **C3** (teardown ghi lỗi) khi có deploy thật gặp lại; **C4** cùng lúc đổi hợp đồng brief.
