@@ -188,6 +188,17 @@ def test_branch_coverage_dung_so_chua_phu_nhanh() -> None:
         f"Bật thêm một package thì hạ sổ trong CÙNG PR; tắt đi thì phải nói lý do ở đây (đi qua review).")
 
 
+def test_bang_coverage_bo_dong_da_phu_du() -> None:
+    """Mỗi lần chạy cổng là một lần bảng coverage đi vào ngữ cảnh của phiên agent (`AGENTS.md` luật cấm 8 bắt
+    dán output vừa chạy). `fail_under = 100` nên dòng 100% không mang tin gì; chỉ dòng thiếu mới có. Đo
+    2026-10-10: core in 23 dòng file 100%, console 14, trong khi ba package kia đã `skip_covered`."""
+    thieu = sorted(p for p in _packages()
+                   if (ROOT / p / "pyproject.toml").is_file()
+                   and not tomllib.loads((ROOT / p / "pyproject.toml").read_text(encoding="utf-8"))
+                   .get("tool", {}).get("coverage", {}).get("report", {}).get("skip_covered"))
+    assert thieu == [], f"package chưa `skip_covered = true` ở [tool.coverage.report]: {thieu}"
+
+
 def test_omit_khong_vuot_tran() -> None:
     that = sum(1 for p in _packages()
                if (ROOT / p / "pyproject.toml").is_file()

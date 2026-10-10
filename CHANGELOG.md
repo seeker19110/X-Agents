@@ -8,6 +8,7 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **audit token — `assetbudget` đo đúng prompt model nhận** (`docs/reports/2026-10-10-audit-token.md`). Thước cũ cộng toàn văn file skill nên báo dư 1,13–1,90 lần (`qa[review]` 59 534 ký tự, prompt thật 38 175) và chia 4 ký tự/token trong khi lõi chia 3,2; giờ dựng `system_prompt(pha)` qua `xagents_core.registry.load_agent` (tách từ `load_agents`, hành vi giữ nguyên) và lấy `CHARS_PER_TOKEN` của lõi. `console` và `xagents-core` thêm `skip_covered` như ba gói kia: cổng bớt 37 dòng file 100% mỗi lần chạy. Đo hai chiều: 3 failed → 45 passed (assetscan), test cổng repo mới đỏ với hai gói → xanh. Báo cáo ghi hệ số input 2,3–5,9× và output 1,2–6,5× của bản ghi eval cùng sáu khuyến nghị cần model thật, chưa làm. Kèm `uv.lock`: multidict 6.7.1 → 6.9.1 (CVE-2026-104874 làm job `audit` đỏ trên cả `main`; `pip-audit --strict` đỏ trước, sạch sau). (#399)
 - fix(core): S2 enforce egress bằng network internal và Squid ACL hostname; subprocess từ chối allowlist, uv của company chỉ tới PyPI, smoke qua relay cổng riêng. Test container thật đo domain cho phép/bị chặn, bypass/DNS và cleanup; image Python khách có uv; proxy dùng cùng runner của sandbox để test offline không gọi Docker thật. (#394).
 
 - fix(core): S1 theo ADR gốc 0023 — `auto` thiếu Docker/Podman dừng trước khi chạy mã khách; CLI ghi `sandbox.mode`, status và console hiện cảnh báo cho `subprocess` tường minh; ca F1 dùng container thật kiểm bus ngoài mount. (#392).

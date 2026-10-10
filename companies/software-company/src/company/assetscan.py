@@ -21,7 +21,8 @@ Miễn trừ: `assetscan-waivers.txt` ở gốc cây quét, mỗi dòng `đườ
 không có lý do là miễn trừ không ai dám xoá). Waiver không còn khớp gì sẽ bị báo `waiver-unused` để dọn.
 
 Công cụ nằm trong package `company` vì nó dùng lại `guard.PATTERNS`; nhưng nó chỉ đọc file, không biết gì về
-`registry`, nên chạy được cho bất kỳ cây nào có cùng bố cục — CI chạy nó cho cả `keeper`.
+`company.registry`, nên chạy được cho bất kỳ cây nào có cùng bố cục — CI chạy nó cho cả `keeper`. Riêng `budget`
+dựng prompt bằng `xagents_core.registry` (lõi chung của cả hai công ty), không bằng registry của công ty nào.
 """
 from __future__ import annotations
 
@@ -35,6 +36,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from xagents_core.context import CHARS_PER_TOKEN as CORE_CHARS_PER_TOKEN
+from xagents_core.registry import AgentSpec, load_agent
 
 from . import guard
 
@@ -206,7 +209,9 @@ def scan_root(root: Path) -> tuple[list[Finding], list[str]]:
 # ---------- budget: prompt tĩnh đã ăn bao nhiêu phần ngân sách token ----------
 
 _FM = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
-CHARS_PER_TOKEN = 4  # ước lượng thô, đủ để so sánh tương đối giữa các agent (không phải hoá đơn)
+# Cùng tỉ lệ với bộ cắt ngữ cảnh của lõi: con số `assetbudget` báo phải là con số `fit` dùng để cắt. Bản cũ chia
+# 4 (tỉ lệ tiếng Anh) nên prompt tĩnh tiếng Việt có dấu bị báo thiếu 20%. Vẫn là ước lượng, không phải hoá đơn.
+CHARS_PER_TOKEN = CORE_CHARS_PER_TOKEN
 
 
 @dataclass(frozen=True)
@@ -219,25 +224,26 @@ class Weight:
     missing_skills: list[str]
 
 
-def _skill_chars(root: Path, names: list[Any]) -> tuple[int, list[str]]:
-    """Tổng số ký tự của một danh sách skill, và tên các skill không có trên đĩa."""
-    chars, missing = 0, []
-    for name in names:
-        sp = root / "skills" / f"{name}.md"
-        if sp.is_file(): chars += len(sp.read_text(encoding="utf-8"))
-        else: missing.append(str(name))
-    return chars, missing
+def _missing_skills(root: Path, fm: dict[str, Any]) -> list[str]:
+    """Tên skill khai trong front matter (cấp agent và mọi pha, thứ tự khai) mà không có file trên đĩa."""
+    names = [*(fm.get("skills") or []), *(fm.get("skills_core") or [])]
+    for cfg in (fm.get("phases") or {}).values():
+        names += [*((cfg or {}).get("skills") or []), *((cfg or {}).get("skills_core") or [])]
+    return [str(n) for n in dict.fromkeys(names) if not (root / "skills" / f"{n}.md").is_file()]
 
 
 def agent_weights(root: Path) -> list[Weight]:
-    """Prompt tĩnh (thân agent + toàn văn skill) so với `budget_tokens_per_task` của chính agent đó.
+    """Prompt tĩnh của mỗi lượt so với `budget_tokens_per_task` của chính agent đó.
 
     Ý tưởng lấy từ `context-budget` của ECC, nhưng đo thứ repo này có mà harness không có: ngân sách khai trong
     front matter. Agent nào để prompt tĩnh ăn quá nửa ngân sách thì phần còn lại cho dữ liệu thật quá mỏng.
 
+    Đo ĐÚNG chuỗi `AgentSpec.system_prompt(pha)` model nhận, dựng bằng `load_agent` của lõi — không tự cộng file
+    skill. Bản cộng file cũ báo dư 1,13–1,90 lần (đo 2026-10-10): tính toàn văn `skills_core` dù lõi chỉ nạp
+    Quy trình + Checklist, tính thêm bản rút gọn cấp agent của skill mà pha đã nạp đầy đủ, tính cả front matter.
+
     ADR-0037: agent chia pha thì prompt tĩnh KHÁC NHAU theo từng lượt, nên đo theo pha — một dòng `id[pha]` cho
-    mỗi pha, tokens = thân + skill cấp agent + skill của pha. Đo gộp cả mọi pha vào một dòng sẽ báo động giả
-    (không lượt nào nạp bằng ấy skill); đo mỗi thân agent thì bỏ sót đúng thứ ADR-0037 đánh đổi.
+    mỗi pha. Skill khai mà thiếu file thì không dựng được prompt: dòng mang tên skill thiếu, con số để 0.
     """
     out: list[Weight] = []
     if not (root / "agents").is_dir(): return out
@@ -246,20 +252,18 @@ def agent_weights(root: Path) -> list[Weight]:
         m = _FM.match(text)
         if not m: continue
         fm = yaml.safe_load(m.group(1)) or {}
-        base_chars, missing = _skill_chars(root, [*(fm.get("skills") or []), *(fm.get("skills_core") or [])])
-        base_chars += len(text) - m.end()
         budget = int(fm.get("budget_tokens_per_task") or 0)
         aid = str(fm.get("id") or p.stem)
-        rows: list[tuple[str, int, list[str]]] = [(aid, base_chars, missing)]
-        if phases := (fm.get("phases") or {}):
-            rows = []
-            for name, cfg in phases.items():
-                cfg = cfg or {}
-                extra, miss = _skill_chars(root, [*(cfg.get("skills") or []), *(cfg.get("skills_core") or [])])
-                rows.append((f"{aid}[{name}]", base_chars + extra, missing + miss))
-        for label, chars, miss in rows:
-            tokens = chars // CHARS_PER_TOKEN
-            out.append(Weight(label, chars, tokens, budget, round(tokens / budget, 3) if budget else 0.0, miss))
+        phases: list[str | None] = [str(n) for n in (fm.get("phases") or {})] or [None]
+        if missing := _missing_skills(root, fm):
+            out += [Weight(aid if ph is None else f"{aid}[{ph}]", 0, 0, budget, 0.0, missing) for ph in phases]
+            continue
+        spec = load_agent(p, root / "skills", AgentSpec)
+        for ph in phases:
+            chars = len(spec.system_prompt(ph))
+            tokens = int(chars / CHARS_PER_TOKEN)   # như `ContextBudget.est_tokens`; `//` với 3.2 cho 249 từ 800
+            out.append(Weight(aid if ph is None else f"{aid}[{ph}]", chars, tokens, budget,
+                              round(tokens / budget, 3) if budget else 0.0, []))
     return sorted(out, key=lambda w: w.share, reverse=True)
 
 

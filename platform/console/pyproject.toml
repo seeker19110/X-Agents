@@ -63,3 +63,4 @@ branch = true
 # Cả năm package phủ 100% dòng + nhánh: ngưỡng bằng đúng mức đạt được, nên mất một dòng hay một nhánh là CI đỏ.
 # Nhánh phụ thuộc nền tảng (os.name == "nt", AF_INET6) được test bằng cách thay socket/ctypes, không bằng môi trường.
 fail_under = 100
+skip_covered = true   # dòng 100% không mang tin gì khi fail_under = 100; bảng chỉ còn dòng thiếu
