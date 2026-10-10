@@ -103,6 +103,13 @@ thể thuộc nhiều nhóm; vai trò và nghiệp vụ cụ thể quyết đị
 | Nội dung/sáng tạo | Readability hoặc nội dung là trung tâm; editorial hierarchy, bản quyền, điều hướng và workflow xuất bản. | Chất lượng đọc/xem, media performance, preview/version và quyền xuất bản. |
 | General/API/CLI/library | Khảo sát nhiệm vụ và giao diện thực sự; không gắn UI đồ họa vào sản phẩm vốn không cần. | API/CLI ergonomics, docs/examples, lỗi có nghĩa, versioning và compatibility. |
 
+Dòng cuối có check bắt buộc riêng trong `product_quality.required_checks`. Surface `library` thêm
+`contract.public_surface` (independent_review) và `contract.compatibility` (runner, so API công khai với bản phát
+hành trước). `cli` thêm `cli.contract` (runner: tham số, exit code, stdout/stderr, nơi đặt config/credential).
+`api` khi `operates_service` thêm `api.contract` (runner: schema, dạng lỗi, giới hạn rate/size, tắt êm). Check
+mới làm đổi contract hash của profile có các surface đó, nên chỉ áp cho run compile mới. Run đang chạy với hash
+cũ sẽ gặp blocker `contract:changed_or_unpinned` và phải compile lại contract, không sửa tay hash.
+
 ## 5. Nguồn tham chiếu và cách áp dụng
 
 ISO/IEC 25010:2023 cung cấp mô hình chất lượng sản phẩm gồm chín đặc tính, hữu ích để bao phủ việc xác

@@ -218,6 +218,16 @@ SERVICE_CHECKS = _checks([
     ("operations.runbook", "operability", "independent_review", "Deployment, incident response, ownership, rollback and lifecycle costs are explicit."),
     ("operations.recovery", "reliability", "runner", "Rollback or roll-forward recovery is rehearsed in an authorized environment."),
 ])
+LIBRARY_CHECKS = _checks([
+    ("contract.public_surface", "compatibility", "independent_review", "Public API inventory, versioning policy and user-facing error categories are explicit and match the code."),
+    ("contract.compatibility", "compatibility", "runner", "Public API is compared with the previous release; breaking changes are intentional, versioned and documented."),
+])
+CLI_CHECKS = _checks([
+    ("cli.contract", "compatibility", "runner", "Arguments, exit codes, stdout/stderr and config/credential locations match the spec; errors are actionable."),
+])
+API_CHECKS = _checks([
+    ("api.contract", "compatibility", "runner", "Request/response schemas, error shapes, rate/size limits and graceful shutdown match the spec."),
+])
 EXTRA_CHECKS = _checks([
     ("privacy.lifecycle", "privacy", "independent_review", "Minimization, retention, deletion, access and sensitive telemetry follow the project obligations."),
     ("domain.obligations", "domain", "independent_review", "Jurisdiction, harm scenarios and applicable obligations are mapped; required external expertise is not fabricated."),
@@ -228,7 +238,8 @@ EXTRA_CHECKS = _checks([
 ])
 DELIVERY_CHECK = Check("delivery.definition", "delivery", "runner",
                        "Pinned Ready/Done/Complete contract is met; every applicable gate actually ran; no false-green no-op.")
-CATALOG = {check.id: check for check in (*BASE_CHECKS, *UI_CHECKS, *DATA_CHECKS, *SERVICE_CHECKS, *EXTRA_CHECKS, DELIVERY_CHECK)}
+CATALOG = {check.id: check for check in (*BASE_CHECKS, *UI_CHECKS, *DATA_CHECKS, *SERVICE_CHECKS, *LIBRARY_CHECKS, *CLI_CHECKS,
+                                              *API_CHECKS, *EXTRA_CHECKS, DELIVERY_CHECK)}
 
 
 def required_checks(profile: ProjectProfile) -> tuple[Check, ...]:
@@ -240,6 +251,12 @@ def required_checks(profile: ProjectProfile) -> tuple[Check, ...]:
         selected.extend(DATA_CHECKS)
     if profile.operates_service:
         selected.extend(SERVICE_CHECKS)
+        if "api" in profile.surfaces:
+            selected.extend(API_CHECKS)
+    if "library" in profile.surfaces:
+        selected.extend(LIBRARY_CHECKS)
+    if "cli" in profile.surfaces:
+        selected.extend(CLI_CHECKS)
     extra: list[str] = []
     if profile.data_classification == "sensitive" or profile.serves_children:
         extra.append("privacy.lifecycle")

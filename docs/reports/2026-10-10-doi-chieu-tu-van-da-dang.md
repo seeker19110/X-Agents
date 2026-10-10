@@ -58,6 +58,10 @@ Cách làm: test đỏ `required_checks(surfaces=["library"])` phải chứa `co
 "check chỉ được thêm theo tính áp dụng, không bị worker bỏ". Đụng `CATALOG` nên **profile hash đổi cho profile có
 surface đó**: cần đo lại test hash cố định của profile v2 (báo cáo 2026-09-25 §5) và ghi rõ chỉ áp cho run mới.
 
+*Đã làm 2026-10-10 (dòng `feat(company)` 3a trong `CHANGELOG.md`): `api.contract` chỉ áp khi `operates_service` như
+đề xuất, nên hash ghim của profile v2 (`surfaces=["api"]`, không vận hành dịch vụ) giữ nguyên; ghi chú ở
+`PRODUCT-EXCELLENCE.md` §4.*
+
 ### 3b. Truy vết producer/consumer + điểm danh stub — từ lens-skill "Cross-Cutting Probes"
 
 **Sự cố đã xảy ra:** `docs/sessions/2026-09-09-van-hanh-qlkh.md` — ticket `TCK-CR-RUNTIME-01` tạo `runtime.yaml`
