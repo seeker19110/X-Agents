@@ -52,10 +52,13 @@ from .worktree import content_tree, refuse_shared_checkout
 # HỢP LỆ ở chỗ khác trong repo, nhưng không hợp lệ cho một patch của `keeper`: patch được đo trên worktree.
 TRUSTED_VERIFIER = "workspace"
 
-# Mã thoát cho hai chế độ hỏng của tiến trình. Âm nên không trùng mã thoát thật của lệnh nào (0-255), và
-# KHÁC NHAU vì "công cụ không có trên máy" là chuyện bình thường (`audit.py` bỏ qua) còn "quá giờ" thì không.
+# Mã thoát cho ba chế độ hỏng của tiến trình. Âm nên không trùng mã thoát thật của lệnh nào (0-255), và
+# KHÁC NHAU vì "công cụ không có trên máy" là chuyện bình thường (`audit.py` bỏ qua) còn "quá giờ" và "có trên
+# máy mà không chạy được" (thiếu quyền thực thi, binary hỏng) thì không — đọc chúng thành vắng mặt là đọc "chưa
+# quét" thành "sạch".
 MISSING_EXIT = -1
 TIMEOUT_EXIT = -2
+UNRUNNABLE_EXIT = -3
 
 STASH_MESSAGE = "keeper-two-way"
 DEFAULT_TIMEOUT = 600
@@ -108,6 +111,8 @@ def run_command(
         return RunOutcome(cmd=cmd, exit_code=MISSING_EXIT, output_tail=f"{argv[0]}: không có trên máy")
     except subprocess.TimeoutExpired:
         return RunOutcome(cmd=cmd, exit_code=TIMEOUT_EXIT, output_tail=f"{cmd}: quá {timeout}s")
+    except OSError as e:   # có trên máy mà không chạy được: KHÔNG phải `MISSING_EXIT` (xem chú thích hằng số)
+        return RunOutcome(cmd=cmd, exit_code=UNRUNNABLE_EXIT, output_tail=f"{argv[0]}: không chạy được ({e.strerror or e})")
     out = (r.stdout or "") + (r.stderr or "")
     return RunOutcome(cmd=cmd, exit_code=r.returncode, output_tail=out if tail is None else out[-tail:])
 

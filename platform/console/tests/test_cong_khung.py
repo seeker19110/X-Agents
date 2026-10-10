@@ -227,6 +227,19 @@ def test_dev_task_typecheck_company_do_lan_nao_thi_do(tmp_path: Path, do_o: str,
     assert ("--extra graph" in nhat_ky.read_text(encoding="utf-8")) is con_chay_lan_hai
 
 
+@pytest.mark.parametrize("goi", sorted(GOI))
+def test_dev_task_lenh_co_extra_chay_isolated_khong_de_lai_trong_venv_chung(goi: str) -> None:
+    """Audit 2026-10-10 (tối ưu): `uv run --extra graph` cài extra vào `.venv` CHUNG và `uv run` không bao giờ gỡ
+    gói thừa, nên sau bước mypy lần hai mọi bước pytest về sau chạy với `langsmith` (kéo theo bởi `langgraph`) mà
+    job `unit` của CI không có. Plugin pytest của nó (`langsmith_plugin`) nạp ở MỌI pytest con mà test e2e chạy
+    trên repo khách: 0,5 s → 1,3 s mỗi lần; bộ company `-n auto` đo 370 s → 207 s khi `.venv` khớp CI. `--isolated`
+    chạy trong môi trường riêng (lần đầu ~6 s, sau ~1 s), `.venv` chung giữ đúng như `uv sync --locked` của CI."""
+    kq = _chay(DEV_TASK, "typecheck", goi, DEV_TASK_DRY_RUN="1")
+    assert kq.returncode == 0, kq.stderr
+    co_extra = [d for d in kq.stdout.splitlines() if "--extra" in d]
+    assert all("--isolated" in d for d in co_extra), co_extra
+
+
 def test_mypy_ci_doc_du_hai_lan_cua_job_static() -> None:
     """Chốt bộ đọc trước khi tin nó: đọc hụt thì phép đối chiếu trên xanh vì cả hai vế cùng ngắn."""
     static = [b["run"].strip() for b in yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml")

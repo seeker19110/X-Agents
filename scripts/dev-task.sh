@@ -71,8 +71,10 @@ lenh_cho() {
       fi
       # Job `static` chạy company lần hai CÓ extra `graph` (#381): thiếu langgraph thì graph.py thành Any và lệch
       # kiểu không lộ. Mỗi dòng in ra là một lệnh; `test_cong_khung.py` đối chiếu nguyên danh sách với ci.yml.
+      # `--isolated`: `uv run` không gỡ gói thừa, extra cài vào `.venv` chung thì bước pytest sau nạp plugin
+      # `langsmith` ở mọi pytest con — CI không có, cổng company chậm gần gấp đôi (audit 2026-10-10).
       if [ "$2" = "company" ]; then
-        echo "uv run --locked --extra graph mypy src/company --ignore-missing-imports"
+        echo "uv run --locked --extra graph --isolated mypy src/company --ignore-missing-imports"
       fi
       ;;
     test)      goi_lenh_test "$2" ;;

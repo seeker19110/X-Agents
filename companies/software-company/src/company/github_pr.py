@@ -70,6 +70,8 @@ def _gh(repo: Path, *args: str, timeout: int = 60) -> tuple[bool, str]:
         return False, "gh: không có trên máy (cài GitHub CLI rồi `gh auth login`)"
     except subprocess.TimeoutExpired:
         return False, f"gh {' '.join(args[:2])}: quá {timeout}s"
+    except OSError as e:   # có trên máy mà không chạy được (quyền, binary hỏng); `strerror`: không lộ đường dẫn
+        return False, f"gh: không chạy được ({e.strerror or e})"
     return (True, r.stdout.strip()) if r.returncode == 0 else (False, (r.stderr or r.stdout).strip()[-300:])
 
 

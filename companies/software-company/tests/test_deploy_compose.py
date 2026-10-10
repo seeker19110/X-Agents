@@ -183,9 +183,11 @@ def test_mac_dinh_doc_tu_moi_truong(monkeypatch, tmp_path):
 
 # ---------- compose file: của khách, không sinh, không đoán ----------
 
-def test_khong_khai_va_khong_do_ra_compose_thi_skipped_chu_khong_phai_thanh_cong(tmp_path):
+def test_khong_khai_va_khong_do_ra_compose_thi_skipped_chu_khong_phai_thanh_cong(tmp_path, monkeypatch):
     """Hai nửa của ADR-0039 §1: spec không khai nhưng repo có compose thì vẫn chạy; không có file nào thì
     `skipped` kèm lý do — và `skipped` KHÔNG phải deploy thành công."""
+    # Không thay probe thì smoke gõ cổng 8080 THẬT suốt `timeout_s` mặc định (30 s) — ca chậm nhất bộ test.
+    _probe_tra(monkeypatch, 200)
     _, fake = _deploy(tmp_path, Runtime(("x",)))
     assert fake.subs[:1] == ["up"], "dò ra `compose.yaml` thì vẫn chạy: deploy không đòi spec phải khai"
 
@@ -271,6 +273,17 @@ def test_khong_co_binary_luc_chay_va_qua_gio_deu_thanh_ly_do_doc_duoc(tmp_path):
 
     r2 = deploy(_repo(tmp_path), "P1", "staging", RT, mode="auto", run=qua_gio, which=lambda b: b)
     assert r2.ok is False and "quá" in r2.error
+
+
+def test_binary_co_that_ma_khong_chay_duoc_thi_ly_do_doc_duoc(tmp_path):
+    """`_compose` hứa "không ném" nhưng chỉ bắt `FileNotFoundError`: binary CÓ trên đĩa mà không chạy được ném
+    `OSError` khác, xuyên qua `deploy()` (cả `up -d` lẫn `logs`/`down` của nhánh dọn). File thật,
+    `subprocess.run` thật; đuôi `.exe` để Windows không tự thêm `.exe` rồi đọc thành "không có"."""
+    f = tmp_path / "khong-chay.exe"
+    f.write_text("khong phai binary\n", encoding="utf-8")   # 0o644: không ai chạy được, kể cả root
+    r = deploy(_repo(tmp_path), "P1", "staging", RT, mode="compose", binary=str(f),
+               run=subprocess.run, which=lambda b: b)
+    assert r.ok is False and "không chạy được" in r.error and r.logs_tail == ""
 
 
 def test_record_la_bang_chung_ghi_duoc_vao_event(tmp_path, monkeypatch):

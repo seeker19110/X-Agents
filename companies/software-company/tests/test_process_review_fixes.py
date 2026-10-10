@@ -80,7 +80,10 @@ def test_hai_chu_namespace_ghi_song_song_khong_mat_ban_ghi(monkeypatch):
     sổ tranh chấp một cách xác định — không sleep, nên không phụ thuộc tốc độ máy."""
     bus = InMemoryBus(); bb = Blackboard(bus)
     real = bb.scope_of          # K3.6b: `scope_of` là PHƯƠNG THỨC (nó đọc `global_namespaces` từ `cfg`),
-    inside = threading.Barrier(2, timeout=10)   # nên vá trên instance chứ không trên module
+    # nên vá trên instance chứ không trên module. `timeout` là giá bản ĐÚNG luôn trả: `context_key` gọi lại
+    # `scope_of` TRONG khoá (sau khi đọc version — chính cửa sổ tranh chấp), luồng giữ khoá chờ một mình tới hết giờ.
+    # Bản lỗi gặp nhau sau vài µs nên 1 s vẫn dư; 10 s cũ là ca chậm thứ ba của bộ test (audit 2026-10-10).
+    inside = threading.Barrier(2, timeout=1)
 
     def _scope(ns, pid):
         try: inside.wait()      # cả hai luồng phải cùng ở trong scope_of rồi mới đi tiếp

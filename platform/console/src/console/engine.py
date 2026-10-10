@@ -169,6 +169,7 @@ class EngineManager:
         by = (by or "").strip()
         if not by:
             raise EngineError("thiếu người bật (`by`)")
+        _check_actor(by)
         try:
             interval = float(interval)
         except (TypeError, ValueError):
@@ -210,6 +211,7 @@ class EngineManager:
             raise EngineError(f"xưởng lạ: {xuong} (chỉ nhận {' | '.join(XUONG)})")
         if not (by or "").strip():
             raise EngineError("thiếu người tắt (`by`)")
+        _check_actor(by.strip())
         with self._lock:
             proc = self._procs.get(xuong)
             if proc is None or proc.popen.poll() is not None:
@@ -228,6 +230,14 @@ class EngineManager:
                 else:                                          # pragma: no cover - đua với chính nó
                     code = proc.popen.returncode
                 self._reap(xuong, proc, code)
+
+
+def _check_actor(by: str) -> None:
+    """Luật chung của trường danh tính (`console.decide.actor_problem`); nhập trễ như `server.py` nhập `decide`."""
+    from console.decide import actor_problem
+
+    if (why := actor_problem(by, "by")) is not None:
+        raise EngineError(why)
 
 
 def _terminate(popen: subprocess.Popen[bytes]) -> int:

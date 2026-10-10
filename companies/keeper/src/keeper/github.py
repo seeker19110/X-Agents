@@ -192,6 +192,8 @@ class GitHubReader:
             ok, out = False, "gh: không có trên máy (cài GitHub CLI rồi `gh auth login`)"
         except subprocess.TimeoutExpired:
             ok, out = False, f"gh {' '.join(args[:2])}: quá {self.timeout}s"
+        except OSError as e:   # có trên máy mà không chạy được (quyền, binary hỏng)
+            ok, out = False, f"gh: không chạy được ({e.strerror or e})"
         else:
             ok, out = (True, r.stdout.strip()) if r.returncode == 0 else (False, (r.stderr or r.stdout).strip()[-300:])
 

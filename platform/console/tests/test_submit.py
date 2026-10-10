@@ -69,6 +69,7 @@ def test_actor_duoc_strip(company_db) -> None:
     (dict(xuong=sm.COMPANY, topic="research-requests", payload={}, actor="human"), "không rỗng"),
     (dict(xuong=sm.COMPANY, topic="research-requests", payload=REQ, actor="   "), "thiếu người giao việc"),
     (dict(xuong=sm.COMPANY, topic="research-requests", payload=REQ, actor="h" * 81), "quá dài"),
+    (dict(xuong=sm.COMPANY, topic="research-requests", payload=REQ, actor="human:a\nhuman:b"), "ký tự điều khiển"),
     (dict(xuong=sm.COMPANY, topic="research-requests", payload={"description": "x"}, actor="human"), "thiếu `project_id`"),
 ])
 def test_tham_so_sai_valueerror_khong_tao_bus(company_db, kw, match) -> None:

@@ -206,6 +206,10 @@ def test_stop_all_giet_moi_dong_co_console_da_bat(mgr: en.EngineManager) -> None
     (COMPANY, "human:a", "nhanh", "phải là số giây"),
     (COMPANY, "human:a", 1, "5–3600"),
     (COMPANY, "human:a", 9999, "5–3600"),
+    # audit 2026-10-10 (G4): `by` đi thẳng vào dòng `=== … console bật bởi {by}` của log — xuống dòng giả được
+    # một dòng log khác, và trường danh tính không có trần độ dài.
+    (COMPANY, "human:a\n=== 2026-01-01 00:00:00 console bật bởi human:b", 30, "ký tự điều khiển"),
+    (COMPANY, "human:" + "x" * 80, 30, "quá dài"),
 ])
 def test_start_tu_choi_tham_so_sai(mgr: en.EngineManager, xuong: str, by: str, interval, mong: str) -> None:
     with pytest.raises(en.EngineError, match=mong):
@@ -238,6 +242,8 @@ def test_stop_tu_choi_xuong_la_va_thieu_nguoi(mgr: en.EngineManager) -> None:
         mgr.stop("xuong-la", by="human:a")
     with pytest.raises(en.EngineError, match="thiếu người tắt"):
         mgr.stop(COMPANY, by="")
+    with pytest.raises(en.EngineError, match="ký tự điều khiển"):
+        mgr.stop(COMPANY, by="human:a\rhuman:b")
 
 
 # ---------- trạng thái đọc ----------

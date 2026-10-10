@@ -62,6 +62,20 @@ def test_allowlist_nguoi_duyet_cua_cong_ty_gia_cong(company_db: Path,
     assert out["ok"] and out["event_id"]
 
 
+@pytest.mark.parametrize("by, match", [
+    ("human:a\nhuman:cto", "ký tự điều khiển"),
+    ("human:a\tb", "ký tự điều khiển"),
+    ("human:" + "x" * 80, "quá dài"),
+])
+def test_by_co_ky_tu_dieu_khien_hoac_qua_dai_bi_tu_choi_truoc_khi_ghi(company_db: Path, by: str, match: str) -> None:
+    """Audit 2026-10-10 (G4): `is_human` chỉ soi tiền tố `human:`, phần sau là chữ tự do — xuống dòng đi vào
+    actor của bản ghi `gate.decide` và mọi chỗ in nó thành dòng (`gate_cli list`, log), không có trần độ dài.
+    Cùng luật với `actor` của form giao việc (`actor_problem`, `MAX_ACTOR_LEN`)."""
+    with pytest.raises(ValueError, match=match):
+        decide(company_db, subject_id="REL-001", xuong=COMPANY, decision="approve", by=by, reason="ok")
+    assert "REL-001" in {g["id"] for g in collect(company_db, gateway_url=DEAD_GATEWAY)["gates"]}
+
+
 @pytest.mark.parametrize("by", ["reviewer:x", "orchestrator", "owner"])
 def test_by_khong_phai_nguoi_bi_tu_choi_truoc_khi_ghi(company_db: Path, by: str) -> None:
     """Ô "Bạn là" của console là chữ tự do (`drawer.js`). Trước bản vá (audit 2026-09-27, F-A): `reviewer:x` và
