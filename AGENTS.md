@@ -173,10 +173,13 @@ Luật cấm 1, 3, 6 và luật bắt buộc 3 ở trên **có cơ chế chặn*
 | Hook | Chặn gì |
 |---|---|
 | `block-dangerous-git.sh` | `git push` (kể cả force) vào `main`/`master`; `reset --hard`; `merge\|rebase\|cherry-pick --abort` |
-| `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · diff hạ `fail_under` · cổng đỏ ở gói bị đụng, gói import nó, hoặc console (luôn chạy; commit chỉ đụng tài liệu/config ngoài mọi gói, không `.py`, thì chỉ chạy chế độ nhanh `dev-task.sh repo-gate` = `pytest -m cong_repo`) |
+| `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · dòng thêm có chuỗi giống khoá/token thật (mẫu `KHOA_GIONG_THAT_RE` ở `_lib.sh`; gitleaks quét cả lịch sử nên phải chặn trước khi vào commit) · diff hạ `fail_under` · cổng đỏ ở gói bị đụng, gói import nó, hoặc console (luôn chạy; commit chỉ đụng tài liệu/config ngoài mọi gói, không `.py`, thì chỉ chạy chế độ nhanh `dev-task.sh repo-gate` = `pytest -m cong_repo`) |
 | `auto-format.sh` | (không chặn) format file vừa sửa qua `dev-task.sh format-file` — chỉ khi bản trong index vốn đã sạch `ruff format` hoặc file mới chưa track |
 
-Đường thoát tường minh: `ALLOW_DANGEROUS_GIT=1`, hoặc `--no-verify` trong lệnh commit — dùng thì **phải nói rõ
+Hai hook soi lệnh dùng chung bộ lọc `_lib.sh` (bỏ thân heredoc, bỏ dữ liệu trong nháy, mở vỏ bọc `bash -c`/`eval`) — một
+bản, sửa một chỗ; `_lib.sh` chỉ để `source`, không phải hook.
+
+Đường thoát tường minh: `ALLOW_DANGEROUS_GIT=1`, hoặc `--no-verify` cùng đoạn với `git commit` — dùng thì **phải nói rõ
 lý do cho người dùng**, không lặng lẽ lách. Hook chặn oan → sửa hook kèm test, đừng tắt nó.
 
 **Agent không phải Claude Code không có hook** (Codex, Cursor, Gemini/Antigravity…): bốn phép kiểm trên phải tự

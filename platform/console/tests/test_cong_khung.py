@@ -363,6 +363,16 @@ CHAN_GIT = HOOKS / "block-dangerous-git.sh"
         "git push origin HEAD:refs/heads/main",
         "git push origin +main",
         "git push origin +HEAD:refs/heads/master",
+        # đo 2026-10-10 (đối chiếu projects-template TRAPS 62, báo cáo 2026-10-10-doi-chieu-projects-template-v4):
+        # cả bảy lọt với bộ lọc cũ — vỏ bọc chạy chuỗi bị coi là dữ liệu, tên nhánh trong nháy bị bỏ cùng nháy,
+        # hai lượt sed nối tiếp ghép `'t break" … "it'` thành một chuỗi nuốt cả lệnh giữa, `)` chặn khuôn tên nhánh
+        "bash -c 'git push origin main'",
+        'eval "git push origin main"',
+        'sh -c "git reset --hard"',
+        "git push origin 'main'",
+        'git push origin "main"',
+        "x=$(git push origin main)",
+        'git commit -m "don\'t break" && git push --force origin main && echo "it\'s done"',
     ],
 )
 def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
@@ -387,6 +397,13 @@ def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
         # `refs/heads/` chỉ là đích khi đứng sau `:` hay đầu refspec — nhánh tên `refs/heads/main-x` thì không
         "git push origin HEAD:refs/heads/main-x",
         "git push origin +feat-x",
+        # chiều đối chứng của bảy ca mới ở trên: dữ liệu trong nháy có khoảng trắng, thân heredoc, nháy đơn lẻ
+        # trong chuỗi nháy kép — vẫn là dữ liệu, không phải lệnh
+        'git commit -m "don\'t"',
+        "git push --force origin main:feat-x",
+        "python3 - <<'PY'\nprint('git push origin main')\nPY",
+        "git commit -F - <<EOF\nquay về main\nEOF\ngit push -u origin feat-x",
+        "echo 'bash' && git push origin feat-x",
     ],
 )
 def test_chan_git_khong_chan_oan(cmd: str) -> None:
@@ -488,6 +505,94 @@ def test_cong_commit_chan_ha_nguong_coverage(kho_main: Path) -> None:
 
 def test_cong_commit_bo_qua_khi_co_no_verify(kho_main: Path) -> None:
     assert _cong("git commit --no-verify -m 'x'", kho_main).returncode == 0
+
+
+def test_cong_commit_no_verify_cua_lenh_khac_khong_bo_cong(kho_main: Path) -> None:
+    """Đo 2026-10-10: `git commit -m x && rm --no-verify` bỏ cổng vì cờ của lệnh KHÁC trong cùng dòng (projects-template
+    TRAPS 62). Cờ bỏ cổng chỉ tính khi nằm cùng đoạn với `commit`."""
+    kq = _cong("git commit -m 'x' && rm --no-verify", kho_main)
+    assert kq.returncode == 2, f"--no-verify của `rm` làm bỏ cổng: {kq.stderr}"
+
+
+def test_cong_commit_trong_vo_boc_chay_chuoi_van_la_commit(kho_main: Path) -> None:
+    """`bash -c 'git commit -m x'` — lệnh nằm trong nháy bị bộ lọc cũ coi là dữ liệu nên không chạy cổng (đo 2026-10-10)."""
+    kq = _cong("bash -c 'git commit -m x'", kho_main)
+    assert kq.returncode == 2, f"commit trong vỏ bọc không bị coi là commit: {kq.stderr}"
+
+
+def test_cong_commit_than_heredoc_khong_phai_lenh(kho_main: Path) -> None:
+    """Thân heredoc là dữ liệu: `git add` trong message không bật tự-stage (file cấm chưa track phải KHÔNG bị kéo
+    vào), và `git commit` trong script python nạp qua heredoc không phải commit."""
+    _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
+    _stage(kho_main, "nen.txt")
+    _git(kho_main, "commit", "-qm", "nen")
+    _tao(kho_main, "llm.yaml")  # chưa track, không stage
+    kq = _cong("git commit --allow-empty -F - <<EOF\nnhắc: nhớ git add trước\nEOF", kho_main)
+    assert kq.returncode == 0, f"`git add` trong thân heredoc bật tự-stage oan: {kq.stderr}"
+    kq = _cong("python3 - <<'PY'\nprint('git commit -m x')\nPY", kho_main)
+    assert kq.returncode == 0 and "cổng" not in kq.stderr, f"heredoc chứa `git commit` bị coi là commit: {kq.stderr}"
+
+
+# Chuỗi giống khoá thật, ghép lúc chạy để chính file test này không làm gitleaks (CI) hay hook đỏ.
+_KHOA_GIA = {
+    "github": "ghp_" + "a1B2" * 9,
+    "aws": "AKIA" + "ABCDEFGH12345678",
+    "pem": "-----BEGIN " + "RSA PRIVATE KEY-----",
+    "openai": "sk-" + "x9" * 20,
+    # sự cố 2026-09-09 (`docs/sessions/2026-09-09.md`): ca eval dùng `sk-live-<16 hex>` → gitleaks đỏ cả lịch sử
+    "su-co-2026-09-09": "sk-live-" + "0123456789abcdef",
+}
+
+
+@pytest.mark.parametrize("ten", sorted(_KHOA_GIA))
+def test_cong_commit_chan_chuoi_giong_khoa_trong_dong_them(kho_main: Path, ten: str) -> None:
+    """Luật cấm 3 chỉ được canh theo TÊN file (llm.yaml…); khoá nằm trong file tên bình thường lọt tới gitleaks ở CI,
+    mà gitleaks quét cả lịch sử nên xoá trên cây không cứu được (sự cố 2026-09-09, phải dựng lại nhánh). Chặn trước
+    khi vào lịch sử — lấy từ projects-template `scripts/_commit-guard.sh`."""
+    _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
+    (kho_main / "evals.yaml").write_text(f"token: {_KHOA_GIA[ten]}\n", encoding="utf-8")
+    _git(kho_main, "add", "evals.yaml")
+    kq = _cong("git commit -m 'x'", kho_main)
+    assert kq.returncode == 2, f"chuỗi giống khoá ({ten}) lọt vào commit: {kq.stderr}"
+    assert "khoá" in kq.stderr and "gitleaks" in kq.stderr
+
+
+def test_cong_commit_chan_khoa_trong_file_chua_track_ma_git_add_sap_lay(kho_main: Path) -> None:
+    _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
+    _stage(kho_main, "nen.txt")
+    _git(kho_main, "commit", "-qm", "nen")
+    (kho_main / "moi.txt").write_text(f"k = {_KHOA_GIA['github']}\n", encoding="utf-8")
+    kq = _cong("git add -A && git commit -m 'x'", kho_main)
+    assert kq.returncode == 2, f"`git add -A && git commit` mang khoá trong file chưa track vào lịch sử: {kq.stderr}"
+
+
+@pytest.mark.parametrize("dong", [
+    "api_key: sk-live-XXXXXXXXXXXXXXXX",     # placeholder entropy 0 của `companies/keeper/evals/security-auditor.yaml`
+    "api_key: <dien-khoa-o-day>",
+    "ghp_token = os.environ['GITHUB_TOKEN']",
+    "-----BEGIN NOTE-----",
+])
+def test_cong_commit_khong_chan_nham_placeholder(kho_main: Path, dong: str) -> None:
+    """Chiều ngược: mẫu `*.example.yaml` và placeholder PHẢI commit được — chặn oan dạy người gõ --no-verify thành phản xạ."""
+    _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
+    (kho_main / "llm.example.yaml").write_text(dong + "\n", encoding="utf-8")
+    _git(kho_main, "add", "llm.example.yaml")
+    kq = _cong("git commit -m 'x'", kho_main)
+    assert kq.returncode == 0, f"chặn oan placeholder {dong!r}: {kq.stderr}"
+
+
+def test_cong_commit_xoa_dong_khoa_thi_duoc_commit(kho_main: Path) -> None:
+    """Chỉ soi dòng THÊM: commit gỡ một khoá lỡ vào lịch sử (bước 1 của sự cố 2026-09-09) phải đi qua — chặn cả chiều
+    gỡ thì hàng rào tự khoá đường sửa."""
+    _git(kho_main, "checkout", "-q", "-b", "worktree-thu")
+    f = kho_main / "evals.yaml"
+    f.write_text(f"token: {_KHOA_GIA['github']}\nkhac: 1\n", encoding="utf-8")
+    _git(kho_main, "add", "evals.yaml")
+    _git(kho_main, "commit", "-qm", "lo")  # không qua hook
+    f.write_text("token: <placeholder>\nkhac: 1\n", encoding="utf-8")
+    _git(kho_main, "add", "evals.yaml")
+    kq = _cong("git commit -m 'go khoa'", kho_main)
+    assert kq.returncode == 0, f"chặn cả commit gỡ khoá: {kq.stderr}"
 
 
 def test_cong_commit_khong_dong_vao_lenh_khac(kho_main: Path) -> None:
@@ -941,6 +1046,21 @@ def test_moi_hook_khai_trong_settings_co_bit_thuc_thi_trong_git() -> None:
     mode = {dong.split("\t", 1)[1]: dong.split(" ", 1)[0] for dong in kq.stdout.splitlines()}
     thieu = [d for d in duong if mode.get(d) != "100755"]
     assert not thieu, f"hook khai trong settings.json thiếu bit thực thi trong git (cần 100755): {thieu}"
+
+
+def test_bo_loc_dung_chung_lib_sh_duoc_ca_hai_hook_soi_lenh_source() -> None:
+    """`_lib.sh` giữ MỘT bản bộ lọc "bỏ dữ liệu trước khi so khớp" (heredoc, nháy, vỏ bọc) cho cả hai hook soi lệnh
+    Bash. Hai bản sao lệch nhau là bẫy projects-template đã mắc (2026-09-14 sửa heredoc ở một hook, hook kia vẫn
+    coi thân heredoc là lệnh). `_lib.sh` chỉ để `source`, không nối vào settings.json."""
+    lib = HOOKS / "_lib.sh"
+    assert lib.is_file()
+    for hook in (CHAN_GIT, CONG_COMMIT):
+        than = hook.read_text(encoding="utf-8")
+        assert 'source "$HOOK_DIR/_lib.sh"' in than, f"{hook.name} chưa dùng bộ lọc chung _lib.sh"
+        assert "sed \"s/'[^']*'//g" not in than, f"{hook.name} còn bản sao bộ lọc nháy riêng (hai lượt sed nối tiếp)"
+    cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    lenh = [h["command"] for nhom in cfg.get("hooks", {}).values() for muc in nhom for h in muc["hooks"]]
+    assert not any("_lib.sh" in mot_lenh for mot_lenh in lenh), "_lib.sh là thư viện source, không phải hook"
 
 
 def test_moi_hook_deu_co_test_trong_file_nay() -> None:

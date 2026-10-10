@@ -5,7 +5,8 @@
 # nào thi hành. Repo này tự viết luật cấm 8 "không tin lời khai, kể cả của chính mình" rồi lại để chính các
 # luật cấm được canh bằng đúng thứ nó không cho tin: trí nhớ của agent. Hook là hàng rào, không phải lời nhắc.
 #
-# Lấy từ `seeker19110/project-template` (`.claude/hooks/block-dangerous-git.sh`), thêm khuôn (1b) của repo này.
+# Lấy từ `seeker19110/project-template` (`.claude/hooks/block-dangerous-git.sh`), thêm khuôn (1b) của repo này;
+# bộ lọc `_lib.sh` đối chiếu lại với bản của họ 2026-10-10.
 #
 # Chặn (exit 2 = chặn, báo lại cho Claude):
 #   1.  force-push vào nhánh chính                     — luật cấm 1
@@ -19,26 +20,12 @@ set -uo pipefail   # cố ý KHÔNG -e: hook không được làm chết phiên
 
 [ "${ALLOW_DANGEROUS_GIT:-0}" = "1" ] && exit 0
 
-# Đọc lệnh Bash sắp chạy từ payload. Ưu tiên jq; thiếu jq thì dùng Python (repo này là repo Python nên chắc
-# chắn có). KHÔNG grep JSON thô: sẽ khớp nhầm nội dung file/mô tả rồi chặn oan.
-# Đo 2026-09-14: máy phát triển chính KHÔNG có jq — bản template chỉ dùng jq nên hàng rào của nó sẽ fail-open
-# IM LẶNG suốt phiên, đúng khuôn "cổng chết im lặng" mà `test_cong_repo.py` sinh ra để canh.
-doc_lenh() {
-  if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$1" | jq -r '.tool_input.command // empty' 2>/dev/null
-    return 0
-  fi
-  local py
-  for py in python3 python; do
-    if command -v "$py" >/dev/null 2>&1; then
-      printf '%s' "$1" | "$py" -c 'import sys,json
-try: sys.stdout.write(json.load(sys.stdin).get("tool_input",{}).get("command","") or "")
-except Exception: pass' 2>/dev/null
-      return 0
-    fi
-  done
-  return 1
-}
+# Bộ lọc dùng chung với pre-commit-gate.sh: đọc lệnh từ payload (jq, thiếu thì Python), bỏ thân heredoc, bỏ phần
+# trong nháy, mở vỏ bọc `bash -c '…'`/`eval "…"` — một bản duy nhất, xem chú thích ở `_lib.sh`.
+# `${0%/*}` thay `$(dirname "$0")`: hook phải đọc được lệnh cả khi PATH hỏng (ca `thieu_jq_thi_noi_ra`).
+HOOK_DIR="${0%/*}"; [ "$HOOK_DIR" = "$0" ] && HOOK_DIR=.
+# shellcheck source=_lib.sh
+source "$HOOK_DIR/_lib.sh" || { echo "[block-dangerous-git] thiếu .claude/hooks/_lib.sh → không đọc được lệnh, bỏ qua kiểm tra." >&2; exit 0; }
 
 payload="$(cat)"
 if ! cmd="$(doc_lenh "$payload")"; then
@@ -48,8 +35,10 @@ if ! cmd="$(doc_lenh "$payload")"; then
 fi
 [ -n "$cmd" ] || exit 0
 
-# Bỏ phần TRONG DẤU NHÁY trước khi so khớp: `git commit -m 'nói về git reset --hard'` không phải lệnh nguy hiểm.
-cmd_scan="$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")"
+# Văn bản để so khớp — dữ liệu (nháy có khoảng trắng, thân heredoc) đã bỏ, đối số một từ trong nháy (`'main'`) và
+# lệnh trong vỏ bọc (`bash -c 'git push origin main'`) vẫn còn. Đo 2026-10-10: bản cũ (hai lượt sed, không heredoc,
+# không vỏ bọc) để lọt bảy lệnh — danh sách ở `test_cong_khung.py::test_chan_git_chan_dung_khuon_cam`.
+cmd_scan="$(van_ban_soi "$cmd")"
 
 la_git() { printf '%s' "$cmd_scan" | grep -Eq "(^|[^-])git[[:space:]]+([^|&;]*[[:space:]])?$1([[:space:]]|$)"; }
 co_co()  { printf '%s' "$cmd_scan" | grep -Eq "(^|[[:space:]])($1)([[:space:]]|$)"; }
