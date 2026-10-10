@@ -29,7 +29,8 @@ jobs:
         working-directory: companies/software-company
       # Lần hai CÓ extra `graph`: không cài langgraph thì --ignore-missing-imports biến graph.py thành Any và lệch
       # kiểu với langgraph không bao giờ lộ (StateGraph(dict) đỏ 2 lỗi type-var chỉ khi cài, 2026-10-05).
-      - run: uv run --locked --extra graph mypy src/company --ignore-missing-imports
+      # `--isolated` vì `dev-task.sh` chạy đúng chuỗi này trên `.venv` chung của máy cục bộ (xem chú thích ở đó).
+      - run: uv run --locked --extra graph --isolated mypy src/company --ignore-missing-imports
         working-directory: companies/software-company
 
   unit:

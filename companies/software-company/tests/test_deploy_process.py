@@ -222,6 +222,18 @@ def test_binary_bien_mat_giua_chung_thi_ly_do_doc_duoc(tmp_path):
     assert r.ok is False and "không có trên máy" in r.error
 
 
+def test_binary_co_that_ma_khong_chay_duoc_thi_ly_do_doc_duoc(tmp_path):
+    """`_process_cmd` hứa "không ném" nhưng chỉ bắt `FileNotFoundError`: binary CÓ trên đĩa mà không chạy được
+    (thiếu quyền thực thi, không phải Win32 app) ném `OSError` khác, xuyên qua `deploy()` vào lượt verify.
+    File thật + `subprocess.run` thật; đuôi `.exe` để Windows không tự thêm `.exe` rồi đọc thành "không có"."""
+    f = tmp_path / "khong-chay.exe"
+    f.write_text("khong phai binary\n", encoding="utf-8")  # 0o644: không ai chạy được, kể cả root
+    r = deploy(
+        _repo(tmp_path), "P1", "staging", RT, mode="process", binary=f.as_posix(), run=subprocess.run, which=lambda b: b
+    )
+    assert r.ok is False and "không chạy được" in r.error
+
+
 def test_qua_gio_thi_ly_do_doc_duoc(tmp_path):
     def raise_timeout(argv, **kw):
         raise subprocess.TimeoutExpired(cmd=argv, timeout=kw.get("timeout", 0))

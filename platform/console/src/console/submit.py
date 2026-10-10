@@ -17,7 +17,7 @@ from company.bus import BusError as CompanyBusError
 from company.events import Envelope as CompanyEnvelope
 from company.sqlite_bus import SQLiteBus as CompanyBus
 
-from console.decide import COMPANY, KEEPER, XUONG
+from console.decide import COMPANY, KEEPER, XUONG, actor_problem
 
 # topic người nạp được → trường payload dùng làm `key` của envelope (cùng quy ước với CLI `publish` của công ty:
 # software-company lấy project_id).
@@ -27,7 +27,6 @@ FORMS: dict[str, dict[str, str]] = {
     # ticket bảo trì phải đi qua `triager` để có `risk_tier`, nên không có form nào cho `maintenance-tickets`.
     KEEPER: {"maintenance-signals": "subject"},
 }
-MAX_ACTOR_LEN = 80
 
 
 def _bus_for(xuong: str, db: Path) -> tuple[Any, Any, type[Exception]]:
@@ -66,8 +65,8 @@ def submit(company_db: Path | None, keeper_db: Path | None = None, *,
     actor = (actor or "").strip()
     if not actor:
         raise ValueError("thiếu người giao việc (`actor`)")
-    if len(actor) > MAX_ACTOR_LEN:
-        raise ValueError(f"`actor` quá dài (tối đa {MAX_ACTOR_LEN} ký tự)")
+    if (why := actor_problem(actor, "actor")) is not None:
+        raise ValueError(why)
     key = str(payload.get(allowed[topic]) or "").strip()
     if not key:
         raise ValueError(f"payload thiếu `{allowed[topic]}` (dùng làm key của {topic})")

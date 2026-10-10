@@ -171,6 +171,12 @@ def _loops(records: list[dict[str, Any]], tickets_with_tasks: set[str], tickets_
     }
 
 
+def _label_value(v: Any) -> str:
+    """Giá trị nhãn theo text format: đúng ba escape `\\`, `"`, xuống dòng. `ticket_id`/`project_id` là chuỗi tự do
+    của khách; một nhãn hỏng làm Prometheus bỏ CẢ trang scrape, không chỉ dòng đó."""
+    return str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
 def prometheus(m: dict[str, Any], prefix: str = "company") -> str:
     """Text exposition format (một gauge/counter mỗi dòng), nhãn theo agent/model/ticket."""
     lines: list[str] = []
@@ -178,7 +184,7 @@ def prometheus(m: dict[str, Any], prefix: str = "company") -> str:
         full = f"{prefix}_{name}"
         if not any(ln.startswith(f"# HELP {full} ") for ln in lines):
             lines.append(f"# HELP {full} {help_}"); lines.append(f"# TYPE {full} {kind}")
-        lab = "{" + ",".join(f'{k}="{str(v).replace(chr(34), "")}"' for k, v in (labels or {}).items()) + "}" if labels else ""
+        lab = "{" + ",".join(f'{k}="{_label_value(v)}"' for k, v in (labels or {}).items()) + "}" if labels else ""
         lines.append(f"{full}{lab} {value}")
     for k in ("calls", "tokens", "cost_usd", "errors", "retries", "tool_calls", "duration_ms"):
         emit(f"total_{k}", m["total"][k], f"tổng {k} toàn công ty", kind="counter")

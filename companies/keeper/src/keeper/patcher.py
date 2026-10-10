@@ -199,8 +199,11 @@ def bump_dependency(root: Path, ticket_id: str, *, package: str, new_spec: str,
 
     Không tìm thấy gói ở đâu cả → `ValueError`, không ghi gì: một bump không khớp chỗ nào là dấu hiệu signal
     sai chủ thể, không phải chuyện im lặng bỏ qua."""
-    # ranh giới tên gói hai phía: `pytest` không được khớp `pytest-cov`, `xpytest` hay `[tool.pytest.ini_options]`
-    pattern = re.compile(rf"(?<![\w.-]){re.escape(package)}(?![\w.-])\s*(?:[=<>!~^]=?[^\"',\s]*)?")
+    # Chỉ CHUỖI requirement: tên gói ngay sau dấu nháy mở, spec xong là hết chuỗi (`"`, `'`), tới marker (`;`) hoặc
+    # ràng buộc kế (`,`) — không phải comment, mô tả hay khoá TOML (`[tool.uv.sources] pkg = {…}`), và vì neo nháy
+    # nên `pytest` cũng không khớp `pytest-cov`/`xpytest`/`[tool.pytest.ini_options]`. Có extras (`pkg[x]`) thì bỏ
+    # qua: `new_spec` không mang extras, thay là mất chúng.
+    pattern = re.compile(rf"(?<=[\"']){re.escape(package)}(?:[ \t]*[=<>!~^]=?[ \t]*[^\"',;\s]*)?(?=[ \t]*[\"',;])")
     edits: list[Edit] = []
     for rel in files:
         target = check_path(root, rel)
