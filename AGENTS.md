@@ -124,10 +124,11 @@ là chưa đạt, không hạ chuẩn để kết thúc. Nguồn template: `docs
 9. **Cuối phiên**: ghi `docs/sessions/<ngày>.md` (việc dở, PR mở, thứ người sau không được quên) và một dòng
    `CHANGELOG.md` cho mỗi PR đã merge.
 10. **Tài liệu đi CÙNG PR, không đi sau nó**: dòng `CHANGELOG.md`, `docs/sessions/<ngày>.md` và số liệu
-   `README.md` nằm trong **chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp. Số PR chỉ có sau khi
-   tạo PR, nên ngay sau `gh pr create`: điền `(#<n>)` vào dòng CHANGELOG (và nhật ký phiên) rồi **commit tiếp
-   vào chính PR đó** trước khi nó merge — không phải mở PR khác để vá số. Đẩy xong thì kiểm commit đã vào PR
-   (luật 8). Dòng CHANGELOG xếp mới nhất trên cùng theo **thời điểm merge**, không theo thứ tự tạo PR.
+   `README.md` nằm trong **chính PR** làm ra thay đổi, không để lại cho một PR dọn dẹp (cổng `metadata` đỏ khi PR
+   không thêm dòng CHANGELOG nào; nhãn `no-changelog` để miễn). Số PR **không cần ghi tay**: commit squash trên
+   `main` đã mang `(#n)`, nên tra dòng ↔ PR bằng `git blame CHANGELOG.md` hoặc `git log -S"<dòng>"`. Đừng đặt
+   chỗ giữ kiểu `(#PENDING)` — `drift-check` đỏ (`TRAPS.md` §3). Dòng CHANGELOG xếp mới nhất trên cùng theo
+   **thời điểm merge**, không theo thứ tự tạo PR.
 11. **Trước khi mở PR, tìm PR/issue trùng — đóng hay mở đều tính.** `gh pr list --state all --search "<từ khoá>"`
    và `gh issue list --state all --search "<từ khoá>"`. Có PR cũ từng đóng vì cùng vấn đề → đọc lý do đóng, nói
    rõ trong PR mới cái gì khác đi khiến lần này nên qua; không lặng lẽ mở PR thứ hai cho cùng một việc.

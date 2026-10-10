@@ -94,9 +94,9 @@ chỉ lo `tools="rw"`). Cái rơi ra ngoài luôn rơi vào im lặng.
 **`(#PENDING)` trong CHANGELOG nay là CI ĐỎ — để TRỐNG, đừng đặt chỗ giữ.** Từ phép (d) của `keeper drift`,
 mọi `(#PRNUM)`/`(#PENDING)`/`(#n)` **ngoài dấu backtick** trong `CHANGELOG.md` làm job `drift-check` đỏ. Lý do
 có phép này: 3/4 ca thiếu dòng CHANGELOG (2026-09-09) là *quên điền số* chứ không phải quên viết dòng, và một
-chỗ giữ chỗ không ai quay lại điền thì tệ hơn không có gì — nó trông như đã xong. *Cách làm đúng theo luật 10*:
-commit 1 viết dòng CHANGELOG **kết thúc không có số**; sau `gh pr create` thì commit 2 thêm `(#<n>)` vào chính
-PR đó. Muốn NHẮC TỚI một placeholder trong văn xuôi (kể lại một bug, trích luật) thì bọc backtick — phép (d)
+chỗ giữ chỗ không ai quay lại điền thì tệ hơn không có gì — nó trông như đã xong. *Cách làm đúng theo luật 10*
+(từ 2026-10-10, audit F4): viết dòng CHANGELOG **không có số** và dừng ở đó — commit squash trên `main` đã mang
+`(#n)`, tra bằng `git blame CHANGELOG.md`. Muốn NHẮC TỚI một placeholder trong văn xuôi (kể lại một bug, trích luật) thì bọc backtick — phép (d)
 bỏ qua code span, đúng để tài liệu mô tả được nó mà không tự làm mình đỏ.
 
 **`sed 's/(#<n>)/(#N)/'` để điền số PR sửa nhầm lịch sử CHANGELOG.** Mắc **hai lần trong cùng một ngày**
@@ -109,13 +109,14 @@ Cách rà: sau khi điền số, `grep -n '(#<n>)\|(#N)' CHANGELOG.md` và `git 
 toàn bộ chỗ khớp trước khi commit**, hoặc neo lệnh theo số dòng thay vì theo chuỗi.
 
 **`quality` đỏ với 0 failure — run đã bị thay thế, không phải lỗi.** Mắc ba lần trong phiên 2026-09-08 (#172,
-#173, #174). Luật 10 bắt điền `(#<n>)` vào chính PR đó, mà số PR chỉ có sau khi tạo PR — nên luôn có commit thứ
-hai đẩy sau commit thứ nhất vài chục giây. `concurrency: cancel-in-progress` cắt run đầu, và `quality` **cố ý**
+#173, #174). Hồi đó luật 10 bắt điền `(#<n>)` vào chính PR đó, mà số PR chỉ có sau khi tạo PR — nên luôn có
+commit thứ hai đẩy sau commit thứ nhất vài chục giây (bỏ từ 2026-10-10, audit F4; mọi lần đẩy thêm vào PR đang
+chạy CI vẫn sinh đúng hiện tượng này). `concurrency: cancel-in-progress` cắt run đầu, và `quality` **cố ý**
 coi `cancelled` là đỏ (job bị bỏ qua không được tính là qua cổng). Kết quả: mỗi PR sinh đúng một `quality` đỏ
 trên head CŨ. *Cách nhận ra*: mở log job `quality` và đọc mảng `RESULTS` — có `failure` mới là lỗi thật; toàn
 `success` + `cancelled` là run đã bị thay thế, và bản đúng là run trên head hiện tại. Nó **không chặn merge**
-(required check chấm trên head SHA hiện tại), nên đừng đi tìm lỗi trong diff. Đã cân nhắc sửa `ci.yml` hoặc luật
-10 và **quyết định không**: cả hai đánh đổi đều tệ hơn cái giá vài phút CI.
+(required check chấm trên head SHA hiện tại), nên đừng đi tìm lỗi trong diff. Đã cân nhắc sửa `ci.yml` và
+**quyết định không**: đánh đổi tệ hơn cái giá vài phút CI. Luật 10 thì đã bỏ phần điền số (2026-10-10, F4).
 
 
 | Bẫy | Đã xảy ra | Lần sau |

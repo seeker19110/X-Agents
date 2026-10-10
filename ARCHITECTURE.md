@@ -103,8 +103,8 @@ và `unit`: ubuntu 3.11 + 3.13, windows 3.13; `core-static`/`keeper-static`: ubu
 | toàn repo | `audit`, `protection-guard`, `quality` | pip-audit (một `uv.lock`) + gitleaks cả lịch sử · ruleset trong file ↔ ruleset thật, hai chiều · gom kết quả |
 
 **`pr-policy.yml`** — mỗi PR (kể cả sửa thân PR, gắn/gỡ nhãn); job `metadata`: tiêu đề Conventional Commits, scope
-một từ chữ thường · dòng thêm vào `CHANGELOG.md` mang `(#<số PR>)` (`scripts/pr_changelog_check.py`; nhãn
-`no-changelog` để miễn) · PR `fix(` chạm `orchestrator.py`/`orch/` phải dẫn ADR-0034 · mục Definition of Done và
+một từ chữ thường · PR thêm ít nhất một dòng vào `CHANGELOG.md`, không bắt `(#<số PR>)`
+(`scripts/pr_changelog_check.py`; nhãn `no-changelog` để miễn) · PR `fix(` chạm `orchestrator.py`/`orch/` phải dẫn ADR-0034 · mục Definition of Done và
 BÁO CÁO XÁC THỰC không còn `- [ ]` (`scripts/pr_dod_check.py`; ô ghi `(sau merge)` được miễn) · thiếu
 `docs/sessions/<hôm nay>.md` chỉ cảnh báo.
 

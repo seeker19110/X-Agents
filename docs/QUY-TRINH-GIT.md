@@ -97,8 +97,8 @@ yêu cầu → phân tích hiện trạng → chốt yêu cầu → đặc tả 
   CI đỏ ở cuối phải tháo ngược nhiều commit.
 - **Mở PR ở trạng thái NHÁP ngay sau task đầu tiên**, không chờ xong cả hạng mục. Lý do: `pull_request.synchronize`
   vẫn kích CI thật trên PR nháp (không job nào lọc theo `draft`), nên mỗi task push lên vẫn có CI thật — không
-  cần vòng "PR nháp riêng cho mỗi task rồi gộp lại". Có số PR từ đầu còn giải quyết dứt điểm luật bắt buộc 10:
-  điền `(#n)` vào CHANGELOG ngay từ commit thứ hai, không phải vá số sau khi mở PR.
+  cần vòng "PR nháp riêng cho mỗi task rồi gộp lại". (Dòng CHANGELOG không cần mang `(#n)` — luật bắt buộc 10:
+  commit squash trên `main` đã mang số.)
 - **§5 bước 2 "không để nháp" vẫn đúng, chỉ đúng ở bước merge**: nháp trong lúc làm task, `gh pr ready` **rồi
   mới** bật auto-merge khi hạng mục xong — không mâu thuẫn với "GitHub từ chối bật auto-merge trên PR nháp".
 - **§2c "chỉ một PR mở" áp nguyên vẹn cho cả PR nháp** — nháp vẫn tính là một PR đang mở. Nhánh khác (kể cả
@@ -146,8 +146,8 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
      sửa — dẫn chiếu chết ở ADR, session log, CHANGELOG cũ vẫn được phép còn (đó là bản ghi lịch sử), nhưng
      dẫn chiếu ở tài liệu **đang sống** (README, ARCHITECTURE, CODEMAP, `.claude/`, `.gitattributes`) phải sửa.
    - `docs/thi-hanh/<mã>.md` hoặc bảng theo dõi liên quan (nếu có) đã cập nhật cột "khi nào" chưa.
-   - Dòng CHANGELOG ở "Chưa phát hành" đã có cho đúng thay đổi này chưa, và mang `(#<số PR>)` sau khi tạo PR
-     (cổng `metadata` đỏ nếu thiếu dòng hoặc thiếu số).
+   - Dòng CHANGELOG ở "Chưa phát hành" đã có cho đúng thay đổi này chưa (cổng `metadata` đỏ nếu PR không thêm
+     dòng nào). Không cần ghi `(#<số PR>)`: commit squash trên `main` đã mang số.
    - `git status` sạch (không sót file định thêm mà quên `git add`, không sót file tạm không định commit).
    - `git diff --check` sạch trên **toàn diff** so với `main`, không chỉ file vừa sửa gần nhất.
    - `gh pr list --state open` — còn PR khác mở thì làm theo §2c, không tạo PR mới.
@@ -161,9 +161,10 @@ Không commit secret, `llm.yaml`, khóa API, hay dữ liệu thật. Không gọ
    Bẫy: scope chỉ nhận chữ thường — `fix(skillTiering)` trượt, `fix(skills)` đạt.
 
    Cổng `metadata` (`.github/workflows/pr-policy.yml`) còn bốn bước nữa, đọc trước khi viết thân PR:
-   - **Dòng CHANGELOG** thêm vào mục "Chưa phát hành" phải mang `(#<số PR này>)` (`scripts/pr_changelog_check.py`;
-     nhãn `no-changelog` để miễn) — đỏ nếu thiếu dòng hoặc thiếu số. Số chỉ có sau `gh pr create`: tạo PR rồi
-     commit dòng có số vào chính PR đó (`AGENTS.md` luật bắt buộc 10).
+   - **Dòng CHANGELOG**: PR phải thêm ít nhất một dòng vào `CHANGELOG.md` (`scripts/pr_changelog_check.py`;
+     nhãn `no-changelog` để miễn) — đỏ nếu không thêm dòng nào. Không bắt `(#<số PR>)`: số đã nằm trong subject
+     commit squash trên `main`, tra bằng `git blame CHANGELOG.md`/`git log -S"<dòng>"` (`AGENTS.md` luật bắt buộc
+     10). Đừng đặt chỗ giữ kiểu `(#PENDING)` — `drift-check` đỏ.
    - **PR `fix(` chạm `companies/software-company/src/company/orchestrator.py` hoặc `orch/` phải dẫn `ADR-0034`**
      trong thân, nói rõ đụng bảng chuyển nào (K8.3). `refactor(` không bị soi: tách module là làm ĐÚNG
      theo ADR, còn `fix(` là sửa hành vi máy trạng thái — chỗ dễ lặng lẽ phá bảng chuyển nhất. Đặc tả
