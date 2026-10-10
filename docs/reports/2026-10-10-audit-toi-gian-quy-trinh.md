@@ -158,3 +158,17 @@ ký đúng **một lần**, rồi chạy `gate all`.
 | B, khung cổng | F2 + F6: `dev-task.sh` khớp `ci.yml`, marker `cong_repo` cho hook | `scripts/dev-task.sh`, `.claude/hooks/pre-commit-gate.sh`, console tests |
 | C, thủ tục PR | F3 + F4 + F5: bỏ bắt `(#n)`, gọn mẫu PR và khối BÁO CÁO | `AGENTS.md`, `.github/`, `scripts/pr_*`, `docs/QUY-TRINH-GIT.md` §2d/§5 |
 | D, tài liệu | F7: `CLAUDE.md` chỉ giữ phần khác biệt, chuyển đoạn kể sự cố sang `TRAPS.md` | `CLAUDE.md`, `docs/QUY-TRINH-GIT.md` §2b/§8, `TRAPS.md` |
+
+### Kết quả gộp
+
+| Phát hiện | Commit | Bằng chứng đo |
+|---|---|---|
+| F7 | `051be22` | `CLAUDE.md` không còn chép luật của `AGENTS.md`; `test_cong_repo` xanh |
+| F4 | `23d795e` | `pr_changelog_check` chỉ đòi có dòng thêm; test đổi theo, đỏ trước khi sửa script |
+| F3 + F5 | `b92d75e` | ba test mới về mẫu PR, đỏ trước khi sửa mẫu |
+| F1 | `a4b2300` | `keeper drift` không còn phép (c); `drift-check` bỏ `fetch-depth: 0` |
+| F2 | `71608da` | `DEV_TASK_DRY_RUN=1 dev-task.sh typecheck company` in đủ hai lệnh mypy của job `static` |
+| F6 | `02118cd` | `repo-gate`: 341 test trong ~28 s, thay cho gate console đầy đủ 694 test trong ~104 s |
+
+Lúc gộp còn sót vài chú thích trỏ "`CLAUDE.md` luật 2/§8". Phiên chính đã sửa chúng thành `AGENTS.md` luật cấm 2 và
+§"Hàng rào thi hành". Tài liệu lịch sử (`CHANGELOG`, `docs/sessions/`, `docs/thi-hanh/`) giữ nguyên chữ cũ.

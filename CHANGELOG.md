@@ -8,6 +8,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- chore(repo): audit tối giản quy trình (`docs/reports/2026-10-10-audit-toi-gian-quy-trinh.md`) — bỏ phép (c) `changelog_drift` của keeper drift (đỏ `main` sau PR dependabot); CHANGELOG chỉ cần có dòng thêm, không còn bắt `(#số PR)` nên bớt một lượt push + CI mỗi PR; mẫu PR bỏ khai trùng, khối BÁO CÁO một lệnh `dev-task.sh gate`, nhật ký phiên ra khỏi ô DoD chặn; `dev-task.sh typecheck company` chạy thêm mypy `--extra graph` như job `static`; hook commit chỉ sửa tài liệu ngoài gói chạy `repo-gate` (`pytest -m cong_repo`, ~28 s thay ~104 s); `CLAUDE.md` trỏ về `AGENTS.md` thay vì chép luật. Mọi cổng chất lượng (coverage 100%, TDD, CI 32 job, ruleset) giữ nguyên.
+
 - fix(core): S2 enforce egress bằng network internal và Squid ACL hostname; subprocess từ chối allowlist, uv của company chỉ tới PyPI, smoke qua relay cổng riêng. Test container thật đo domain cho phép/bị chặn, bypass/DNS và cleanup; image Python khách có uv; proxy dùng cùng runner của sandbox để test offline không gọi Docker thật. (#394).
 
 - fix(core): S1 theo ADR gốc 0023 — `auto` thiếu Docker/Podman dừng trước khi chạy mã khách; CLI ghi `sandbox.mode`, status và console hiện cảnh báo cho `subprocess` tường minh; ca F1 dùng container thật kiểm bus ngoài mount. (#392).

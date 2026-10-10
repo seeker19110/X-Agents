@@ -366,7 +366,7 @@ CHAN_GIT = HOOKS / "block-dangerous-git.sh"
     ],
 )
 def test_chan_git_chan_dung_khuon_cam(cmd: str) -> None:
-    """Luật cấm 1 (`main`) và `CLAUDE.md` §8 (`reset --hard`, `--abort`) — exit 2 = chặn."""
+    """Luật cấm 1 (`main`) và `AGENTS.md` §"Hàng rào thi hành" (`reset --hard`, `--abort`) — exit 2 = chặn."""
     kq = _chay(CHAN_GIT, stdin=_payload(cmd))
     assert kq.returncode == 2, f"đáng lẽ chặn: {cmd} (exit {kq.returncode})"
 
@@ -718,7 +718,7 @@ def test_bo_do_marker_cong_repo_dung_y() -> None:
 def kho_worktree(kho_main: Path, tmp_path: Path) -> tuple[Path, Path]:
     """Checkout chính đứng trên `main` + một worktree trên nhánh riêng.
 
-    Đúng hoàn cảnh `CLAUDE.md` luật 2 bắt buộc: mỗi phiên một worktree. Trả `(chinh, worktree)`.
+    Đúng hoàn cảnh `AGENTS.md` luật cấm 2 bắt buộc: mỗi phiên một worktree. Trả `(chinh, worktree)`.
     """
     (kho_main / "nen.txt").write_text("x", encoding="utf-8")
     _git(kho_main, "add", "-A")
@@ -734,7 +734,7 @@ def test_cong_commit_khong_chan_oan_trong_worktree(kho_worktree: tuple[Path, Pat
     """Hook phải đọc nhánh của CÂY ĐANG COMMIT, không phải của checkout chính.
 
     Checkout chính đứng trên `main`; worktree đứng trên `fix/thu`. Đọc nhầm cây ⇒ chặn oan mọi commit
-    đúng luật — hàng rào cản chính quy trình mà `CLAUDE.md` luật 2 bắt buộc.
+    đúng luật — hàng rào cản chính quy trình mà `AGENTS.md` luật cấm 2 bắt buộc.
     """
     chinh, wt = kho_worktree
     (wt / "a.txt").write_text("x", encoding="utf-8")

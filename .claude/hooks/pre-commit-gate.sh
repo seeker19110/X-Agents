@@ -17,7 +17,7 @@ set -uo pipefail   # cố ý KHÔNG -e: hook không được làm chết phiên
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
-# CÂY ĐANG COMMIT ≠ CHECKOUT CHÍNH. `CLAUDE.md` luật 2 bắt mỗi phiên một `git worktree`, nên `CLAUDE_PROJECT_DIR`
+# CÂY ĐANG COMMIT ≠ CHECKOUT CHÍNH. `AGENTS.md` luật cấm 2 bắt mỗi phiên một `git worktree`, nên `CLAUDE_PROJECT_DIR`
 # (checkout chính) và cây mà `git commit` sắp chạy trên đó thường là HAI thư mục khác nhau. Dùng chung một biến
 # cho hai nghĩa làm hàng rào hỏng cả hai chiều: phép 1 đọc nhánh của checkout chính (`main`) → chặn oan mọi
 # commit đúng luật; phép 2-4 đọc index của checkout chính (rỗng) → file cấm và `fail_under` bị buông.
