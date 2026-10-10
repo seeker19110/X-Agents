@@ -1227,3 +1227,41 @@ def test_body_json_long_qua_sau_thi_400(make_console, fake_modules) -> None:
     assert resp.status == 400 and "JSON" in json.loads(resp.read())["error"]
     conn.close()
     assert fake_modules.calls["decide"] == []
+
+
+def test_request_bi_chan_thi_dong_ket_noi_khong_doc_tiep_than(make_console) -> None:
+    """Audit 2026-10-10 (request desync): `_guard` trả 404/403 nhưng KHÔNG đọc thân và KHÔNG đóng kết nối, trong khi
+    `protocol_version = "HTTP/1.1"` giữ keep-alive. Thân của POST bị chặn được http.server đọc tiếp thành request
+    THỨ HAI — kẻ tấn công nhồi `GET /` vào thân, nhận 2 phản hồi và trang HTML mang token phiên. Request bị
+    `_guard` chặn phải đóng kết nối (`Connection: close`) để thân không bao giờ được diễn giải."""
+    c = make_console()
+    nhoi = f"GET / HTTP/1.1\r\nHost: 127.0.0.1:{c.port}\r\n\r\n"
+    req = (f"POST /x HTTP/1.1\r\nHost: evil.example:{c.port}\r\nOrigin: http://evil.example:{c.port}\r\n"
+           f"Content-Length: {len(nhoi)}\r\n\r\n{nhoi}")
+    with socket.create_connection(("127.0.0.1", c.port), timeout=5) as s:
+        s.sendall(req.encode()); s.settimeout(2)
+        raw = b""
+        try:
+            while chunk := s.recv(65536):
+                raw += chunk
+        except TimeoutError:
+            pass
+    txt = raw.decode("latin-1")
+    assert txt.count("HTTP/1.1 ") == 1, "thân của request bị chặn đã bị đọc thành request thứ hai"
+    assert " 404 " in txt.split("\r\n", 1)[0]
+    assert "connection: close" in txt.lower()
+    assert c.token not in txt
+
+
+def test_dong_request_sai_cu_phap_tra_400_khong_dut_ket_noi(make_console) -> None:
+    """`http.server` tự trả 400 cho dòng request sai cú pháp và ghi qua `log_error` (chỉ debug, không in token). Trước
+    audit 2026-10-10 nhánh này được phủ *tình cờ* bởi thân request bị chặn đọc thành request thứ hai; nay thân ấy
+    không bao giờ được đọc nên phủ bằng một request sai cú pháp thật."""
+    c = make_console()
+    with socket.create_connection(("127.0.0.1", c.port), timeout=5) as s:
+        s.sendall(b"KHONG PHAI HTTP\r\n\r\n")
+        raw = b""
+        while chunk := s.recv(65536):
+            raw += chunk
+    assert raw.startswith(b"HTTP/1.1 400 ")
+    assert c.token.encode() not in raw

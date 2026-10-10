@@ -374,3 +374,13 @@ def test_bo_dem_loi_thoat_bat_du_cac_dang_viet() -> None:
     )
     assert _dem_skip(van_ban) == 6   # pytestmark + 2 × @POSIX_ONLY + xfail + skip( + importorskip(
     assert _dem_pragma("x = 1  # pragma: no cover\nif a: b  # pragma: no branch\n") == 2
+
+
+def test_protection_guard_so_ca_allowed_merge_methods() -> None:
+    """`protection-guard` đối chiếu ruleset thật với `.github/rulesets/main.json` theo **loại** rule, không theo
+    tham số: `pull_request.allowed_merge_methods` trong file chỉ có `squash`, nhưng #374 và #399 vào `main` bằng
+    merge commit mà job vẫn xanh (audit 2026-10-10). Cổng phải so cả tham số này, không thì file khai một đằng
+    ruleset chạy một nẻo mà không ai biết."""
+    steps = _ci()["jobs"]["protection-guard"]["steps"]
+    run = "\n".join(s.get("run", "") for s in steps)
+    assert "allowed_merge_methods" in run, "protection-guard chưa so `allowed_merge_methods` giữa file và ruleset thật"

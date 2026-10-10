@@ -158,6 +158,7 @@ class Orchestrator:
         stalled: dict[str, dict[str, Any]]
         stall_count: Counter[str]
         unhandled: dict[str, dict[str, Any]]
+        unhandled_count: Counter[str]
         escalation_decided: Counter[str]
         debt_gate: dict[str, dict[str, Any]]
         paused: set[str]

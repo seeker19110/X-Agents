@@ -95,6 +95,8 @@ SEED = {
                                                                     "agent": "builder", "topic": "tasks"}),
     "unhandled": lambda bus, tmp: _audit(bus, "agent_error_unhandled", {"subject": "P1", "event_id": E1,
                                                                         "agent": "builder", "topic": "tasks"}),
+    "unhandled_count": lambda bus, tmp: _audit(bus, "agent_error_unhandled", {"subject": "P1", "event_id": E1,
+                                                                              "agent": "builder", "topic": "tasks"}),
     # chỉ quyết định ĐÃ xử lý (`orchestrated`) mới được đếm lại — decide còn trong hàng đợi do `_on_gate_decide` đếm
     "escalation_decided": lambda bus, tmp: _quyet_da_xu_ly(bus),
     "debt_gate": lambda bus, tmp: _audit(bus, "debt.escalated", {"project_id": "P1", "n": 3}),

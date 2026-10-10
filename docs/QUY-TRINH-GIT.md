@@ -233,7 +233,9 @@ bằng máy, không chỉ là lời hứa (chuyện đã xảy ra: `TRAPS.md` §
      đó là chủ đích. Danh sách check đọc từ file chứ không hard-code, nên thêm/bớt check không cần sửa workflow.
    - **Vế 2 — file và ruleset thật có khớp không (đối chiếu hai chiều):**
      rule khai trong file mà **không** áp trên nhánh ⇒ **đỏ** (bảo vệ yếu hơn thứ repo khai);
-     rule đang áp mà **không** có trong file ⇒ **cảnh báo** (không yếu đi, nhưng import lại sẽ xoá mất nó).
+     rule đang áp mà **không** có trong file ⇒ **cảnh báo** (không yếu đi, nhưng import lại sẽ xoá mất nó);
+     `allowed_merge_methods` thật khác file ⇒ **đỏ** (so tham số, không chỉ loại rule — #374 và #399 vào `main`
+     bằng merge commit trong khi file chỉ cho `squash`, job vẫn xanh tới audit 2026-10-10).
      Cần vế này vì sửa ruleset trong UI có thể làm rơi một rule mà không báo gì (`TRAPS.md` §3).
 
 Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và

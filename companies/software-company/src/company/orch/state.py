@@ -102,6 +102,9 @@ class OrchState:
     # subject → {event_id, agent, topic}: event lỗi không nhánh nào nhận, chờ người
     unhandled: dict[str, dict[str, Any]] = field(default_factory=dict,
                                                  metadata=_src("audit:agent_error_unhandled"))
+    # event_id → số lần lỗi không nhánh nào nhận. Đối xứng với `stall_count`: khoá once của supervisor thiếu thế
+    # hệ thì lỗi LẦN HAI của cùng event (sau khi người duyệt retry) im lặng, không gate nào mở (audit 2026-10-10).
+    unhandled_count: Counter[str] = field(default_factory=Counter, metadata=_src("audit:agent_error_unhandled"))
     # ticket_id → số quyết định escalation đã áp cho ticket đó. Đối xứng với `stall_count`: nếu không có nó,
     # ticket bị chặn LẦN HAI sinh ra đúng khoá `once` của lần một nên không mở gate nào nữa.
     escalation_decided: Counter[str] = field(default_factory=Counter, metadata=_src("audit:gate.decide"))

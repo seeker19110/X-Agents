@@ -30,6 +30,11 @@ escalate khi quá hạn. Guard `test_orch_khuon_loi.py` không thấy vì nó kh
 bài học: (a) **vá một khuôn thì vá ở mọi công ty**, không chỉ nơi phát hiện — hai orchestrator là bản sao của
 cùng một thiết kế; (b) **test canh quy ước phải nói rõ nó canh tới đâu**, vì phạm vi hẹp của nó đọc y hệt "cả
 repo sạch". Studio nay có `Studio-creators/tests/test_khuon_loi.py` đối xứng.
+*Tái phát 2026-10-10 (audit toàn diện)*: `_mark_unhandled` dùng `unhandled:{event_id}:{agent}` không thế hệ trong khi
+anh em `_stall` đã có `stall:{event_id}:{n}` — duyệt retry rồi agent lỗi lại cùng event ⇒ `unhandled` ghi, audit ghi,
+gate KHÔNG mở. Vá: `unhandled_count` (dựng lại từ bus) đưa `n` vào khoá. Rà cùng lượt: `plan_rejected:{event_id}` và
+`spec_runtime:{event_id}` cũng không thế hệ nhưng **an toàn** vì tự `request_gate` khi subject chưa pending (đo lại:
+từ chối kế hoạch lần hai vẫn có gate). Câu hỏi rà: "khoá once này chặn supervisor, vậy gate mở bằng đường nào khác?"
 
 **Thế hệ phải là cùng một giá trị ở mọi tiến trình.** Cùng phiên: khoá `once` của gate lấy `GateRequest.created_at`
 làm thế hệ, nhưng tiến trình tạo gate giữ mốc dựng dataclass còn tiến trình dựng lại từ replay đặt

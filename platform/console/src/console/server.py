@@ -252,6 +252,9 @@ class ConsoleHandler(BaseHTTPRequestHandler):
 
     def _send(self, status: int, body: bytes, content_type: str, csp_nonce: str | None = None) -> None:
         self.send_response(int(status))
+        if self.close_connection:
+            # Nói rõ cho client (RFC 9112 §9.6); `handle_one_request` sẽ không đọc request kế tiếp trên kết nối này.
+            self.send_header("Connection", "close")
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -277,6 +280,11 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         self._send(status, body, "application/json; charset=utf-8")
 
     def _error(self, status: int, message: str) -> None:
+        # Mọi lỗi đều trả lời TRƯỚC khi đọc thân request (`_guard`, 401, 403, 404 của do_POST). Với HTTP/1.1
+        # keep-alive, thân chưa đọc sẽ được `handle_one_request` diễn giải thành request THỨ HAI — kẻ tấn công nhồi
+        # `GET /` vào thân một POST bị `_guard` chặn và nhận trang HTML mang token phiên (request desync, audit
+        # 2026-10-10). Đóng kết nối thì thân không bao giờ được đọc; keep-alive mất ở một phản hồi lỗi là rẻ.
+        self.close_connection = True
         self._json(status, {"error": message})
 
     def log_message(self, fmt: str, *args: Any) -> None:

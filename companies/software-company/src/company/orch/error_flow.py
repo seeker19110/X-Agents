@@ -58,10 +58,13 @@ def _mark_unhandled(o: Orchestrator, env: Envelope, agent: str, error: object, r
     # `gate.decide` hoãn transient quá trần (`_defer`): `env.key` của audit-log là tên người ký, không phải việc bị bỏ.
     subject = str(_evidence(env.payload)["subject_id"] if env.topic == "audit-log" else env.payload.get("ticket_id") or env.key)
     rec = {"agent": agent, "topic": env.topic, "event_id": env.event_id, "subject": subject, "error": str(error)[:300]}
-    with o._lock: o.unhandled[subject] = rec
+    with o._lock:
+        o.unhandled[subject] = rec
+        o.unhandled_count[env.event_id] += 1; n = o.unhandled_count[env.event_id]
     o._audit("agent_error_unhandled", rec, ticket_id=env.payload.get("ticket_id"), project_id=o.project_for(env))
-    o.supervisor.escalate_gate(subject, f"{agent} lỗi trên {env.topic}, không nhánh nào xử lý: {str(error)[:200]}",
-                                  once_key=f"unhandled:{env.event_id}:{agent}")
+    # Khoá once mang thế hệ `n` như `_stall`: duyệt retry rồi lỗi lại cùng event_id phải mở gate mới, không im lặng.
+    o.supervisor.escalate_gate(subject, f"{agent} lỗi trên {env.topic}, không nhánh nào xử lý (lần {n}): {str(error)[:200]}",
+                                  once_key=f"unhandled:{env.event_id}:{agent}:{n}")
     res.actions.append(f"unhandled:{subject}:{agent}")
 
 def _rework_after_error(o: Orchestrator, env: Envelope, r: Route, error: Exception) -> bool:

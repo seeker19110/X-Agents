@@ -526,8 +526,19 @@ jobs:
               echo "::warning::Rule '$t' đang áp trên $BRANCH nhưng KHÔNG có trong .github/rulesets/main.json."
               echo "::warning::Không yếu đi, nhưng lần import lại từ file sẽ XOÁ MẤT nó. Thêm vào file cho khớp."; }
           done
+          # Tham số cũng phải khớp, không chỉ loại rule: file khai `allowed_merge_methods: [squash]` mà ruleset
+          # thật cho cả merge commit thì #374 và #399 vào `main` bằng merge commit, job này vẫn xanh (audit
+          # 2026-10-10). So đúng danh sách phương pháp merge; cách gộp khác là lịch sử `main` không còn
+          # "một PR = một commit" như docs/QUY-TRINH-GIT.md hứa.
+          live_mm=$(jq -c '[.[] | select(.type == "pull_request") | .parameters.allowed_merge_methods[]] | sort' /tmp/live-rules.json)
+          want_mm=$(jq -c '[.rules[] | select(.type == "pull_request") | .parameters.allowed_merge_methods[]] | sort' .github/rulesets/main.json)
+          if [ "$live_mm" != "$want_mm" ]; then
+            echo "::error::allowed_merge_methods trên $BRANCH là $live_mm, file khai $want_mm."
+            echo "::error::Sửa ruleset trong Settings → Rules → Rulesets cho khớp file (hoặc sửa file nếu đã cố ý đổi)."
+            fail=1
+          fi
           [ "$fail" = 0 ] || exit 1
-          echo "OK — mọi rule khai trong file đều đang áp trên $BRANCH."
+          echo "OK — mọi rule khai trong file đều đang áp trên $BRANCH, phương pháp merge khớp $want_mm."
 
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.
