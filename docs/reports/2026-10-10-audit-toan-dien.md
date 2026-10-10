@@ -124,6 +124,8 @@ xếp hàng; `HumanGate.request` ghi đè `pending` nhưng mọi caller đều `
    phẩm, cần ADR keeper mới trước khi code.
 2. **K3 + K5** — luật gộp tín hiệu và tách "test đỏ" khỏi "coverage đỏ"; cả hai đổi tier/bằng chứng, nên đi cùng
    bản ghi eval mới.
+   *K5 đã làm 2026-10-10 (dòng `fix(keeper)` K5 trong `CHANGELOG.md`): sửa ở `evidence.py`, code chứ không phải
+   prompt agent, nên không cần ghi lại eval. K3 vẫn chờ quyết luật gộp.*
 3. **G4** (`MAX_ACTOR_LEN` + chặn `\r\n` cho `by`/`reason` ở decide/engine) và **K9** (neo regex `bump_dependency`) —
    nhỏ, mỗi cái một PR, test đỏ trước.
 4. **C3** (teardown ghi lỗi) khi có deploy thật gặp lại; **C4** cùng lúc đổi hợp đồng brief.

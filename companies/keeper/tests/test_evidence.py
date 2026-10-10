@@ -138,6 +138,35 @@ def test_pytest_thoat_1_van_la_chieu_do_va_chieu_nguoc(cmd: str):
     require_two_way(_ev_cmd(cmd, before=4), rules=rules_without("pytest-before-must-be-test-failure"))  # không ném
 
 
+# Output thật của `pytest -q --cov=mod` với `fail_under = 100` và một test XANH (đo 2026-10-10): thoát 1 vì coverage.
+_CHI_DO_COVERAGE = ("TOTAL        4      1    75%\n"
+                    "FAIL Required test coverage of 100.0% not reached. Total coverage: 75.00%\n"
+                    "1 passed in 0.02s\n")
+
+
+@pytest.mark.parametrize("cmd", PYTEST_CMDS)
+def test_pytest_thoat_1_chi_vi_coverage_khong_phai_chieu_do(cmd: str):
+    """K5 (audit 2026-10-10): pytest-cov đặt mã thoát 1 khi `fail_under` hụt, cùng mã với "có test đỏ". Chạy `--cov`
+    trên một file test gần như luôn hụt coverage, nên tắt bản sửa mà test vẫn XANH vẫn ra 1 và từng qua I2. Dòng
+    tổng kết có mặt mà không có `failed` ⇒ đỏ vì coverage, không test nào đo bản sửa."""
+    ev = TwoWayEvidence(
+        cmd=cmd, before=RunOutcome(cmd=cmd, exit_code=1, output_tail=_CHI_DO_COVERAGE),
+        after=RunOutcome(cmd=cmd, exit_code=0, output_tail="1 passed in 0.02s"), verified_by=TRUSTED_VERIFIER,
+    )
+    with pytest.raises(EvidenceError) as e:
+        require_two_way(ev)
+    assert "pytest-before-must-be-test-failure" in str(e.value)
+
+
+@pytest.mark.parametrize("cmd", PYTEST_CMDS)
+def test_pytest_thoat_1_co_test_do_kem_coverage_hut_van_la_chieu_do(cmd: str):
+    tail = _CHI_DO_COVERAGE.replace("1 passed in", "1 failed, 2 passed in")
+    require_two_way(TwoWayEvidence(
+        cmd=cmd, before=RunOutcome(cmd=cmd, exit_code=1, output_tail=tail),
+        after=RunOutcome(cmd=cmd, exit_code=0, output_tail="3 passed in 0.02s"), verified_by=TRUSTED_VERIFIER,
+    ))
+
+
 @pytest.mark.parametrize("cmd", ["uv run ruff check src tests/test_pytest.py", "bash ci.sh"])
 def test_lenh_khong_phai_pytest_thoat_duong_phai_co_dong_tong_ket_pytest(cmd: str):
     """Danh sách TRẮNG (fail closed): chỉ pytest gọi thẳng được tin mã thoát. `ruff`/script riêng thoát dương vì
