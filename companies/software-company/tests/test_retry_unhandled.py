@@ -131,3 +131,19 @@ def test_duyet_roi_restart_truoc_khi_chay_lai_van_chay_lai_event(tmp_path):
     orch2.run()
     assert len(_impacts(bus2)) == 1
     bus2.close()
+
+
+def test_loi_lan_hai_sau_khi_duyet_van_mo_gate_moi():
+    """Audit 2026-10-10 (`TRAPS.md` §1 khuôn 3): `_mark_unhandled` dùng khoá once `unhandled:{event_id}:{agent}`
+    không có thế hệ. Duyệt retry → event chạy lại → agent lỗi LẦN HAI với cùng event_id → supervisor im lặng và
+    không gate nào mở: `unhandled` ghi CR-1 nhưng `gate.pending` rỗng, người trực không thấy gì. Anh em `_stall`
+    (`stall:{event_id}:{n}`) và `escalation_decided` đã vá cùng khuôn."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=_flaky_lead(2)))
+    bus.publish(Envelope(topic="change-requests", key="CR-1", actor="human:po", payload=CR)); orch.run()
+    assert orch.gate.pending["CR-1"].kind == "escalation"
+    orch.gate.decide("CR-1", "approve", by="human:lead", reason="lỗi model, thử lại"); orch.run()
+    assert not _impacts(bus) and "CR-1" in orch.unhandled, "lần hai vẫn lỗi"
+    assert "CR-1" in orch.gate.pending and orch.gate.pending["CR-1"].kind == "escalation", \
+        "lỗi lần hai của cùng event phải mở gate mới, không im lặng vì khoá once của lần một"
+    orch.gate.decide("CR-1", "approve", by="human:lead", reason="thử lại lần ba"); orch.run()
+    assert len(_impacts(bus)) == 1 and "CR-1" not in orch.unhandled

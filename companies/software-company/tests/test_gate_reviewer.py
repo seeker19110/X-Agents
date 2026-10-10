@@ -442,3 +442,16 @@ def test_chay_duoc_bang_python_m(monkeypatch, capsys):
     with pytest.raises(SystemExit) as e:
         runpy.run_module("company.gate_reviewer", run_name="__main__")
     assert e.value.code == 0 and "init-key" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("noi_dung", ["{không phải json", "[]"])
+def test_new_key_khong_ghi_de_registry_hong(tmp_path, noi_dung):
+    """Audit 2026-10-10: `new_key` nuốt `ValueError` khi registry không phải JSON và GHI ĐÈ file bằng registry chỉ
+    có khoá mới — mọi reviewer đã đăng ký mất im lặng. Chỉ file CHƯA CÓ mới được tạo mới; file hỏng phải ném lỗi
+    và giữ nguyên nội dung (`load_registry` lười là để không tin ai, không phải để xoá sổ)."""
+    reg = tmp_path / "registry.json"
+    reg.write_text(noi_dung, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"registry .* hỏng, không ghi đè"):
+        gr.new_key("reviewer:b", reg, tmp_path / "keys")
+    assert reg.read_text(encoding="utf-8") == noi_dung, "registry hỏng phải được giữ nguyên để người xem"
+    assert not (tmp_path / "keys").exists(), "không được sinh khoá bí mật khi registry không nhận được nó"

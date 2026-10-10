@@ -113,6 +113,7 @@ def test_k72_bootstrap_co_nonce_va_csp_khop(tmp_path, monkeypatch) -> None:
         def __init__(self) -> None:
             self.headers: dict[str, str] = {}
             self.command = "GET"
+            self.close_connection = False  # `_send` đọc nó để kèm `Connection: close` (audit 2026-10-10)
             self.wfile = io.BytesIO()
 
         def send_response(self, *a: object) -> None: ...

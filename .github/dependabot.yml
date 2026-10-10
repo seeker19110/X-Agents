@@ -2,7 +2,7 @@ version: 2
 updates:
   # MỘT mục `uv` duy nhất, trỏ vào GỐC workspace — không phải năm mục theo từng package.
   #
-  # Repo là một uv workspace: sáu `pyproject.toml` con nhưng CHỈ MỘT `uv.lock` ở gốc. Cấu hình cũ đặt
+  # Repo là một uv workspace: năm `pyproject.toml` thành viên (cộng một ở gốc) nhưng CHỈ MỘT `uv.lock` ở gốc. Cấu hình cũ đặt
   # `directory` là từng package, mà `uv.lock` nằm NGOÀI mọi thư mục đó, nên dependabot không bao giờ chạm
   # tới nó: mỗi PR nó mở chỉ đổi `pyproject.toml` con và để lock cũ nguyên. Toàn bộ CI chạy
   # `uv sync --locked`, lệnh này ĐỎ khi lock không khớp pyproject — nên chín PR mở ngày 2026-09-09

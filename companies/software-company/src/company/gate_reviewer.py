@@ -102,6 +102,17 @@ def _key_id(private_key: Ed25519PrivateKey) -> str:
 def new_key(principal: str, registry: Path, key_dir: Path, *, days: int = 90, now: datetime | None = None) -> Path:
     """Sinh khoá mới: khoá bí mật vào `key_dir/<tên>.pem`, public key thêm vào `registry`. Trả đường dẫn khoá bí mật."""
     principal = _principal(principal)
+    # Đọc registry TRƯỚC khi sinh khoá: chỉ file chưa có mới được tạo mới. File hỏng thì ném lỗi và giữ nguyên —
+    # trước đây `except (OSError, ValueError): raw = {}` rồi ghi đè, mọi reviewer đã đăng ký mất im lặng (audit
+    # 2026-10-10). `load_registry` lười là để không tin ai khi đọc, không phải để xoá sổ khi ghi.
+    try:
+        raw = json.loads(registry.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raw = {}
+    except ValueError as e:
+        raise ValueError(f"registry {registry} hỏng, không ghi đè: {e}") from e
+    if not isinstance(raw, dict):
+        raise ValueError(f"registry {registry} hỏng, không ghi đè: không phải object JSON")
     pk = Ed25519PrivateKey.generate()
     key_dir.mkdir(parents=True, exist_ok=True)
     path = key_dir / f"{principal.removeprefix(PREFIX)}.pem"
@@ -109,10 +120,6 @@ def new_key(principal: str, registry: Path, key_dir: Path, *, days: int = 90, no
         pk.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
     )
     path.chmod(0o600)  # Windows chỉ đổi cờ read-only; trần đã biết ghi ở ADR gốc 0024 (cùng user OS đọc được)
-    try:
-        raw = json.loads(registry.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raw = {}
     pem = (
         pk.public_key()
         .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)

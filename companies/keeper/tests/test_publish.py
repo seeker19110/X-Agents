@@ -207,3 +207,23 @@ def test_create_pr_da_co_pr_cho_nhanh_nay_thi_bao_ro_khong_tao_trung(
     with pytest.raises(PullRequestExists) as ei:
         create_pr(tmp_path, title="t", body="b", head="chore/keeper-x", base="main")
     assert ei.value.url == "https://github.com/o/r/pull/7"
+
+
+def test_push_branch_khong_chay_hook_pre_push(repo: Path, remote: Path) -> None:
+    """`worktree.NO_HOOKS`: "orchestrator không bao giờ chạy hook" — nhưng `push_branch` tự gọi `subprocess.run`
+    không mang `NO_HOOKS`, nên `pre-push` của repo khách (mã người lạ, có thể do chính patch vừa sửa) chạy dưới
+    quyền người vận hành trong một lần đẩy không ai ngồi xem (audit 2026-10-10, họ của `_git`)."""
+    hook = repo / ".git" / "hooks" / "pre-push"
+    dau_vet = repo.parent / "hook-da-chay"
+    hook.write_text(f"#!/bin/sh\ntouch '{dau_vet}'\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    wt = open_worktree("KEEP:1", repo=repo)
+    (wt.path / "vá.md").write_text("noi dung\n", encoding="utf-8")
+    _run(wt.path, "add", "-A")
+    _run(wt.path, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-m", "vá")
+
+    push_branch(wt, sha=_run(wt.path, "rev-parse", "HEAD"))
+
+    assert not dau_vet.exists(), "pre-push của repo khách đã chạy trong lúc keeper đẩy nhánh"
+    ls = subprocess.run(["git", "ls-remote", str(remote), wt.branch], capture_output=True, text=True)
+    assert wt.branch in ls.stdout
