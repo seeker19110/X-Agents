@@ -80,7 +80,7 @@ Bộ nhớ dài hạn của Claude nằm ngoài repo (`~/.claude/projects/.../me
 
 ## Compact Instructions
 
-Dùng auto-compact native, cửa sổ **300000 token mỗi phiên** trong `.claude/settings.json`; không phải token
+Dùng auto-compact native, cửa sổ **500000 token mỗi phiên** trong `.claude/settings.json`; không phải token
 cộng dồn của ticket và không tăng giới hạn prompt của agent. Cách kiểm tra: `docs/AUTO-COMPACT.md`.
 
 Khi compact, giữ mục tiêu, spec đã duyệt, giới hạn quyền/ngân sách, quyết định kiến trúc, việc dở và bước kế
