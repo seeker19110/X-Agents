@@ -92,7 +92,7 @@ Keeper (lượt đọc 3; K8 = `push_branch` thiếu `NO_HOOKS`, đã vá ở §
 | K6 | trung bình | `keeper/worktree.py refuse_shared_checkout` | nhận **mọi** worktree phụ, kể cả của phiên khác | thêm kiểm "worktree của đúng ticket/nhánh" — cần đổi chữ ký hàm |
 | K7 | thấp | `keeper/evidence.py run_command` | lệnh đo (kể cả `git stash`) chạy với `clean_env()`, không bỏ `GIT_*` như `git_env()` | lệnh đo là lệnh tuỳ ý (pytest…), bỏ `GIT_*` là hợp lý nhưng chưa có ca thật; báo cáo lượt 3 nói `publish.py:72` cũng vậy — **sai**, dòng đó là `gh pr create`, `push_branch` đã dùng `git_env()` |
 | K9 | thấp | `keeper/patcher.py bump_dependency` | regex thay version không neo vào dòng requirement, sửa cả văn xuôi nhắc tên gói | tái hiện được trong scratchpad; vá cần test với pyproject có comment — PR riêng, nhỏ |
-| K10 | thấp | `keeper/cli.py _run` | coi `ticket.subject` là đường dẫn file; subject drift (`changelog-L12`, `sc-builder.md`) không phải đường dẫn | lỗi hiện ra là outcome chung, không phải "sai đích"; chờ K2/K3 định lại hợp đồng ticket |
+| K10 | thấp | `keeper/cli.py _run` | coi `ticket.subject` là đường dẫn file; subject drift (`changelog-L12`, `sc-builder.md`) không phải đường dẫn | lỗi hiện ra là outcome chung, không phải "sai đích"; chờ K2/K3 định lại hợp đồng ticket. *Đã làm 2026-10-10 (dòng `fix(keeper)` K10 trong `CHANGELOG.md`): `fix_docs` chỉ chạy khi `subject` là file đang có trong repo, không thì `needs_human`.* |
 
 Mã chết ở `keeper/risk.py` (`_PR_SUBJECT_RE`, `_is_doc`, hàng `docs-only-drift`) — câu hỏi để lại từ phiên trước:
 **không producer nào chạm tới**. Sau khi bỏ phép (c) `changelog_drift` (#400), subject `pr-N` chỉ còn ở `health.py`

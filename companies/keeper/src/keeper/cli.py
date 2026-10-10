@@ -72,6 +72,11 @@ def _run(args: argparse.Namespace) -> int:
     print(f"keeper run — {'CHẠY KHÔ (không chạm file nào)' if args.dry_run else 'THI HÀNH'} trên {root}")
     for t in tickets:
         plan = plan_for(t)
+        if plan.operation == "fix_docs" and not (root / plan.files[0]).is_file():
+            # K10: `subject` là tên tín hiệu, không chắc là đường dẫn (`sc-builder.md` của drift `sc-*`). Chỉ sửa
+            # tài liệu ĐANG CÓ trong repo; không thì `fix_docs` tạo một file lạc ở gốc worktree.
+            plan = Plan(t.ticket_id, "needs_human", plan.files,
+                        reason="subject không phải file trong repo — tên tín hiệu, không phải đường dẫn")
         ghi_chu = f"  [{plan.reason}]" if plan.reason else ""
         print(f"  {t.ticket_id} → {plan.operation} → {', '.join(plan.files)}{ghi_chu}")
         if args.dry_run:
