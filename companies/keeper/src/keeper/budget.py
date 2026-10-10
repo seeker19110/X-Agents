@@ -27,17 +27,14 @@ from typing import Protocol
 from pydantic import BaseModel
 
 from .core import CORE
-from .events import RiskTier, Signal
+from .events import Signal
 from .github import PullRequest
-from .risk import risk_tier
+from .risk import TIER_RANK, risk_tier
 from .worktree import BRANCH_PREFIX
 
 MAX_PR_ENV = CORE.env_name("MAX_PR_PER_WEEK")  # "KEEPER_MAX_PR_PER_WEEK" — ghép tiền tố ở MỘT chỗ (config.py:90)
 DEFAULT_MAX_PR_PER_WEEK = 5
 WINDOW_DAYS = 7
-
-# Ưu tiên hàng đợi: rủi ro cao đi trước. Bảng chứ không `if`, cùng lý do với `risk.py`.
-_TIER_RANK: dict[RiskTier, int] = {"high": 0, "medium": 1, "low": 2}
 
 
 class GitHubLike(Protocol):
@@ -140,4 +137,4 @@ class QueueItem(BaseModel):
 def order_queue(items: Sequence[QueueItem]) -> list[QueueItem]:
     """FIFO theo `risk_tier` rồi tuổi: tier cao trước, trong cùng tier thì signal GIÀ nhất trước (FIFO thật —
     việc chờ lâu không được để một việc mới cùng tier chen lên)."""
-    return sorted(items, key=lambda q: (_TIER_RANK[risk_tier(q.signal)], -q.age_days))
+    return sorted(items, key=lambda q: (TIER_RANK[risk_tier(q.signal)], -q.age_days))

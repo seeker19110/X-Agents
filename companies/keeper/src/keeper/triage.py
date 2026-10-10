@@ -32,7 +32,7 @@ from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 from .events import RiskTier, Signal, Ticket
-from .risk import risk_tier
+from .risk import TIER_RANK, risk_tier
 from .signals import dedupe
 
 __all__ = ["DUE_DAYS", "TICKET_PREFIX", "DedupeKey", "ObservedSignal", "TriageState", "event_identity",
@@ -108,14 +108,18 @@ def triager(
     tier `high` đính kèm yêu cầu gate `keeper` (`requires_gate=True`).
 
     Trả về CHỈ ticket mới của lần gọi này. `ticket_id` lấy danh tính của envelope MỚI NHẤT trong nhóm — cùng
-    bản quan sát mà `dedupe` giữ lại nội dung (`signals.py`), nên id và nội dung nói về cùng một event."""
+    bản quan sát mà `dedupe` giữ lại nội dung (`signals.py`), nên id và nội dung nói về cùng một event.
+
+    Tier thì KHÔNG lấy riêng bản mới nhất: gộp trùng không được hạ bậc (K3, audit 2026-10-10). Một alert
+    `critical` rồi bản sau `low`, một bump `major` rồi `minor`, một evidence chạm `agents/` rồi không — tier là
+    bậc CAO NHẤT trong cả nhóm, để `requires_gate` không biến mất chỉ vì bản nhẹ hơn tới sau."""
     out: list[Ticket] = []
     fresh = [o for o in observed if key(o) not in state.seen]
     for group in _groups(fresh):
         merged = dedupe([o.signal for o in group])[0]
         event_ids = [o.event_id for o in group]
         state.seen.update(key(o) for o in group)
-        tier = risk_tier(merged)
+        tier = min((risk_tier(o.signal) for o in group), key=TIER_RANK.__getitem__)
         out.append(Ticket(
             ticket_id=f"{TICKET_PREFIX}{event_ids[-1]}",
             subject=merged.subject,
