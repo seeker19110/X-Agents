@@ -247,6 +247,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
     server_version = "console"
     sys_version = ""
     protocol_version = "HTTP/1.1"
+    _body_read = False  # thân của request hiện tại đã bị đọc chưa — `handle_one_request` đặt lại mỗi request
 
     # --- tiện ích trả lời ---------------------------------------------------
 
@@ -283,9 +284,35 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         # Mọi lỗi đều trả lời TRƯỚC khi đọc thân request (`_guard`, 401, 403, 404 của do_POST). Với HTTP/1.1
         # keep-alive, thân chưa đọc sẽ được `handle_one_request` diễn giải thành request THỨ HAI — kẻ tấn công nhồi
         # `GET /` vào thân một POST bị `_guard` chặn và nhận trang HTML mang token phiên (request desync, audit
-        # 2026-10-10). Đóng kết nối thì thân không bao giờ được đọc; keep-alive mất ở một phản hồi lỗi là rẻ.
+        # 2026-10-10). Đóng kết nối thì thân không bao giờ được diễn giải; keep-alive mất ở một phản hồi lỗi là rẻ.
         self.close_connection = True
+        self._drain_body()
         self._json(status, {"error": message})
+
+    def _drain_body(self) -> None:
+        """Đọc bỏ thân chưa đọc (≤ `MAX_BODY_BYTES`) trước khi trả lỗi và đóng.
+
+        Đóng socket khi thân còn nằm trong bộ đệm nhận thì kernel gửi RST thay vì FIN: Linux để client đọc nốt phản
+        hồi đã tới, Windows vứt luôn (`WinError 10053` tại `getresponse`) — CI `console-unit (windows-latest)` đỏ
+        chập chờn ở đúng các ca 403 có thân JSON (PR #403). Thân đã đọc rồi (`_read_json_body` lỗi sau khi đọc) thì
+        không đọc lần hai — trên socket thật là treo. Thân quá trần hay `Content-Length` không phải số thì không
+        đọc: đóng kèm RST là cái giá kẻ gửi thân quá lớn tự chịu.
+        """
+        if self._body_read:
+            return
+        self._body_read = True
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return
+        if 0 < length <= MAX_BODY_BYTES:
+            self.rfile.read(length)
+
+    def handle_one_request(self) -> None:
+        # Cờ "thân đã đọc" là của MỘT request: trên keep-alive, request hợp lệ trước đó đã đọc thân, request kế tiếp
+        # bị lỗi vẫn phải được đọc bỏ thân của chính nó (`_drain_body`).
+        self._body_read = False
+        super().handle_one_request()
 
     def log_message(self, fmt: str, *args: Any) -> None:
         """Chỉ log dòng request thô của http.server. Token nằm ở header, body không bao giờ đi qua đây."""
@@ -424,6 +451,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             raise GateHTTPError(HTTPStatus.BAD_REQUEST, "Content-Length không hợp lệ") from None
         if length < 0 or length > MAX_BODY_BYTES:
             raise GateHTTPError(HTTPStatus.BAD_REQUEST, "body quá lớn")
+        self._body_read = True
         raw = self.rfile.read(length) if length else b""
         try:
             data = json.loads(raw.decode("utf-8") or "{}")
