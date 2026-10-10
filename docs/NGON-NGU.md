@@ -5,7 +5,9 @@ nhật ký phiên 2026-09-07 ghi **hai** lần nhầm trong một ngày do cùng
 tả; một bảng đối chiếu ghi tên hàm và cờ không tồn tại). Khuôn mượn từ `CONTEXT.md` của `neo4j-labs/agent-memory`
 (ADR-0004): mỗi thuật ngữ một nghĩa, và **một cách gọi phải tránh** vì nó đã gây nhầm hoặc sẽ gây nhầm.
 
-Thêm mục mới khi một chữ vừa gây nhầm thật (có dòng nhật ký phiên chỉ vào), không thêm để cho đủ.
+Thêm mục mới khi một chữ vừa gây nhầm thật (có dòng nhật ký phiên chỉ vào), không thêm để cho đủ. Từ vựng
+**ngành** (RAG, memory, MCP, A2A, planner, evaluator, guardrails…) ↔ cơ chế tương ứng ở repo nằm ở
+`ARCHITECTURE.md` §"Thuật ngữ ngành ↔ cơ chế ở repo", không ở bảng này.
 
 | Thuật ngữ | Nghĩa ở repo này | Tránh |
 |---|---|---|

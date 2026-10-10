@@ -114,6 +114,42 @@ Không phải required check.
 **`eval-record.yml`** — chạy tay (`workflow_dispatch`); job `record` ghi lại eval của `company` bằng model THẬT (tốn
 tiền) rồi mở PR với bản ghi mới — đường thay cho `make eval-record` khi máy không có khoá API.
 
+## Thuật ngữ ngành ↔ cơ chế ở repo
+
+Repo đặt tên theo việc nó làm, không theo từ vựng tiếp thị; bảng này để một phiên mới đọc "RAG", "memory", "MCP",
+"guardrails" là biết cơ chế tương ứng nằm ở đâu, và biết thứ nào **cố ý không có** (đừng đề xuất lại mà không đọc ADR
+đã loại). Căn cứ: `docs/reports/2026-10-10-doi-chieu-ba-infographic.md` (24 thuật ngữ + 6 định nghĩa agent, 2026-10-10).
+Đường dẫn viết tắt: `core/` = `platform/xagents-core/src/xagents_core/`, `co/` = `companies/software-company/src/company/`.
+
+| Thuật ngữ ngành | Cơ chế ở repo | Ở đâu | Mức |
+|---|---|---|---|
+| LLM | client theo provider (Anthropic SDK, OpenAI-compatible qua gateway, `claude -p`) + `RoutingClient` xoay backend theo tier | `core/llm.py`, `core/routing.py:200-203`, `platform/gateway/` | có |
+| SLM (model nhỏ cho việc nhỏ) | tier `light` (`claude-haiku-4-5`, `gemini-3.8-flash-low`) | `core/llm.py:361-367`; `co/llm.claude-gateway.yaml` | cấu hình có, **chưa agent runtime nào dùng** (`docs/thi-hanh/ib1.md` L1) |
+| Prompt | "prompt là code": `agents/*.md` + `skills/*.md` → `AgentSpec.system_prompt(pha)`; golden + bản ghi eval khoá nội dung | `core/registry.py:106-122`; `CONTRIBUTING.md` §3 | có |
+| Tokens | ngân sách token **đầu ra** theo ticket/dự án (80 % cảnh báo, 100 % cắt); đầu vào đo bằng **ký tự** (`chars/3.2` ước lượng, đối chiếu `token_estimate` mỗi lượt) | `co/supervisor.py:33-38,143-186`; `core/context.py:28,36-44`; `co/runner.py:515-517` | có |
+| Context window | `context.fit` (system trừ trước, payload cắt giữa có nhãn, blackboard water-filling theo namespace), `max_input_chars` theo vai (ADR-0020), `_prune` tool cũ (ADR 0007); phiên Claude Code: auto-compact | `core/context.py:140-240`; `docs/AUTO-COMPACT.md` | có |
+| RAG | **không có, cố ý** — bơm toàn văn blackboard + cắt theo mục + tool đọc; điều kiện mở lại: tệp bài học vượt ngân sách ngữ cảnh | `docs/adr/0003-doi-chieu-ruflo.md:64-66`; `docs/adr/0004-doi-chieu-agent-memory.md:58-59`; `docs/reports/2026-10-10-doi-chieu-12-repo-co-che.md:126` | cố ý không |
+| Chunking | cắt PRD theo mục `##` có ưu tiên (nghiệm thu > user story > NFR), `cut_middle` 70/30 | `co/prd_context.py:9-49` (ADR gốc 0029); `core/context.py:47-53` | có (theo luật, không theo mô hình) |
+| Embeddings / Vector DB | không có (như RAG) | như trên | cố ý không |
+| Hybrid search | chỉ keyword: tool `search` regex trong worktree, `web_search` | `co/tools.py:189-200`; `co/web.py:253-260` | một phần |
+| Reranking | xếp hạng theo luật: ưu tiên mục PRD; `lessons_for` lọc theo assignee / `risk_tags` / retry, 5 bản mới nhất | `co/prd_context.py`; `co/supervisor.py:217-222` | có (theo luật) |
+| Tool calling | `ToolBox`/`ToolSpec` trung lập provider, vòng tool `_tool_loop`, quyền tool theo route (`rw`/`tests`/`ro`/`research`), sandbox fail-closed | `core/tools.py:47-52`; `co/runner.py:309-434`; `co/orch/routes.py:176-196`; `core/sandbox.py` | có |
+| Function calling | adapter theo provider: Anthropic `tool_use`, OpenAI `tools[{type:function}]`, Gemini `functionDeclarations` qua gateway | `core/llm.py:735-760,993-995`; `platform/gateway/src/gateway/client.py:510-526` | có |
+| Memory | ngắn hạn = `msgs` một vòng tool; làm việc = blackboard theo dự án (bản mới nhất mỗi namespace, mirror ra `<db>.artifacts/`); dài hạn = bus SQLite append-only + namespace `knowledge` + execution journal | `core/blackboard.py`; `core/sqlite_bus.py`; `core/execution.py`; `co/orch/gates_flow.py:293-305` | có; bài học chỉ số, chưa có lời (`ib1` A3) |
+| AI Agent | `AgentSpec` (vai, skill, tool, namespace, ngân sách) + `AgentRunner` | `core/registry.py`; `core/runner.py`; `co/runner.py` | có |
+| Agentic workflow | máy trạng thái ticket `Orchestrator` + `ROUTES` (ADR công ty 0034); `/thi-hanh` cho phiên người lái | `co/orchestrator.py:366-431`; `co/orch/routes.py:157-204`; `docs/KHUON-THI-HANH.md` | có |
+| Agentic AI (tự chủ hướng mục tiêu) | tự chủ **có trần**: model quyết định – code hành động; human gate `spec → release → acceptance`; ngân sách; sandbox | `core/gates.py:64-108`; §"Ranh giới tin cậy" ở trên | có, giới hạn cố ý |
+| Multi-agent system | 6 agent company + 10 agent keeper; **manager là code** (orchestrator), không phải agent LLM; bus topic có JSON Schema + ACL; shared memory = blackboard | `co/roles.py:31-53`; `companies/keeper/src/keeper/core.py:30-38`; `core/bus.py:49,74-75` | có |
+| Planner | pha `plan` của `product` + `_check_plan` bác kế hoạch theo luật (estimate, budget ×1,5, acceptance, 1 ngày/200k, risk_tags, phụ thuộc vòng), `PLAN_REWORKS=1` rồi escalation | `co/orch/guards.py:312-360`; `co/orch/ticket_fsm.py:102-165` | có |
+| Evaluator | human gate + checklist; `evals --replay --strict` + sàn điểm; reviewer ký Ed25519 (ADR gốc 0024/0025); `quality_execution`/`quality_floor` (ADR công ty 0018/0043); smoke do orchestrator chạy | `companies/software-company/gates/checklists.md`; `co/evals.py:219-221`; `co/gate_reviewer.py`; `co/quality_floor.py:102-147` | có |
+| Guardrails | `guard.py` (injection: nội bộ từ chối, ngoài lọc), ACL topic/namespace, sandbox mạng tắt, ngân sách, `assetscan`/`assetbudget` (ADR công ty 0022), gitleaks; phiên người lái: `.claude/hooks/` | `core/guard.py`; `co/assetscan.py`; `AGENTS.md` §"Hàng rào thi hành" | có; không lọc PII đầu ra (chưa có sự cố) |
+| Observability | `audit-log` có cấu trúc, `metrics --prometheus`, `trace <id>`, console SSE, execution journal; span `observe.py` có cơ chế | `co/metrics.py`; `co/trace.py`; `core/observe.py` | một phần: `runner.sink = None` chưa nối, `correlation_id` đứt hai chỗ (`ib1` Q1–Q2) |
+| MCP | cầu MCP **nội bộ** (`ProxyServer` stdio JSON-RPC 2.0, `2025-06-18`) đưa tool công ty vào `claude -p`; `--restricted` không tắt nó | `co/mcp_bridge.py`; `co/llm.py:472-505`; ADR công ty 0024 | có (nội bộ); không có server cho bên ngoài |
+| A2A | không có; bus nội bộ thay thế | `docs/reports/2026-09-27-agent-frameworks.md:40` | cố ý hoãn |
+| Skills (ảnh 3) | 45 skill công ty nạp vào system prompt theo `skills`/`skills_core`/`phases`; `.claude/skills` chỉ cho phiên người lái (`ecc-*`, `mp-*` vendor ghim commit) — agent công ty chạy `--restricted` nên **không thấy** | `core/registry.py:136-160`; `docs/adr/0028-*.md`, `docs/adr/0030-*.md` | có, hai lớp tách biệt |
+| Single-agent (ảnh 3) | một ticket một agent mỗi pha, tool + memory theo route | `co/orch/routes.py` | có |
+| Agentic RAG (ảnh 3) | agent tự quyết đọc gì bằng `read_file`/`search`/`web_search`/`fetch_url`; không retriever; **chưa** đọc được artifact blackboard bị cắt | `co/tools.py:231-250`; `co/web.py:284-292` | một phần (`ib1` A1) |
+
 ## Lịch sử repo (đọc `git log` cho đúng)
 
 Repo này bắt đầu là fork của `humanlayer/12-factor-agents` (khoảng 200 commit "Update factor-…", "wip on wtg"…), rồi

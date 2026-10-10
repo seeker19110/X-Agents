@@ -1,9 +1,10 @@
 """Blackboard của `keeper` — cơ chế ở `xagents_core.blackboard`, hai dòng ở đây là lớp Envelope/SharedContext.
 
-`keeper` hiện KHÔNG có agent nào khai `context_namespace_write` (cả 10 đều `null`), nên đường ghi blackboard
-không chạy trong sản xuất. Lớp này vẫn tồn tại vì `EvalSuite.run_eval` dựng một blackboard cho mọi ca (hợp đồng
-của core), và vì `shared-context` là topic mở của `CORE` — ngày một agent của `keeper` sở hữu namespace thì chỗ
-ấy đã đúng sẵn, không phải nhớ dựng.
+`keeper` chỉ có `keeper-supervisor` khai `context_namespace_write: [knowledge]` (`events.py`, `namespace_owners`);
+9 agent còn lại `null`. Đường ghi blackboard vẫn KHÔNG chạy trong sản xuất vì orchestrator keeper không gọi LLM
+ngoài eval (`AgentRunner` chỉ được dựng trong `evals.py`). Lớp này tồn tại vì `EvalSuite.run_eval` dựng một
+blackboard cho mọi ca (hợp đồng của core), và vì `shared-context` là topic mở của `CORE` — ngày orchestrator
+keeper chạy agent thật thì chỗ ấy đã đúng sẵn, không phải nhớ dựng.
 
 `store=None`: `keeper` chưa có artifact store nên nhánh mirror ra đĩa không chạy (như studio).
 """
