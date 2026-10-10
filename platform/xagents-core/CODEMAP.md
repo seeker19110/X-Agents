@@ -16,7 +16,7 @@ file giải thích "vì sao" — CODEMAP này trỏ tới đúng chỗ đọc, k
 | Gate bền vững + xác thực actor | `PersistentGate`/`trusted_decision` (`gate_cli.py`) — allowlist mặc định TỪ CHỐI, dựa `env.actor` | `tests/test_gate_cli.py` |
 | Blackboard (tri thức chung `shared-context`) | `blackboard.py` — giữ version lớn nhất/namespace, phân vùng `project_id` (ADR-0018) | `tests/test_blackboard.py` |
 | Cắt ngữ cảnh theo ngân sách token | `context.py` (ADR-0012) — system trừ trước, payload cắt-giữa có nhãn, blackboard water-filling; callback cắt theo namespace do package cung cấp (ADR gốc 0029) | `tests/test_context.py` |
-| Nạp agent/skill từ đĩa | `load_agents`/`load_skill` (`registry.py`) — `check_owners` mặc định `True` (ADR-0008: mọi skill phải có agent nạp) | `tests/test_registry.py` |
+| Nạp agent/skill từ đĩa | `load_agents`/`load_agent`/`load_skill` (`registry.py`) — `check_owners` mặc định `True` (ADR-0008: mọi skill phải có agent nạp); `load_agent` nạp một file, thước `assetbudget` dựng prompt thật bằng nó | `tests/test_registry.py` |
 | Khung event chung (5 lớp) | `Envelope`/`SharedContext`/`AuditLog`/`SupervisorAction`/`can_transition` (`events.py`) — lớp con công ty thu hẹp Literal | `tests/test_events.py` |
 | Nơi core biết một công ty ở đâu | `CoreConfig`/`TopicACL` (`config.py`) — ADR-0001 §2, chỗ DUY NHẤT | `tests/test_config.py` |
 | Sandbox tiến trình con | `SubprocessSandbox`/`ContainerSandbox` (`sandbox.py`, ADR-0035/0010) — fail-closed, mạng tắt mặc định | `tests/test_sandbox.py` |

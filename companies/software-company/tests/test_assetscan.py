@@ -136,36 +136,64 @@ def test_waiver_sai_cu_phap_la_loi_khong_phai_bo_qua_am_tham(tmp_path: Path, lin
 
 # ---------- budget ----------
 
-def test_budget_cong_ca_skill_va_bat_skill_thieu(tmp_path: Path):
+_AGENT_FM = ("block: eng\nmodel_tier: light\nreads: []\nwrites: []\ncontext_namespace_write: null\n"
+             "max_retries: 1\ntimeout_minutes: 1\n")
+
+
+def _skill(name: str, chuyen_sau: int = 0) -> str:
+    """Skill hợp lệ: front matter + H1 + phần lõi (Quy trình/Checklist) + `chuyen_sau` ký tự chỉ bản đầy đủ có."""
+    return (f"---\nname: {name}\n---\n# Skill: {name}\n\n## Quy trình\n- làm {name}\n\n"
+            f"## Checklist\n- [ ] xong {name}\n\n## Quy tắc chi tiết\n{'r' * chuyen_sau}\n")
+
+
+def test_budget_bao_skill_thieu_thay_vi_do(tmp_path: Path):
+    """Skill khai mà không có trên đĩa thì không dựng được prompt — báo tên thiếu, không bịa con số."""
     root = _tree(tmp_path, {
-        "agents/eng/a.md": "---\nid: a\nskills: [s1]\nskills_core: [khong-co]\n"
+        "agents/eng/a.md": "---\nid: a\n" + _AGENT_FM + "skills: [s1]\nskills_core: [khong-co]\n"
                            "budget_tokens_per_task: 1000\n---\n" + "x" * 400,
-        "skills/s1.md": "y" * 400,
+        "skills/s1.md": _skill("s1"),
         "agents/eng/khong-front-matter.md": "chỉ là ghi chú",
     })
     (w,) = A.agent_weights(root)
-    assert w.agent == "a" and w.static_chars == 800 and w.static_tokens == 200
-    assert w.share == 0.2 and w.missing_skills == ["khong-co"]
+    assert w.agent == "a" and w.missing_skills == ["khong-co"]
+    assert w.static_chars == 0 and w.share == 0.0
 
 
-def test_budget_do_theo_tung_pha(tmp_path: Path):
-    """ADR-0037: agent chia pha thì prompt tĩnh khác nhau theo lượt — một dòng cho MỖI pha, tokens = thân +
-    skill cấp agent + skill của pha. Gộp mọi pha vào một dòng sẽ báo động giả (không lượt nào nạp bằng ấy)."""
+def test_budget_dem_token_cung_ty_le_voi_loi():
+    """`assetbudget` và bộ cắt ngữ cảnh của lõi phải dùng CÙNG một tỉ lệ ký tự/token. Trước sửa: 4 ở đây, 3.2 ở
+    `xagents_core.context` — prompt tĩnh tiếng Việt có dấu bị báo thiếu 20% so với con số `fit` dùng để cắt."""
+    from xagents_core import context
+    assert A.CHARS_PER_TOKEN == context.CHARS_PER_TOKEN
+
+
+def test_budget_do_dung_prompt_he_thong_cua_tung_pha(tmp_path: Path):
+    """Con số phải là độ dài `AgentSpec.system_prompt(pha)` — đúng chuỗi model nhận. Bản cũ cộng toàn văn mọi
+    file skill: `skills_core` bị tính đủ dù chỉ nạp Quy trình + Checklist, skill pha nạp đầy đủ bị tính thêm bản
+    rút gọn cấp agent (prompt thật đã bỏ, "pha thắng"), front matter của skill cũng bị tính."""
+    from xagents_core.registry import AgentSpec, load_agents
     root = _tree(tmp_path, {
-        "agents/eng/a.md": "---\nid: a\nskills: [chung]\nbudget_tokens_per_task: 1000\n"
-                           "phases:\n  intake: {skills: [s-intake]}\n  spec: {skills_core: [khong-co]}\n---\n" + "x" * 400,
-        "skills/chung.md": "y" * 400,
-        "skills/s-intake.md": "z" * 800,
+        "agents/eng/a.md": "---\nid: a\n" + _AGENT_FM + "skills: [chung]\nskills_core: [phu]\n"
+                           "budget_tokens_per_task: 1000\n"
+                           "phases:\n  intake: {skills: [phu]}\n  spec: {skills_core: [rieng]}\n---\n" + "x" * 400,
+        "skills/chung.md": _skill("chung", 300),
+        "skills/phu.md": _skill("phu", 5000),
+        "skills/rieng.md": _skill("rieng", 5000),
     })
+    spec = load_agents(root / "agents", root / "skills", AgentSpec, check_owners=False)["a"]
     ws = {w.agent: w for w in A.agent_weights(root)}
     assert set(ws) == {"a[intake]", "a[spec]"}, "không còn dòng gộp cho cả agent"
-    assert ws["a[intake]"].static_chars == 1600 and ws["a[intake]"].static_tokens == 400
-    assert ws["a[spec]"].static_chars == 800 and ws["a[spec]"].share == 0.2
-    assert ws["a[spec]"].missing_skills == ["khong-co"] and ws["a[intake]"].missing_skills == []
+    for pha in ("intake", "spec"):
+        w = ws[f"a[{pha}]"]
+        assert w.static_chars == len(spec.system_prompt(pha)) and w.missing_skills == []
+        assert w.static_tokens == int(w.static_chars / A.CHARS_PER_TOKEN)
+        assert w.share == round(w.static_tokens / 1000, 3)
+    # `rieng` chỉ nạp rút gọn: 5000 ký tự chuyên sâu của nó không được tính.
+    assert ws["a[spec]"].static_chars < ws["a[intake]"].static_chars - 4000
 
 
 def test_budget_khong_co_ngan_sach_thi_share_bang_khong(tmp_path: Path):
-    root = _tree(tmp_path, {"agents/a.md": "---\nid: a\n---\nnội dung"})
+    root = _tree(tmp_path, {"agents/a.md": "---\nid: a\n" + _AGENT_FM + "skills: []\n"
+                                           "budget_tokens_per_task: 0\n---\nnội dung"})
     assert A.agent_weights(root)[0].share == 0.0
     assert A.agent_weights(tmp_path / "khong-co-agents") == []
 
@@ -209,7 +237,7 @@ def test_cli_thu_muc_khong_ton_tai_tra_ma_2(tmp_path: Path):
 
 
 def test_cli_budget_do_khi_vuot_nguong_va_co_json(tmp_path: Path, capsys):
-    root = _tree(tmp_path, {"agents/a.md": "---\nid: a\nbudget_tokens_per_task: 100\n---\n" + "x" * 4000})
+    root = _tree(tmp_path, {"agents/a.md": "---\nid: a\n" + _AGENT_FM + "skills: []\nbudget_tokens_per_task: 100\n---\n" + "x" * 4000})
     assert A.main(["budget", str(root)]) == 1
     assert "VƯỢT NGƯỠNG" in capsys.readouterr().out
     assert A.main(["budget", str(root), "--max-share", "20"]) == 0
@@ -234,6 +262,16 @@ def test_quet_duoc_khi_root_la_duong_dan_tuong_doi(monkeypatch):
     findings, errors = A.scan_root(pathlib.Path("."))
     assert errors == []
     assert [f.path for f in findings if f.path.startswith(".claude/")] == []
+
+
+def test_budget_agent_that_khop_prompt_he_thong():
+    """Khoá chống trôi trên CHÍNH repo: thước `assetbudget` và cách lõi ghép prompt không được tách nhau ra.
+    Đo 2026-10-10 trước sửa: thước cũ báo dư 1,13–1,90 lần so với prompt thật (builder[data] 44633 / 23540 ký tự)."""
+    from company.registry import load_agents
+    agents = load_agents()
+    for w in A.agent_weights(ROOT):
+        aid, _, pha = w.agent.partition("[")
+        assert w.static_chars == len(agents[aid].system_prompt(pha.rstrip("]") or None)), w.agent
 
 
 def test_agent_that_khong_de_prompt_tinh_an_qua_nua_ngan_sach():
@@ -262,7 +300,7 @@ def test_subagent_kiem_duyet_la_tai_san_prompt(tmp_path):
 
 
 def test_cli_budget_khong_json_agent_khoe_khong_in_flag(tmp_path: Path, capsys):
-    root = _tree(tmp_path, {"agents/a.md": "---\nid: a\nbudget_tokens_per_task: 100000\n---\nngan"})
+    root = _tree(tmp_path, {"agents/a.md": "---\nid: a\n" + _AGENT_FM + "skills: []\nbudget_tokens_per_task: 100000\n---\nngan"})
     assert A.main(["budget", str(root)]) == 0
     out = capsys.readouterr().out
     assert "VƯỢT NGƯỠNG" not in out and "THIẾU SKILL" not in out
