@@ -205,6 +205,19 @@ def _wrapped_before_shows_test_failure(e: TwoWayEvidence) -> bool:
     return _pytest_failed(b.output_tail) >= 1 and not any(m in b.output_tail for m in _RUN_ABORTED)
 
 
+def _direct_pytest_before_is_test_failure(e: TwoWayEvidence) -> bool:
+    """pytest gọi thẳng, thoát dương: chỉ mã 1 là "có test chạy xong và ĐỎ". pytest-cov cũng đặt mã 1 khi `fail_under`
+    hụt (K5, audit 2026-10-10), nên dòng tổng kết có mặt mà không có `failed` thì không phải chiều đỏ. Không có dòng
+    tổng kết (output bị cắt) thì giữ cách đọc theo mã thoát như trước."""
+    b = e.before
+    if b.exit_code <= 0 or not _is_direct_pytest(b.cmd):
+        return True
+    if b.exit_code != PYTEST_TESTS_FAILED:
+        return False
+    has_summary = any(_PYTEST_SUMMARY.fullmatch(line.strip()) for line in b.output_tail.splitlines())
+    return not has_summary or _pytest_failed(b.output_tail) >= 1
+
+
 EVIDENCE_RULES: tuple[EvidenceRule, ...] = (
     # `> 0`, không phải `!= 0`: mã âm là lần chạy KHÔNG hoàn tất (`TIMEOUT_EXIT`, `MISSING_EXIT`, bị giết bằng
     # tín hiệu) — không test nào chạy xong thì không có chiều đỏ nào được đo.
@@ -212,11 +225,10 @@ EVIDENCE_RULES: tuple[EvidenceRule, ...] = (
                  "tắt bản sửa mà lệnh CI vẫn xanh hoặc không chạy xong ⇒ không test nào đo bản sửa này"),
     # Chỉ xét mã DƯƠNG (mã ≤ 0 là việc của hàng trên): `--include-untracked` stash cả file test MỚI của patch, nên
     # lệnh nhắm thẳng nó thoát 4/5 — `> 0` mà không test nào chạy.
-    EvidenceRule("pytest-before-must-be-test-failure",
-                 lambda e: e.before.exit_code <= 0 or not _is_direct_pytest(e.before.cmd)
-                 or e.before.exit_code == PYTEST_TESTS_FAILED,
+    EvidenceRule("pytest-before-must-be-test-failure", _direct_pytest_before_is_test_failure,
                  f"pytest chỉ thoát {PYTEST_TESTS_FAILED} khi có test chạy xong và ĐỎ; mã khác ⇒ không test nào "
-                 "đo bản sửa này (vd file test mới bị stash cùng bản sửa)"),
+                 "đo bản sửa này (vd file test mới bị stash cùng bản sửa); mã 1 mà dòng tổng kết không có `failed` "
+                 "⇒ đỏ vì coverage `fail_under`, không phải vì test"),
     # Mọi lệnh KHÔNG phải pytest gọi thẳng (make, dev-task.sh, tox, `sh -c`, script riêng, ruff…) không soi được bằng
     # mã thoát: đòi dòng tổng kết pytest ở output. Tên hàng giữ "wrapped" vì lệnh lạ coi như bọc (test/nhật ký tham chiếu).
     EvidenceRule("wrapped-before-must-show-test-failure", _wrapped_before_shows_test_failure,
