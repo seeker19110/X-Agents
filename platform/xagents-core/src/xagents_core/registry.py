@@ -26,7 +26,7 @@ from typing import Any, TypeVar
 
 import yaml
 
-__all__ = ["CORE_SECTIONS", "AgentSpec", "Phase", "load_agents", "load_skill", "split_front_matter"]
+__all__ = ["CORE_SECTIONS", "AgentSpec", "Phase", "load_agent", "load_agents", "load_skill", "split_front_matter"]
 
 _FM = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 #: ADR-0008: phần bắt buộc của mọi skill — cũng là phần duy nhất còn lại ở bản rút gọn.
@@ -157,16 +157,8 @@ def load_agents(agents_dir: Path, skills_dir: Path, spec_cls: type[S],
     Skill chỉ xuất hiện ở `skills_core` khắp nơi thì phần Quy tắc/Ví dụ của nó không bao giờ đến tay model nào."""
     out: dict[str, S] = {}
     for p in sorted(agents_dir.rglob("*.md")):
-        fm, body = split_front_matter(p.read_text(encoding="utf-8"))
-        fm["phases"] = {str(name): Phase(**(cfg or {})) for name, cfg in (fm.get("phases") or {}).items()}
-        spec = spec_cls(prompt=body.strip(), **fm)
+        spec = load_agent(p, skills_dir, spec_cls)
         spec.source_rel = p.relative_to(agents_dir.parent).as_posix()
-        dup = set(spec.skills) & set(spec.skills_core)
-        if dup:
-            raise ValueError(f"{spec.id}: skill vừa đầy đủ vừa rút gọn: {sorted(dup)}")
-        spec.skill_text = "\n\n".join(load_skill(skills_dir, s) for s in spec.skills)
-        spec.skill_core_text = "\n\n".join(load_skill(skills_dir, s, core_only=True) for s in spec.skills_core)
-        _load_phases(skills_dir, spec)
         out[spec.id] = spec
     if check_owners:
         # ADR-0037: skill chỉ khai ở một pha VẪN có chủ quản — nó được nạp đầy đủ ở lượt của pha đó.
@@ -176,6 +168,21 @@ def load_agents(agents_dir: Path, skills_dir: Path, spec_cls: type[S],
             raise ValueError("skill không có agent chủ quản (chỉ được nạp rút gọn nên phần chuyên sâu bị bỏ): "
                              + ", ".join(orphan))
     return out
+
+
+def load_agent(path: Path, skills_dir: Path, spec_cls: type[S]) -> S:
+    """Nạp MỘT file agent, đủ skill như lúc chạy. Tách khỏi `load_agents` để thước đo prompt tĩnh
+    (`company.assetscan budget`) dựng đúng chuỗi `system_prompt` model nhận thay vì tự cộng lại file skill."""
+    fm, body = split_front_matter(path.read_text(encoding="utf-8"))
+    fm["phases"] = {str(name): Phase(**(cfg or {})) for name, cfg in (fm.get("phases") or {}).items()}
+    spec = spec_cls(prompt=body.strip(), **fm)
+    dup = set(spec.skills) & set(spec.skills_core)
+    if dup:
+        raise ValueError(f"{spec.id}: skill vừa đầy đủ vừa rút gọn: {sorted(dup)}")
+    spec.skill_text = "\n\n".join(load_skill(skills_dir, s) for s in spec.skills)
+    spec.skill_core_text = "\n\n".join(load_skill(skills_dir, s, core_only=True) for s in spec.skills_core)
+    _load_phases(skills_dir, spec)
+    return spec
 
 
 def _load_phases(skills_dir: Path, spec: AgentSpec) -> None:

@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 ROOT_README = ROOT / "README.md"
 COMPANY_ROW_RE = re.compile(
     r"\[`companies/software-company/`\].*?7 khối, (\d+) agent.*?ADR (\d{4})–(\d{4})",

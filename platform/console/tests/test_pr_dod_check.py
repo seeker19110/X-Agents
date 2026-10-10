@@ -11,7 +11,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 SCRIPT = ROOT / "scripts" / "pr_dod_check.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -205,3 +208,21 @@ def test_workflow_step_trong_pr_policy():
     # Khẳng định có step chạy pr_dod_check.py với env BODY
     assert "pr_dod_check.py" in content
     assert "BODY:" in content or "${{ github.event.pull_request.body }}" in content
+
+
+MAU_PR = ROOT / ".github" / "pull_request_template.md"
+
+
+def test_mau_pr_chua_dien_chi_chan_cac_o_may_khong_kiem_duoc():
+    """Audit 2026-10-10 F3+F5: DoD chỉ giữ ô máy không kiểm được (đặc tả/ADR, phạm vi, tài liệu, breaking change).
+    Cổng, test đỏ trước, CHANGELOG đã có CI hoặc khối BÁO CÁO; nhật ký phiên chỉ là CẢNH BÁO ở `pr-policy.yml`
+    (K8.4), nên không ô bị chặn nào được đòi `docs/sessions/` — trước đây ô CHANGELOG gộp cả nhật ký phiên."""
+    o_mo = _load_script().open_items(MAU_PR.read_text(encoding="utf-8"))
+    assert len(o_mo) == 4, o_mo
+    assert not [o for o in o_mo if "docs/sessions" in o], o_mo
+
+
+def test_mau_pr_tick_het_dod_thi_qua():
+    """Mẫu mới vẫn chạy đúng với script: tick hết các ô DoD là qua, khối BÁO CÁO là code block không có ô."""
+    mau = MAU_PR.read_text(encoding="utf-8").replace("- [ ]", "- [x]")
+    assert _load_script().main(environ={"BODY": mau}) == 0

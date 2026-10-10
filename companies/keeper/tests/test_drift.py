@@ -1,8 +1,4 @@
-import subprocess
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
-import pytest
 
 from keeper import drift
 
@@ -129,120 +125,7 @@ def test_golden_drift_nguon_khong_ton_tai(tmp_path: Path) -> None:
     assert "không có file nguồn" in out[0].detail  # không còn giả vờ "version=1"
 
 
-def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True)
-
-
-def _commit(repo: Path, message: str, when: datetime) -> None:
-    (repo / "f.txt").write_text(message, encoding="utf-8")
-    iso = when.isoformat()
-    env_args = [f"GIT_AUTHOR_DATE={iso}", f"GIT_COMMITTER_DATE={iso}"]
-    subprocess.run(["git", "add", "-A"], cwd=str(repo), check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", message, "--date", iso],
-        cwd=str(repo), check=True, capture_output=True,
-        env={**_base_env(), **dict(a.split("=", 1) for a in env_args)},
-    )
-
-
-def _base_env() -> dict[str, str]:
-    import os
-    return dict(os.environ)
-
-
-def _init_repo(repo: Path) -> None:
-    repo.mkdir(parents=True, exist_ok=True)
-    _git(repo, "init", "-q")
-    _git(repo, "config", "user.email", "test@example.com")
-    _git(repo, "config", "user.name", "Test")
-
-
-def test_changelog_drift_phat_sau_moc(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    after_cutoff = drift.CHANGELOG_RULE_CUTOFF + timedelta(days=1)
-    _commit(repo, "feat(keeper): thứ gì đó (#123)", after_cutoff)
-    changelog = repo / "CHANGELOG.md"
-    changelog.write_text("# Changelog\n", encoding="utf-8")  # không có (#123)
-
-    out = drift.changelog_drift(repo, changelog)
-
-    assert len(out) == 1
-    assert out[0].subject == "pr-123"
-
-
-def test_changelog_drift_im_khi_co_dong(tmp_path: Path) -> None:
-    """Chiều ngược: thêm đúng dòng CHANGELOG cho PR đó → im lặng."""
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    after_cutoff = drift.CHANGELOG_RULE_CUTOFF + timedelta(days=1)
-    _commit(repo, "feat(keeper): thứ gì đó (#123)", after_cutoff)
-    changelog = repo / "CHANGELOG.md"
-    changelog.write_text("# Changelog\n- feat(keeper): thứ gì đó (#123)\n", encoding="utf-8")
-
-    assert drift.changelog_drift(repo, changelog) == []
-
-
-def test_changelog_drift_truoc_moc_khong_bi_soi(tmp_path: Path) -> None:
-    """Ca chứng minh chặn dưới: PR merge TRƯỚC mốc luật §10 mà thiếu dòng CHANGELOG vẫn im — luật đó chưa có
-    hiệu lực khi PR merge."""
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    before_cutoff = drift.CHANGELOG_RULE_CUTOFF - timedelta(days=30)
-    _commit(repo, "feat(keeper): PR cũ (#1)", before_cutoff)
-    changelog = repo / "CHANGELOG.md"
-    changelog.write_text("# Changelog\n", encoding="utf-8")  # không có (#1) — vẫn phải im vì trước mốc
-
-    assert drift.changelog_drift(repo, changelog) == []
-
-
-def test_changelog_drift_khong_co_changelog_file(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    after_cutoff = drift.CHANGELOG_RULE_CUTOFF + timedelta(days=1)
-    _commit(repo, "feat(keeper): x (#9)", after_cutoff)
-    out = drift.changelog_drift(repo, repo / "khong-ton-tai.md")
-    assert len(out) == 1
-
-
-def test_changelog_drift_commit_khong_co_so_pr_bi_bo_qua(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    after_cutoff = drift.CHANGELOG_RULE_CUTOFF + timedelta(days=1)
-    _commit(repo, "chore: dọn dẹp không liên quan PR nào", after_cutoff)
-    assert drift.changelog_drift(repo, repo / "CHANGELOG.md") == []
-
-
-def test_git_log_that_bai_tra_rong(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`git log` thất bại (returncode != 0, ví dụ thư mục không phải repo) → rỗng, không ném."""
-    class _Bad:
-        returncode = 1
-        stdout = ""
-
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Bad())
-    assert drift._git_log_pr_commits(tmp_path) == []
-
-
-def test_git_log_dong_hong_va_ngay_hong_bi_bo_qua(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Dòng không có ký tự phân cách `\\x1f` (không đúng khuôn `--format`) và dòng có ngày không parse được
-    đều bị bỏ qua, không ném lỗi — chỉ dòng hợp lệ mới vào kết quả."""
-    class _Ok:
-        returncode = 0
-        stdout = (
-            "dong khong co dau phan cach khong (#1)\n"
-            "feat: hong ngay (#2)\x1fkhong-phai-ngay\n"
-            "feat: hop le (#3)\x1f2026-09-08T00:00:00+07:00\n"
-        )
-
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Ok())
-    out = drift._git_log_pr_commits(tmp_path)
-    assert out == [(3, datetime.fromisoformat("2026-09-08T00:00:00+07:00"))]
-
-
 def test_scan_tong_hop(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    _commit(repo, "chore: khoi tao", datetime.now(tz=UTC))
     claude_dir = tmp_path / ".claude" / "agents"
     claude_dir.mkdir(parents=True)
     golden_dir = tmp_path / "tests" / "golden" / "agents"
@@ -252,13 +135,13 @@ def test_scan_tong_hop(tmp_path: Path) -> None:
 
     out = drift.scan(
         claude_agents_dir=claude_dir, golden_agents_dir=golden_dir, company_root=company_root,
-        repo=repo, changelog=repo / "CHANGELOG.md",
+        changelog=tmp_path / "CHANGELOG.md",
     )
-    assert isinstance(out, list)
+    assert out == []
 
 
 # --- phép (d): chỗ trống chưa điền số PR. Ba trong bốn ca thiếu dòng CHANGELOG (2026-09-09) là "quên điền
-# --- số" chứ không phải "quên viết dòng" — phép (c) mù với chúng khi dòng đã tồn tại.
+# --- số" chứ không phải "quên viết dòng".
 
 def test_placeholder_bat_cho_trong_that(tmp_path: Path) -> None:
     cl = tmp_path / "CHANGELOG.md"

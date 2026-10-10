@@ -16,12 +16,16 @@ Cơ chế thật: so `version=<n>` ghi trong comment đó với trường `versi
 (`agents/<block>/<id>.md`). File nguồn KHÔNG khai `version:` thì coi là `1` (khớp default của `AgentSpec`).
 `tests/golden/agents/<id>.md` mang đúng khuôn dấu vết tương tự: `<!-- golden agent=<id> version=<n> -->`
 (so cùng cơ chế cho phép (b)).
+
+Phép (c) cũ — mọi `(#n)` trong `git log` phải có dòng CHANGELOG — đã bỏ (audit 2026-10-10 F1):
+`scripts/pr_changelog_check.py` + ruleset không bypass chặn TRƯỚC merge, nên sau merge nó chỉ còn bắt PR được
+miễn hợp lệ (dependabot, eval-record gắn `no-changelog`) — báo động giả làm `main` đỏ ở #333, #383. Ba phép
+còn lại chỉ đọc file trên đĩa, không cần lịch sử git.
 """
 from __future__ import annotations
 
 import re
 import subprocess
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .events import Signal
@@ -29,21 +33,11 @@ from .events import Signal
 _SC_SRC_RE = re.compile(r"<!--\s*SINH TỰ ĐỘNG từ (?P<src>\S+) version=(?P<ver>\d+)")
 _GOLDEN_RE = re.compile(r"<!--\s*golden agent=(?P<id>\S+) version=(?P<ver>\d+)\s*-->")
 _FRONT_MATTER_VERSION_RE = re.compile(r"(?m)^version:\s*(?P<ver>\d+)\s*$")
-_PR_REF_RE = re.compile(r"\(#(?P<n>\d+)\)")
 # Phép (d): chỗ đáng lẽ là số PR nhưng còn là chỗ trống. Đo từ dữ liệu thật chứ không đoán khuôn: bốn ca thiếu
 # dòng CHANGELOG tìm ra ngày 2026-09-09 thì BA là "quên điền số" chứ không phải "quên viết dòng" — #208 để
-# nguyên `(#PENDING)`, #161 và #192 viết đủ mô tả mà không có `(#n)` nào. Phép (c) mù với cả ba khi dòng đã
-# tồn tại, nên nó chỉ bắt được chúng khi PR đã merge; phép này bắt NGAY, trước merge.
+# nguyên `(#PENDING)`, #161 và #192 viết đủ mô tả mà không có `(#n)` nào.
 _INLINE_CODE_RE = re.compile(r"`[^`]*`")
 _PLACEHOLDER_RE = re.compile(r"\(#(?:PRNUM|PENDING|TBD|n|N|<n>|\?+)\)")
-
-# Mốc chặn dưới cho phép (c) — đo được TỪ ĐÂU, không đoán: `AGENTS.md` bắt buộc §10 ("Tài liệu đi CÙNG PR,
-# không đi sau nó" — dòng CHANGELOG/nhật ký phiên phải nằm trong CHÍNH PR làm ra thay đổi) chỉ có hiệu lực từ
-# commit thêm nó vào `AGENTS.md`. Đo bằng `git log -p --follow -- AGENTS.md | grep -n "Tài liệu đi CÙNG PR"`
-# rồi `git show <commit> -s --format=%aI`: commit `a82a804ef70ca2526909accdf88435ae1ba64b07`,
-# 2026-09-07T19:41:01+07:00. PR merge TRƯỚC mốc này không thể vi phạm một luật chưa tồn tại — không lọc bằng
-# danh sách số PR (danh sách mục ngay tuần sau, `DAC-TA-KEEPER.md` §5 cạm bẫy).
-CHANGELOG_RULE_CUTOFF = datetime(2026, 9, 7, 19, 41, 1, tzinfo=timezone(timedelta(hours=7)))
 
 
 def _source_version(source_md: Path) -> int | None:
@@ -113,72 +107,25 @@ def golden_drift(golden_agents_dir: Path, company_root: Path) -> list[Signal]:
     return out
 
 
-def _git_log_pr_commits(repo: Path) -> list[tuple[int, datetime]]:
-    """`(số PR, ngày merge)` cho mỗi commit trong `git log` của `repo` có `(#n)` ở tiêu đề — khuôn message của
-    squash-merge GitHub. Lệnh `git log` cục bộ (đọc `.git` trên đĩa), không mạng."""
+def repo_gap(repo: Path) -> str | None:
+    """Vì sao `drift` KHÔNG soi được `repo`, hoặc `None` khi soi được.
+
+    Ba phép đều trả rỗng khi không thấy file nào — đúng cho hàm phát tín hiệu, nhưng `--repo` trỏ sai chỗ (không
+    phải repo git) thì người gọi in "sạch" là cổng xanh giả. Clone nông KHÔNG phải lỗ: không phép nào đọc
+    `git log`."""
     r = subprocess.run(
-        ["git", "log", "--format=%s%x1f%aI"], cwd=str(repo), capture_output=True, text=True,
-        encoding="utf-8", check=False,
-    )
-    if r.returncode != 0:
-        return []
-    out: list[tuple[int, datetime]] = []
-    for line in r.stdout.splitlines():
-        if "\x1f" not in line:
-            continue
-        subject, date_raw = line.split("\x1f", 1)
-        m = _PR_REF_RE.search(subject)
-        if not m:
-            continue
-        try:
-            when = datetime.fromisoformat(date_raw)
-        except ValueError:
-            continue
-        out.append((int(m.group("n")), when))
-    return out
-
-
-def history_gap(repo: Path) -> str | None:
-    """Vì sao phép (c) KHÔNG soi được lịch sử của `repo`, hoặc `None` khi soi được.
-
-    Phép (c) gặp `git log` lỗi thì trả rỗng — đúng cho một hàm phát tín hiệu, nhưng người gọi in "sạch" thì đó
-    là cổng xanh giả. Hai ca đo được: không phải repo git (`--repo` trỏ sai chỗ), và clone nông (`--depth 1` chỉ
-    còn một commit nên không PR nào bị soi). Lịch sử trống thì không có gì để soi, không phải lỗ."""
-    r = subprocess.run(
-        ["git", "rev-parse", "--is-shallow-repository"], cwd=str(repo), capture_output=True, text=True,
+        ["git", "rev-parse", "--show-toplevel"], cwd=str(repo), capture_output=True, text=True,
         encoding="utf-8", check=False,
     )
     if r.returncode != 0:
         return f"{repo} không phải repo git — {(r.stderr or r.stdout).strip()[:200]}"
-    if r.stdout.strip() == "true":
-        return f"{repo} là clone nông — `git log` thiếu lịch sử, PR đã merge không được soi (cần fetch-depth: 0)"
     return None
-
-
-def changelog_drift(repo: Path, changelog: Path, *, cutoff: datetime = CHANGELOG_RULE_CUTOFF) -> list[Signal]:
-    """Phép (c): mỗi PR merged trong `git log` của `repo` SAU `cutoff` mà `(#n)` không xuất hiện trong
-    `changelog` → một `Signal`. PR merge trước `cutoff` không bị soi (luật §10 chưa có hiệu lực khi đó)."""
-    changelog_text = changelog.read_text(encoding="utf-8") if changelog.exists() else ""
-    out: list[Signal] = []
-    for pr_number, when in _git_log_pr_commits(repo):
-        if when <= cutoff:
-            continue
-        marker = f"(#{pr_number})"
-        if marker not in changelog_text:
-            out.append(Signal(
-                subject=f"pr-{pr_number}", kind="drift",
-                detail=f"PR #{pr_number} merged {when.isoformat()} (sau mốc luật §10) nhưng thiếu "
-                       f"dòng CHANGELOG",
-                evidence=marker,
-            ))
-    return out
 
 
 def changelog_placeholder_drift(changelog: Path) -> list[Signal]:
     """Phép (d): dòng CHANGELOG còn chỗ trống thay cho số PR (`(#PRNUM)`, `(#PENDING)`, `(#n)`...).
 
-    Thuần đọc file, không cần `git log` — nên KHÔNG phụ thuộc độ sâu clone, khác phép (c). Đó là điểm mạnh
-    riêng của nó: phép (c) trên một clone `--depth 1` sẽ im lặng, phép này thì không."""
+    Thuần đọc file, không cần `git log` — nên KHÔNG phụ thuộc độ sâu clone."""
     if not changelog.exists():
         return []
     out: list[Signal] = []
@@ -196,11 +143,10 @@ def changelog_placeholder_drift(changelog: Path) -> list[Signal]:
     return out
 
 
-def scan(*, claude_agents_dir: Path, golden_agents_dir: Path, company_root: Path, repo: Path,
-          changelog: Path) -> list[Signal]:
+def scan(*, claude_agents_dir: Path, golden_agents_dir: Path, company_root: Path,
+         changelog: Path) -> list[Signal]:
     return (
         sc_agent_drift(claude_agents_dir, company_root)
         + golden_drift(golden_agents_dir, company_root)
-        + changelog_drift(repo, changelog)
         + changelog_placeholder_drift(changelog)
     )

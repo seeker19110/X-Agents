@@ -543,3 +543,33 @@ def test_bump_dependency_new_spec_khong_la_mau_regex(root: Path):
     (root / "pyproject.toml").write_text('dependencies = ["bi>=1"]\n', encoding="utf-8")
     bump_dependency(root, "T1", package="bi", new_spec=r"bi>=2\1", files=("pyproject.toml",))
     assert (root / "pyproject.toml").read_text(encoding="utf-8") == 'dependencies = ["bi>=2\\1"]\n'
+
+
+def test_bump_dependency_chi_sua_chuoi_requirement_khong_sua_van_xuoi_hay_khoa_toml(root: Path):
+    # audit 2026-10-10 (K9): ranh giới tên gói không đủ — regex khớp tên gói Ở BẤT KỲ ĐÂU, nên comment, mô tả và
+    # khoá `[tool.uv.sources]` cũng bị "bump": `pydantic = { workspace = true }` thành `pydantic>=2.9 { … }`
+    # (TOML hỏng). Chỉ chuỗi requirement — tên gói ngay sau dấu nháy mở — mới là chỗ được thay.
+    goc = ('[project]\ndescription = "pydantic giúp kiểm, dùng pydantic để kiểm"\n'
+           '# pydantic là lõi, đừng gỡ pydantic\n'
+           'dependencies = ["pydantic>=2", \'pydantic-core==2\']\n'
+           '[tool.uv.sources]\npydantic = { workspace = true }\n')
+    (root / "pyproject.toml").write_text(goc, encoding="utf-8")
+    bump_dependency(root, "T1", package="pydantic", new_spec="pydantic>=2.9", files=("pyproject.toml",))
+    assert (root / "pyproject.toml").read_text(encoding="utf-8") == goc.replace('"pydantic>=2"', '"pydantic>=2.9"')
+
+
+def test_bump_dependency_khong_cat_extras_thanh_requirement_hong(root: Path):
+    # Cùng họ K9: `"pydantic[email]>=2"` từng thành `"pydantic>=2.9[email]>=2"`. `new_spec` không mang extras nên
+    # thay cả cụm là mất extras — không đoán: bỏ qua chuỗi đó; không còn chỗ nào khớp thì `ValueError`, không ghi.
+    goc = 'dependencies = ["pydantic[email]>=2"]\n'
+    (root / "pyproject.toml").write_text(goc, encoding="utf-8")
+    with pytest.raises(ValueError, match="không tìm thấy"):
+        bump_dependency(root, "T1", package="pydantic", new_spec="pydantic>=2.9", files=("pyproject.toml",))
+    assert (root / "pyproject.toml").read_text(encoding="utf-8") == goc
+
+
+def test_bump_dependency_spec_co_khoang_trang_thay_tron(root: Path):
+    # Cùng họ K9: PEP 508 cho khoảng trắng quanh toán tử; `"pydantic >= 2.0"` từng thành `"pydantic>=2.9 2.0"`.
+    (root / "pyproject.toml").write_text('dependencies = ["pydantic >= 2.0"]\n', encoding="utf-8")
+    bump_dependency(root, "T1", package="pydantic", new_spec="pydantic>=2.9", files=("pyproject.toml",))
+    assert (root / "pyproject.toml").read_text(encoding="utf-8") == 'dependencies = ["pydantic>=2.9"]\n'

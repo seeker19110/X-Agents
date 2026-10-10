@@ -317,6 +317,20 @@ def test_codex_subprocess_that_phan_loai_dung_ba_loai_hong(monkeypatch):
     assert c._subprocess(["codex"], "p") == "day la stdout"
 
 
+def test_codex_binary_khong_chay_duoc_la_llmerror_khong_phai_oserror_tho(tmp_path):
+    """`binary:` trỏ vào một file có thật nhưng không chạy được (thiếu quyền thực thi trên POSIX, không phải
+    Win32 app trên Windows) — `subprocess.run` ném `OSError` không phải `FileNotFoundError`. `ClaudeCodeClient`
+    đã bắt nhánh này từ bản hợp nhất; codex thì không, nên `PermissionError` thoát thô: runner của company chỉ ghi
+    audit `llm_error` cho họ `LLMError`, và orchestrator xếp nó vào `handler_error` ("handler xác định từ chối
+    chuyển trạng thái") — sai chỗ, sai tên. Không mock: file thật, `subprocess.run` thật."""
+    f = tmp_path / "codex.exe"   # đuôi `.exe`: thiếu đuôi thì Windows tự thêm rồi đọc thành "không tìm thấy"
+    f.write_text("khong phai binary\n", encoding="utf-8")   # mode mặc định 0o644: không ai chạy được, kể cả root
+    c = CodexClient(LLMConfig(provider="codex", models={"strong": "m"}), binary=str(f))
+    with pytest.raises(LLMError, match="không chạy được") as ei:
+        c._subprocess([str(f)], "p")
+    assert not isinstance(ei.value, TransientError), "OSError là lỗi hẳn, chờ thêm không làm nó đúng lên"
+
+
 # ---------- FakeClient ----------
 
 def test_fake_client_ghi_ca_luot_gui_di_lan_doi_so_goc():

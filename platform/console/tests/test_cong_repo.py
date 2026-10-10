@@ -20,6 +20,7 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 PRE_COMMIT = ROOT / ".pre-commit-config.yaml"
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
 
@@ -186,6 +187,17 @@ def test_branch_coverage_dung_so_chua_phu_nhanh() -> None:
     assert that == CHUA_PHU_NHANH, (
         f"package chưa `branch = true`: đếm được {sorted(that)}, sổ ghi {sorted(CHUA_PHU_NHANH)}. "
         f"Bật thêm một package thì hạ sổ trong CÙNG PR; tắt đi thì phải nói lý do ở đây (đi qua review).")
+
+
+def test_bang_coverage_bo_dong_da_phu_du() -> None:
+    """Mỗi lần chạy cổng là một lần bảng coverage đi vào ngữ cảnh của phiên agent (`AGENTS.md` luật cấm 8 bắt
+    dán output vừa chạy). `fail_under = 100` nên dòng 100% không mang tin gì; chỉ dòng thiếu mới có. Đo
+    2026-10-10: core in 23 dòng file 100%, console 14, trong khi ba package kia đã `skip_covered`."""
+    thieu = sorted(p for p in _packages()
+                   if (ROOT / p / "pyproject.toml").is_file()
+                   and not tomllib.loads((ROOT / p / "pyproject.toml").read_text(encoding="utf-8"))
+                   .get("tool", {}).get("coverage", {}).get("report", {}).get("skip_covered"))
+    assert thieu == [], f"package chưa `skip_covered = true` ở [tool.coverage.report]: {thieu}"
 
 
 def test_omit_khong_vuot_tran() -> None:
@@ -362,3 +374,13 @@ def test_bo_dem_loi_thoat_bat_du_cac_dang_viet() -> None:
     )
     assert _dem_skip(van_ban) == 6   # pytestmark + 2 × @POSIX_ONLY + xfail + skip( + importorskip(
     assert _dem_pragma("x = 1  # pragma: no cover\nif a: b  # pragma: no branch\n") == 2
+
+
+def test_protection_guard_so_ca_allowed_merge_methods() -> None:
+    """`protection-guard` đối chiếu ruleset thật với `.github/rulesets/main.json` theo **loại** rule, không theo
+    tham số: `pull_request.allowed_merge_methods` trong file (lúc đó) chỉ có `squash`, nhưng #374 và #399 vào `main` bằng
+    merge commit mà job vẫn xanh (audit 2026-10-10). Cổng phải so cả tham số này, không thì file khai một đằng
+    ruleset chạy một nẻo mà không ai biết."""
+    steps = _ci()["jobs"]["protection-guard"]["steps"]
+    run = "\n".join(s.get("run", "") for s in steps)
+    assert "allowed_merge_methods" in run, "protection-guard chưa so `allowed_merge_methods` giữa file và ruleset thật"

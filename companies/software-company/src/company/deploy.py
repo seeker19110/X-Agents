@@ -172,6 +172,8 @@ def _process_cmd(run: Any, prefix: list[str], repo: Path, script: str, sub: str,
         return False, f"{prefix[0] if prefix else ''}: không có trên máy (đặt {ENV_RUNTIME} hoặc {ENV_MODE}=off)"
     except subprocess.TimeoutExpired:
         return False, f"{' '.join(prefix)} {script} {sub}: quá {timeout}s"
+    except OSError as e:   # có trên đĩa mà không chạy được (quyền, binary hỏng) — vẫn "không ném"
+        return False, f"{prefix[0] if prefix else ''}: không chạy được ({e.strerror or e})"
     return (True, (r.stdout or "").strip()) if r.returncode == 0 else (False, ((r.stderr or "") or (r.stdout or "")).strip()[-600:])
 
 
@@ -195,6 +197,8 @@ def _compose(run: Any, binary: str, repo: Path, project: str, cfile: str, *args:
         return False, f"{binary}: không có trên máy (đặt {ENV_RUNTIME} hoặc {ENV_MODE}=off)"
     except subprocess.TimeoutExpired:
         return False, f"{binary} compose {args[0]}: quá {timeout}s"
+    except OSError as e:   # có trên đĩa mà không chạy được (quyền, binary hỏng) — vẫn "không ném"
+        return False, f"{binary}: không chạy được ({e.strerror or e})"
     return (True, (r.stdout or "").strip()) if r.returncode == 0 else (False, ((r.stderr or "") or (r.stdout or "")).strip()[-600:])
 
 

@@ -788,6 +788,8 @@ class CodexClient:
             raise LLMError(f"không tìm thấy `{self.binary}` (cài Codex CLI hoặc đặt `binary:` cho backend)") from e
         except subprocess.TimeoutExpired as e:
             raise TransientError(f"codex exec quá {self.timeout}s") from e
+        except OSError as e:   # không có quyền chạy, không phải binary, argv quá dài… — như `ClaudeCodeClient`
+            raise LLMError(f"không chạy được `{self.binary}`: {e}") from e
         if r.returncode != 0:
             detail = (r.stdout[-600:] + "\n" + r.stderr[-300:]).strip()
             raise LLMError(f"codex exec thoát mã {r.returncode}: {detail}")

@@ -332,6 +332,17 @@ def test_gh_that_thieu_tren_may_qua_han_va_ma_thoat(tmp_path, monkeypatch):
     assert calls[-1][0][0] == "gh" and calls[-1][1]["cwd"] == str(tmp_path)
 
 
+def test_gh_co_that_ma_khong_chay_duoc_thi_khong_nem(tmp_path, monkeypatch):
+    """Docstring `_gh` hứa "không ném", nhưng `gh` CÓ trên máy mà không chạy được (quyền, binary hỏng) ném
+    `OSError` khác `FileNotFoundError` — xuyên qua `open_pr` vào lượt giao hàng thay vì thành `PrResult` lỗi.
+    `gh` cố định trong argv nên giả `subprocess.run` (không dựng được file thật cùng tên trên cả hai nền tảng)."""
+    def khong_quyen(argv, **kw):
+        raise PermissionError(13, "Permission denied", argv[0])
+
+    monkeypatch.setattr(github_pr.subprocess, "run", khong_quyen)
+    assert github_pr._gh(tmp_path, "pr", "list") == (False, "gh: không chạy được (Permission denied)")
+
+
 def test_integration_remote_url_va_base_branch(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     it = Integration(repo, base="main")

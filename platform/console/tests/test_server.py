@@ -5,7 +5,9 @@ collect/decide do agent khác viết; ở đây luôn monkeypatch chúng nên te
 
 from __future__ import annotations
 
+import email.message
 import http.client
+import io
 import json
 import os
 import socket
@@ -1227,3 +1229,113 @@ def test_body_json_long_qua_sau_thi_400(make_console, fake_modules) -> None:
     assert resp.status == 400 and "JSON" in json.loads(resp.read())["error"]
     conn.close()
     assert fake_modules.calls["decide"] == []
+
+
+def test_request_bi_chan_thi_dong_ket_noi_khong_doc_tiep_than(make_console) -> None:
+    """Audit 2026-10-10 (request desync): `_guard` trả 404/403 nhưng KHÔNG đọc thân và KHÔNG đóng kết nối, trong khi
+    `protocol_version = "HTTP/1.1"` giữ keep-alive. Thân của POST bị chặn được http.server đọc tiếp thành request
+    THỨ HAI — kẻ tấn công nhồi `GET /` vào thân, nhận 2 phản hồi và trang HTML mang token phiên. Request bị
+    `_guard` chặn phải đóng kết nối (`Connection: close`) để thân không bao giờ được diễn giải."""
+    c = make_console()
+    nhoi = f"GET / HTTP/1.1\r\nHost: 127.0.0.1:{c.port}\r\n\r\n"
+    req = (f"POST /x HTTP/1.1\r\nHost: evil.example:{c.port}\r\nOrigin: http://evil.example:{c.port}\r\n"
+           f"Content-Length: {len(nhoi)}\r\n\r\n{nhoi}")
+    with socket.create_connection(("127.0.0.1", c.port), timeout=5) as s:
+        s.sendall(req.encode()); s.settimeout(2)
+        raw = b""
+        try:
+            while chunk := s.recv(65536):
+                raw += chunk
+        except TimeoutError:
+            pass
+    txt = raw.decode("latin-1")
+    assert txt.count("HTTP/1.1 ") == 1, "thân của request bị chặn đã bị đọc thành request thứ hai"
+    assert " 404 " in txt.split("\r\n", 1)[0]
+    assert "connection: close" in txt.lower()
+    assert c.token not in txt
+
+
+def _handler_tho(than: bytes, content_length: str | None) -> srv.ConsoleHandler:
+    """Một `ConsoleHandler` KHÔNG qua `__init__` (nó sẽ handle ngay trên socket thật): đủ bề mặt để `_error` chạy —
+    `rfile` mang thân chưa đọc, `wfile` hứng phản hồi. Test hỏi về THỨ TỰ đọc thân / trả lời, không về mạng."""
+    h = srv.ConsoleHandler.__new__(srv.ConsoleHandler)
+    h.rfile = io.BytesIO(than)
+    h.wfile = io.BytesIO()
+    h.headers = email.message.Message()
+    if content_length is not None:
+        h.headers["Content-Length"] = content_length
+    h.command = "POST"
+    h.request_version = "HTTP/1.1"
+    h.requestline = "POST /x HTTP/1.1"
+    h.client_address = ("127.0.0.1", 1)
+    return h
+
+
+def test_tra_loi_loi_doc_bo_than_truoc_khi_dong() -> None:
+    """CI `console-unit (windows-latest)` đỏ chập chờn ở hai ca 403 có thân JSON (PR #403 @ a98099c, xanh ở 7fb3901
+    cùng code): `_error` đóng kết nối khi thân POST còn nằm trong bộ đệm nhận → kernel gửi RST thay vì FIN; Linux để
+    client đọc nốt phản hồi đã tới, Windows vứt luôn (`WinError 10053` ngay tại `getresponse`). Đọc bỏ thân (≤
+    `MAX_BODY_BYTES`) TRƯỚC khi trả lời thì đóng bằng FIN ở mọi OS, mà thân vẫn không bao giờ được diễn giải thành
+    request thứ hai vì kết nối vẫn đóng."""
+    than = b'{"nhoi": "GET / HTTP/1.1"}'
+    h = _handler_tho(than, str(len(than)))
+    h._error(403, "x")
+    assert h.rfile.read() == b"", "thân chưa đọc còn trong bộ đệm nhận → đóng bằng RST, Windows mất phản hồi"
+    assert h.close_connection is True
+    phan_hoi = h.wfile.getvalue()
+    assert phan_hoi.startswith(b"HTTP/1.1 403") and b"Connection: close" in phan_hoi
+
+
+@pytest.mark.parametrize("content_length, ly_do", [
+    (str(srv.MAX_BODY_BYTES + 1), "thân quá trần: không đọc — RST là cái giá kẻ gửi thân quá lớn tự chịu"),
+    ("khong-phai-so", "Content-Length không phải số: không biết đọc bao nhiêu thì không đọc"),
+    (None, "không có Content-Length: không có thân để đọc bỏ"),
+])
+def test_tra_loi_loi_khong_doc_than_khi_khong_biet_do_dai(content_length: str | None, ly_do: str) -> None:
+    h = _handler_tho(b"xyz", content_length)
+    h._error(400, "x")
+    assert h.rfile.read() == b"xyz", ly_do
+    assert h.wfile.getvalue().startswith(b"HTTP/1.1 400")
+
+
+def test_tra_loi_loi_sau_khi_da_doc_than_khong_doc_lai() -> None:
+    """`_read_json_body` đã đọc thân rồi mới lỗi (JSON hỏng, không phải object): `_error` không được đọc lần hai —
+    `rfile.read(n)` trên socket thật sẽ treo chờ byte không bao giờ tới."""
+    class Treo(io.BytesIO):
+        def read(self, n: int | None = -1) -> bytes:
+            raise AssertionError("đọc thân lần hai — trên socket thật là treo tới timeout")
+
+    h = _handler_tho(b"", "5")
+    h.rfile = Treo()
+    h._body_read = True
+    h._error(400, "x")
+    assert h.wfile.getvalue().startswith(b"HTTP/1.1 400")
+
+
+def test_moi_request_tren_keep_alive_dat_lai_co_da_doc_than(monkeypatch) -> None:
+    """Cờ `_body_read` là của MỘT request: request 1 hợp lệ đọc thân (cờ bật) rồi request 2 trên cùng kết nối
+    keep-alive bị 403 — cờ không đặt lại thì thân 2 không được đọc bỏ và RST quay lại đúng như trước."""
+    thay: list[bool] = []
+    monkeypatch.setattr(srv.BaseHTTPRequestHandler, "handle_one_request",
+                        lambda self: thay.append(self._body_read))
+    h = srv.ConsoleHandler.__new__(srv.ConsoleHandler)
+    h._body_read = True
+    h.handle_one_request()
+    assert thay == [False]
+
+
+def test_dong_request_sai_cu_phap_tra_400_khong_dut_ket_noi(make_console) -> None:
+    """`http.server` tự trả 400 cho dòng request sai cú pháp và ghi qua `log_error` (chỉ debug, không in token). Trước
+    audit 2026-10-10 nhánh này được phủ *tình cờ* bởi thân request bị chặn đọc thành request thứ hai; nay thân ấy
+    không bao giờ được đọc nên phủ bằng một request sai cú pháp thật."""
+    c = make_console()
+    with socket.create_connection(("127.0.0.1", c.port), timeout=5) as s:
+        s.sendall(b"KHONG PHAI HTTP\r\n\r\n")
+        raw = b""
+        while chunk := s.recv(65536):
+            raw += chunk
+    # Thân HTML `Error code: 400` có ở mọi bản Python; dòng trạng thái thì KHÔNG: 3.11 giữ `request_version`
+    # = "HTTP/0.9" cho dòng request không parse được nên `send_response_only` bỏ qua nó, 3.13 đặt về "" trước
+    # `send_error` nên có "HTTP/1.1 400". Cổng cục bộ 3.13 xanh, CI 3.11 đỏ (`platform/console/TRAPS.md`).
+    assert b"Error code: 400" in raw
+    assert c.token.encode() not in raw

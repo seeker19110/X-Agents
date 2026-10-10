@@ -74,3 +74,4 @@ branch = true
 [tool.coverage.report]
 # Như bốn package kia: ngưỡng bằng đúng mức đạt được, mất một dòng phủ là CI đỏ.
 fail_under = 100
+skip_covered = true   # dòng 100% không mang tin gì khi fail_under = 100; bảng chỉ còn dòng thiếu

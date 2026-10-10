@@ -29,7 +29,8 @@ jobs:
         working-directory: companies/software-company
       # Lần hai CÓ extra `graph`: không cài langgraph thì --ignore-missing-imports biến graph.py thành Any và lệch
       # kiểu với langgraph không bao giờ lộ (StateGraph(dict) đỏ 2 lỗi type-var chỉ khi cài, 2026-10-05).
-      - run: uv run --locked --extra graph mypy src/company --ignore-missing-imports
+      # `--isolated` vì `dev-task.sh` chạy đúng chuỗi này trên `.venv` chung của máy cục bộ (xem chú thích ở đó).
+      - run: uv run --locked --extra graph --isolated mypy src/company --ignore-missing-imports
         working-directory: companies/software-company
 
   unit:
@@ -383,18 +384,16 @@ jobs:
     permissions:
       contents: read
     steps:
-      # `fetch-depth: 0` LÀ ĐIỀU KIỆN ĐÚNG SAI, không phải tinh chỉnh: phép (c) đọc `git log` tìm mọi commit
-      # `(#n)` đã merge. Với depth mặc định (1) `git log` chỉ có một commit, không PR nào bị soi, và cổng này
-      # sẽ XANH GIẢ — tệ hơn không có cổng, vì nó tạo cảm giác đã được canh.
+      # Checkout nông là đủ: ba phép còn lại (`sc-*`/golden lệch nguồn, chỗ trống số PR trong CHANGELOG) chỉ
+      # đọc file trên đĩa. Phép (c) đọc `git log` — lý do cũ của `fetch-depth: 0` — đã bỏ ở audit 2026-10-10 F1:
+      # `pr-policy` chặn thiếu dòng CHANGELOG trước merge, sau merge nó chỉ còn báo giả cho PR `no-changelog`.
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: "3.13"
       - run: uv sync --locked
-      # Thuần cục bộ (đọc .git + file trên đĩa), không gọi mạng, không cần token.
+      # Thuần cục bộ (đọc file trên đĩa), không gọi mạng, không cần token.
       - run: uv run python -m keeper.cli drift --repo .
 
   # ECC vendor (ADR gốc 0028): `.claude/{skills,commands,agents}/ecc-*` phải đúng là output của
@@ -528,8 +527,19 @@ jobs:
               echo "::warning::Rule '$t' đang áp trên $BRANCH nhưng KHÔNG có trong .github/rulesets/main.json."
               echo "::warning::Không yếu đi, nhưng lần import lại từ file sẽ XOÁ MẤT nó. Thêm vào file cho khớp."; }
           done
+          # Tham số cũng phải khớp, không chỉ loại rule: file khai `allowed_merge_methods: [squash]` mà ruleset
+          # thật cho cả merge commit thì #374 và #399 vào `main` bằng merge commit, job này vẫn xanh (audit
+          # 2026-10-10). So đúng danh sách phương pháp merge; cách gộp khác là lịch sử `main` không còn
+          # "một PR = một commit" như docs/QUY-TRINH-GIT.md hứa.
+          live_mm=$(jq -c '[.[] | select(.type == "pull_request") | .parameters.allowed_merge_methods[]] | sort' /tmp/live-rules.json)
+          want_mm=$(jq -c '[.rules[] | select(.type == "pull_request") | .parameters.allowed_merge_methods[]] | sort' .github/rulesets/main.json)
+          if [ "$live_mm" != "$want_mm" ]; then
+            echo "::error::allowed_merge_methods trên $BRANCH là $live_mm, file khai $want_mm."
+            echo "::error::Sửa ruleset trong Settings → Rules → Rulesets cho khớp file (hoặc sửa file nếu đã cố ý đổi)."
+            fail=1
+          fi
           [ "$fail" = 0 ] || exit 1
-          echo "OK — mọi rule khai trong file đều đang áp trên $BRANCH."
+          echo "OK — mọi rule khai trong file đều đang áp trên $BRANCH, phương pháp merge khớp $want_mm."
 
   # Job tổng hợp — TÊN `quality` LÀ BẤT BIẾN (required status check của branch protection `main`).
   # Thêm job con mới thì phải nối vào `needs` dưới đây, nếu không kết quả của nó không được tính.

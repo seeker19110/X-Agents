@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 CONSOLE_SRC = [ROOT / "platform" / "console" / "src" / "console" / f for f in ("collect.py", "truth.py")]
 # `keeper` có mặt vì `collect.py` đọc payload của công ty bảo trì (`maintenance-tickets`, `debt-ledger`,
 # `release-notes`) — thiếu nó thì trường console đọc riêng của keeper không schema nào chứa và test đỏ.

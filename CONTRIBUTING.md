@@ -39,7 +39,8 @@ scripts/dev-task.sh gate <gói>    # gói: company | gateway | console | core | 
 Script giữ lệnh khớp đúng `ci.yml` (`ruff check src tests` → `mypy src/<module>` → `pytest -q --cov`, riêng
 software-company thêm `-n auto`), nên không phải nhớ biến thể của từng package; `DEV_TASK_DRY_RUN=1` in lệnh mà
 không chạy. Claude Code còn chạy nó tự động trước mỗi commit (`.claude/hooks/pre-commit-gate.sh`) cho gói bị
-đụng, gói import nó, và console — console giữ cổng cấp repo nên chạy cả khi commit chỉ sửa tài liệu.
+đụng, gói import nó, và console — console giữ cổng cấp repo nên chạy cả khi commit chỉ sửa tài liệu; commit chỉ
+đụng tài liệu/config ngoài mọi gói (không `.py`) thì console chạy nhanh `dev-task.sh repo-gate` (`pytest -m cong_repo`).
 `make lint && make test` ở gốc vẫn dùng được, nhưng `make test` **không** đo coverage — xanh ở đó chưa chắc xanh CI.
 
 Mỗi package có `Makefile` với `test`, `cov`, `lint`, `types`, `fix`; target riêng: software-company (`golden`,

@@ -32,12 +32,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # Audit 2026-09-27 C1: bước cũ chỉ kiểm CHANGELOG CÓ ĐỔI, nên quên điền `(#n)` chỉ lộ ở drift-check SAU
-      # merge (main đỏ ở #353, #357). Script kiểm dòng THÊM mang đúng `(#<số PR này>)` — chuỗi drift-check tìm.
-      - name: PR phải có dòng CHANGELOG.md mang (#số PR) (nhãn no-changelog để miễn)
+      # Script kiểm PR có THÊM ít nhất một dòng vào CHANGELOG.md (AGENTS.md luật bắt buộc 10). Không bắt `(#n)`
+      # (audit 2026-10-10 F4): số PR đã nằm trong subject commit squash trên main, tra bằng `git blame`/`git log -S`;
+      # bắt điền tay tốn thêm một lượt đẩy + một lượt CI mỗi PR. Chỗ trống `(#PENDING)` vẫn do drift-check (d) bắt.
+      - name: PR phải thêm dòng CHANGELOG.md (nhãn no-changelog để miễn)
         env:
           BASE: ${{ github.event.pull_request.base.ref }}
-          PR: ${{ github.event.pull_request.number }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: python3 scripts/pr_changelog_check.py
       # K8.3 kịch bản B. Đặc tả gốc viết "ADR-0037"; ở repo này ADR tách máy trạng thái là **ADR-0034**

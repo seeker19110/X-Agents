@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
 # pre-commit-gate.sh — hook PreToolUse (matcher: Bash).
 #
-# Khi Claude sắp `git commit`, kiểm bốn thứ TRƯỚC KHI nó vào lịch sử. Ba thứ đầu là luật cấm của `AGENTS.md`
+# Khi Claude sắp `git commit`, kiểm năm thứ TRƯỚC KHI nó vào lịch sử. Bốn thứ đầu là luật cấm của `AGENTS.md`
 # mà CI chỉ bắt được SAU khi đã push (luật cấm 3 còn tệ hơn: gitleaks quét cả lịch sử, lỡ commit rồi xoá vẫn đỏ
-# vĩnh viễn). Thứ tự rẻ-trước: ba phép kiểm tĩnh chạy trong mili-giây, cổng nặng chạy sau cùng.
+# vĩnh viễn). Thứ tự rẻ-trước: bốn phép kiểm tĩnh chạy trong mili-giây, cổng nặng chạy sau cùng.
 #
 #   1. Đang đứng trên `main`/`master`      → chặn (luật cấm 1)
 #   2. Staged có file cấm commit           → chặn (luật cấm 3: llm.yaml[.bak*|.tmp], media.yaml, *.sqlite*, company.artifacts/)
+#   2b. Dòng THÊM có chuỗi giống khoá thật  → chặn (luật cấm 3, sự cố 2026-09-09: khoá bịa trong file tên bình thường
+#       lọt tới gitleaks ở CI, mà gitleaks quét cả lịch sử nên phải dựng lại nhánh; mẫu `KHOA_GIONG_THAT_RE` ở `_lib.sh`)
 #   3. Diff staged HẠ `fail_under`         → chặn (luật cấm 6: thêm test, không hạ số)
 #   4. `scripts/dev-task.sh gate` đỏ       → chặn (luật bắt buộc 3): gói bị đụng + gói import nó + console
+#      (commit chỉ đụng tài liệu/config ngoài mọi gói: console chỉ chạy `dev-task.sh repo-gate`, F6)
 #
-# Lấy từ `seeker19110/project-template` (`.claude/hooks/pre-commit-gate.sh`); ba phép kiểm đầu là của repo này.
+# Lấy từ `seeker19110/project-template` (`.claude/hooks/pre-commit-gate.sh`); phép 1–3 là của repo này, 2b lấy
+# từ `scripts/_commit-guard.sh` của họ (đối chiếu 2026-10-10).
 # Bỏ qua có chủ đích: thêm `--no-verify` vào lệnh commit.
 set -uo pipefail   # cố ý KHÔNG -e: hook không được làm chết phiên
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
-# CÂY ĐANG COMMIT ≠ CHECKOUT CHÍNH. `CLAUDE.md` luật 2 bắt mỗi phiên một `git worktree`, nên `CLAUDE_PROJECT_DIR`
+# CÂY ĐANG COMMIT ≠ CHECKOUT CHÍNH. `AGENTS.md` luật cấm 2 bắt mỗi phiên một `git worktree`, nên `CLAUDE_PROJECT_DIR`
 # (checkout chính) và cây mà `git commit` sắp chạy trên đó thường là HAI thư mục khác nhau. Dùng chung một biến
 # cho hai nghĩa làm hàng rào hỏng cả hai chiều: phép 1 đọc nhánh của checkout chính (`main`) → chặn oan mọi
 # commit đúng luật; phép 2-4 đọc index của checkout chính (rỗng) → file cấm và `fail_under` bị buông.
@@ -27,23 +31,14 @@ ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 CAY="$(git rev-parse --show-toplevel 2>/dev/null)"
 [ -n "$CAY" ] || CAY="$ROOT"
 
-# Đọc lệnh từ payload — xem chú thích `doc_lenh` ở `block-dangerous-git.sh` (máy phát triển không có jq).
-doc_lenh() {
-  if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$1" | jq -r '.tool_input.command // empty' 2>/dev/null
-    return 0
-  fi
-  local py
-  for py in python3 python; do
-    if command -v "$py" >/dev/null 2>&1; then
-      printf '%s' "$1" | "$py" -c 'import sys,json
-try: sys.stdout.write(json.load(sys.stdin).get("tool_input",{}).get("command","") or "")
-except Exception: pass' 2>/dev/null
-      return 0
-    fi
-  done
-  return 1
-}
+# Bộ lọc dùng chung với block-dangerous-git.sh (đọc lệnh, bỏ heredoc/nháy, mở vỏ bọc) + mẫu khoá — xem `_lib.sh`.
+# `${0%/*}` thay `$(dirname "$0")`: hook phải đọc được lệnh cả khi PATH hỏng (ca `thieu_jq_thi_noi_ra`).
+# Git Bash trên Windows đưa `$0` với dấu `\` → cắt theo cả `/` lẫn `\`; không thấy `_lib.sh` thì lùi về
+# `$CLAUDE_PROJECT_DIR/.claude/hooks` (CI windows 2026-10-10: `${0%/*}` không cắt được → fail-open 78 ca).
+HOOK_DIR="${0%[/\\]*}"; [ "$HOOK_DIR" = "$0" ] && HOOK_DIR=.
+[ -f "$HOOK_DIR/_lib.sh" ] || HOOK_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/hooks"
+# shellcheck source=_lib.sh
+source "$HOOK_DIR/_lib.sh" || { echo "[pre-commit-gate] thiếu .claude/hooks/_lib.sh → không đọc được lệnh, bỏ qua cổng." >&2; exit 0; }
 
 payload="$(cat)"
 if ! cmd="$(doc_lenh "$payload")"; then
@@ -51,12 +46,14 @@ if ! cmd="$(doc_lenh "$payload")"; then
   exit 0
 fi
 
-cmd_scan="$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")"
+cmd_scan="$(van_ban_soi "$cmd")"
 
 # Chỉ can thiệp khi đúng là `git commit` (bỏ qua commit-tree, --help…).
 printf '%s' "$cmd_scan" | grep -Eq '(^|[^-])git[[:space:]]+([^|&;]*[[:space:]])?commit([[:space:]]|$)' || exit 0
 
-if printf '%s' "$cmd_scan" | grep -Eq '(^|[[:space:]])--no-verify([[:space:]]|$)'; then
+# Cờ bỏ cổng phải nằm CÙNG ĐOẠN với `commit` (không qua `|`/`&`/`;`): `git commit -m x && rm --no-verify` từng bỏ
+# cổng vì cờ của lệnh khác (đo 2026-10-10).
+if printf '%s' "$cmd_scan" | grep -Eq 'commit[^|&;]*[[:space:]]--no-verify([[:space:]]|$)'; then
   echo "[pre-commit-gate] phát hiện --no-verify → bỏ qua cổng." >&2
   exit 0
 fi
@@ -104,6 +101,24 @@ if [ -n "$staged" ]; then
   fi
 fi
 
+# --- 2b. chuỗi giống khoá thật trong dòng THÊM ---
+# Chỉ dòng thêm (`^+`, bỏ `+++` header): commit GỠ một khoá lỡ vào lịch sử phải đi qua, không thì hàng rào tự khoá
+# đường sửa. File chưa track mà `git add` sắp lấy không có trong diff → grep thẳng nội dung (chỉ file văn bản).
+khoa="$(printf '%s\n' "$them" | grep -E '^\+[^+]' | grep -oE "$KHOA_GIONG_THAT_RE" | head -3 || true)"
+if [ "$tu_stage" = 1 ] && [ -z "$khoa" ]; then
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$CAY/$f" ] || continue
+    khoa="$(grep -IoE "$KHOA_GIONG_THAT_RE" "$CAY/$f" 2>/dev/null | head -3 || true)"
+    [ -n "$khoa" ] && break
+  done <<EOF
+$(git -C "$CAY" ls-files --others --exclude-standard 2>/dev/null)
+EOF
+fi
+if [ -n "$khoa" ]; then
+  chan "dòng thêm có chuỗi giống khoá/token thật: $(printf '%s' "$khoa" | cut -c1-12 | sed 's/$/…/' | tr '\n' ' ')" \
+       "Luật cấm 3: gitleaks ở CI quét CẢ LỊCH SỬ — vào commit rồi xoá vẫn đỏ, phải dựng lại nhánh (sự cố 2026-09-09). Dùng placeholder entropy 0 (vd sk-live-XXXXXXXXXXXXXXXX) hoặc biến môi trường."
+fi
+
 # --- 3. hạ ngưỡng coverage ---
 ha_nguong="$(printf '%s\n' "$them" \
   | grep -E '^\+[[:space:]]*fail_under[[:space:]]*=' \
@@ -120,7 +135,8 @@ fi
 #     keeper) — `test_cong_khung.py` tính kỳ vọng từ pyproject, thêm phụ thuộc mà quên dòng dưới là đỏ;
 #   - console LUÔN chạy: nó giữ cổng cấp repo (README đếm test mọi gói, trần pragma/skip, link tài liệu, hook,
 #     workflow, mẫu PR). Commit chỉ sửa tài liệu trước đây bỏ qua mọi cổng — đo 2026-09-28: sửa một dòng README
-#     làm đỏ test ở gói khác, commit chỉ đụng README ấy sẽ lọt;
+#     làm đỏ test ở gói khác, commit chỉ đụng README ấy sẽ lọt. Commit như vậy nay chạy console CHẾ ĐỘ NHANH
+#     (chỉ test marker `cong_repo`, xem khối `console_nhanh` dưới) thay cho cả suite có `--cov`;
 #   - file ngoài company mà test company đọc: lock template (`test_delivery_contract.py`), subagent sinh ra
 #     (`assetscan` quét `.claude/agents/`) → kéo company;
 #   - file ở GỐC không phải `.md` (pyproject, uv.lock, Makefile) ảnh hưởng mọi gói → `all`.
@@ -163,8 +179,22 @@ if [ ! -x "$GOC_CONG/scripts/dev-task.sh" ]; then
   exit 0
 fi
 
+# Console CHẾ ĐỘ NHANH (F6, audit 2026-10-10): commit chỉ đụng tài liệu/config NGOÀI mọi gói (không `.py`, không
+# file nào dưới `companies/`/`platform/`, không file gốc kéo `all`) không đổi được mã lẫn độ phủ — phần console có
+# thể đỏ vì nó chỉ là các test đọc file ngoài gói, marker `cong_repo`. Chạy `dev-task.sh repo-gate` (~10 s) thay cho
+# `gate console` (~110 s). File không phải `.py` TRONG gói (schema, prompt, mẫu của company/keeper) vẫn cổng đầy
+# đủ: chúng chảy vào test console qua import, marker không phủ. `dev-task.sh` cũ chưa có task → cổng đầy đủ.
+console_nhanh=0
+if [ "${can_chay% }" = "console" ] \
+   && ! printf '%s\n' "$staged" | grep -Eq '\.py$|^(companies|platform)/' \
+   && grep -Eq '^[[:space:]]*repo-gate\)' "$GOC_CONG/scripts/dev-task.sh" 2>/dev/null; then
+  console_nhanh=1
+  echo "[pre-commit-gate] commit chỉ đụng tài liệu/config ngoài gói → console chế độ nhanh (pytest -m cong_repo)" >&2
+fi
+
 for g in $can_chay; do
-  CLAUDE_PROJECT_DIR="$GOC_CONG" "$GOC_CONG/scripts/dev-task.sh" gate "$g" && continue
+  if [ "$g" = "console" ] && [ "$console_nhanh" = 1 ]; then set -- repo-gate; else set -- gate "$g"; fi
+  CLAUDE_PROJECT_DIR="$GOC_CONG" "$GOC_CONG/scripts/dev-task.sh" "$@" && continue
   echo "❌ Cổng ĐỎ ở gói '$g' (lint/typecheck/test). Sửa hết rồi commit lại — AGENTS.md luật bắt buộc 3." >&2
   echo "   Bỏ qua có chủ đích: thêm --no-verify vào lệnh git commit." >&2
   exit 2

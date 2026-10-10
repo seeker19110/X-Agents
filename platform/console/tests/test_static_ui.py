@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 PAGE = Path(__file__).resolve().parents[1] / "src" / "console" / "static" / "index.html"
+pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
 JS_DIR = PAGE.parent / "js"
 
 

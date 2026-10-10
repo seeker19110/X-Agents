@@ -15,7 +15,7 @@ from pathlib import Path
 
 from xagents_core.sandbox import clean_env
 
-from .worktree import KeeperWorktree, git_env, refuse_shared_checkout
+from .worktree import NO_HOOKS, KeeperWorktree, git_env, refuse_shared_checkout
 
 _PR_URL_RE = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/pull/(\d+)")
 
@@ -53,7 +53,8 @@ def push_branch(wt: KeeperWorktree, *, sha: str, remote: str = "origin", timeout
     refuse_shared_checkout(wt.path)
     try:
         r = subprocess.run(
-            ["git", "-C", str(wt.path), "push", remote, f"{sha}:refs/heads/{wt.branch}"],
+            # `NO_HOOKS` như `_git` của worktree: `pre-push` của repo khách là mã người lạ, không chạy khi đẩy tự động.
+            ["git", "-C", str(wt.path), *NO_HOOKS, "push", remote, f"{sha}:refs/heads/{wt.branch}"],
             capture_output=True, text=True, encoding="utf-8", env=git_env(), timeout=timeout,
         )
     except subprocess.TimeoutExpired as e:

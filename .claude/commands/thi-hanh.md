@@ -42,8 +42,8 @@ Lặp cho tới khi mọi mã trong bảng B là `xong #n` hoặc `chờ ngườ
    d. Gọi `sc-*` chỉ đọc theo cột "kiểm lại" của gói với đường dẫn worktree. Phát hiện chặn → quay lại (c).
    e. Đọc toàn bộ diff. Commit (message có output test hai chiều), dòng CHANGELOG, mục session log.
 3. Mở PR theo thứ tự cột "thứ tự PR": kiểm `gh pr list --state open` rỗng (luật 2b) → `rebase origin/main` →
-   `gh pr create` tiêu đề `<type>(<scope>): <mã> — <một câu>` → điền `(#n)` vào CHANGELOG + session log, commit
-   tiếp vào PR → bật auto-merge squash → `gh pr checks <n> --watch --interval 150` tới kết luận. Đỏ → sửa trong
+   `gh pr create` tiêu đề `<type>(<scope>): <mã> — <một câu>` (dòng CHANGELOG không cần `(#n)`, luật 10)
+   → bật auto-merge squash → `gh pr checks <n> --watch --interval 150` tới kết luận. Đỏ → sửa trong
    cùng worktree (như 2c), không mở PR khác. Merge xong → bảng B cột "khi nào" = `xong #n`, ô A tương ứng ◐ → ✅,
    commit cập nhật file trạng thái vào PR của gói kế (hoặc PR docs nhỏ nếu là gói cuối).
 4. Gói cần người (máy có key, ký gate, quyết định không đảo ngược): ghi `chờ người: <lý do, việc người cần làm>`
