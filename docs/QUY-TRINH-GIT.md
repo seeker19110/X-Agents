@@ -118,6 +118,28 @@ yêu cầu → phân tích hiện trạng → chốt yêu cầu → đặc tả 
 - **Trạng thái sống trong `docs/thi-hanh/<mã>.md`** khi hạng mục đi qua `/thi-hanh` (bảng B cột "khi nào"); việc
   không qua `/thi-hanh` thì trạng thái sống trong chính PR nháp (checklist task trong thân PR).
 
+## 2e. Giải xung đột theo ý định từng hunk, không chọn cả tệp
+
+Xung đột xảy ra ở đúng những tệp **append-only** mà mọi PR đều chạm (`CHANGELOG.md`, `docs/sessions/<ngày>.md`,
+`README.md` số liệu). Hai sự cố đã ghi: giải sai làm **nhân đôi** một dòng CHANGELOG (`TRAPS.md` §3, dòng "Hai phiên
+cùng append"); marker `<<<<<<<` của #307 nằm trên `main` **một tuần** trước khi cổng bắt được
+(`docs/sessions/2026-09-22.md`). Cả hai đều do chọn "ours/theirs" cho cả tệp rồi không đọc lại.
+
+1. **Đọc ý định hai phía trước khi chạm tệp**: `git log -1 --format=%B <phía kia>` và commit của mình — xung đột là
+   hai ý định chạm cùng dòng, không phải hai chuỗi ký tự.
+2. **Giải từng hunk theo ý định**, không `checkout --ours/--theirs` cả tệp. Tệp append-only giữ **cả hai** dòng, xếp
+   theo thời điểm merge (dòng của PR đã merge nằm **dưới** dòng của PR đang mở — luật bắt buộc 10). Code: hai phía đổi
+   **cùng một logic** mà chọn bên nào cũng mất hành vi → dừng, hỏi người (`AGENTS.md` §"Khi bối rối" cho phép).
+3. **Soi marker trước khi `git add`**: `grep -rn '^<<<<<<<\|^=======$\|^>>>>>>>' <tệp đã giải>` phải rỗng; cổng
+   `test_khong_file_nao_con_conflict_marker` (`platform/console/tests/test_readme_goc.py`) chỉ là lưới cuối.
+4. **Chạy lại cổng sau khi giải**: `scripts/dev-task.sh gate <gói>` (§2c) — tệp giải đúng cú pháp vẫn có thể sai
+   ngữ nghĩa (import mất, test trùng tên).
+5. **Không `--abort` để làm lại từ đầu**: hook `block-dangerous-git.sh` chặn `merge|rebase --abort`; giải tới cùng hoặc
+   dừng hỏi người, đừng xoá dấu vết của lần giải dở.
+6. **Khi GitHub báo xung đột mà `git merge-tree` cục bộ sạch** (đã gặp ở #417): gộp `origin/main` vào nhánh bằng
+   merge commit (§5 bước 4 cho phép khi GitHub báo xung đột), push, không rebase + force (quyền `push --force*` bị
+   `settings.json` từ chối).
+
 ## 3. Commit
 
 - Conventional Commits: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `style`, `perf`,
