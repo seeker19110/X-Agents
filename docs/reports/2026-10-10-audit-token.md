@@ -92,6 +92,7 @@ mục đó, ghi lại eval là cách duy nhất để biết.
 1. **R1 — ghi `num_turns`, `cached_input_tokens`, `cache_write_tokens` vào bản ghi eval và `audit-log`.** Không đổi
    prompt nên không cần ghi lại eval. Đây là điều kiện trước của R2–R3, vì không tách được hệ số 2,3–5,9 thì mọi
    "tối ưu" phía sau chỉ là đoán.
+   *Đã làm 2026-10-10 (dòng `feat(core)` R1 trong `CHANGELOG.md`): số đo thật có từ lần `make eval-record` kế tiếp.*
 2. **R2 — schema chỉ đi một đường trong `ClaudeCodeClient`.** Mỗi lượt nội bộ hiện mang 2,3–4,4k ký tự schema hai
    lần. Phương án: bỏ phần `hint` toàn văn, chỉ giữ mô tả trường cho những schema `--json-schema` không tự giải
    thích được. ADR-0026 cố ý để hai đường ("`--json-schema` là lớp ÉP, không phải lớp giải thích"), nên đổi phải

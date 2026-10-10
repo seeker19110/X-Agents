@@ -5,7 +5,8 @@ Trước đây muốn biết agent nào chậm, tốn, hay lỗi phải tự tru
 file) để nối dashboard sẵn có. Nguồn số liệu:
 
 - audit có số đo token/chi phí (kể cả lượt bị từ chối); `produced:*` (evidence JSON: model,
-  duration_ms, cache_hit, turns, tool_calls) → số lượt hoàn thành và thời gian
+  duration_ms, cache_hit, turns, tool_calls, cached_input_tokens, cache_write_tokens, num_turns) → số lượt hoàn
+  thành và thời gian; ba trường cuối chưa được cộng thành chỉ số, chỉ nằm trong audit để đo tay
 - audit `llm_error|invalid_output|budget_exhausted|injection_*|llm_retry|context_trimmed` → sức khoẻ
 - audit `gate.request` / `gate.decide` → thời gian chờ người
 - topic `tasks` (đầu) → audit `integration.merged` → lead time ticket

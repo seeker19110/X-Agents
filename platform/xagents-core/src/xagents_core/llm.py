@@ -52,6 +52,7 @@ __all__ = [
     "CODEX_EFFORT",
     "TIERS",
     "TRANSIENT_HTTP",
+    "USAGE_EXTRA",
     "AnthropicClient",
     "ClaudeCodeClient",
     "CodexClient",
@@ -244,6 +245,11 @@ def object_in_prose(raw: str) -> dict[str, Any] | None:
     return None
 
 
+# Số đo `usage` ngoài cặp input/output (R1, audit token 2026-10-10): bản ghi eval và audit `produced:*` của company
+# giữ chúng để tách hệ số input thành lượt nội bộ, ghi cache và đọc cache. Tên trùng tên trường của `Completion`.
+USAGE_EXTRA = ("cached_input_tokens", "cache_write_tokens", "num_turns")
+
+
 @dataclass
 class Completion:
     """Kết quả một lượt gọi model, trung lập provider.
@@ -262,6 +268,9 @@ class Completion:
     stop_reason: str = "end_turn"
     cached_input_tokens: int = 0  # phần input phục vụ từ cache (đã nằm trong input_tokens)
     cache_write_tokens: int = 0   # phần input ghi vào cache lần đầu (đã nằm trong input_tokens)
+    # Số lượt NỘI BỘ mà provider tự chạy cho một lời gọi (`claude -p` báo `num_turns`; `input_tokens` là tổng qua
+    # mọi lượt đó). 0 = provider không báo, nghĩa là "không biết", không phải "không có lượt nào" (R1, audit token).
+    num_turns: int = 0
     tool_calls: list[ToolCall] = field(default_factory=list)  # model muốn gọi tool (rỗng = trả lời cuối)
     # Ai đã chạy vòng tool của lượt này: "" = vòng lặp của runner (mọi provider API); "mcp" = CLI chạy, gọi ngược
     # tool của công ty qua cầu MCP; "cli" = CLI chạy bằng tool RIÊNG của nó. Runner ghi vào audit `tools_used` để
@@ -1198,4 +1207,4 @@ class ClaudeCodeClient:
         return Completion(text=text, input_tokens=int(u.get("input_tokens", 0) or 0) + read + write,
                           output_tokens=int(u.get("output_tokens", 0) or 0), model=used,
                           stop_reason=str(data.get("stop_reason") or "end_turn"), cached_input_tokens=read,
-                          cache_write_tokens=write, tool_mode=tool_mode)
+                          cache_write_tokens=write, tool_mode=tool_mode, num_turns=int(data.get("num_turns") or 0))

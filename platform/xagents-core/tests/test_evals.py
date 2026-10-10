@@ -443,3 +443,26 @@ def test_selftest_dat_ten_theo_chi_so_khi_ca_khong_co_name(tmp_path):
     """Ca quên `name:` vẫn phải gọi tên được, nếu không người đọc log không biết sửa ca nào."""
     s = _suite(tmp_path, cases=[{"expect": {"equals": {"x": 1}}}])
     assert s.selftest("bien-tap") == [("ca-0", CHUA_CHUNG_MINH)]
+
+
+class _CacheClient(FakeClient):
+    """Provider báo token cache và số lượt nội bộ (như `claude -p`)."""
+
+    def complete(self, **kw: Any) -> Completion:
+        c = super().complete(**kw)
+        c.cached_input_tokens, c.cache_write_tokens, c.num_turns = 40, 7, 3
+        return c
+
+
+def test_ban_ghi_giu_token_cache_va_num_turns_va_phat_lai_tra_ve_dung_so_do(tmp_path):
+    """R1 (audit token 2026-10-10): bản ghi chỉ giữ `input_tokens`/`output_tokens` nên không tách được hệ số input
+    thành lượt CLI, lượt sửa JSON và cache read (rẻ hơn nhiều). Ghi ba số đo khi provider có báo; phát lại trả về
+    đúng chúng để người đọc `Completion` lúc replay thấy cùng con số với lúc ghi."""
+    s = _suite(tmp_path)
+    rec = RecordingClient(_CacheClient(), "bien-tap", s)
+    rec.complete(system="he", user="ca", schema={}, model_tier="light")
+    (entry,) = json.loads(rec.save().read_text(encoding="utf-8"))["cases"].values()
+    assert (entry["cached_input_tokens"], entry["cache_write_tokens"], entry["num_turns"]) == (40, 7, 3)
+
+    out = ReplayClient("bien-tap", s).complete(system="he", user="ca", schema={}, model_tier="light")
+    assert (out.cached_input_tokens, out.cache_write_tokens, out.num_turns) == (40, 7, 3)
