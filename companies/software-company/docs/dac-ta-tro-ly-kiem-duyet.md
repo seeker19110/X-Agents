@@ -212,6 +212,8 @@ và để trợ lý (phần C) đọc `facts` mà nhận xét. `verdict` **khôn
 | Người duyệt ≠ người tạo | `GateRequest.created_by` | In rõ `created_by` để người biết mình có được ký không (code cũng chặn; đây là để khỏi gõ thừa) |
 | (acceptance) chạy trên production, dữ liệu khách chấp thuận | `release-events` env/status, `contract` | Bản UAT chạy trên env nào; hợp đồng có điều khoản dữ liệu không |
 | (acceptance) finding truy vết requirement_id | `acceptance-results`, `prd` | Liệt kê finding thiếu `requirement_id` |
+| (acceptance) file/khoá/trường mới có nơi đọc trong mã | diff release trong worktree tích hợp, `pull-requests` | Bus không mang bằng chứng → luôn `unavailable`; người/trợ lý trỏ file:dòng ĐỌC cho từng thứ mới (sự cố QLKH `runtime.yaml`) |
+| (acceptance) không khả năng đã hứa đứng sau stub | README bản giao, `approved-specs`, worktree tích hợp | Luôn `unavailable`; grep `NotImplementedError`/`TODO`/giá trị trả cố định trên đường đi của khả năng |
 
 ### 5.6 Gate `escalation` — chỗ đáng giá nhất
 

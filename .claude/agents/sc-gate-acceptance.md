@@ -57,6 +57,13 @@ Mỗi mục phải xuất hiện trong báo cáo với đúng một kết luận
   - nguồn: release-events{staging}.smoke — lần orchestrator tự chạy lúc deploy staging, để đối chiếu
 - **Khách đã xem bản giao trong PR thật trên GitHub (`--deliver-pr`, ADR-0038): PR nhánh release → nhánh của khách do orchestrator mở, không merge — review bằng UI quen thuộc rồi mới ký** (`acceptance.pr-giao-hang`)
   - nguồn: audit-log delivery.done — trường `pr` (url, số PR, base ← head) của release; `delivery.pr_skipped`/`pr_failed` kèm lý do; chưa bật `--deliver-pr` thì `unknown`, khách xem tag/nhánh release trực tiếp
+- **Mỗi file/khoá cấu hình/trường mới mà bản giao sinh ra có ít nhất một nơi đọc trong mã — trỏ dòng (sự cố QLKH: `runtime.yaml` sinh ra mà không ai đọc)** (`acceptance.noi-doc`)
+  - nguồn: worktree tích hợp (`--repo`) — `git diff --name-only <tag trước>..<tag release>`: file mới, khoá cấu hình mới
+  - nguồn: pull-requests của các ticket trong release — trường/khoá mới khai trong summary
+  - nguồn: grep tên file/khoá trong mã của bản giao: phải có ít nhất một dòng ĐỌC (không chỉ dòng ghi), trỏ file:dòng
+- **Không khả năng nào README/spec đã hứa đứng sau stub (hàm trả giá trị cố định, thân `TODO`/`NotImplementedError`, module không ai gọi)** (`acceptance.khong-stub`)
+  - nguồn: README của bản giao + approved-specs@latest — danh sách khả năng đã hứa
+  - nguồn: worktree tích hợp (`--repo`) — grep `NotImplementedError`, `TODO`, `pass`, `return None|[]|{}` trong hàm mà khả năng đó đi qua; module không ai import
 
 ## Trợ lý chuyên môn nên gọi cùng hồ sơ
 

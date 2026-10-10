@@ -94,6 +94,8 @@ Người tự kiểm thêm:
 - [ ] Finding truy vết về requirement_id; yêu cầu ngoài spec đi vào `change-requests`, không vào biên bản
 - [ ] Sản phẩm khởi động được và trả lời một request thật — `gate_brief` tự chạy theo `runtime` của spec (ADR-0029), khách ký trên thứ đã chạy chứ không trên lời khai `deployed`
 - [ ] Khách đã xem bản giao trong PR thật trên GitHub (`--deliver-pr`, ADR-0038): PR nhánh release → nhánh của khách do orchestrator mở, không merge — review bằng UI quen thuộc rồi mới ký
+- [ ] Mỗi file/khoá cấu hình/trường mới mà bản giao sinh ra có ít nhất một nơi đọc trong mã — trỏ dòng (sự cố QLKH: `runtime.yaml` sinh ra mà không ai đọc)
+- [ ] Không khả năng nào README/spec đã hứa đứng sau stub (hàm trả giá trị cố định, thân `TODO`/`NotImplementedError`, module không ai gọi)
 
 Kết quả (ghi vào `acceptance-results`): accepted / conditional(danh sách còn lại + hạn) / rejected(lý do)
 

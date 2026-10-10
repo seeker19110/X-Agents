@@ -499,6 +499,14 @@ def _brief_acceptance(orch: Orchestrator, g: GateSection, subject: str, pid: str
         if untraced: facts += [f"vd: {excerpt(f.get('text'), 120)}" for f in untraced[:3]]
         if unknown_req: facts.append("REQ không có trong prd: " + ", ".join(unknown_req[:5]))
         out.append(_item(it, "gap" if untraced or unknown_req else "ok", facts, srcs))
+
+    # 3b: hai câu về MÃ của bản giao (nơi đọc của thứ mới sinh, khả năng đứng sau stub). Bus không mang bằng chứng
+    # cho chúng; im lặng bỏ mục là để người ký tưởng đã kiểm, nên hồ sơ nói thẳng `unknown` và chỗ phải đọc.
+    for sid in ("acceptance.noi-doc", "acceptance.khong-stub"):
+        it = items[sid]
+        reason = "bus không mang bằng chứng về mã của bản giao — đọc diff release theo nguồn của mục"
+        out.append(_item(it, "unknown", [reason], [{"kind": "code", "ref": rid}]))
+        unavailable.append({"id": it.id, "reason": reason})
     return out, unavailable, {"release_id": rid, "tickets": orch.lead.release_tickets.get(rid, []), "smoke": smoke}
 
 
