@@ -5,6 +5,8 @@ Ca cốt lõi (bug `once=` K1.7): cùng những envelope đó phát lại → kh
 """
 from datetime import UTC, datetime
 
+import pytest
+
 from keeper.events import Signal
 from keeper.triage import (
     DUE_DAYS,
@@ -114,3 +116,21 @@ def test_truc_cu_theo_kind_subject_nuot_signal_moi():
     second = triager([_obs("e2", semver_jump="minor")], state=state, now=NOW, key=legacy_generation_key)
     assert len(first) == 1
     assert second == [], "trục cũ nuốt vĩnh viễn mọi signal hợp lệ phát sau vòng đầu"
+
+
+# K3 (audit 2026-10-10): `dedupe` giữ NỘI DUNG của bản mới nhất; nếu tier cũng chỉ tính trên bản đó thì một bản
+# trước nặng hơn (alert `critical` rồi bản sau `low`, bump `major` rồi `minor`, evidence chạm `agents/` rồi
+# không) bị hạ tier → mất `requires_gate`. Mỗi ca: bản ĐẦU là `high`, bản CUỐI một mình không `high`.
+@pytest.mark.parametrize(("dau", "cuoi"), [
+    ({"kind": "security", "severity": "critical"}, {"kind": "security", "severity": "low"}),
+    ({"semver_jump": "major"}, {"semver_jump": "minor"}),
+    ({"kind": "drift", "evidence": "companies/software-company/agents/engineering/builder.md"},
+     {"kind": "drift", "evidence": ""}),
+], ids=["severity", "semver", "evidence"])
+def test_gop_trung_khong_ha_tier_cua_ban_truoc(dau, cuoi):
+    assert triager([_obs("e2", **cuoi)], state=TriageState(), now=NOW)[0].risk_tier != "high"  # đối chứng
+    t = triager([_obs("e1", **dau), _obs("e2", **cuoi)], state=TriageState(), now=NOW)[0]
+    assert t.risk_tier == "high"
+    assert t.requires_gate is True
+    assert t.due_at == "2026-09-10T00:00:00+00:00"
+    assert t.ticket_id == "KEEP:e2"  # danh tính vẫn là bản mới nhất, chỉ tier lấy bậc cao nhất

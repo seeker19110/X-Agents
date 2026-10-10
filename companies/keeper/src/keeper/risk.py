@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from .events import RiskTier, Signal
 
 DEFAULT_TIER: RiskTier = "medium"
+#: Thứ hạng tier, nhỏ = nặng hơn (bảng chứ không `if`) — `budget` xếp hàng đợi, `triage` chọn bậc cao nhất của một nhóm gộp (K3).
+TIER_RANK: dict[RiskTier, int] = {"high": 0, "medium": 1, "low": 2}
 
 # Mục coverage của `pyproject.toml`: nhận ra bằng dấu vết TRONG nội dung thay đổi, không bằng riêng tên file —
 # `pyproject.toml` bị chạm vì đổi mô tả package không phải rủi ro cao (bất biến I4 chỉ cấm hạ `fail_under`).
