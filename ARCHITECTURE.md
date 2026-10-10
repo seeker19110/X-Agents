@@ -97,7 +97,7 @@ và `unit`: ubuntu 3.11 + 3.13, windows 3.13; `core-static`/`keeper-static`: ubu
 | gateway | `gateway-static`, `gateway-unit` | ruff + mypy · pytest coverage 100 |
 | console | `console-static`, `console-unit` | ruff + mypy · pytest coverage 100 — gồm cả các cổng của repo (`tests/test_cong_*.py`, `test_readme_goc.py`) |
 | xagents-core | `core-static`, `core-unit` | ruff + mypy (`strict = true` trong `pyproject.toml`) · pytest coverage 100 |
-| keeper | `keeper-static`, `keeper-unit`, `keeper-eval-replay`, `drift-check` | ruff + mypy · pytest coverage 100 · `keeper.evals all --replay --strict` · `keeper.cli drift --repo .` (ba phép so cục bộ: `sc-*` và golden lệch `version` nguồn, PR đã merge thiếu `(#n)` trong CHANGELOG) |
+| keeper | `keeper-static`, `keeper-unit`, `keeper-eval-replay`, `drift-check` | ruff + mypy · pytest coverage 100 · `keeper.evals all --replay --strict` · `keeper.cli drift --repo .` (ba phép so cục bộ: `sc-*` và golden lệch `version` nguồn, CHANGELOG còn chỗ trống số PR kiểu `(#PENDING)`) |
 | hai công ty | `golden-check` | golden agent sinh lại phải khớp bản đã commit (ma trận `software-company`, `keeper`); riêng software-company: `company.subagents check` (`.claude/agents/sc-*` khớp nguồn) |
 | phiên Claude Code | `ecc-check` | `scripts/ecc_vendor.py check`: tải nông ECC tại commit ghim, sinh lại rồi so `.claude/*/ecc-*` + lock (ADR gốc 0028; cần github.com) |
 | toàn repo | `audit`, `protection-guard`, `quality` | pip-audit (một `uv.lock`) + gitleaks cả lịch sử · ruleset trong file ↔ ruleset thật, hai chiều · gom kết quả |

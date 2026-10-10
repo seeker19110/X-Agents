@@ -54,7 +54,7 @@ uv run python -m keeper.cli watch --db keeper.sqlite --repo ../.. --max-ticks 1
 uv run python -m keeper.cli gate --db keeper.sqlite list
 uv run python -m keeper.cli gate --db keeper.sqlite approve KT-12 --by human:truc-ban --reason "bằng chứng đủ"
 
-# drift: bản dẫn xuất/golden lệch nguồn, PR đã merge thiếu dòng CHANGELOG — thuần cục bộ, như job CI drift-check
+# drift: bản dẫn xuất/golden lệch nguồn, CHANGELOG còn chỗ trống số PR — thuần cục bộ, như job CI drift-check
 uv run python -m keeper.cli drift --repo ../..
 
 # biến ý định mở PR (`pr.intent`) của MỘT ticket thành PR thật: git push + gh pr create (BT8 canary);

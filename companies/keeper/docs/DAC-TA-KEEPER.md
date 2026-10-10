@@ -157,15 +157,15 @@ test bỏ qua theo biến môi trường hay theo `os.name`: đó đúng là "c�
 |---|---|
 | `scout.py` | đọc `uv.lock` + alert từ `github.py` → `Signal(kind="dependency", semver_jump="patch|minor|major", is_dev=…)` |
 | `health.py` | từ `workflow_runs()`: flake rate (cùng SHA, kết quả khác nhau), thời gian CI p50/p95, tuổi PR mở; đọc `coverage.xml` nếu có → độ trôi coverage giữa các package |
-| `drift.py` | ba phép so **thuần cục bộ**: (a) `.claude/agents/sc-*.md` vs `software-company/agents/**` + `skills/**` + `gates/checklists.md` (so hash nguồn ghi trong front matter bản dẫn xuất); (b) `tests/golden/**` vs agent md; (c) mỗi PR merged trong `git log` có `(#n)` xuất hiện trong `CHANGELOG.md` không |
+| `drift.py` | ba phép so **thuần cục bộ**: (a) `.claude/agents/sc-*.md` vs `software-company/agents/**` + `skills/**` + `gates/checklists.md` (so hash nguồn ghi trong front matter bản dẫn xuất); (b) `tests/golden/**` vs agent md; (d) dòng `CHANGELOG.md` còn chỗ trống thay cho số PR (`(#PENDING)`, `(#PRNUM)`…). Phép (c) cũ — mỗi PR merged trong `git log` có `(#n)` trong `CHANGELOG.md` không — đã bỏ ở audit 2026-10-10 F1 (`scripts/pr_changelog_check.py` chặn trước merge; sau merge nó chỉ còn báo giả cho PR `no-changelog`) |
 | `signals.py` | `Signal` + `dedupe(signals)` theo `(kind, subject)`: giữ cái mới nhất, cộng `seen_count` |
 
 Đo hai chiều: sửa tay một file `.claude/agents/sc-*.md` trong repo fixture → `drift` phải phát signal; hoàn
 nguyên → im. Bỏ `dedupe` → `test_gom_trung` đỏ với 3 signal cùng subject.
 
-**Cạm bẫy**: phép (c) sẽ báo giả cho mọi PR merge **trước khi** luật `AGENTS.md` §10 có hiệu lực. Chặn dưới
-bằng một mốc ngày là hằng số có comment giải thích — **không** lọc bằng danh sách số PR (danh sách sẽ mục
-ngay tuần sau).
+**Cạm bẫy** (lịch sử — phép (c) đã bỏ ở audit 2026-10-10 F1): phép (c) báo giả cho mọi PR merge **trước
+khi** luật `AGENTS.md` §10 có hiệu lực. Từng chặn dưới bằng một mốc ngày là hằng số có comment giải thích —
+**không** lọc bằng danh sách số PR (danh sách sẽ mục ngay tuần sau).
 
 ---
 

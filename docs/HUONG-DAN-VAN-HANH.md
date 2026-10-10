@@ -692,8 +692,8 @@ uv run python -m keeper.cli publish --db keeper.sqlite --repo ../.. <ticket_id>
   là thi hành thật; `--root` **bắt buộc** và phải là một worktree PHỤ — `patcher` từ chối ghi vào checkout chung.
 - `watch` là vòng `watch → triage → patch → verify → gate? → release`. `--max-ticks 1` chạy đúng một nhịp rồi
   thoát (dùng khi muốn xem nó làm gì trước khi thả chạy dài). Bỏ `--max-ticks` là chạy mãi.
-- `drift` so bản dẫn xuất/golden với nguồn và tìm PR đã merge thiếu dòng CHANGELOG — thuần cục bộ, đúng phép kiểm
-  của job CI `drift-check`.
+- `drift` so bản dẫn xuất/golden với nguồn và tìm dòng CHANGELOG còn chỗ trống số PR — thuần cục bộ, đúng phép
+  kiểm của job CI `drift-check`.
 - `publish` biến ý định mở PR (`pr.intent`) của MỘT ticket thành PR thật (`git push` + `gh pr create`); patch phải
   commit sẵn trong worktree của ticket. `watch` không tự gọi nó.
 - `--repo` là gốc repo (`../..` khi đứng ở `companies/keeper/`). `watch` chỉ hỏi `gh` (**chỉ đọc**;
