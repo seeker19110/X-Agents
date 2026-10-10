@@ -16,7 +16,8 @@ ADR-0012:
 - Blackboard mang `content` thật; prompt = system + payload + blackboard bị ép vào `max_input_chars` theo `context.fit`
   (payload ưu tiên, blackboard chia water-filling), có cắt thì audit `context_trimmed`.
 - Agent sở hữu namespace phải trả `context_writes[].content` (toàn văn artifact) — được mirror ra artifact store.
-- Mỗi lượt sản xuất ghi `cost_usd` (bảng giá), `duration_ms`, `cache_hit`, `turns`, `tool_calls` vào audit để metrics đọc.
+- Mỗi lượt sản xuất ghi `cost_usd` (bảng giá), `duration_ms`, `cache_hit`, `turns`, `tool_calls` vào audit để metrics đọc,
+  cùng `cached_input_tokens`, `cache_write_tokens`, `num_turns` cộng qua mọi lời gọi model của bước (R1, audit token).
 """
 from __future__ import annotations
 
@@ -30,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from xagents_core.llm import USAGE_EXTRA
 from xagents_core.observe import Span, span, use_parent
 from xagents_core.runner import AgentRunner as CoreAgentRunner
 from xagents_core.runner import Generated as CoreGenerated
@@ -174,8 +176,13 @@ class RunResult(CoreRunResult):
 class Generated(CoreGenerated):
     """Đầu ra model đã qua kiểm tra schema nhưng CHƯA publish (để code xác định quyết định, vd. delivery-lead dispatch).
 
-    Bảy trường chung ở `xagents_core.runner.Generated`; năm trường dưới là của company (studio không ghi cái nào)."""
+    Bảy trường chung ở `xagents_core.runner.Generated`; tám trường dưới là của company (studio không ghi cái nào)."""
     output_tokens: int = 0        # phần agent thật sự sinh ra; ngân sách ticket đo theo đây
+    # R1 (audit token 2026-10-10): cộng qua MỌI lời gọi model của bước. `num_turns` là lượt NỘI BỘ của provider
+    # (`claude -p`), khác `turns` (vòng tool của công ty); 0 = provider không báo.
+    cached_input_tokens: int = 0
+    cache_write_tokens: int = 0
+    num_turns: int = 0
     cost_usd: float = 0.0
     priced: bool = True           # False = model không có trong bảng giá (cost_usd = 0 nhưng KHÔNG miễn phí)
     duration_ms: int = 0
@@ -183,7 +190,9 @@ class Generated(CoreGenerated):
 
     def evidence(self, event_id: str | None = None) -> str:
         d: dict[str, Any] = {"model": self.model, "cache_hit": round(self.cache_hit_ratio, 3), "duration_ms": self.duration_ms,
-                             "turns": self.turns, "tool_calls": sum(self.tool_calls.values())}
+                             "turns": self.turns, "tool_calls": sum(self.tool_calls.values()),
+                             "cached_input_tokens": self.cached_input_tokens, "cache_write_tokens": self.cache_write_tokens,
+                             "num_turns": self.num_turns}
         if event_id: d["event"] = event_id
         if not self.priced: d["unpriced"] = True
         return json.dumps(d, ensure_ascii=False)
@@ -221,6 +230,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         # Phải là lượt đầu chứ không phải lượt cuối: từ lượt hai trở đi prompt đã mang thêm cả hội thoại
         # tool, mà `fit` chỉ đo prompt ban đầu — so lượt cuối là so hai thứ khác nhau rồi gọi đó là sai số.
         self._first_input: int | None = None
+        self._usage_extra = dict.fromkeys(USAGE_EXTRA, 0)   # R1: cộng `usage` ngoài input/output qua các lượt của bước
 
     def _audit_scope(self, inp: Envelope) -> dict[str, Any]:
         return {"ticket_id": inp.payload.get("ticket_id") or (inp.key if inp.topic == "tasks" else None),
@@ -293,6 +303,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         if drain and (notes := drain()):
             self._audit(spec, "llm_retry", inp, evidence=json.dumps({"attempts": len(notes), "notes": notes}, ensure_ascii=False))
         if self._first_input is None: self._first_input = c.input_tokens
+        for f in USAGE_EXTRA: self._usage_extra[f] += getattr(c, f)
         return c
 
     def _tool_loop(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
@@ -469,6 +480,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         if lessons:
             inp = inp.model_copy(update={"payload": {**inp.payload, "related_lessons": lessons}})
         self._first_input = None   # `_complete` ghi vào đây ở lượt đầu của CHÍNH bước này
+        self._usage_extra = dict.fromkeys(USAGE_EXTRA, 0)
         payload, context, budget_ = fit(spec.system_prompt(phase), inp.payload, raw_ctx,
                                         min(spec.max_input_chars or self.max_input_chars, self.max_input_chars),
                                         paths=paths, context_cutter=cut_prd_sections)
@@ -534,7 +546,9 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             raise RunnerError(f"{agent_id}: đầu ra không hợp lệ cho {topic_out}: {e}") from e
         return Generated(payloads=payloads, tokens=total, output_tokens=out_toks, model=c.model, context_writes=writes,
                          cache_hit_ratio=c.cache_hit_ratio, turns=turns, tool_calls=tools.summary() if tools else {},
-                         cost_usd=round(usd, 6), priced=priced, duration_ms=duration, phase=phase)
+                         cost_usd=round(usd, 6), priced=priced, duration_ms=duration, phase=phase,
+                         cached_input_tokens=self._usage_extra["cached_input_tokens"],
+                         cache_write_tokens=self._usage_extra["cache_write_tokens"], num_turns=self._usage_extra["num_turns"])
 
     def author_tests(self, agent_id: str, inp: Envelope, ws: TicketWorkspace, budget: int | None = None,
                      max_turns: int = 25, phase: str | None = None) -> tuple[Generated, str]:

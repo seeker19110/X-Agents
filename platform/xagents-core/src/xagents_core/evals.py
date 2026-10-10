@@ -46,7 +46,7 @@ from typing import Any, Protocol
 
 import yaml
 
-from .llm import Completion, LLMError, ModelClient
+from .llm import USAGE_EXTRA, Completion, LLMError, ModelClient
 from .tools import ToolSpec
 
 __all__ = ["CaseResult", "EvalSuite", "RecordingClient", "ReplayClient", "ScoredOutcome", "Threshold",
@@ -178,6 +178,9 @@ class RecordingClient:
             k = prompt_key(system, user)
             self.entries[k] = {"text": c.text, "model": c.model, "input_tokens": c.input_tokens,
                                "output_tokens": c.output_tokens}
+            # R1 (audit token 2026-10-10): không có ba số này thì không tách được hệ số input thành lượt CLI,
+            # lượt sửa JSON và cache read. Chỉ ghi khi provider có báo, để bản ghi của provider không báo giữ nguyên.
+            self.entries[k].update({f: v for f in USAGE_EXTRA if (v := getattr(c, f))})
             self._case_keys.add(k)
         return c
 
@@ -240,7 +243,9 @@ class ReplayClient:
             raise LLMError(f"bản ghi eval của {self.agent_id} lệch prompt hiện tại (prompt/skill/ca eval đã đổi): "
                            f"chạy `make eval-record AGENT={self.agent_id}` với model thật rồi commit bản ghi")
         return Completion(text=e["text"], input_tokens=int(e.get("input_tokens", 0)),
-                          output_tokens=int(e.get("output_tokens", 0)), model=f"replay:{e.get('model', '?')}")
+                          output_tokens=int(e.get("output_tokens", 0)), model=f"replay:{e.get('model', '?')}",
+                          cached_input_tokens=int(e.get("cached_input_tokens", 0)),
+                          cache_write_tokens=int(e.get("cache_write_tokens", 0)), num_turns=int(e.get("num_turns", 0)))
 
 
 class EvalSuite:

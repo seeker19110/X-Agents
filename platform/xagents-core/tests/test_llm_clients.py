@@ -912,3 +912,13 @@ def test_loi_han_muc_that_van_la_tam_thoi_o_ca_bon_duong(msg):
     c, _ = _codex(json.dumps({"type": "error", "message": msg}))
     with pytest.raises(TransientError):
         c.complete(system="s", user="u", schema={}, model_tier="strong")
+
+
+def test_claude_parse_giu_num_turns_cua_cli_de_tach_he_so_input():
+    """R1 (audit token 2026-10-10): `usage.input_tokens` của `claude -p` là TỔNG qua mọi lượt nội bộ của CLI. Không giữ
+    `num_turns` thì không tách được hệ số input 2,3–5,9 là do lượt ép `--json-schema`, lượt sửa JSON hay cache read.
+    CLI không báo trường này (bản cũ, provider khác) → 0, nghĩa là "không biết", không phải "không có lượt nào"."""
+    c = _cc()
+    co = c._parse(json.dumps({**json.loads(OUT_OK), "num_turns": 3}), "claude-x")
+    assert co.num_turns == 3
+    assert c._parse(OUT_OK, "claude-x").num_turns == 0

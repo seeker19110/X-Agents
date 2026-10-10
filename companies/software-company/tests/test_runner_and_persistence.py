@@ -82,6 +82,40 @@ def test_runner_publishes_output_and_audit_with_real_tokens():
     assert call["model_tier"] == "standard", "tier lấy từ front matter của reviewer (ADR-0021)"
 
 
+
+def test_audit_produced_ghi_token_cache_va_num_turns_cua_luot():
+    """R1 (audit token 2026-10-10): `produced:*` chỉ có `cache_hit` (một tỉ lệ) nên không biết bao nhiêu token là cache
+    read, bao nhiêu là ghi cache, và CLI đã chạy mấy lượt nội bộ. Ghi cả ba số đo từ `usage` của lượt.
+    `num_turns` là lượt NỘI BỘ của CLI — khác `turns` (vòng tool của công ty), nên hai trường đứng riêng."""
+    class _Cache(FakeClient):
+        def complete(self, **kw):
+            return replace(super().complete(**kw), cached_input_tokens=400, cache_write_tokens=70, num_turns=3)
+
+    bus = InMemoryBus()
+    client = _Cache(responses=[{"ticket_id": "TCK-1", "source": "reviewer", "verdict": "pass"}], tokens_per_call=(700, 50))
+    AgentRunner(bus, client).run("qa", _pr_env(), "review-results")
+    produced = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "produced:review-results"]
+    d = json.loads(produced[-1]["evidence"])
+    assert (d["cached_input_tokens"], d["cache_write_tokens"], d["num_turns"], d["turns"]) == (400, 70, 3, 1)
+
+
+def test_so_do_cache_va_num_turns_CONG_qua_moi_luot_cua_vong_tool(tmp_path):
+    """Một bước có tool gọi model nhiều lần; lấy số của lượt cuối là bỏ mất phần lớn input. Hai lượt → gấp đôi."""
+    from company.tools import WorkspaceTools
+    from test_tools_and_agentic import _first_turn, _init_repo, _pr, _task_env, _tc
+
+    class _Cache(FakeClient):
+        def complete(self, **kw):
+            return replace(super().complete(**kw), cached_input_tokens=400, cache_write_tokens=70, num_turns=3)
+
+    ws = TicketWorkspace(_init_repo(tmp_path / "repo"), "T1", base="main"); ws.create()
+    client = _Cache(handler=lambda s, u: _pr({"ticket_id": "T1"}),
+                    tool_handler=lambda msgs, tools: [_tc("list_files")] if _first_turn(msgs) else [])
+    g = AgentRunner(InMemoryBus(), client).generate("builder", _task_env(), "pull-requests",
+                                                    tools=WorkspaceTools(ws).toolbox())
+    assert len(client.calls) == 2
+    assert (g.cached_input_tokens, g.cache_write_tokens, g.num_turns) == (800, 140, 6)
+
 def _agents_co_pha(phase_skills: list[str], phase: str = "review") -> dict:
     """Agent thật `reviewer` nhưng khai thêm một pha (ADR-0037) — không đụng `agents/` trên đĩa."""
     from company.registry import Phase, _load_phases
