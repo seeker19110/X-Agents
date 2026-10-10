@@ -145,3 +145,16 @@ cấm, chặn hạ `fail_under`.
 
 Mỗi bước là một PR riêng, có test đỏ trước theo luật bắt buộc 4. Bước 1–2 sửa lỗi nên có thể làm ngay. Bước 3
 đổi luật nên cần người chốt trước.
+
+## 6. Thi hành (cùng ngày)
+
+Người dùng duyệt cả năm bước, không cần hỏi lại. Mục tiêu: chất lượng cao, bớt thủ tục. Bốn nhóm chạy song
+song, mỗi nhóm một worktree, chia theo file để không giẫm chân nhau. Phiên chính gộp lại, ghi CHANGELOG và nhật
+ký đúng **một lần**, rồi chạy `gate all`.
+
+| Nhóm | Phát hiện | File chính |
+|---|---|---|
+| A, keeper | F1: bỏ phép (c) `changelog_drift`, giữ (d) | `companies/keeper/src/keeper/drift.py`, `cli.py`, test, tài liệu keeper |
+| B, khung cổng | F2 + F6: `dev-task.sh` khớp `ci.yml`, marker `cong_repo` cho hook | `scripts/dev-task.sh`, `.claude/hooks/pre-commit-gate.sh`, console tests |
+| C, thủ tục PR | F3 + F4 + F5: bỏ bắt `(#n)`, gọn mẫu PR và khối BÁO CÁO | `AGENTS.md`, `.github/`, `scripts/pr_*`, `docs/QUY-TRINH-GIT.md` §2d/§5 |
+| D, tài liệu | F7: `CLAUDE.md` chỉ giữ phần khác biệt, chuyển đoạn kể sự cố sang `TRAPS.md` | `CLAUDE.md`, `docs/QUY-TRINH-GIT.md` §2b/§8, `TRAPS.md` |
