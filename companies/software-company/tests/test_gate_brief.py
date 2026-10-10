@@ -15,6 +15,7 @@ import pytest
 
 from company import gate_brief as GB
 from company.events import Envelope
+from company.gate_checklists import load as load_gates
 from company.llm import FakeClient, LLMError
 from company.orchestrator import ENGINEERING, Orchestrator
 from company.sqlite_bus import SQLiteBus
@@ -368,6 +369,20 @@ def test_acceptance_pr_giao_hang_doc_tu_delivery_done(tmp_path):
     assert "dùng lại" in it["facts"][0]
 
 
+
+def test_acceptance_co_muc_noi_doc_va_khong_stub_ho_so_noi_thang_chua_do(tmp_path):
+    """3b (`docs/reports/2026-10-10-doi-chieu-tu-van-da-dang.md`): sự cố QLKH `TCK-CR-RUNTIME-01` sinh `runtime.yaml` mà
+    không dòng mã nào đọc, phễu release kẹt 19 bản. Gate nghiệm thu phải hỏi hai câu: thứ mới sinh ra có nơi đọc
+    không, và khả năng đã hứa có đứng sau stub không. Bus không mang bằng chứng cho hai câu đó, nên hồ sơ phải nói
+    thẳng `unknown` và liệt vào `unavailable` — không được im lặng bỏ mục (người duyệt tưởng đã kiểm)."""
+    db, _bus, _orch = _scenario(tmp_path)
+    b = GB.build(GB.load_state(db), "UAT-REL-001")
+    v = _verdicts(b)
+    assert v["acceptance.noi-doc"] == "unknown" and v["acceptance.khong-stub"] == "unknown"
+    assert {"acceptance.noi-doc", "acceptance.khong-stub"} <= {u["id"] for u in b["unavailable"]}
+    ids = {s.id for s in load_gates()["acceptance"].self_checks}
+    assert {x["id"] for x in b["self_check"]} == ids, "hồ sơ phải có ĐỦ mọi mục tự kiểm của checklist"
+
 def test_acceptance_moi_truong_va_truy_vet(tmp_path):
     db, bus, orch = _scenario(tmp_path)
     b = GB.build(GB.load_state(db), "UAT-REL-001")
@@ -458,7 +473,8 @@ def test_acceptance_tu_chay_san_pham_co_ma_http_that(tmp_path):
     assert it["verdict"] == "ok" and sm["ok"] is True and sm["http_status"] == 200 and sm["verified_by"] == "orchestrator"
     assert sm["cwd"].endswith("_integration") and sm["release_id"] == "REL-001" and sm["ref"]
     assert any("mã HTTP: 200" in f for f in it["facts"]) and it["sources"][0]["kind"] == "smoke"
-    assert _verdicts(b)["acceptance.moi-truong"] == "ok" and not b["unavailable"]
+    # chỉ còn hai mục về MÃ của bản giao (3b), bus không bao giờ mang bằng chứng cho chúng
+    assert _verdicts(b)["acceptance.moi-truong"] == "ok" and {u["id"] for u in b["unavailable"]} == {"acceptance.noi-doc", "acceptance.khong-stub"}
     md = GB.render_md(b)
     assert "## Đã chạy" in md and "mã HTTP: 200" in md and "verified_by=orchestrator" in md and "kết luận máy: ok" in md
 
@@ -469,7 +485,8 @@ def test_acceptance_khong_co_runtime_thi_noi_khong_the_chay(tmp_path, monkeypatc
     b = GB.build(GB.load_state(db), "UAT-REL-001")
     it = _smoke_item(b)
     assert it["verdict"] == "unknown" and any("không thể chạy" in f.lower() for f in it["facts"])
-    assert [u["id"] for u in b["unavailable"]] == ["acceptance.da-chay"] and "runtime" in b["unavailable"][0]["reason"]
+    assert [u["id"] for u in b["unavailable"]] == ["acceptance.da-chay", *sorted({"acceptance.noi-doc", "acceptance.khong-stub"}, reverse=True)]
+    assert "runtime" in b["unavailable"][0]["reason"]
     assert "KHÔNG THỂ CHẠY" in GB.render_md(b) and "chạy cho tôi xem" in GB.render_md(b)
     # có runtime nhưng không có --repo: cũng nói rõ, lý do là thiếu worktree
     from company.smoke import Runtime

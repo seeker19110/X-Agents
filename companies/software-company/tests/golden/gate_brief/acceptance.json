@@ -94,6 +94,34 @@
         }
       ],
       "verdict": "unknown"
+    },
+    {
+      "facts": [
+        "bus không mang bằng chứng về mã của bản giao — đọc diff release theo nguồn của mục"
+      ],
+      "id": "acceptance.noi-doc",
+      "question": "Mỗi file/khoá cấu hình/trường mới mà bản giao sinh ra có ít nhất một nơi đọc trong mã — trỏ dòng (sự cố QLKH: `runtime.yaml` sinh ra mà không ai đọc)",
+      "sources": [
+        {
+          "kind": "code",
+          "ref": "REL-001"
+        }
+      ],
+      "verdict": "unknown"
+    },
+    {
+      "facts": [
+        "bus không mang bằng chứng về mã của bản giao — đọc diff release theo nguồn của mục"
+      ],
+      "id": "acceptance.khong-stub",
+      "question": "Không khả năng nào README/spec đã hứa đứng sau stub (hàm trả giá trị cố định, thân `TODO`/`NotImplementedError`, module không ai gọi)",
+      "sources": [
+        {
+          "kind": "code",
+          "ref": "REL-001"
+        }
+      ],
+      "verdict": "unknown"
     }
   ],
   "status": "pending",
@@ -102,6 +130,14 @@
     {
       "id": "acceptance.da-chay",
       "reason": "spec không có `runtime` (lệnh khởi động, cổng, đường health), không thể chạy"
+    },
+    {
+      "id": "acceptance.noi-doc",
+      "reason": "bus không mang bằng chứng về mã của bản giao — đọc diff release theo nguồn của mục"
+    },
+    {
+      "id": "acceptance.khong-stub",
+      "reason": "bus không mang bằng chứng về mã của bản giao — đọc diff release theo nguồn của mục"
     }
   ]
 }

@@ -126,6 +126,20 @@ SELF_CHECK_SOURCES: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {
             "acceptance.pr-giao-hang", (
                 "audit-log delivery.done — trường `pr` (url, số PR, base ← head) của release; `delivery.pr_skipped`/"
                 "`pr_failed` kèm lý do; chưa bật `--deliver-pr` thì `unknown`, khách xem tag/nhánh release trực tiếp",)),
+        # 3b (báo cáo 2026-10-10-doi-chieu-tu-van-da-dang.md, từ "Cross-Cutting Probes" của lens-skill): bus không mang
+        # bằng chứng cho hai câu này, nên `gate_brief` trả `unknown` kèm chỗ phải đọc — người/trợ lý đọc mã thật.
+        "Mỗi file/khoá cấu hình/trường mới mà bản giao sinh ra có ít nhất một nơi đọc trong mã — trỏ dòng"
+        " (sự cố QLKH: `runtime.yaml` sinh ra mà không ai đọc)": (
+            "acceptance.noi-doc", (
+                "worktree tích hợp (`--repo`) — `git diff --name-only <tag trước>..<tag release>`: file mới, khoá cấu hình mới",
+                "pull-requests của các ticket trong release — trường/khoá mới khai trong summary",
+                "grep tên file/khoá trong mã của bản giao: phải có ít nhất một dòng ĐỌC (không chỉ dòng ghi), trỏ file:dòng")),
+        "Không khả năng nào README/spec đã hứa đứng sau stub"
+        " (hàm trả giá trị cố định, thân `TODO`/`NotImplementedError`, module không ai gọi)": (
+            "acceptance.khong-stub", (
+                "README của bản giao + approved-specs@latest — danh sách khả năng đã hứa",
+                "worktree tích hợp (`--repo`) — grep `NotImplementedError`, `TODO`, `pass`, `return None|[]|{}` trong hàm "
+                "mà khả năng đó đi qua; module không ai import",)),
     },
     "escalation": {
         "Ngân sách còn": ("escalation.ngan-sach", (

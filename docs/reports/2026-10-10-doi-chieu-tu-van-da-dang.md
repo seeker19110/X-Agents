@@ -73,6 +73,9 @@ cờ tính năng đứng sau một khả năng đã quảng cáo).
 trong mã — trỏ dòng" và "không khả năng nào trong README/spec đứng sau stub". Đây là sửa gate checklist, không thêm
 agent.
 
+*Đã làm 2026-10-10 (dòng `feat(company)` 3b trong `CHANGELOG.md`): hai mục `acceptance.noi-doc`, `acceptance.khong-stub`;
+`gate_brief` báo `unknown` cho cả hai vì bus không mang bằng chứng về mã của bản giao.*
+
 ### 3c. Gói mục theo mối quan tâm của sản phẩm — từ BMAD `prd-template.md` "Adapt-In Menu"
 
 Bảng ngành ở `PRODUCT-EXCELLENCE.md` §4 có 8 dòng theo ngành; BMAD bổ sung một trục khác: **mối quan tâm** quyết định
