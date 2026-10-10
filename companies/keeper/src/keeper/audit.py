@@ -149,9 +149,10 @@ def pip_audit_findings(repo: Path, *, runner: CommandRunner = run_command) -> li
     khoá trong `uv.lock`). `tail=None` vì output là JSON phải parse nguyên vẹn.
 
     QUYẾT ĐỊNH ĐÃ GHI (`sc-security`: "cố ý hay bỏ sót — không im lặng để đó"): CỐ Ý ra mạng khi chạy THẬT, và
-    đây là ĐIỂM DUY NHẤT của `keeper` được phép làm vậy. Hai lý do gộp lại: (1) `uv run` tự cài `pip-audit`
-    nếu máy chưa có — không có nó thì tool "vắng mặt" và nhánh `MISSING_EXIT` bên dưới chạy, không phải lỗi;
-    (2) một khi có `pip-audit`, bản thân công cụ TRA cơ sở dữ liệu lỗ hổng (PyPI Advisory / OSV) — dữ liệu đó
+    đây là ĐIỂM DUY NHẤT của `keeper` được phép làm vậy. Hai điều cần biết: (1) `uv run` KHÔNG tự cài `pip-audit`
+    (chỉ `uvx` làm vậy). Môi trường thiếu `pip-audit` thì `uv` thoát 2 với "Failed to spawn" (đo 2026-10-10), output
+    không phải JSON nên hàm trả một finding lỗi công cụ, không im lặng. Nhánh `MISSING_EXIT` chỉ chạy khi máy thiếu
+    chính `uv`; (2) một khi có `pip-audit`, bản thân công cụ TRA cơ sở dữ liệu lỗ hổng (PyPI Advisory / OSV) — dữ liệu đó
     đổi mỗi ngày, cache cục bộ là dữ liệu CŨ, và `security-auditor` tồn tại để báo lỗ hổng MỚI chứ không phải
     lỗ hổng của tuần trước. Không thêm cờ offline: một audit bảo mật chạy offline là một audit không đo được
     gì mới. Test không chạm mạng (runner giả, `AGENTS.md` cấm §4) — chỉ mã SẢN PHẨM mới ra mạng, và chỉ ở
