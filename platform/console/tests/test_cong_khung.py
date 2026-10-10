@@ -22,6 +22,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 DEV_TASK = ROOT / "scripts" / "dev-task.sh"
@@ -173,6 +174,60 @@ def test_dev_task_typecheck_dung_module(goi: str) -> None:
     assert kq.returncode == 0, kq.stderr
     assert f"uv run mypy src/{module}" in kq.stdout
     assert ("--ignore-missing-imports" in kq.stdout) == (goi != "core")
+
+
+def _mypy_ci() -> dict[str, list[str]]:
+    """Thư mục gói → mọi lệnh mypy `ci.yml` chạy ở đó, đúng thứ tự (mọi job, kể cả `static`)."""
+    ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    kq: dict[str, list[str]] = {}
+    for job in ci["jobs"].values():
+        for buoc in job.get("steps", []):
+            run = buoc.get("run")
+            if isinstance(run, str) and re.search(r"\bmypy\b", run):
+                kq.setdefault(buoc.get("working-directory", "."), []).append(run.strip())
+    return kq
+
+
+@pytest.mark.parametrize("goi", sorted(GOI))
+def test_dev_task_typecheck_chay_du_moi_lenh_mypy_cua_ci(goi: str) -> None:
+    """F2 (audit 2026-10-10): từ #381 job `static` chạy mypy company HAI lần (lần hai `--extra graph`), còn
+    `dev-task.sh typecheck company` chỉ một — lỗi kiểu ở `graph.py` lọt cổng cục bộ lẫn hook, chỉ lộ trên CI. Phép
+    kiểm chuỗi `mypy src/<module>` ở trên không thấy vì lần một vẫn khớp. Đối chiếu nguyên danh sách: CI thêm lệnh
+    mypy mà quên `dev-task.sh` thì đỏ ở đây."""
+    thu_muc, _ = GOI[goi]
+    kq = _chay(DEV_TASK, "typecheck", goi, DEV_TASK_DRY_RUN="1")
+    assert kq.returncode == 0, kq.stderr
+    cuc_bo = [d.removeprefix(f"{thu_muc}: ") for d in kq.stdout.splitlines() if d.strip()]
+    assert cuc_bo == _mypy_ci()[thu_muc]
+
+
+@pytest.mark.parametrize(("do_o", "con_chay_lan_hai"), [("lan-mot", False), ("lan-hai", True)])
+def test_dev_task_typecheck_company_do_lan_nao_thi_do(tmp_path: Path, do_o: str, con_chay_lan_hai: bool) -> None:
+    """Hai lệnh mypy cùng một task: lệnh nào đỏ thì task đỏ. `eval` cả khối hai dòng chỉ trả mã của dòng CUỐI —
+    lần một đỏ, lần hai xanh là cổng báo xanh. `uv` giả ghi lại từng lần gọi, đỏ đúng ở lần được chọn."""
+    bin_gia = tmp_path / "bin"
+    bin_gia.mkdir()
+    nhat_ky = tmp_path / "goi.txt"
+    uv = bin_gia / "uv"
+    uv.write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "$*" >> "{nhat_ky.as_posix()}"\n'
+        'case "$*" in *"--extra graph"*) lan=lan-hai ;; *) lan=lan-mot ;; esac\n'
+        f'[ "$lan" = "{do_o}" ] && exit 1\n'
+        "exit 0\n",
+        encoding="utf-8", newline="\n",
+    )
+    uv.chmod(0o755)
+    kq = _chay(DEV_TASK, "typecheck", "company", PATH=f"{bin_gia}{os.pathsep}{os.environ['PATH']}")
+    assert kq.returncode != 0, f"mypy {do_o} đỏ mà typecheck company xanh: {kq.stderr}"
+    assert ("--extra graph" in nhat_ky.read_text(encoding="utf-8")) is con_chay_lan_hai
+
+
+def test_mypy_ci_doc_du_hai_lan_cua_job_static() -> None:
+    """Chốt bộ đọc trước khi tin nó: đọc hụt thì phép đối chiếu trên xanh vì cả hai vế cùng ngắn."""
+    static = [b["run"].strip() for b in yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml")
+              .read_text(encoding="utf-8"))["jobs"]["static"]["steps"] if "mypy" in b.get("run", "")]
+    assert len(static) == 2 and static == _mypy_ci()["companies/software-company"]
 
 
 @pytest.mark.parametrize("goi", sorted(GOI))

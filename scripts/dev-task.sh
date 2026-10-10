@@ -68,6 +68,11 @@ lenh_cho() {
       else
         echo "uv run mypy src/$(goi_module "$2") --ignore-missing-imports"
       fi
+      # Job `static` chạy company lần hai CÓ extra `graph` (#381): thiếu langgraph thì graph.py thành Any và lệch
+      # kiểu không lộ. Mỗi dòng in ra là một lệnh; `test_cong_khung.py` đối chiếu nguyên danh sách với ci.yml.
+      if [ "$2" = "company" ]; then
+        echo "uv run --locked --extra graph mypy src/company --ignore-missing-imports"
+      fi
       ;;
     test)      goi_lenh_test "$2" ;;
     *)         return 1 ;;
@@ -75,18 +80,25 @@ lenh_cho() {
 }
 
 chay_trong_goi() {
-  # $1 = task, $2 = gói. Trả về mã thoát của lệnh (0 khi dry-run).
-  local task="$1" goi="$2" thu_muc lenh
+  # $1 = task, $2 = gói. Trả về mã thoát của lệnh đỏ đầu tiên (0 khi dry-run).
+  # Một task có thể là NHIỀU lệnh (mỗi dòng một lệnh): chạy lần lượt, đỏ lệnh nào dừng ở lệnh đó. Không `eval`
+  # cả khối — bash chỉ trả mã của dòng cuối, lệnh đầu đỏ sẽ bị nuốt.
+  local task="$1" goi="$2" thu_muc cac_lenh lenh ma
   thu_muc="$(goi_thu_muc "$goi")" || { log "gói lạ: $goi"; return 2; }
-  lenh="$(lenh_cho "$task" "$goi")" || return 2
+  cac_lenh="$(lenh_cho "$task" "$goi")" || return 2
 
-  if [ "${DEV_TASK_DRY_RUN:-0}" = "1" ]; then
-    printf '%s: %s\n' "$thu_muc" "$lenh"
-    return 0
-  fi
-
-  log "$thu_muc: $lenh"
-  ( cd "$ROOT/$thu_muc" && eval "$lenh" )
+  while IFS= read -r lenh; do
+    [ -n "$lenh" ] || continue
+    if [ "${DEV_TASK_DRY_RUN:-0}" = "1" ]; then
+      printf '%s: %s\n' "$thu_muc" "$lenh"
+      continue
+    fi
+    log "$thu_muc: $lenh"
+    ( cd "$ROOT/$thu_muc" && eval "$lenh" </dev/null ) || { ma=$?; return "$ma"; }
+  done <<EOF
+$cac_lenh
+EOF
+  return 0
 }
 
 goi_can_chay() {
