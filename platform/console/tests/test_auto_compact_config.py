@@ -1,4 +1,4 @@
-"""Cổng cấu hình auto-compact 300k; không giả làm phép đo Claude Code/model thật.
+"""Cổng cấu hình auto-compact 500k; không giả làm phép đo Claude Code/model thật.
 
 Cùng vị trí với test_cong_khung.py: console chứa các cổng cấp repo.
 Chỉ đọc file, không gọi mạng, model, git write hoặc bộ compact tự chế.
@@ -24,15 +24,15 @@ def test_auto_compact_bat_tuong_minh() -> None:
     assert settings.get("autoCompactEnabled") is True
 
 
-def test_cua_so_la_300000_token_dang_chuoi_khong_phai_300k() -> None:
+def test_cua_so_la_500000_token_dang_chuoi_khong_phai_500k() -> None:
     settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    assert settings.get("env", {}).get(WINDOW_ENV) == "300000"
+    assert settings.get("env", {}).get(WINDOW_ENV) == "500000"
 
 
 def test_khong_tat_compact_hay_gia_nang_cua_so_model() -> None:
     env = json.loads(SETTINGS.read_text(encoding="utf-8")).get("env", {})
     for name in ("DISABLE_AUTO_COMPACT", "DISABLE_COMPACT", "CLAUDE_CODE_MAX_CONTEXT_TOKENS"):
-        assert name not in env, f"không thêm {name} để ép mốc 300k"
+        assert name not in env, f"không thêm {name} để ép mốc 500k"
 
 
 def test_giu_hang_rao_git_bi_mat_va_hook_cu() -> None:
@@ -75,5 +75,5 @@ def test_vi_du_cau_hinh_trong_huong_dan_khop_file_that() -> None:
     assert len(examples) == 1
     example = json.loads(examples[0])
     settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    assert example["env"][WINDOW_ENV] == settings["env"][WINDOW_ENV] == "300000"
+    assert example["env"][WINDOW_ENV] == settings["env"][WINDOW_ENV] == "500000"
     assert example["autoCompactEnabled"] is settings["autoCompactEnabled"] is True
