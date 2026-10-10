@@ -223,7 +223,7 @@ bằng máy, không chỉ là lời hứa (chuyện đã xảy ra: `TRAPS.md` §
 
 1. **Ruleset import được** — `.github/rulesets/main.json` là nguồn sự thật, đi qua PR như code.
    Bật: Settings → Rules → Rulesets → **New ruleset → Import a ruleset** → chọn file đó → Create.
-   Nội dung: bắt buộc PR (**0 approval** — xem ô dưới, thread review phải resolve, chỉ **squash**) ·
+   Nội dung: bắt buộc PR (**0 approval** — xem ô dưới, thread review phải resolve) ·
    required status checks `quality` + `metadata` · cấm xoá và cấm force-push `main` ·
    **không ai được bypass, kể cả admin** (`bypass_actors` rỗng) · **tắt** "up to date" (`strict: false`) để PR khác
    merge không bắt mọi PR đang mở gộp `main` rồi chờ CI lại.
@@ -236,6 +236,12 @@ bằng máy, không chỉ là lời hứa (chuyện đã xảy ra: `TRAPS.md` §
      rule đang áp mà **không** có trong file ⇒ **cảnh báo** (không yếu đi, nhưng import lại sẽ xoá mất nó);
      `allowed_merge_methods` thật khác file ⇒ **đỏ** (so tham số, không chỉ loại rule — #374 và #399 vào `main`
      bằng merge commit trong khi file chỉ cho `squash`, job vẫn xanh tới audit 2026-10-10).
+     **Hiện trạng 2026-10-10:** ruleset đang áp cho cả `merge`, `rebase`, `squash` (đo qua
+     `GET /repos/<owner>/<repo>/rules/branches/main`), nên file khai đúng ba giá trị đó — file là bản chụp của
+     thứ đang áp, không phải điều ước. Quy trình vẫn là squash (`AGENTS.md` luật cấm 1); muốn ruleset ép squash
+     thì chủ repo sửa trong Settings → Rules → Rulesets → ruleset `main` → "Allowed merge methods" chỉ còn
+     Squash, **rồi** đổi file về `["squash"]` trong cùng một PR — job này đỏ ngay khi hai bên lệch, theo cả hai
+     chiều.
      Cần vế này vì sửa ruleset trong UI có thể làm rơi một rule mà không báo gì (`TRAPS.md` §3).
 
 Hai nút vẫn phải bật tay trong Settings → General (không thuộc ruleset): **Allow auto-merge** và

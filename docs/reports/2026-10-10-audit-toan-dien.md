@@ -15,7 +15,8 @@ once thiếu thế hệ); (2) company — đăng ký khoá reviewer khi registry
 request bị chặn Host/Origin để lại thân chưa đọc trên keep-alive, thân thành request thứ hai và lộ token phiên;
 (4) keeper — đẩy nhánh tự động chạy `pre-push` của repo khách. Cả bốn đã vá đo hai chiều. Quy trình: job
 `protection-guard` chỉ so **loại** rule, không so tham số, nên #374 và #399 vào `main` bằng merge commit mà job vẫn
-xanh — nay so cả `allowed_merge_methods`. Sổ sách: bảng "Việc để lại" của `TASK-PACK.md` vỡ (6 dòng rơi xuống
+xanh — nay so cả `allowed_merge_methods`; ruleset thật đang cho cả ba phương pháp nên file khai đúng ba, điều kiện
+quay lại squash-only ở `QUY-TRINH-GIT.md` §8. Sổ sách: bảng "Việc để lại" của `TASK-PACK.md` vỡ (6 dòng rơi xuống
 mục khác), một dòng CHANGELOG nằm trên header, `dependabot.yml` còn nói "sáu pyproject".
 
 ## 1. Cổng máy
@@ -110,7 +111,7 @@ xếp hàng; `HumanGate.request` ghi đè `pending` nhưng mọi caller đều `
 
 | # | Phát hiện | Bằng chứng | Đã làm |
 |---|---|---|---|
-| Q1 | `protection-guard` so loại rule, không so tham số: `allowed_merge_methods` thật `["merge","squash"]` vs file `["squash"]` mà job xanh | #374, #399 vào `main` bằng merge commit; mô phỏng jq với `live-bad.json`/`live-ok.json` phân biệt được | ci.yml so `allowed_merge_methods` hai chiều; `test_cong_repo.py::test_protection_guard_so_ca_allowed_merge_methods` đỏ → xanh; `QUY-TRINH-GIT.md` §8 |
+| Q1 | `protection-guard` so loại rule, không so tham số: `allowed_merge_methods` thật `["merge","squash"]` vs file `["squash"]` mà job xanh | #374, #399 vào `main` bằng merge commit; mô phỏng jq với `live-bad.json`/`live-ok.json` phân biệt được | ci.yml so `allowed_merge_methods` hai chiều; `test_cong_repo.py::test_protection_guard_so_ca_allowed_merge_methods` đỏ → xanh; `QUY-TRINH-GIT.md` §8. Vế so mới đỏ ngay trên chính PR này vì ruleset thật là `["merge","rebase","squash"]` (đo 2026-10-10, không phải `["merge","squash"]` như ước lượng): file đổi theo cho khớp thứ đang áp; ép squash-only là việc chủ repo trong Settings, điều kiện quay lại ghi §8 |
 | Q2 | Ba PR dependabot (#396–#398) đỏ chỉ ở job `audit` (multidict CVE), lỗi có sẵn trên `main`, #399 đã vá | CI của từng PR | **chưa** cập nhật nhánh — merge là việc người; `gh`/MCP cập nhật nhánh được khi được bảo |
 | Q3 | `TASK-PACK.md` bảng "Việc để lại" vỡ: 6 dòng rơi xuống sau "## Khi nào không cần gói việc", 12 dòng cho việc đã đóng ở #390–#395 | `grep -c '^| 2026-'` | gộp còn 2 dòng (BT8 đóng #395; S1/S2/O1/O3 đóng #392/#394/#390/#393 kèm phần vận hành còn lại) |
 | Q4 | Dòng CHANGELOG của #395 nằm **trên** header | `CHANGELOG.md` dòng 1 | về đúng vị trí theo thời điểm merge |

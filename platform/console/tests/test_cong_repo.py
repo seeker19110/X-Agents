@@ -378,7 +378,7 @@ def test_bo_dem_loi_thoat_bat_du_cac_dang_viet() -> None:
 
 def test_protection_guard_so_ca_allowed_merge_methods() -> None:
     """`protection-guard` đối chiếu ruleset thật với `.github/rulesets/main.json` theo **loại** rule, không theo
-    tham số: `pull_request.allowed_merge_methods` trong file chỉ có `squash`, nhưng #374 và #399 vào `main` bằng
+    tham số: `pull_request.allowed_merge_methods` trong file (lúc đó) chỉ có `squash`, nhưng #374 và #399 vào `main` bằng
     merge commit mà job vẫn xanh (audit 2026-10-10). Cổng phải so cả tham số này, không thì file khai một đằng
     ruleset chạy một nẻo mà không ai biết."""
     steps = _ci()["jobs"]["protection-guard"]["steps"]
