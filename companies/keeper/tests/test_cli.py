@@ -354,3 +354,16 @@ def test_drift_clone_nong_van_soi_duoc(tmp_path: Path, capsys):
     assert main(["drift", "--repo", str(nong)]) == 1
     cap = capsys.readouterr()
     assert "DRIFT changelog-L3" in cap.out and cap.err == ""
+
+
+def test_subject_khong_phai_file_trong_repo_thi_khong_ghi(root: Path, tmp_path: Path, capsys):
+    """K10 (audit 2026-10-10): `subject` là tên tín hiệu, không phải lúc nào cũng là đường dẫn — drift `sc-*`
+    mang `sc-builder.md` (tên file dẫn xuất, không phải đường dẫn từ gốc). Trước đây `fix_docs` coi nó là đường
+    dẫn và TẠO `sc-builder.md` ở gốc worktree với một dòng CHANGELOG bên trong."""
+    f = tmp_path / "t.json"
+    f.write_text(json.dumps([_ticket("T-sc", "sc-builder.md")]), encoding="utf-8")
+    truoc = cay_hash(root)
+    assert main(["run", "--tickets", str(f), "--root", str(root)]) == 0
+    assert not (root / "sc-builder.md").exists()
+    assert cay_hash(root) == truoc
+    assert "không phải file trong repo" in capsys.readouterr().out
