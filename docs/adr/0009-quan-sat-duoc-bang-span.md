@@ -118,6 +118,20 @@ cầu và `parent is` span đang mở khi gọi cùng luồng — ai truyền co
 `Studio-creators`, và mọi thay đổi tới `metrics.prometheus`. ADR này quyết cơ chế và ba ranh giới ở core +
 software-company; ghép nơi khác là quyết định riêng, ADR riêng nếu cần.
 
+## Bổ sung 2026-10-10 (ib1-quansat): sink nối được bằng cấu hình
+
+Đo trước khi sửa: ba ranh giới đã ghép span, nhưng `AgentRunner.sink` (`xagents_core/runner.py`) khởi tạo `None`
+và **không chỗ nào gán** — nên ở mọi tiến trình thật, quyết định 5 (no-op) là trạng thái duy nhất có thể có, và
+câu "latency chưa đo được" ở Bối cảnh vẫn đúng. Bổ sung: `AgentRunner` của software-company (`company/runner.py`,
+nơi orchestrator, `evals` và CLI `runner` cùng dựng) đọc **một** khoá env `COMPANY_OTEL=1` → `self.sink =
+otel_sink("company")`; không đặt → `None` như cũ; đặt mà thiếu OTel → `NullSink`
+(quyết định 4 giữ nguyên: OTel do người vận hành cài, không vào `pyproject.toml` nào). Chọn env thay vì khoá trong
+`llm.yaml` vì sink không phải cấu hình model — đi qua `LLMConfig` là thêm một tầng chỉ để chuyển một cờ; cùng khuôn
+`COMPANY_GATE_REVIEWER`. Cùng lượt, `correlation_id` được nối ở hai chỗ còn tạo `Envelope` mới: `tasks`
+(`DeliveryLead`, con của event nguồn kế hoạch) và PR người tiếp quản (`orch/worktree_flow.py`, con của PR/`tasks`
+gần nhất); bản đồ cha `DeliveryLead.cause` được `orch/rehydrate.py` dựng lại từ `plan.proposed.source_event`, nên
+ticket còn `waiting` qua lần khởi động lại vẫn nối chuỗi (test `..._song_sot_qua_restart` khoá điều này).
+
 ## Liên quan
 
 - `docs/adr/0001-loi-chung-xagents-core.md` — "core giữ cơ chế, package giữ nghĩa" (§2 về dependency, §6 về core

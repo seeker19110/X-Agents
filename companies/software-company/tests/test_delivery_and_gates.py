@@ -257,3 +257,23 @@ def test_gate_timeouts():
     now = datetime.now(UTC)
     assert gate.due(now + timedelta(hours=13)) == (["S"], [])
     assert gate.due(now + timedelta(hours=25)) == ([], ["S"])
+
+
+def test_pr_takeover_noi_chuoi_nhan_qua(tmp_path, monkeypatch):
+    """ib1-quansat Q1: PR người tiếp quản là CON của PR gần nhất của ticket (chưa có PR thì của `tasks`), không phải
+    gốc nhân quả mới — trước đây `correlation_id` đứt ở đây và người vận hành phải tự truy SQLite."""
+    from types import SimpleNamespace
+
+    from company.orch import worktree_flow
+    bus, _, lead = _setup()
+    lead.plans_ok.add("PLAN")
+    lead.dispatch(_task(), "PLAN")
+    ws = SimpleNamespace(path=tmp_path, branch="ticket/T1", has_changes=lambda: True, changed_files=lambda: ["f.py"],
+                         run_checks=lambda: {"lint": True, "tests": True}, commit_all=lambda m: "abc1234")
+    o = SimpleNamespace(lead=lead, bus=bus, workspace=lambda tid: ws, _audit=lambda *a, **k: None)
+    monkeypatch.setattr(worktree_flow, "_git", lambda *a: "abc1234")
+    task = bus.latest("tasks", "T1")
+    env = worktree_flow.takeover(o, "T1", "human:lead")
+    assert (env.correlation_id, env.causation_id) == (task.correlation_id, task.event_id), "chưa có PR → cha là tasks"
+    env2 = worktree_flow.takeover(o, "T1", "human:lead")
+    assert (env2.correlation_id, env2.causation_id) == (task.correlation_id, env.event_id), "cha là PR gần nhất"

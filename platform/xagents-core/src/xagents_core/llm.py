@@ -87,7 +87,10 @@ C = TypeVar("C", bound="LLMConfig")
 # không khai `ttl` trong body (Anthropic mặc định 5 phút) — mặc định TẮT, body y hệt trước p3.2.
 CACHE_TTL = ("5m", "1h")
 
-TIERS = ("strong", "standard", "light")   # light: việc cơ học/ngắn (intake, clarifier, publisher, supervisor) — model rẻ nhất
+# light: việc cơ học/ngắn, chạy nhiều lượt (vd `supervisor`) — model rẻ nhất. Tier là của AGENT, không của pha: việc
+# nhẹ nằm trong agent nặng chạy tier của agent đó — `intake`/`clarifier` nay là pha của `product` (strong), không còn
+# `light` (ADR-0037 của công ty; bảng đầy đủ ở `docs/DIEU-PHOI-MODEL.md`).
+TIERS = ("strong", "standard", "light")
 TRANSIENT_HTTP = frozenset({408, 409, 425, 429, 500, 502, 503, 504, 529})
 
 

@@ -186,6 +186,13 @@ env của CẢ orchestrator lẫn phiên ký, khoá `init-key --id phien-chinh`.
 `gate_reviewer decide <subject> --id phien-chinh [--decision reject] ...`. Dừng: bỏ biến rồi mở lại orchestrator —
 quyết định ngoài S2 của reviewer không còn được áp, các gate đó hiện lại chờ người.
 
+### Bước agent chậm ở đâu — span (ADR gốc 0009)
+
+`export COMPANY_OTEL=1` trước khi mở orchestrator software-company thì span `runner.step` → `llm.complete` →
+`tool.call` phát sang OpenTelemetry (người vận hành tự cài `opentelemetry-api` + exporter; chưa cài thì đo nhưng
+không phát gì); không đặt biến thì không đo gì. Chuỗi một ticket trên bus nối bằng `correlation_id`: event nguồn của kế
+hoạch (`approved-specs`/`change-requests`) → `tasks` → PR (kể cả PR người tiếp quản).
+
 ### Giới hạn đã biết (đừng trông chờ những thứ này)
 
 - **Không thu hồi thông tin xác thực.** Gói đăng ký / khoá API vẫn dùng được sau khi pause. Nghi rò rỉ

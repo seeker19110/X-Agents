@@ -48,6 +48,9 @@ class DeliveryLead:
         # (orchestrator ghi plan_id vào đây ngay sau khi kiểm không ra problem nào). Vẫn là guard bằng CODE:
         # `dispatch` một plan_id lạ vẫn `PermissionError`, không phải "ai gọi cũng giao".
         self.plans_ok: set[str] = set()
+        # ticket_id → event nguồn của kế hoạch (approved-specs/change-request): mọi `tasks` của ticket là con của nó,
+        # để `correlation_id` nối từ yêu cầu tới PR thay vì mỗi lần giao là một gốc nhân quả mới (ib1-quansat Q1).
+        self.cause: dict[str, Envelope] = {}
         # R6 (ADR gốc 0021 §f): nguồn đọc journal quality theo release, orchestrator gắn (`quality_flow.release_quality`).
         self.quality_source: Callable[[str], ReleaseQuality] | None = None
         self.reviews: dict[str, dict[str, ReviewResult]] = defaultdict(dict)
@@ -124,9 +127,11 @@ class DeliveryLead:
 
     def _publish_task(self, task: Task) -> None:
         self._set(task.ticket_id, "dispatched")
-        self._emit(Envelope(topic="tasks", key=task.ticket_id, actor=LEAD_ACTOR, payload=task.model_dump()))
+        cause = self.cause.get(task.ticket_id)
+        make = cause.child if cause is not None else Envelope
+        self._emit(make(topic="tasks", key=task.ticket_id, actor=LEAD_ACTOR, payload=task.model_dump()))  # type: ignore[arg-type]
 
-    def dispatch(self, task: Task, plan_id: str) -> Task:
+    def dispatch(self, task: Task, plan_id: str, cause: Envelope | None = None) -> Task:
         """Ticket vào hàng chờ nếu phụ thuộc chưa xong; ngược lại publish ngay. Phụ thuộc phải là ticket đã biết."""
         if not self.replaying and plan_id not in self.plans_ok:
             raise PermissionError("plan chưa qua _check_plan")
@@ -138,6 +143,7 @@ class DeliveryLead:
         if task.ticket_id in task.depends_on:
             raise ValueError(f"{task.ticket_id}: tự phụ thuộc")
         self.tickets[task.ticket_id] = task; self.plan_of[task.ticket_id] = plan_id
+        if cause is not None: self.cause[task.ticket_id] = cause
         if self._deps_done(task):
             self._publish_task(task)
         else:
