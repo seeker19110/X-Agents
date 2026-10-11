@@ -128,7 +128,11 @@ branch = true
 # `import pydantic` của công ty vẫn chạy được trong "môi trường của khách".
 _REQ_RUN = ["uv", "run", "--isolated", "--no-project"]
 _PYTEST = ["--", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
-_RUFF = ["--", "python", "-m", "ruff", "check"]
+# ruff gọi THẲNG binary, không qua `python -m ruff`: đo 2026-10-11 (QLLH-TRUONG/TCK-01, Windows, uv 0.12.17), trong env
+# `--with-requirements` thì `ruff/__main__.py` tìm `ruff.exe` ở thư mục Scripts của trình thông dịch TẠM
+# (`cache/builds-v0/.tmp*/Scripts`) trong khi binary nằm ở lớp cache (`archive-v0/*/Scripts`) → FileNotFoundError,
+# lint đỏ dù code sạch; `uv run … -- ruff check` tìm binary qua PATH của env → "All checks passed!".
+_RUFF = ["--", "ruff", "check"]
 
 
 def _viet(root, files: dict[str, str]) -> None:
