@@ -10,7 +10,8 @@ so với ước lượng 30–55k.
 ## Quyết định
 1. Front matter agent có `context_namespace_read: [..]`. Chỉ namespace trong danh sách (cộng namespace agent sở hữu)
    mang `content` toàn văn; namespace khác chỉ còn `summary`, `content_ref`, `content_omitted`. Không khai báo (`None`)
-   = đọc mọi thứ như trước. Agent có tool đọc repo vẫn mở được tệp artifact qua `path` khi cần.
+   = đọc mọi thứ như trước. Phần bị cắt của namespace trong phạm vi đọc: lượt có tool đọc đủ
+   qua `read_artifact("<ns>")` (ADR-0049) — không qua đường dẫn tệp, `WorkspaceTools` từ chối đường ngoài worktree.
 2. Front matter có `max_input_chars`, trần riêng thấp hơn (không vượt) trần toàn cục của llm.yaml: review/QA/ops thấp (30–70k), engineer 100k,
    research/spec/delivery-lead giữ trần chung. `context.fit` cắt có nhãn như cũ.
 

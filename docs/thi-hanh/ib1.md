@@ -56,25 +56,25 @@ với **nguồn thật** (`mattpocock/skills@49dd158`, 2026-10-09, MIT) và **co
 
 | Mã | Việc | Mảng | Hạng mục | Mức | Ưu | Nhược | Khi nào |
 |---|---|---|---|---|---|---|---|
-| T1 | Báo cáo đối chiếu ba infographic theo §H (ba cột, nguồn thật, `file:dòng`) | docs | ib1-tailieu | C2 | Kết luận có bằng chứng, dùng lại được | Dài | ◐ phiên này |
-| T2 | `ARCHITECTURE.md` §"Thuật ngữ ngành ↔ cơ chế ở repo": 24 + 6 dòng, mỗi dòng `file:dòng` | docs | ib1-tailieu | C1 | Phiên sau không phải khảo sát lại 900k token | Phải bảo trì khi đổi cơ chế | ◐ phiên này |
-| T3 | `docs/QUY-TRINH-GIT.md` §2e: giải xung đột theo ý định từng hunk, kiểm marker, chạy lại cổng | docs | ib1-tailieu | C1 | Đóng đúng hai sự cố đã ghi | — | ◐ phiên này |
-| T4 | Sửa docstring `kp/blackboard.py:3` khớp `kp/events.py:156-158` | keeper | ib1-tailieu | C1 | Hết câu sai | Chạm `.py` → cổng keeper | ◐ phiên này |
-| T5 | File này + dòng CHANGELOG + mục nhật ký phiên | docs | ib1-tailieu | C1 | — | — | ◐ phiên này |
-| V1 | ADR gốc 0030: vendor skill **đa nguồn** — một script, một lock mỗi nguồn (`prefix`, `label`, `ignore`), cổng theo lock, trần mô tả chung cho cả `.claude/` | docs | ib1-vendor | C3 | Quyết định trước code; nêu phương án loại | Một vòng viết | ◐ phiên này |
-| V2 | `scripts/vendor_skills.py` thay `ecc_vendor.py`: `--lock`, `prefix`/`label`/`license_path`/`ignore` từ lock, `_note` theo nguồn, bỏ qua tệp khớp `ignore` thay vì dừng, đổi cả tham chiếu `"x"` trong nháy kép, kiểm đụng tên giữa các lock | scripts | ib1-vendor | C2 | Nguồn thứ hai, thứ ba không cần script mới | Sinh lại 25 tệp `ecc-*` (ghi chú nguồn đổi) | ◐ phiên này |
-| V3 | Test: `test_vendor_skills.py` (từ `test_ecc_vendor.py`, thêm ca ignore/nháy kép/đụng tên/`--lock`), `test_cong_vendor.py` (từ `test_cong_ecc.py`, parametrize theo mọi lock; trần mô tả chung) | console | ib1-vendor | C2 | Cổng offline cho mọi nguồn | — | ◐ phiên này |
-| V4 | `docs/integrations/mattpocock.lock.json`: `select` = `writing-for-agents`, `retro`; `rejected` = 36 mục còn lại, mỗi mục một lý do; sinh `.claude/skills/mp-*` + `mattpocock.LICENSE` | docs | ib1-vendor | C1 | Hai skill có bằng chứng cần | Thêm ~150 ký tự mô tả vào ngữ cảnh mỗi phiên | ◐ phiên này |
-| V5 | Makefile (`vendor LOCK=`, `vendor-check`), job CI `vendor-check` thay `ecc-check` (giữ trong `needs` của `quality`), `CLAUDE.md`, `AGENTS.md` luật cấm 5, `CODEMAP.md`, `ARCHITECTURE.md:102`, CHANGELOG | ci/docs | ib1-vendor | C1 | Một chỗ cho mọi nguồn | — | ◐ phiên này |
-| A1 | Tool `read_artifact(namespace, section=None)`: đọc `latest.<ext>` của namespace trong phạm vi `context_namespace_read` của agent, cắt theo mục `##` nếu có `section`, trần `MAX_OUTPUT`; cấp cho mọi route có tool; nhãn cắt đổi từ đường dẫn sang `read_artifact("<ns>")` | company | ib1-artifact | C3 | Đóng lỗ PRD cắt 692 lần mà không cần vector | Đổi nhãn → `evals --replay --strict` có thể đỏ → eval-record (chờ người) | chưa |
-| A2 | ADR công ty mới (số kế tiếp trong `scadr/`) + sửa câu `scadr/0020:13` | docs | ib1-artifact | C1 | Tài liệu khớp code | — | chưa |
-| A3 | Bài học có lời: `_record_lesson` ghi `hint` vào `lesson["hint"]`; `lessons_for` trả kèm; `record_lesson` dựng lại từ bus khi khởi động | company | ib1-artifact | C2 | `related_lessons` có nghĩa, bền qua restart | Prompt dài hơn ≤ 5 × hint | chưa |
-| A4 | Sửa docstring `co/subagents.py:9` "(20 file)" → số thật đo từ đĩa | company | ib1-artifact | C1 | — | — | chưa |
-| Q1 | `correlation_id` xuyên suốt: `_publish_task` và PR takeover dùng `child()` của event gốc | company | ib1-quansat | C2 | `trace` theo một id | Cần event cha ở chỗ gọi | chưa |
-| Q2 | Nối `runner.sink = otel_sink()` khi `XAGENTS_OTEL=1` (hoặc khoá `observe.otel` trong `llm.yaml`), `NullSink` khi thiếu OTel; test hai chiều | core + company | ib1-quansat | C3 | Latency đo được (ADR-0009) | Thêm một khoá cấu hình | chưa |
-| Q3 | Sửa comment `core/llm.py:90` khớp ADR-0037 | core | ib1-quansat | C1 | — | — | chưa |
-| L1 | Tier `light` cho việc cơ học thật: chọn pha (ứng viên: `ops[docs]`, `product[plan]` bước điền số), ADR công ty, 7 bước `CONTRIBUTING` §3 | company | ib1-light | C3 | Giảm token đo được | Cần `make eval-record` model thật | chờ người: chọn pha + máy có khoá model |
-| G1 | Vendor `grilling`/`grill-me` (user-invoked, không đổi luật "Khi bối rối") hay giữ quyết định loại | docs | — | — | Có sự cố #286 | Repo đã loại 3 lần | chờ người: quyết "có/không"; "có" → thêm vào `select` của V4 |
+| T1 | Báo cáo đối chiếu ba infographic theo §H (ba cột, nguồn thật, `file:dòng`) | docs | ib1-tailieu | C2 | Kết luận có bằng chứng, dùng lại được | Dài | xong #419 |
+| T2 | `ARCHITECTURE.md` §"Thuật ngữ ngành ↔ cơ chế ở repo": 24 + 6 dòng, mỗi dòng `file:dòng` | docs | ib1-tailieu | C1 | Phiên sau không phải khảo sát lại 900k token | Phải bảo trì khi đổi cơ chế | xong #419 |
+| T3 | `docs/QUY-TRINH-GIT.md` §2e: giải xung đột theo ý định từng hunk, kiểm marker, chạy lại cổng | docs | ib1-tailieu | C1 | Đóng đúng hai sự cố đã ghi | — | xong #419 |
+| T4 | Sửa docstring `kp/blackboard.py:3` khớp `kp/events.py:156-158` | keeper | ib1-tailieu | C1 | Hết câu sai | Chạm `.py` → cổng keeper | xong #419 |
+| T5 | File này + dòng CHANGELOG + mục nhật ký phiên | docs | ib1-tailieu | C1 | — | — | xong #419 |
+| V1 | ADR gốc 0030: vendor skill **đa nguồn** — một script, một lock mỗi nguồn (`prefix`, `label`, `ignore`), cổng theo lock, trần mô tả chung cho cả `.claude/` | docs | ib1-vendor | C3 | Quyết định trước code; nêu phương án loại | Một vòng viết | xong #421 |
+| V2 | `scripts/vendor_skills.py` thay `ecc_vendor.py`: `--lock`, `prefix`/`label`/`license_path`/`ignore` từ lock, `_note` theo nguồn, bỏ qua tệp khớp `ignore` thay vì dừng, đổi cả tham chiếu `"x"` trong nháy kép, kiểm đụng tên giữa các lock | scripts | ib1-vendor | C2 | Nguồn thứ hai, thứ ba không cần script mới | Sinh lại 25 tệp `ecc-*` (ghi chú nguồn đổi) | xong #421 |
+| V3 | Test: `test_vendor_skills.py` (từ `test_ecc_vendor.py`, thêm ca ignore/nháy kép/đụng tên/`--lock`), `test_cong_vendor.py` (từ `test_cong_ecc.py`, parametrize theo mọi lock; trần mô tả chung) | console | ib1-vendor | C2 | Cổng offline cho mọi nguồn | — | xong #421 |
+| V4 | `docs/integrations/mattpocock.lock.json`: `select` = `writing-for-agents`, `retro`; `rejected` = 36 mục còn lại, mỗi mục một lý do; sinh `.claude/skills/mp-*` + `mattpocock.LICENSE` | docs | ib1-vendor | C1 | Hai skill có bằng chứng cần | Thêm ~150 ký tự mô tả vào ngữ cảnh mỗi phiên | xong #421 |
+| V5 | Makefile (`vendor LOCK=`, `vendor-check`), job CI `vendor-check` thay `ecc-check` (giữ trong `needs` của `quality`), `CLAUDE.md`, `AGENTS.md` luật cấm 5, `CODEMAP.md`, `ARCHITECTURE.md:102`, CHANGELOG | ci/docs | ib1-vendor | C1 | Một chỗ cho mọi nguồn | — | xong #421 |
+| A1 | Tool `read_artifact(namespace, section=None)`: đọc `latest.<ext>` của namespace trong phạm vi `context_namespace_read` của agent, cắt theo mục `##` nếu có `section`, trần `MAX_OUTPUT`; cấp cho mọi route có tool; nhãn cắt đổi từ đường dẫn sang `read_artifact("<ns>")` | company | ib1-artifact | C3 | Đóng lỗ PRD cắt 692 lần mà không cần vector | Đổi nhãn → `evals --replay --strict` có thể đỏ → eval-record (chờ người) | ◐ PR cuối (chính commit này) |
+| A2 | ADR công ty mới (số kế tiếp trong `scadr/`) + sửa câu `scadr/0020:13` | docs | ib1-artifact | C1 | Tài liệu khớp code | — | ◐ PR cuối (chính commit này) |
+| A3 | Bài học có lời: `_record_lesson` ghi `hint` vào `lesson["hint"]`; `lessons_for` trả kèm; `record_lesson` dựng lại từ bus khi khởi động | company | ib1-artifact | C2 | `related_lessons` có nghĩa, bền qua restart | Prompt dài hơn ≤ 5 × hint | ◐ PR cuối (chính commit này) |
+| A4 | Sửa docstring `co/subagents.py:9` "(20 file)" → số thật đo từ đĩa | company | ib1-artifact | C1 | — | — | ◐ PR cuối (chính commit này) |
+| Q1 | `correlation_id` xuyên suốt: `_publish_task` và PR takeover dùng `child()` của event gốc | company | ib1-quansat | C2 | `trace` theo một id | Cần event cha ở chỗ gọi | xong #420 |
+| Q2 | Nối `runner.sink = otel_sink()` khi `XAGENTS_OTEL=1` (hoặc khoá `observe.otel` trong `llm.yaml`), `NullSink` khi thiếu OTel; test hai chiều | core + company | ib1-quansat | C3 | Latency đo được (ADR-0009) | Thêm một khoá cấu hình | xong #420 |
+| Q3 | Sửa comment `core/llm.py:90` khớp ADR-0037 | core | ib1-quansat | C1 | — | — | xong #420 |
+| L1 | Tier `light` cho việc cơ học thật: chọn pha (ứng viên: `ops[docs]`, `product[plan]` bước điền số), ADR công ty, 7 bước `CONTRIBUTING` §3 | company | ib1-light | C3 | Giảm token đo được | Cần `make eval-record` model thật | hoãn 2026-10-11: phiên chốt theo lệnh người — cần `make eval-record` model thật, phiên cloud không có khoá; mở lại khi có máy có khoá |
+| G1 | Vendor `grilling`/`grill-me` (user-invoked, không đổi luật "Khi bối rối") hay giữ quyết định loại | docs | — | — | Có sự cố #286 | Repo đã loại 3 lần | quyết 2026-10-11: **giữ loại** (lần 4, ADR gốc 0030; lý do trong `rejected` của `mattpocock.lock.json`) |
 
 Bốn hạng mục, thứ tự PR: **ib1-tailieu → ib1-vendor → ib1-artifact → ib1-quansat**; `ib1-light` và G1 chờ người. Mỗi hạng
 mục ≤ 5 mã, ≤ 2 package.
@@ -249,7 +249,7 @@ sang `chờ người` (eval-record); (3) ảnh 2 không khớp nguồn thật (t
    (OTel do người vận hành cài) — giữ. 6. `gate core` + `gate company`. 7. đỏ trước: `test_sink_bat_khi_cau_hinh`,
    `test_sink_none_khi_khong_cau_hinh` (no-op tuyệt đối giữ nguyên).
 
-### L1, G1 — chờ người
+### L1, G1 — đã chốt 2026-10-11 (L1 hoãn, G1 giữ loại; lý do ở bảng B) — hướng dẫn giữ lại cho khi mở lại
 
 L1: chọn pha chạy `light` (đề nghị thử `ops[docs]` trước — đầu ra là tài liệu, có eval sẵn), viết ADR công ty, chạy 7
 bước với model thật, so điểm eval trước/sau. G1: quyết định có vendor `grilling`/`grill-me` hay không; "có" thì ghi vào
@@ -259,11 +259,9 @@ bước với model thật, so điểm eval trước/sau. G1: quyết định c�
 
 | Đợt | Song song (phát triển) | Thứ tự PR | Điều kiện vào đợt |
 |---|---|---|---|
-| 1 | T1–T5 (một gói) | PR 1 `docs(repo)` | #417 merge, nhánh dựng lại từ `main` |
-| 2 | V1 → V2+V3 (cùng subagent, test đỏ trước) → V4 → V5 | PR 2 `feat(claude)` | PR 1 merge |
-| 3 | A1+A2 ‖ A3 ‖ A4 | PR 3 `feat(company)` | PR 2 merge; `evals --replay --strict` xanh sau A1, đỏ → `chờ người` |
-| 4 | Q1 ‖ Q2+Q3 | PR 4 `feat(core)` (scope core vì Q2 chạm core) | PR 3 merge |
-| — | L1, G1 | — | người quyết |
+| 1 | T1–T5 (một gói) | PR 1 `docs(repo)` #419 | #417 merge, nhánh dựng lại từ `main` |
+| 2–4 | V, A, Q phát triển **song song** (ba subagent Opus, ba worktree, test đỏ trước); phiên chính gộp tuần tự bằng cherry-pick, một PR mở một lúc | #420 `feat(core)` Q → #421 `feat(claude)` V → PR cuối `feat(company)` A (thứ tự theo cái nào xong trước, không ràng buộc nhau) | PR trước merge; `evals --replay --strict` 59/59 xanh sau A1 nên không cần `eval-record` |
+| — | L1, G1 | — | người ra lệnh "mọi quyết định bạn chốt" 2026-10-11 → phiên chốt: L1 hoãn, G1 giữ loại (bảng B) |
 
 Mức → model: C1 Haiku, C2 Sonnet, C3 Opus (`docs/KHUON-THI-HANH.md` §2). `sc-*` chấm: PR 2 `sc-security` (nội dung
 vendor đi vào phiên người lái — assetscan đã quét, vẫn đọc diff `.claude/`); PR 3 `sc-builder` + `sc-qa` (ranh giới

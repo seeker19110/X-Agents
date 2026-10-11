@@ -49,7 +49,7 @@ from .guard import guard_payload, sanitize_tool_output
 from .llm import Completion, LLMError, ModelClient
 from .prd_context import cut_prd_sections
 from .registry import AgentSpec, load_agents
-from .tools import ToolBox, ToolError, WorkspaceTools, dump_calls, tools_prompt
+from .tools import ArtifactTools, ToolBox, ToolError, WorkspaceTools, dump_calls, tools_prompt
 from .workspace import TicketWorkspace, WorkspaceError
 
 DEFAULT_MAX_INPUT_CHARS = 120_000
@@ -440,7 +440,8 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
     def _context(self, project_id: str | None = None, spec: AgentSpec | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
         """Ngữ cảnh trong phạm vi một dự án, cộng namespace toàn công ty — agent của dự án B không đọc PRD của A.
         ADR-0020: namespace ngoài `context_namespace_read` của agent chỉ mang `summary`/`content_ref` (không `content`)
-        — reviewer không cần 29k ký tự threat model để chấm một diff; agent có tool vẫn đọc được tệp qua `path`."""
+        — reviewer không cần 29k ký tự threat model để chấm một diff. Lượt có tool đọc đủ phần bị cắt qua
+        `read_artifact` (ADR-0049); `paths` chỉ còn cho nhãn cắt của lượt không tool."""
         if not self.blackboard: return {}, {}
         snap = self.blackboard.snapshot(project_id)
         ctx = {ns: sc.model_dump(exclude_none=True) for ns, sc in snap.items()}
@@ -480,6 +481,9 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         schema = None if context_only else payload_schema(topic_out)
         raw_ctx, paths = self._context(project_of(inp), spec)
         raw_ctx.pop("knowledge", None); paths.pop("knowledge", None)
+        if tools is not None and self.blackboard is not None:   # ADR-0049: nhãn cắt trỏ tool, không trỏ đường dẫn
+            ArtifactTools(self.blackboard, project_of(inp), spec).add_to(tools)
+            paths = {ns: f'tool read_artifact("{ns}")' for ns in raw_ctx}
         lessons = self.lesson_provider(inp) if self.lesson_provider is not None else []
         if lessons:
             inp = inp.model_copy(update={"payload": {**inp.payload, "related_lessons": lessons}})
