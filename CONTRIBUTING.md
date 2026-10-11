@@ -58,8 +58,8 @@ uv tool install pre-commit && pre-commit install
 
 Cấu hình ở `.pre-commit-config.yaml`; `pre-commit run --all-files` chạy tay trên toàn bộ repo.
 
-Không có `make` (Windows): mở `Makefile` và chạy dòng `uv run` tương ứng — dùng được nguyên văn trong PowerShell
-(vd. `uv run python -m company.demo`), không cần đặt biến môi trường nào.
+Mỗi target `make` là một dòng `uv run` trong `Makefile` (vd. `uv run python -m company.demo`) — chạy tay được
+nguyên văn, không cần đặt biến môi trường nào.
 
 CI chạy đúng những cổng đó cộng eval replay, golden, drift, audit, asset-scan — bảng đủ job ở
 [`ARCHITECTURE.md`](ARCHITECTURE.md) §CI. Job tổng hợp tên `quality` là required status check của `main` — **thêm

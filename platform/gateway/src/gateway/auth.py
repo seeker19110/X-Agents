@@ -77,11 +77,6 @@ REFRESH_SKEW_SECONDS = 120
 COOLDOWN_DEFAULTS = {401: 300, 402: 3600, 403: 3600, 429: 3600}
 COOLDOWN_FALLBACK = 60
 
-# Windows: `os.replace` trả `PermissionError` (WinError 5) khi tiến trình khác (Defender, indexer) giữ file đích
-# trong chốc lát. Thử lại vài lần với nghỉ tăng dần; tổng chờ tối đa ~0,3 s, khoá thật thì vẫn ném.
-REPLACE_ATTEMPTS = 5
-REPLACE_BACKOFF_SECONDS = 0.02
-
 
 def get_home_dir() -> Path:
     """Thư mục dữ liệu của gateway: `$XAGENTS_HOME`, mặc định `~/.x-agents`."""
@@ -252,15 +247,8 @@ class AntigravityAuthManager:
             fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-            if os.name != "nt":
-                os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)
-            for attempt in range(1, REPLACE_ATTEMPTS):
-                try:
-                    os.replace(tmp_path, path)
-                    return
-                except PermissionError:
-                    time.sleep(REPLACE_BACKOFF_SECONDS * attempt)
-            os.replace(tmp_path, path)  # lần thử cuối: vẫn bị khoá thì lỗi đi ra `except` dưới, file tạm được dọn
+            os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)
+            os.replace(tmp_path, path)
         except Exception:
             with contextlib.suppress(OSError):
                 tmp_path.unlink(missing_ok=True)

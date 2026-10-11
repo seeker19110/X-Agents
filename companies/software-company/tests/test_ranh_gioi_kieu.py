@@ -88,5 +88,5 @@ def test_k62_cau_hinh_mypy_siet_orch_theo_tien_to() -> None:
     assert 'module = "company.orch.*"' in cfg
     assert "disallow_untyped_defs = true" in cfg
     assert "warn_unused_ignores = true" not in cfg, (
-        "cố ý KHÔNG bật: nó báo `# type: ignore` phụ thuộc nền (vd. `ctypes.windll`) là thừa trên máy này mà "
-        "cần trên máy kia — CI chạy cả ubuntu lẫn windows, bật là dựng cổng đúng-sai theo máy chạy")
+        "cố ý KHÔNG bật (xem chú thích trong pyproject): bật lại là việc riêng, đo lại số `# type: ignore` thừa "
+        "trước — nguyên nhân cũ (`ctypes.windll`) đã gỡ ở ADR gốc 0031")

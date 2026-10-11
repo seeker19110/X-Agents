@@ -383,10 +383,6 @@ def test_static_va_chan_di_ra_ngoai(make_console, fake_modules) -> None:
 
 # --- token file ------------------------------------------------------------
 
-POSIX_ONLY = pytest.mark.skipif(os.name != "posix", reason="quyền 0600 chỉ có nghĩa trên POSIX; Windows luôn báo 0666")
-
-
-@POSIX_ONLY
 def test_file_token_tao_voi_quyen_0600(tmp_path: Path) -> None:
     path = tmp_path / ".console-token"
     token = srv.generate_token()
@@ -395,7 +391,6 @@ def test_file_token_tao_voi_quyen_0600(tmp_path: Path) -> None:
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
-@POSIX_ONLY
 def test_file_token_ghi_de_van_giu_0600(tmp_path: Path) -> None:
     path = tmp_path / ".console-token"
     path.write_text("cu", encoding="utf-8")
@@ -1206,7 +1201,7 @@ def test_duong_dan_static_co_byte_nul_thi_404(make_console) -> None:
 def test_duong_dan_static_co_byte_nul_thi_404_ca_khi_resolve_khong_nem(
     make_console, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Windows: `resolve()` không đụng đĩa nên không ném, NUL chỉ nổ ở `open()` — CI windows-latest đỏ ở ca trên.
+    """Chặn NUL không được trông vào `resolve()` ném: có hệ để `resolve()` thuần chuỗi, NUL chỉ nổ ở `open()`.
 
     Giả lập thứ tự đó trên mọi OS: `resolve()` thuần chuỗi, để `read_bytes()` là chỗ gặp byte NUL đầu tiên.
     """

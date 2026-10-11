@@ -190,23 +190,6 @@ def test_container_argv_co_mang_thi_publish_cong(tmp_path, monkeypatch):
     assert "none" not in argv
 
 
-def test_container_windows_khong_co_getuid_van_chay(tmp_path, monkeypatch):
-    """Repo này chạy chính trên Windows: `os.getuid` không tồn tại → bỏ `-u`, tên nói rõ `no-uid`."""
-    monkeypatch.delattr(os, "getuid", raising=False)
-    monkeypatch.delattr(os, "getgid", raising=False)
-    runner = FakeRunner()
-    sb = ContainerSandbox("docker", "img", runner=runner, env_via_stdin=True)
-    sb.run(spec(tmp_path))
-    assert "-u" not in runner.calls[0]["argv"]
-    assert sb.name == "container:img:no-uid"
-
-
-def test_container_thieu_getgid_cung_coi_la_no_uid(tmp_path, monkeypatch):
-    monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
-    monkeypatch.delattr(os, "getgid", raising=False)
-    assert ContainerSandbox("docker", "img", runner=FakeRunner(), env_via_stdin=True).name == "container:img:no-uid"
-
-
 def test_container_env_file_bo_gia_tri_nhieu_dong(tmp_path):
     runner = FakeRunner()
     ContainerSandbox("docker", "img", runner=runner, env_via_stdin=True).run(

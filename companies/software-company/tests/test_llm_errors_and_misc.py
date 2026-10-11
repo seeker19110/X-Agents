@@ -139,13 +139,12 @@ def test_completion_json_rejects_garbage():
 
 
 def test_find_codex_binary_fallback_ve_ten_tho_khi_khong_thay(monkeypatch):
-    """Không có trên PATH và không có %LOCALAPPDATA% (hoặc không có bản kèm app) thì trả về nguyên tên nhị phân
-    (dòng 781) — CLI sẽ tự báo lỗi rõ khi thật sự chạy, không phải lúc tìm đường dẫn."""
+    """Không có trên PATH thì trả về nguyên tên nhị phân — CLI sẽ tự báo lỗi rõ khi thật sự chạy, không phải lúc
+    tìm đường dẫn."""
     import shutil as _shutil
 
     from company.llm import find_codex_binary
     monkeypatch.setattr(_shutil, "which", lambda b: None)
-    monkeypatch.delenv("LOCALAPPDATA", raising=False)
     assert find_codex_binary("codex-khong-ton-tai-xyz") == "codex-khong-ton-tai-xyz"
 
 
@@ -383,27 +382,6 @@ def test_claude_code_parse_bao_loi_khi_co_ngoac_nhung_json_hong():
     client = ClaudeCodeClient(cfg, runner=lambda a, s, cwd=None: '{đây không phải JSON hợp lệ')
     with pytest.raises(LLMError, match="không phải JSON"):
         client.complete(system="s", user="u", schema={"type": "object"}, model_tier="strong")
-
-
-# ---------- find_codex_binary: dò cài đặt Codex CLI trên Windows qua LOCALAPPDATA ----------
-
-def test_find_codex_binary_do_qua_localappdata(tmp_path, monkeypatch):
-    import shutil as sh
-
-    from company.llm import find_codex_binary
-
-    monkeypatch.setattr(sh, "which", lambda b: None)   # "codex" không có sẵn trên PATH
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    older = tmp_path / "OpenAI" / "Codex" / "bin" / "0.1.0" / "codex.exe"
-    newer = tmp_path / "OpenAI" / "Codex" / "bin" / "0.2.0" / "codex.exe"
-    older.parent.mkdir(parents=True); older.write_text("x", encoding="utf-8")
-    newer.parent.mkdir(parents=True); newer.write_text("x", encoding="utf-8")
-    import os
-    os.utime(older, (1, 1)); os.utime(newer, (2, 2))
-    assert find_codex_binary("codex") == str(newer)
-    # LOCALAPPDATA có nhưng không cài Codex: lùi về tên binary gốc, không sập
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "rong"))
-    assert find_codex_binary("codex") == "codex"
 
 
 # ---------- CodexClient: đường lỗi tiến trình con thật ----------

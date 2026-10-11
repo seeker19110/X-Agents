@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import stat
 import threading
 import urllib.error
@@ -218,7 +217,6 @@ def test_mark_unavailable_keeps_newer_token_from_other_request(manager):
     assert stored["access_token"] == "token-a-NEW" and stored["unavailable_until"] == 0
 
 
-@pytest.mark.skipif(os.name == "nt", reason="chmod POSIX")
 def test_token_file_is_owner_only_after_save_and_remove(manager):
     manager.save_credentials(_creds("a"))
     manager.save_credentials(_creds("b"))
@@ -416,44 +414,9 @@ def test_load_stored_credentials_unknown_email_falls_back_to_first(manager):
 # ---------- _atomic_write ----------
 
 
-@pytest.mark.skipif(os.name == "nt", reason="os.chmod POSIX semantics")
 def test_atomic_write_chmods_tmp_file_on_posix(manager):
     manager.save_credentials(_creds("a"))
     assert stat.S_IMODE(manager.token_file.stat().st_mode) == 0o600
-
-
-class _OsGia:
-    """`os` chỉ `gateway.auth` thấy: `name` giả, ghi lại lời gọi `chmod`, mọi thứ khác chuyển cho `os` thật.
-    Đổi `os.name` toàn cục thì pathlib của chính pytest vỡ (`cannot instantiate 'WindowsPath'`) đúng lúc test đỏ
-    cần in báo cáo."""
-
-    def __init__(self, name):
-        self.name = name
-        self.chmod_calls = []
-
-    def chmod(self, *a, **kw):
-        self.chmod_calls.append(a)
-
-    def __getattr__(self, attr):
-        return getattr(os, attr)
-
-
-def test_atomic_write_takes_posix_chmod_branch(manager, monkeypatch):
-    # Ép nhánh `if os.name != "nt": os.chmod(...)` chạy cả trên Windows CI.
-    fake_os = _OsGia("posix")
-    monkeypatch.setattr(gw_auth, "os", fake_os)
-    manager.save_credentials(_creds("a"))
-    assert manager.token_file.is_file()
-    assert [mode for _, mode in fake_os.chmod_calls] == [stat.S_IRUSR | stat.S_IWUSR]
-
-
-def test_atomic_write_skips_chmod_on_windows(manager, monkeypatch):
-    # Chiều ngược lại, chạy được cả trên Linux CI: trên Windows `os.chmod` chỉ bật/tắt cờ read-only, không gọi.
-    fake_os = _OsGia("nt")
-    monkeypatch.setattr(gw_auth, "os", fake_os)
-    manager._atomic_write(manager.token_file, {"a": 1})
-    assert json.loads(manager.token_file.read_text(encoding="utf-8")) == {"a": 1}
-    assert fake_os.chmod_calls == []
 
 
 def test_atomic_write_cleans_up_tmp_file_and_reraises_on_failure(manager, monkeypatch):
@@ -465,42 +428,6 @@ def test_atomic_write_cleans_up_tmp_file_and_reraises_on_failure(manager, monkey
         manager._atomic_write(manager.token_file, {"a": 1})
     assert not manager.token_file.with_suffix(".tmp").exists()
     assert not manager.token_file.exists()
-
-
-def test_atomic_write_retries_transient_permission_error(manager, monkeypatch):
-    # Windows: `os.replace` trả `[WinError 5] Access is denied` khi tiến trình khác (Defender, indexer) đang
-    # giữ file đích trong một khoảnh khắc. Đo 2026-09-22: 1/8 lượt chạy cả bộ gateway đỏ đúng vì thế, và
-    # `_update_account_fields` nuốt lỗi → cooldown/`last_used_at` mất im lặng. Lỗi tạm thì phải thử lại.
-    real_replace = gw_auth.os.replace
-    calls = []
-
-    def flaky_replace(src, dst):
-        calls.append(1)
-        if len(calls) == 1:
-            raise PermissionError(13, "Access is denied")
-        return real_replace(src, dst)
-
-    monkeypatch.setattr(gw_auth.os, "replace", flaky_replace)
-    monkeypatch.setattr(gw_auth.time, "sleep", lambda s: None)
-    manager._atomic_write(manager.token_file, {"a": 1})
-    assert json.loads(manager.token_file.read_text(encoding="utf-8")) == {"a": 1}
-    assert len(calls) == 2
-
-
-def test_atomic_write_gives_up_after_bounded_permission_retries(manager, monkeypatch):
-    # File bị khoá thật (không phải khoảnh khắc) thì không được treo: hết số lần thử là ném, và dọn file tạm.
-    calls = []
-
-    def locked(src, dst):
-        calls.append(1)
-        raise PermissionError(13, "Access is denied")
-
-    monkeypatch.setattr(gw_auth.os, "replace", locked)
-    monkeypatch.setattr(gw_auth.time, "sleep", lambda s: None)
-    with pytest.raises(PermissionError):
-        manager._atomic_write(manager.token_file, {"a": 1})
-    assert len(calls) == gw_auth.REPLACE_ATTEMPTS
-    assert not manager.token_file.with_suffix(".tmp").exists()
 
 
 # ---------- save_credentials ----------

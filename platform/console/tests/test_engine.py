@@ -155,14 +155,9 @@ def test_tat_thi_tien_trinh_chet_that_va_ghi_lai_ai_tat(mgr: en.EngineManager) -
     # Bằng chứng máy, không phải lời khai của sổ: `exit_code` là số nguyên nghĩa là `Popen.wait()` ĐÃ trả về,
     # tức hệ điều hành đã báo tiến trình kết thúc và thu xác nó — sổ không tự bịa ra được con số này.
     assert isinstance(r["exit_code"], int)
-    # Thêm một phép đo độc lập, CHỈ trên POSIX: hỏi hệ điều hành xem pid còn không.
-    # Trên Windows KHÔNG làm được phép này: `os.kill(pid, 0)` của CPython không phải "thăm dò" như POSIX — nó
-    # gọi TerminateProcess với mã 0, tức phép đo sẽ GIẾT tiến trình còn sống thay vì hỏi nó còn không, và với pid
-    # đã chết thì ném `OSError: [WinError 87]` chứ không phải `ProcessLookupError` (đo được trên CI windows-latest
-    # 2026-09-09). Một phép đo giết chính thứ nó đo thì không phải phép đo.
-    if sys.platform != "win32":
-        con = subprocess.run([sys.executable, "-c", f"import os;os.kill({started['pid']},0)"], capture_output=True)
-        assert con.returncode != 0 and b"ProcessLookupError" in con.stderr
+    # Thêm một phép đo độc lập: hỏi hệ điều hành xem pid còn không.
+    con = subprocess.run([sys.executable, "-c", f"import os;os.kill({started['pid']},0)"], capture_output=True)
+    assert con.returncode != 0 and b"ProcessLookupError" in con.stderr
 
 
 def test_dong_co_tu_chet_thi_hien_exited_kem_ma_thoat_va_duoi_log(tmp_path: Path,

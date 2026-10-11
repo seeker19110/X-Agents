@@ -10,7 +10,6 @@ import errno
 import multiprocessing
 import os
 import sqlite3
-import sys
 import types
 from pathlib import Path
 
@@ -155,24 +154,7 @@ def test_del_nuot_loi_khi_dong_that_bai(bus):
 
 # ---------- Lease ----------
 
-def test_alive_tren_windows_dung_openprocess(monkeypatch):
-    """Nhánh nền tảng rẽ theo `sys.platform`, không phải `os.name` — xem chú thích trong `_alive`: chỉ
-    `sys.platform` mới cho mypy thu hẹp, nên chỉ nó mới làm `mypy` sạch trên CẢ Linux lẫn Windows."""
-    calls: list[tuple] = []
-
-    class _K32:
-        def OpenProcess(self, flags, inherit, pid): calls.append((flags, pid)); return 0 if pid == 404 else 7
-        def CloseHandle(self, h): calls.append(("close", h))
-    monkeypatch.setattr(SB.sys, "platform", "win32")
-    monkeypatch.setitem(sys.modules, "ctypes", types.SimpleNamespace(windll=types.SimpleNamespace(kernel32=_K32())))
-    assert SB._alive(404) is False           # OpenProcess trả handle rỗng → coi như đã chết
-    assert SB._alive(123) is True and ("close", 7) in calls
-    assert calls[0] == (0x1000, 404)
-
-
 def test_alive_permission_error_la_con_song(monkeypatch):
-    monkeypatch.setattr(SB.sys, "platform", "linux")
-
     def kill(pid, sig): raise PermissionError
     monkeypatch.setattr(SB.os, "kill", kill)
     assert SB._alive(1) is True
@@ -180,15 +162,12 @@ def test_alive_permission_error_la_con_song(monkeypatch):
 
 @pytest.mark.parametrize("pid", [0, 2 ** 22 - 1])
 def test_alive_pid_khong_hop_le_hoac_da_chet(pid, monkeypatch):
-    monkeypatch.setattr(SB.sys, "platform", "linux")
-
     def kill(p, sig): raise ProcessLookupError
     monkeypatch.setattr(SB.os, "kill", kill)
     assert SB._alive(pid) is False
 
 
-def test_alive_nhan_ra_tien_trinh_dang_chay(monkeypatch):
-    monkeypatch.setattr(SB.sys, "platform", "linux")
+def test_alive_nhan_ra_tien_trinh_dang_chay():
     assert SB._alive(os.getpid()) is True     # `os.kill(pid, 0)` không ném: còn sống
 
 
@@ -211,7 +190,7 @@ def test_lease_bo_qua_file_lock_hong(tmp_path):
 
 
 def test_lease_khong_doc_duoc_lock_thi_coi_la_lock_cu(tmp_path, monkeypatch):
-    """Giữ nguyên hành vi cũ: đọc lock lỗi OS (vd Windows khoá chia sẻ) → như pid không đọc được, lấy lại."""
+    """Giữ nguyên hành vi cũ: đọc lock lỗi OS (vd quyền) → như pid không đọc được, lấy lại."""
     from pathlib import Path
     lease = Lease(tmp_path / "b.sqlite")
     lease.path.write_text("123", encoding="utf-8")
@@ -325,28 +304,14 @@ def test_lease_khoa_os_moi_la_chu_tien_trinh_giu_bi_kill_thi_ke_sau_chiem_duoc(t
                 Lease(db).acquire()
     finally:
         p.kill(); p.join(_lease_con.CHO_S)
-    p.close()   # Windows: còn handle tới tiến trình đã chết thì `OpenProcess` vẫn mở được, `_alive` báo sống
-    lease = Lease(db); _chiem_trong_han(lease)
+    p.close()
+    lease = Lease(db); lease.acquire()
     assert lease.held and lease.path.read_text(encoding="utf-8") == str(os.getpid())
     lease.release()
 
 
-def _chiem_trong_han(lease: Lease) -> None:
-    """Chiếm ngay khi khoá của tiến trình đã chết được nhả — có hạn. POSIX nhả cùng lúc tiến trình chết; Windows chỉ
-    hứa nhả "tuỳ tài nguyên hệ thống" (tài liệu `LockFileEx`), nên ngay sau `join` khoá có thể còn trong khoảnh
-    khắc. Hết hạn mà vẫn bị chặn thì ném đúng `LeaseError` cuối cùng — đỏ, không treo."""
-    import time
-    het_han = time.monotonic() + _lease_con.CHO_S
-    while True:
-        try:
-            lease.acquire(); return
-        except LeaseError:
-            if time.monotonic() > het_han: raise
-            time.sleep(0.05)
-
-
 def test_lease_cung_tien_trinh_doi_tuong_thu_hai_bi_chan_nha_roi_chiem_lai_duoc(tmp_path):
-    """Khoá OS gắn với file đã mở (flock) / handle (msvcrt), không gắn với tiến trình: hai `Lease` trong cùng một
+    """Khoá OS gắn với file đã mở (flock), không gắn với tiến trình: hai `Lease` trong cùng một
     tiến trình cũng loại trừ nhau — mã cũ cho đối tượng thứ hai chiếm luôn vì "cùng pid". Nhả xong thì lấy lại được."""
     db = tmp_path / "b.sqlite"
     a = Lease(db); a.acquire()
@@ -363,23 +328,18 @@ def test_lease_cung_tien_trinh_doi_tuong_thu_hai_bi_chan_nha_roi_chiem_lai_duoc(
 def test_lease_khoa_trung_file_vua_bi_go_ten_thi_mo_lai_file_moi(tmp_path, monkeypatch):
     """Bẫy kinh điển của khoá theo file: người giữ trước nhả = gỡ tên file rồi nhả khoá; kẻ đã MỞ file cũ trước đó
     khoá được nó sau khi khoá nhả — nhưng file ấy không còn tên, kẻ thứ ba tạo file mới và cũng khoá được, hai người
-    cùng "giữ". Khoá được rồi phải kiểm file còn tên, không thì mở lại. Trên Windows không gỡ được tên file đang mở
-    (nên bẫy không xảy ra ở đó) — ca này khẳng định cả điều ấy thay vì lặng lẽ bỏ qua."""
+    cùng "giữ". Khoá được rồi phải kiểm file còn tên, không thì mở lại."""
     lease = Lease(tmp_path / "b.sqlite")
-    that, lan, go_duoc = SB._lock, [], []
+    that, lan = SB._lock, []
 
     def lock(fd):
         lan.append(fd); ok = that(fd)
         if len(lan) == 1:
-            try:
-                os.unlink(lease.path); go_duoc.append(True)   # đúng lúc này người giữ trước gỡ tên file
-            except PermissionError:
-                go_duoc.append(False)
+            os.unlink(lease.path)   # đúng lúc này người giữ trước gỡ tên file
         return ok
     monkeypatch.setattr(SB, "_lock", lock)
     lease.acquire()
-    assert go_duoc == [sys.platform != "win32"]
-    assert len(lan) == (2 if go_duoc[0] else 1)
+    assert len(lan) == 2
     assert lease.held and lease.path.read_text(encoding="utf-8") == str(os.getpid())
     lease.release()
 
@@ -435,29 +395,9 @@ def test_lease_tu_choi_vi_pid_ban_cu_con_song_van_nha_khoa_os(tmp_path, monkeypa
     lease.release()
 
 
-def test_lease_nha_khi_khong_xoa_duoc_file_dang_mo_thi_dong_roi_xoa(tmp_path, monkeypatch):
-    """Windows không xoá được file còn handle mở — kể cả handle của chính mình. POSIX thì PHẢI gỡ tên khi còn khoá
-    (xem `Lease`). Một đường cho cả hai: thử xoá khi còn giữ; bị từ chối thì đóng handle rồi xoá lại."""
-    lease = Lease(tmp_path / "b.sqlite"); lease.acquire(); fd = lease._fd
-    that, lan = Path.unlink, []
-
-    def unlink(p, missing_ok=False):
-        lan.append(p)
-        if len(lan) == 1:
-            raise PermissionError(13, "file đang mở")
-        with pytest.raises(OSError):
-            os.fstat(fd)            # lần xoá thứ hai chỉ sau khi handle đã đóng
-        that(p, missing_ok=missing_ok)
-    monkeypatch.setattr(Path, "unlink", unlink)
-    lease.release()
-    assert len(lan) == 2 and not lease.held
-    monkeypatch.undo()
-    assert not lease.path.exists()
-
-
-def test_lease_nha_ma_ke_khac_vua_mo_file_thi_de_lai_file_rong(tmp_path, monkeypatch):
-    """Windows: giữa lúc đóng handle và lúc xoá, kẻ khác vừa mở file (để khoá) — xoá bị từ chối, file ở lại. Nó
-    phải ở lại RỖNG: pid của người vừa nhả còn sống, để nguyên trong file thì kẻ kia từ chối oan."""
+def test_lease_nha_ma_khong_xoa_duoc_file_thi_de_lai_file_rong(tmp_path, monkeypatch):
+    """Thư mục không cho xoá (quyền) — file lock ở lại. Nó phải ở lại RỖNG: pid của người vừa nhả còn sống, để
+    nguyên trong file thì kẻ đến sau từ chối oan."""
     lease = Lease(tmp_path / "b.sqlite"); lease.acquire()
 
     def tu_choi(p, missing_ok=False): raise PermissionError(13, "file đang mở")
@@ -470,43 +410,15 @@ def test_lease_nha_ma_ke_khac_vua_mo_file_thi_de_lai_file_rong(tmp_path, monkeyp
     sau.release()
 
 
-def test_khoa_os_nhanh_windows_dung_msvcrt_o_xa_phan_pid(tmp_path, monkeypatch):
-    """Nhánh Windows đo được trên Linux bằng `msvcrt` giả (cùng cách `_alive` giả `ctypes`). Khoá của msvcrt là khoá
-    BẮT BUỘC: khoá byte 0 thì chính người đọc pid cũng bị chặn (kể cả trong cùng tiến trình qua handle khác), nên
-    khoá một byte ở xa phần pid. EACCES = đang có người giữ; lỗi khác ném ra cho `acquire` nói đúng tên."""
-    goi, loi = [], []
-
-    def locking(fd, mode, n):
-        goi.append((mode, os.lseek(fd, 0, os.SEEK_CUR), n))
-        if loi: raise loi.pop()
-    monkeypatch.setattr(SB.sys, "platform", "win32")
-    monkeypatch.setitem(sys.modules, "msvcrt", types.SimpleNamespace(LK_NBLCK=2, LK_UNLCK=0, locking=locking))
-    fd = os.open(tmp_path / "x.lock", os.O_RDWR | os.O_CREAT)
-    try:
-        assert SB._lock(fd) is True
-        loi.append(OSError(errno.EACCES, "đang bị khoá"))
-        assert SB._lock(fd) is False
-        loi.append(OSError(errno.EINVAL, "lạ"))
-        with pytest.raises(OSError, match="lạ"):
-            SB._lock(fd)
-        SB._unlock(fd)
-    finally:
-        os.close(fd)
-    assert goi == [(2, SB._KHOA_TAI, 1)] * 3 + [(0, SB._KHOA_TAI, 1)]
-    assert SB._KHOA_TAI > 2 ** 20
-
-
-def test_khoa_os_nhanh_posix_dung_flock_khong_cho(monkeypatch):
-    """Nhánh POSIX đo được trên Windows bằng `fcntl` giả — chân Windows của core-unit đo `--cov` 100% mà ở đó không
-    có `fcntl` thật (đối xứng với `msvcrt` giả ở ca trên). Không chờ (`LOCK_NB`): `BlockingIOError` = đang có người
-    giữ; lỗi khác (ENOLCK trên vài ổ mạng) phải ném ra để `acquire` nói đúng tên, không nuốt thành "đang chạy"."""
+def test_khoa_os_dung_flock_khong_cho(monkeypatch):
+    """Không chờ (`LOCK_NB`): `BlockingIOError` = đang có người giữ; lỗi khác (ENOLCK trên vài ổ mạng) phải ném ra
+    để `acquire` nói đúng tên, không nuốt thành "đang chạy"."""
     goi, loi = [], []
 
     def flock(fd, op):
         goi.append(op)
         if loi: raise loi.pop()
-    monkeypatch.setattr(SB.sys, "platform", "linux")
-    monkeypatch.setitem(sys.modules, "fcntl", types.SimpleNamespace(LOCK_EX=2, LOCK_NB=4, LOCK_UN=8, flock=flock))
+    monkeypatch.setattr(SB, "fcntl", types.SimpleNamespace(LOCK_EX=2, LOCK_NB=4, LOCK_UN=8, flock=flock))
     assert SB._lock(7) is True
     loi.append(BlockingIOError(errno.EAGAIN, "đang bị khoá"))
     assert SB._lock(7) is False
@@ -520,8 +432,7 @@ def test_khoa_os_nhanh_posix_dung_flock_khong_cho(monkeypatch):
 def test_lease_nha_go_ten_khi_van_con_giu_khoa(tmp_path, monkeypatch):
     """POSIX phải gỡ tên KHI CÒN khoá: nhả trước thì kẻ khác khoá được file còn tên, qua `_con_ten`, rồi bị gỡ tên
     dưới chân — kẻ thứ ba tạo file mới, hai chủ. Lúc gỡ tên, một handle khác vẫn phải bị khoá chặn; gỡ được ngay lần
-    đầu thì không gỡ lần hai. (`unlink` giả trả thành công để ca chạy được cả trên Windows, nơi xoá file còn handle
-    mở luôn bị từ chối.)"""
+    đầu thì không gỡ lần hai."""
     lease = Lease(tmp_path / "b.sqlite"); lease.acquire()
     lan: list[bool] = []
 

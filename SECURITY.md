@@ -64,7 +64,7 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
 - **Sandbox tiến trình** (ADR-0035): ba điểm chạy mã của khách — tool `run` của model (`tools.py`), lint/test của
   `run_checks` (`workspace.py`), lệnh khởi động smoke theo `runtime` của spec (`smoke.py`) — đi qua một giao diện
   `Sandbox` duy nhất. Backend `container` (docker/podman `run --rm`) chạy chúng với **mạng tắt**, hạn mức
-  cpu/ram/pid, cwd mount vào `/w`, env qua `/dev/stdin` trên POSIX (Windows truyền env trong argv và ghi rõ `:env-argv`); backend
+  cpu/ram/pid, cwd mount vào `/w`, env qua `/dev/stdin` (ca cần stdin cho lệnh thì env ra argv và ghi rõ `:env-argv`); backend
   `subprocess` giữ nguyên hành vi cũ. Chọn bằng `COMPANY_SANDBOX` (env) hoặc `sandbox:` trong `llm.yaml`:
   `auto` (mặc định — yêu cầu container runtime), `container`, `subprocess`. **Fail-closed**: `auto` hoặc
   `container` mà thiếu binary đều ném `SandboxError` ngay lúc khởi động `run`/`redeploy`/`recheck`; chỉ khai
