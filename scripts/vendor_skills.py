@@ -1,19 +1,22 @@
-"""Vendor ECC chọn lọc vào `.claude/` — tiền tố `ecc-`, ghim commit, sha256 từng tệp (ADR-0028).
+"""Vendor skill chọn lọc từ nhiều nguồn vào `.claude/` — mỗi nguồn một lock, một tiền tố, ghim commit, sha256 từng
+tệp (ADR gốc 0028, 0030).
 
-Nguồn duy nhất là `docs/integrations/ecc.lock.json`: `revision` ghim, `select` (mục được chép, kèm lý do),
-`rejected` (mục đã cân rồi loại). Script sinh các tệp dưới đây rồi ghi lại `files` + `measured` vào lock:
+Mỗi nguồn là một `docs/integrations/<tên>.lock.json`: `revision` ghim, `prefix` (vd `ecc-`, `mp-`), `label`,
+`license_path`, `select` (mục được chép, kèm lý do), `rejected` (mục đã cân rồi loại); tuỳ chọn `paths` (khuôn thư mục
+của nguồn), `ignore` (tệp phụ bỏ qua), `coupling` (dấu hiệu plugin riêng của nguồn). Script sinh các tệp dưới đây rồi
+ghi lại `files` + `measured` vào lock:
 
-    skills/<x>/**.md   → .claude/skills/ecc-<x>/**.md
-    commands/<x>.md    → .claude/commands/ecc-<x>.md
-    agents/<x>.md      → .claude/agents/ecc-<x>.md
-    LICENSE            → docs/integrations/ecc.LICENSE
+    <paths.skills>/**.md     → .claude/skills/<prefix><x>/**.md      (mặc định skills/<x>)
+    <paths.commands>         → .claude/commands/<prefix><x>.md       (mặc định commands/<x>.md)
+    <paths.agents>           → .claude/agents/<prefix><x>.md         (mặc định agents/<x>.md)
+    LICENSE                  → <license_path>
 
 Biến đổi tất định, tối thiểu: `name:` trong frontmatter thêm tiền tố; tham chiếu TƯỜNG MINH tới mục đã vendor
-(`/x`, `` `x` ``, `**x**`, `skill: x`, `agents|skills|commands/x`, tên agent có gạch nối) đổi sang `ecc-x`; một ghi
-chú nguồn sau frontmatter. Nguồn có dấu hiệu "chỉ chạy được khi là plugin" thì dừng, không vá.
+(`/x`, `` `x` ``, `**x**`, `"x"`, `skill: x`, `agents|skills|commands/x`, tên agent có gạch nối) đổi sang
+`<prefix>x`; một ghi chú nguồn sau frontmatter. Nguồn có dấu hiệu "chỉ chạy được khi là plugin" thì dừng, không vá.
 
-    python scripts/ecc_vendor.py build [--src <clone ECC>]   # make ecc-vendor
-    python scripts/ecc_vendor.py check [--src <clone ECC>]   # make ecc-check; exit 1 nếu lệch
+    python scripts/vendor_skills.py build --lock <lock> [--src <clone nguồn>]   # make vendor LOCK=<lock>
+    python scripts/vendor_skills.py check --lock <lock> [--src <clone nguồn>]   # make vendor-check; exit 1 nếu lệch
 """
 
 from __future__ import annotations
@@ -27,24 +30,25 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCK_REL = "docs/integrations/ecc.lock.json"
-LICENSE_REL = "docs/integrations/ecc.LICENSE"
-PREFIX = "ecc-"
 KINDS = ("skills", "commands", "agents")
+PATHS = {"skills": "skills/{name}", "commands": "commands/{name}.md", "agents": "agents/{name}.md"}
+# Tiền tố đã có chủ: build xoá mọi `<tiền tố>*` cũ, nên lock mang tiền tố lồng với chúng sẽ xoá nhầm tệp của repo.
+RESERVED = {"sc-": "`make subagents` (.claude/agents/sc-*)"}
 
-# Dấu hiệu nội dung chỉ đúng khi ECC chạy như plugin cài vào máy (mỗi mẫu một lý do, ADR-0028 §3).
+# Dấu hiệu nội dung chỉ đúng khi nguồn chạy như plugin cài vào máy (mỗi mẫu một lý do, ADR-0028 §3). Mẫu riêng của
+# một nguồn (vd `ecc:`) nằm trong `coupling` của lock đó.
 COUPLING = {
     r"CLAUDE_PLUGIN_ROOT": "đường dẫn gốc plugin",
     r"~/\.claude": "ghi vào thư mục cá nhân của Claude Code",
     r"(?<![\w~])\.claude/": "ghi vào cây .claude của repo",
     r"\bnode\s+scripts/": "gọi script node của ECC (không vendor)",
     r"\bnpx\s+(?:-y|--yes)\b": "tải và chạy gói npm không hỏi",
-    r"\becc:[a-z]": "gọi mục ECC theo namespace plugin",
 }
 
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
@@ -54,8 +58,8 @@ class VendorError(Exception):
     """Nguồn hoặc lock không đạt — dừng build, không vá tự động."""
 
 
-def load_lock(root: Path) -> dict:
-    return json.loads((root / LOCK_REL).read_text(encoding="utf-8"))
+def load_lock(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def read(p: Path) -> str:
@@ -79,7 +83,7 @@ def _git_head(src: Path) -> str:
 
 
 def _items(lock: dict) -> dict[str, str]:
-    """Tên mục đã chọn → loại. Hai loại trùng tên thì cùng thành `/ecc-<tên>`: một cái che cái kia."""
+    """Tên mục đã chọn → loại. Hai loại trùng tên thì cùng thành `/<prefix><tên>`: một cái che cái kia."""
     items: dict[str, str] = {}
     for kind in KINDS:
         for name in lock["select"].get(kind, {}):
@@ -92,28 +96,46 @@ def _items(lock: dict) -> dict[str, str]:
     return items
 
 
-def _sources(src: Path, kind: str, name: str) -> list[Path]:
+def _check_prefix(lock: dict, others: Sequence[dict]) -> None:
+    prefix = lock["prefix"]
+    if not re.fullmatch(r"[a-z0-9]+-", prefix):
+        raise VendorError(f"prefix {prefix!r} phải khớp `[a-z0-9]+-`")
+    taken = {**RESERVED, **{o["prefix"]: f"lock `{o['label']}`" for o in others}}
+    for other, owner in taken.items():
+        if prefix.startswith(other) or other.startswith(prefix):
+            raise VendorError(f"tiền tố `{prefix}` lồng với `{other}` của {owner} — build sẽ xoá nhầm tệp của nhau")
+
+
+def _sources(src: Path, lock: dict, kind: str, name: str) -> tuple[Path, list[Path]]:
+    """(chỗ của mục ở nguồn, tệp sẽ chép). Khuôn `paths` của lock phải khớp đúng một chỗ."""
+    pattern = {**PATHS, **lock.get("paths", {})}[kind].format(name=name)
+    found = sorted(src.glob(pattern))
+    if len(found) != 1:
+        raise VendorError(f"`{pattern}` khớp {len(found)} chỗ ở nguồn — cần đúng 1")
+    base = found[0]
     if kind == "skills":
-        base = src / "skills" / name
         if not (base / "SKILL.md").is_file():
-            raise VendorError(f"không có skills/{name}/SKILL.md ở nguồn")
-        files = sorted(p for p in base.rglob("*") if p.is_symlink() or p.is_file())
+            raise VendorError(f"không có {pattern}/SKILL.md ở nguồn")
+        ignore = lock.get("ignore", [])
+        files = sorted(
+            p
+            for p in base.rglob("*")
+            if (p.is_symlink() or p.is_file())
+            and not any(fnmatch.fnmatchcase(p.relative_to(base).as_posix(), g) for g in ignore)
+        )
     else:
-        p = src / kind / f"{name}.md"
-        if not p.is_file():
-            raise VendorError(f"không có {kind}/{name}.md ở nguồn")
-        files = [p]
+        files = [base]
     for p in files:
         rel = p.relative_to(src).as_posix()
         if p.is_symlink():
             raise VendorError(f"{rel}: symlink — vendor chỉ nhận tệp thường")
         if p.suffix != ".md":
             raise VendorError(f"{rel}: không phải .md — skill có mã chạy kèm thì loại, không vendor nửa vời")
-    return files
+    return base, files
 
 
-def _coupling(rel: str, text: str) -> None:
-    for pattern, why in COUPLING.items():
+def _coupling(rel: str, text: str, lock: dict) -> None:
+    for pattern, why in {**COUPLING, **lock.get("coupling", {})}.items():
         m = re.search(pattern, text)
         if m:
             line = text.count("\n", 0, m.start()) + 1
@@ -128,7 +150,7 @@ def _frontmatter(rel: str, text: str) -> tuple[re.Match[str], dict]:
     return m, meta
 
 
-def _rename(rel: str, text: str, kind: str, name: str) -> str:
+def _rename(rel: str, text: str, kind: str, name: str, prefix: str) -> str:
     """Đổi `name:` trong frontmatter. Tệp chính phải có frontmatter, tên trùng tệp và mô tả."""
     m, meta = _frontmatter(rel, text)
     if kind != "commands" and meta.get("name") != name:
@@ -139,20 +161,22 @@ def _rename(rel: str, text: str, kind: str, name: str) -> str:
     if "name" not in meta:
         return text
     head = re.sub(
-        rf"^name:[ \t]*{re.escape(name)}[ \t]*$", f"name: {PREFIX}{name}", m.group(1), count=1, flags=re.MULTILINE
+        rf"^name:[ \t]*{re.escape(name)}[ \t]*$", f"name: {prefix}{name}", m.group(1), count=1, flags=re.MULTILINE
     )
-    if yaml.safe_load(head).get("name") != PREFIX + name:
+    if yaml.safe_load(head).get("name") != prefix + name:
         raise VendorError(f"{rel}: không đổi được `name` (chỉ nhận dạng `name: {name}` trơn)")
     return f"---\n{head}\n---\n{text[m.end() :]}"
 
 
-def _is_main(rel: str) -> bool:
+def _is_main(rel: str, lock: dict) -> bool:
     """Tệp mang frontmatter mà Claude Code liệt kê: SKILL.md, lệnh, agent — không tính tệp phụ của skill."""
-    return rel.endswith("/SKILL.md") if rel.startswith(".claude/skills/") else rel != LICENSE_REL
+    return rel.endswith("/SKILL.md") if rel.startswith(".claude/skills/") else rel != lock["license_path"]
 
 
-def _description_chars(out: dict[str, tuple[str, str]]) -> int:
-    return sum(len(_frontmatter(rel, text)[1]["description"]) for rel, (_, text) in out.items() if _is_main(rel))
+def _description_chars(out: dict[str, tuple[str, str]], lock: dict) -> int:
+    return sum(
+        len(_frontmatter(rel, text)[1]["description"]) for rel, (_, text) in out.items() if _is_main(rel, lock)
+    )
 
 
 def _ref_pattern(items: dict[str, str]) -> re.Pattern[str]:
@@ -160,13 +184,13 @@ def _ref_pattern(items: dict[str, str]) -> re.Pattern[str]:
     return re.compile(rf"(?<![\w./-])(?P<pre>/|(?:{'|'.join(KINDS)})/)?(?P<name>{alt})(?![\w-])")
 
 
-def rewrite_refs(text: str, items: dict[str, str]) -> str:
+def rewrite_refs(text: str, items: dict[str, str], prefix: str) -> str:
     """Chỉ đổi dạng tường minh: tên skill viết trơn có thể là từ thường ("error-handling patterns")."""
     pattern = _ref_pattern(items)
 
     def sub(m: re.Match[str]) -> str:
         pre, name = m.group("pre"), m.group("name")
-        kind, new = items[name], PREFIX + name
+        kind, new = items[name], prefix + name
         if pre == "/":
             return f"/{new}" if kind != "agents" else m.group(0)
         if pre:
@@ -174,6 +198,7 @@ def rewrite_refs(text: str, items: dict[str, str]) -> str:
         s, e = m.start(), m.end()
         explicit = (
             text[s - 1 : s] == "`" == text[e : e + 1]
+            or text[s - 1 : s] == '"' == text[e : e + 1]
             or text[s - 2 : s] == "**" == text[e : e + 2]
             or re.search(r"skill:[ \t]*$", text[max(0, s - 16) : s], re.IGNORECASE) is not None
             or (kind == "agents" and "-" in name)
@@ -183,14 +208,15 @@ def rewrite_refs(text: str, items: dict[str, str]) -> str:
     return pattern.sub(sub, text)
 
 
-def _note(lock: dict, source: str) -> str:
+def _note(lock: dict, source: str, lock_rel: str) -> str:
+    label = lock["label"]
     return (
-        f"<!-- Sinh bởi scripts/ecc_vendor.py từ {lock['repository']}@{lock['revision']} ({source}) — không sửa tay; "
-        f"đổi thì sửa {LOCK_REL} rồi chạy lại (ADR-0028). -->\n"
-        "> **ECC (MIT), vendor vào X-Agents.** Luật ở `AGENTS.md` thắng khi trùng: coverage `fail_under = 100` "
-        "(không phải 80%), test đỏ trước khi code, nhánh → PR theo `docs/QUY-TRINH-GIT.md`, không xoá code ngoài "
-        "yêu cầu. Mục ECC được nhắc tới mà không có tệp `ecc-<tên>` trong `.claude/` thì repo không vendor — dùng "
-        "`/gate`, `/debug`, `/adr`, `/thi-hanh` hoặc bỏ qua.\n\n"
+        f"<!-- Sinh bởi scripts/vendor_skills.py từ {lock['repository']}@{lock['revision']} ({source}) — không sửa tay; "
+        f"đổi thì sửa {lock_rel} rồi chạy lại (ADR gốc 0030). -->\n"
+        f"> **{label} ({lock['license']}), vendor vào X-Agents.** Luật ở `AGENTS.md` thắng khi trùng: coverage "
+        "`fail_under = 100` (không phải 80%), test đỏ trước khi code, nhánh → PR theo `docs/QUY-TRINH-GIT.md`, không "
+        f"xoá code ngoài yêu cầu. Mục của {label} được nhắc tới mà không có tệp `{lock['prefix']}<tên>` trong "
+        "`.claude/` thì repo không vendor — dùng `/gate`, `/debug`, `/adr`, `/thi-hanh` hoặc bỏ qua.\n\n"
     )
 
 
@@ -200,33 +226,39 @@ def _with_note(text: str, note: str) -> str:
     return text[:cut] + ("\n" if m else "") + note + text[cut:].lstrip("\n")
 
 
-def _target(kind: str, name: str, rel_in_item: str) -> str:
+def _target(prefix: str, kind: str, name: str, rel_in_item: str) -> str:
     if kind == "skills":
-        return f".claude/skills/{PREFIX}{name}/{rel_in_item}"
-    return f".claude/{kind}/{PREFIX}{name}.md"
+        return f".claude/skills/{prefix}{name}/{rel_in_item}"
+    return f".claude/{kind}/{prefix}{name}.md"
 
 
-def render(src: Path, lock: dict) -> dict[str, tuple[str, str]]:
-    """Đường dẫn trong repo → (đường dẫn nguồn, toàn văn). Không ghi gì."""
+def render(
+    src: Path, lock: dict, *, lock_rel: str = "lock", others: Sequence[dict] = ()
+) -> dict[str, tuple[str, str]]:
+    """Đường dẫn trong repo → (đường dẫn nguồn, toàn văn). Không ghi gì. `others`: lock của nguồn khác cùng repo."""
+    _check_prefix(lock, others)
+    prefix = lock["prefix"]
     head = _git_head(src)
     if head != lock["revision"]:
         raise VendorError(f"nguồn đang ở {head or '?'}, lock ghim revision {lock['revision']}")
     items = _items(lock)
     out: dict[str, tuple[str, str]] = {}
     for name, kind in items.items():
-        for p in _sources(src, kind, name):
+        base, files = _sources(src, lock, kind, name)
+        for p in files:
             rel = p.relative_to(src).as_posix()
             text = read(p)
-            _coupling(rel, text)
-            inner = p.relative_to(src / "skills" / name).as_posix() if kind == "skills" else ""
+            _coupling(rel, text, lock)
+            inner = p.relative_to(base).as_posix() if kind == "skills" else ""
             if kind != "skills" or inner == "SKILL.md":
-                text = _rename(rel, text, kind, name)
-            out[_target(kind, name, inner)] = (rel, _with_note(rewrite_refs(text, items), _note(lock, rel)))
+                text = _rename(rel, text, kind, name, prefix)
+            note = _note(lock, rel, lock_rel)
+            out[_target(prefix, kind, name, inner)] = (rel, _with_note(rewrite_refs(text, items, prefix), note))
     lic = src / "LICENSE"
     if not lic.is_file():
         raise VendorError("nguồn thiếu LICENSE — không vendor mã không rõ giấy phép")
-    out[LICENSE_REL] = ("LICENSE", read(lic))
-    total = _description_chars(out)
+    out[lock["license_path"]] = ("LICENSE", read(lic))
+    total = _description_chars(out, lock)
     if total > lock["budget_description_chars"]:
         raise VendorError(f"mô tả cộng lại {total} ký tự > budget_description_chars {lock['budget_description_chars']}")
     return dict(sorted(out.items()))
@@ -234,15 +266,15 @@ def render(src: Path, lock: dict) -> dict[str, tuple[str, str]]:
 
 def _measured(src: Path, out: dict[str, tuple[str, str]], lock: dict) -> dict:
     items = _items(lock)
+    paths = {**PATHS, **lock.get("paths", {})}
     return {
         **{kind: sum(1 for k in items.values() if k == kind) for kind in KINDS},
         "files": len(out),
         "bytes": sum(len(text.encode("utf-8")) for _, text in out.values()),
-        "description_chars": _description_chars(out),
+        "description_chars": _description_chars(out, lock),
         "upstream": {
-            "skills": sum(1 for p in (src / "skills").glob("*/SKILL.md")),
-            "commands": sum(1 for _ in (src / "commands").glob("*.md")),
-            "agents": sum(1 for _ in (src / "agents").glob("*.md")),
+            kind: sum(1 for _ in src.glob(paths[kind].format(name="*") + ("/SKILL.md" if kind == "skills" else "")))
+            for kind in KINDS
         },
     }
 
@@ -256,33 +288,46 @@ def _dump(lock: dict) -> str:
     return json.dumps(lock, indent=2, ensure_ascii=False) + "\n"
 
 
-def _on_disk(root: Path) -> list[str]:
-    claude = root / ".claude"
-    found = [p for p in (claude / "skills").glob(f"{PREFIX}*/**/*") if p.is_file()]
-    found += [p for kind in ("commands", "agents") for p in (claude / kind).glob(f"{PREFIX}*.md")]
-    found += [p for p in [root / LICENSE_REL] if p.is_file()]
+def _on_disk(root: Path, lock: dict) -> list[str]:
+    claude, prefix = root / ".claude", lock["prefix"]
+    found = [p for p in (claude / "skills").glob(f"{prefix}*/**/*") if p.is_file()]
+    found += [p for kind in ("commands", "agents") for p in (claude / kind).glob(f"{prefix}*.md")]
+    found += [p for p in [root / lock["license_path"]] if p.is_file()]
     return sorted(p.relative_to(root).as_posix() for p in found)
 
 
-def build(root: Path, src: Path) -> dict:
-    lock = load_lock(root)
-    out = render(src, lock)
-    for d in (root / ".claude" / "skills").glob(f"{PREFIX}*"):
+def _rel(root: Path, lock_path: Path) -> str:
+    return lock_path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def _render_lock(root: Path, src: Path, lock_path: Path) -> tuple[dict, dict[str, tuple[str, str]]]:
+    """Lock + output; lock anh em (cùng thư mục, có `select`) đi vào `others` để kiểm tiền tố."""
+    lock = load_lock(lock_path)
+    others = [
+        o
+        for p in sorted(lock_path.parent.glob("*.lock.json"))
+        if p.resolve() != lock_path.resolve() and "select" in (o := load_lock(p))
+    ]
+    return lock, render(src, lock, lock_rel=_rel(root, lock_path), others=others)
+
+
+def build(root: Path, src: Path, lock_path: Path) -> dict:
+    lock, out = _render_lock(root, src, lock_path)
+    for d in (root / ".claude" / "skills").glob(f"{lock['prefix']}*"):
         shutil.rmtree(d)
-    for rel in _on_disk(root):
+    for rel in _on_disk(root, lock):
         (root / rel).unlink()
     for rel, (_, text) in out.items():
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text, encoding="utf-8", newline="\n")
     new = _new_lock(src, lock, out)
-    (root / LOCK_REL).write_text(_dump(new), encoding="utf-8", newline="\n")
+    lock_path.write_text(_dump(new), encoding="utf-8", newline="\n")
     return new
 
 
-def check(root: Path, src: Path) -> list[str]:
+def check(root: Path, src: Path, lock_path: Path) -> list[str]:
     """Rỗng nghĩa là tệp trong repo và lock đúng là output của `build` tại commit ghim."""
-    lock = load_lock(root)
-    out = render(src, lock)
+    lock, out = _render_lock(root, src, lock_path)
     report: list[str] = []
     for rel, (_, text) in out.items():
         p = root / rel
@@ -290,7 +335,7 @@ def check(root: Path, src: Path) -> list[str]:
             report.append(f"thiếu: {rel}")
         elif read(p) != text:
             report.append(f"lệch: {rel}")
-    report += [f"thừa: {rel}" for rel in _on_disk(root) if rel not in out]
+    report += [f"thừa: {rel}" for rel in _on_disk(root, lock) if rel not in out]
     new = _new_lock(src, lock, out)
     report += [f"lock lệch: {key}" for key in ("files", "measured") if lock.get(key) != new[key]]
     return report
@@ -312,47 +357,49 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):  # Windows cp1252, CI PYTHONIOENCODING lạ
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
-    ap = argparse.ArgumentParser(description="Vendor ECC chọn lọc vào .claude/ (ADR-0028)")
+    ap = argparse.ArgumentParser(description="Vendor skill chọn lọc vào .claude/ (ADR gốc 0028, 0030)")
     ap.add_argument("cmd", choices=("build", "check"))
+    ap.add_argument("--lock", type=Path, required=True, help="vd docs/integrations/ecc.lock.json")
     ap.add_argument(
         "--src",
         type=Path,
-        help="clone ECC có sẵn, đứng ở đúng revision ghim; bỏ trống thì tự fetch",
+        help="clone nguồn có sẵn, đứng ở đúng revision ghim; bỏ trống thì tự fetch",
     )
     ap.add_argument("--root", type=Path, default=ROOT)
     ap.add_argument("--remote", help="mặc định https://github.com/<repository>.git của lock")
     ns = ap.parse_args(argv)
+    lock = load_lock(ns.lock)
     try:
-        with tempfile.TemporaryDirectory(prefix="ecc-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="vendor-") as tmp:
             src = ns.src
             if src is None:
-                lock = load_lock(ns.root)
                 src = fetch(
                     ns.remote or f"https://github.com/{lock['repository']}.git",
                     lock["revision"],
                     Path(tmp),
                 )
             if ns.cmd == "build":
-                new = build(ns.root, src)
+                new = build(ns.root, src, ns.lock)
                 m = new["measured"]
                 print(
-                    f"ECC {new['tag']} → {m['files']} tệp: {m['skills']} skill, {m['commands']} lệnh, "
+                    f"{new['label']} {new['tag'] or new['version']} → {m['files']} tệp: {m['skills']} skill, {m['commands']} lệnh, "
                     f"{m['agents']} agent; mô tả {m['description_chars']} ký tự"
                 )
                 return 0
-            report = check(ns.root, src)
+            report = check(ns.root, src, ns.lock)
     except VendorError as e:
-        print(f"ecc_vendor: {e}", file=sys.stderr)
+        print(f"vendor_skills: {e}", file=sys.stderr)
         return 1
     for line in report:
         print(line, file=sys.stderr)
     if report:
         print(
-            "Tập ECC vendor lệch nguồn ghim. Chạy `make ecc-vendor` rồi commit lại.",
+            f"Tập vendor `{lock['label']}` lệch nguồn ghim. Chạy `make vendor LOCK={_rel(ns.root, ns.lock)}` rồi "
+            "commit lại.",
             file=sys.stderr,
         )
         return 1
-    print("ECC vendor khớp nguồn ghim.")
+    print(f"Tập vendor `{lock['label']}` khớp nguồn ghim.")
     return 0
 
 

@@ -42,9 +42,10 @@ là chưa đạt, không hạ chuẩn để kết thúc. Nguồn template: `docs
    Chỉ commit `*.example.yaml`. gitleaks quét cả lịch sử — lỡ commit rồi xoá vẫn đỏ (`SECURITY.md`).
 4. **Không gọi provider trả phí trong test.** Provider `fake` + bản ghi eval đủ chạy offline toàn bộ.
 5. **Không sửa tay bản dẫn xuất**: `.claude/agents/sc-*.md` sinh từ `companies/software-company/agents/`, `skills/`,
-   `gates/checklists.md` bằng `make subagents`; `tests/golden/` sinh bằng `make golden`; tệp `ecc-*` trong
-   `.claude/skills/`, `.claude/commands/`, `.claude/agents/` cùng `docs/integrations/ecc.LICENSE` sinh từ
-   `docs/integrations/ecc.lock.json` bằng `make ecc-vendor` (ADR gốc 0028). Sửa nguồn rồi sinh lại.
+   `gates/checklists.md` bằng `make subagents`; `tests/golden/` sinh bằng `make golden`; tệp `ecc-*`, `mp-*` trong
+   `.claude/skills/`, `.claude/commands/`, `.claude/agents/` cùng `docs/integrations/ecc.LICENSE`,
+   `docs/integrations/mattpocock.LICENSE` sinh từ lock `docs/integrations/<tên>.lock.json` bằng
+   `make vendor LOCK=<lock>` (ADR gốc 0028, 0030). Sửa nguồn rồi sinh lại.
 6. **Không hạ ngưỡng coverage để PR qua cổng.** `fail_under = 100` ở cả năm package; mất một dòng phủ là CI đỏ
    — thêm test, không hạ số.
 7. **Không "sửa" code cạnh bên.** Mỗi dòng đổi phải truy được về yêu cầu. Thấy dead code thì nói, đừng xoá.
