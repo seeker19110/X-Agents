@@ -1,0 +1,25 @@
+# Mẫu — `scripts/systemd.sh install` thay @REPO_ROOT@/@UV@ rồi ghi vào ~/.config/systemd/user/. ADR gốc 0032.
+[Unit]
+Description=X-Agents orchestrator — vòng lặp xưởng phần mềm (orchestrator run --watch)
+Documentation=file://@REPO_ROOT@/docs/TRIEN-KHAI-SYSTEMD.md
+Wants=xagents-gateway.service
+After=network-online.target xagents-gateway.service
+
+[Service]
+Type=simple
+# Mặc định; hub.env ghi đè được (EnvironmentFile thắng Environment).
+Environment=ORCHESTRATOR_WATCH=10
+# stdout ra journald là pipe: không đệm thì log (kể cả địa chỉ kèm token của console) hiện ngay.
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.config/x-agents/hub.env
+# `--db` mặc định `company.sqlite` trong thư mục này — đúng file console đọc mặc định.
+WorkingDirectory=@REPO_ROOT@/companies/software-company
+ExecStart=@UV@ run --no-sync python -m company.orchestrator $ORCHESTRATOR_ARGS run --watch ${ORCHESTRATOR_WATCH}
+# SIGINT: `run` bắt KeyboardInterrupt và trả lease bus; SIGTERM giết thẳng.
+KillSignal=SIGINT
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

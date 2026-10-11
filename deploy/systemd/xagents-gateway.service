@@ -1,0 +1,20 @@
+# Mẫu — `scripts/systemd.sh install` thay @REPO_ROOT@/@UV@ rồi ghi vào ~/.config/systemd/user/. ADR gốc 0032.
+[Unit]
+Description=X-Agents gateway — proxy OpenAI-compatible xoay vòng tài khoản Google (127.0.0.1:1123)
+Documentation=file://@REPO_ROOT@/docs/TRIEN-KHAI-SYSTEMD.md
+After=network-online.target
+
+[Service]
+Type=simple
+# stdout ra journald là pipe: không đệm thì log (kể cả địa chỉ kèm token của console) hiện ngay.
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.config/x-agents/hub.env
+WorkingDirectory=@REPO_ROOT@/platform/gateway
+# --foreground: systemd giữ tiến trình, không để gateway tự tách daemon + PID file.
+ExecStart=@UV@ run --no-sync python -m gateway start --foreground
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

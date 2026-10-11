@@ -1,0 +1,23 @@
+# Mẫu — `scripts/systemd.sh install` thay @REPO_ROOT@/@UV@ rồi ghi vào ~/.config/systemd/user/. ADR gốc 0032.
+[Unit]
+Description=X-Agents console — dashboard trực ban (127.0.0.1:8200)
+Documentation=file://@REPO_ROOT@/docs/TRIEN-KHAI-SYSTEMD.md
+After=xagents-orchestrator.service
+
+[Service]
+Type=simple
+Environment=CONSOLE_ARGS=--allow-decide
+# stdout ra journald là pipe: không đệm thì log (kể cả địa chỉ kèm token của console) hiện ngay.
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.config/x-agents/hub.env
+WorkingDirectory=@REPO_ROOT@/platform/console
+# Chỉ nghe loopback (mặc định của console); từ xa thì SSH tunnel. KHÔNG --allow-engine: orchestrator đã có unit
+# riêng, console bật thêm một cái thì hai tiến trình tranh một lease.
+ExecStart=@UV@ run --no-sync python -m console $CONSOLE_ARGS
+# SIGINT: console bắt KeyboardInterrupt để đóng server và xoá file token.
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
