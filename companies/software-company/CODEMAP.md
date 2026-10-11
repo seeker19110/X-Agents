@@ -45,7 +45,7 @@
 
 | Muốn | Sửa | Test đối chiếu |
 |---|---|---|
-| Lint/test thật trong worktree ticket, `local_checks` | `TicketWorkspace.run_checks` (`src/company/workspace.py`); lệnh theo stack: `src/company/stacks.py` |
+| Lint/test thật trong worktree ticket, `local_checks` | `TicketWorkspace.run_checks` (`src/company/workspace.py`); lệnh theo stack: `src/company/stacks.py` (Python chạy bằng môi trường của khách — `[project]` → `uv run`, không có `[project]` mà khai bằng `requirements*.txt` → `uv run --isolated --no-project --with-requirements`: `_py_stack`, ADR-0044 + bổ sung 2026-10-11) |
 | Sổ Ruling: trường `rulings` mọi topic, audit `ruling`, `Orchestrator.rulings()`, CLI `rulings`, mục trong gate_brief | `events.py` (`Ruling`), 19 schema, `runner.publish`, `orchestrator.py`, `gate_brief.py` — ADR-0030 |
 | Smoke sau deploy staging (`runtime` của spec) | `src/company/smoke.py`; hook `Orchestrator._smoke`; `_release_evidence` mang sang production |
 | Deploy thật bằng `docker compose` (`deployed` = container đang chạy; `deploy_failed`; `skipped`) | `src/company/deploy.py` (`deploy`, `DeployRecord`, `project_name`, `COMPANY_DEPLOY*`); hook `orch/verify.py::deploy_release` gọi từ `orch/release_fsm.py::_release`; `runtime.deploy` trong `topics/schemas/approved-specs.json` + `smoke.parse_runtime`; `status`/`evidence` trong `topics/schemas/release-events.json`; bậc phễu console `platform/console/src/console/truth.py`; ADR-0039 |
