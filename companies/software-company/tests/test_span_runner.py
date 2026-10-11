@@ -193,3 +193,36 @@ def test_cau_mcp_mat_cha_cua_span_tool_call():
     assert len(calls) == 2, "cả hai đường đều CÓ span"
     assert calls[0].parent is None, "qua cầu: thread handler → Context rỗng → mất cha"
     assert calls[1].parent is parent, "cùng luồng: cha là span đang mở"
+
+
+# ---------- nối sink (ib1-quansat Q2): một khoá env `COMPANY_OTEL=1`, đọc lúc dựng runner của orchestrator ----------
+
+def _orch_runner_sink() -> Any:
+    from company.orchestrator import Orchestrator
+    return Orchestrator(InMemoryBus(), FakeClient(handler=lambda s, u: "{}")).runner.sink
+
+
+def test_sink_none_khi_khong_cau_hinh(monkeypatch):
+    """Không bật thì `None` tuyệt đối như trước (quyết định 5 của ADR-0009): không đọc đồng hồ, không cấp phát."""
+    monkeypatch.delenv("COMPANY_OTEL", raising=False)
+    assert _orch_runner_sink() is None
+
+
+def test_sink_bat_khi_cau_hinh(monkeypatch):
+    import company.runner as runner_mod
+    goi: list[str] = []
+    sink = MemorySink()
+    monkeypatch.setattr(runner_mod, "otel_sink", lambda name: goi.append(name) or sink)
+    monkeypatch.setenv("COMPANY_OTEL", "1")
+    assert _orch_runner_sink() is sink and goi == ["company"]
+
+
+def test_sink_null_khi_thieu_otel(monkeypatch):
+    """Bật nhưng người vận hành chưa cài OTel → `NullSink` (đo nhưng không phát), không phải ImportError lúc khởi động.
+    `sys.modules[...] = None` làm `import opentelemetry` ném ImportError mà không cần gỡ/cài gói nào."""
+    import sys
+
+    from xagents_core.observe import NullSink
+    monkeypatch.setitem(sys.modules, "opentelemetry", None)
+    monkeypatch.setenv("COMPANY_OTEL", "1")
+    assert isinstance(_orch_runner_sink(), NullSink)

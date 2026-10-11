@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from xagents_core.llm import USAGE_EXTRA
-from xagents_core.observe import Span, span, use_parent
+from xagents_core.observe import Span, otel_sink, span, use_parent
 from xagents_core.runner import AgentRunner as CoreAgentRunner
 from xagents_core.runner import Generated as CoreGenerated
 from xagents_core.runner import RunnerError as RunnerError
@@ -226,6 +227,9 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
                          default_max_input_chars=DEFAULT_MAX_INPUT_CHARS)
         self.pricing = getattr(client, "pricing", None)
         self.lesson_provider = lesson_provider
+        # ADR gốc 0009 (bổ sung 2026-10-10): span chỉ phát khi người vận hành bật `COMPANY_OTEL=1`; thiếu OTel →
+        # `NullSink` (đo, không phát), không bật → `None` tuyệt đối như cũ (quyết định 5).
+        if os.environ.get("COMPANY_OTEL") == "1": self.sink = otel_sink("company")
         # Input token THẬT của lượt ĐẦU trong bước hiện tại, để đối chiếu với ước lượng của `fit` (p3.2a).
         # Phải là lượt đầu chứ không phải lượt cuối: từ lượt hai trở đi prompt đã mang thêm cả hội thoại
         # tool, mà `fit` chỉ đo prompt ban đầu — so lượt cuối là so hai thứ khác nhau rồi gọi đó là sai số.

@@ -217,6 +217,17 @@ def _pub_env() -> Envelope:
     return Envelope(topic="pull-requests", key="T1", actor="builder", payload={"ticket_id": "T1"})
 
 
+def test_tasks_mang_correlation_cua_plan():
+    """ib1-quansat Q1: `tasks` là con của event nguồn của kế hoạch (approved-specs/change-request) — cả ticket giao
+    ngay lẫn ticket chờ phụ thuộc rồi mới giao (`_flush_waiting`). Trước đây mỗi `tasks` là một gốc nhân quả mới."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    src = next(e for e in bus.replay() if e.event_id == orch.plans["PLAN-P1-1"]["source_event"])
+    tasks = list(bus.replay(topic="tasks"))
+    assert {e.key for e in tasks} == {"T1", "T2"}, "T2 phụ thuộc T1: giao qua `_flush_waiting` sau khi T1 xong"
+    assert {(e.correlation_id, e.causation_id) for e in tasks} == {(src.correlation_id, src.event_id)}
+
+
 # ---------- vòng đời đầy đủ trong bộ nhớ ----------
 
 def test_full_lifecycle_stops_at_gates_and_humans():

@@ -80,7 +80,10 @@ def rehydrate(o: Orchestrator) -> None:
                 # này nằm SAU trong log nên vẫn ghi đè được trạng thái `dispatched`/`waiting` dựng ở đây.
                 o.plans[d["plan_id"]] = d
                 o.lead.plans_ok.add(str(d["plan_id"]))
-                o._dispatch_plan(str(d["plan_id"]), replaying=True)
+                # Cha của `tasks` (ib1-quansat Q1) dựng lại cùng chỗ: ticket còn `waiting` được giao SAU restart vẫn nối
+                # chuỗi nhân quả của kế hoạch, và trạng thái lead sau restart khớp trạng thái lúc chạy.
+                src = next((e for e in log if e.event_id == d.get("source_event")), None)
+                o._dispatch_plan(str(d["plan_id"]), replaying=True, cause=src)
             elif a["action"] == "release.void": o._void(d["release_id"])
             # `release.staged`/`acceptance.auto` dựng lại sha sẽ lên production và ticket đã đóng — sau ADR-0043 không
             # còn người ký chen giữa, nên chỉ tin dòng do CHÍNH orchestrator ghi (`env.actor` do bus kiểm; audit-log

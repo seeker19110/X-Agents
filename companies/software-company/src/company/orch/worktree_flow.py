@@ -278,4 +278,8 @@ def takeover(o: Orchestrator, ticket_id: str, by: str, message: str | None = Non
          "impact": {"files": files}, "local_checks": {**checks, "verified_by": "workspace"}}
     o._audit("human.takeover", {"ticket_id": ticket_id, "by": by, "commit": sha, "files": files,
                                    "lint": checks["lint"], "tests": checks["tests"]}, actor=by, ticket_id=ticket_id, project_id=t.project_id)
-    return o.bus.publish(Envelope(topic="pull-requests", key=ticket_id, actor=by, payload=p))
+    # Con của PR gần nhất (chưa có PR thì của `tasks` — ticket dispatched luôn đã có nó trên bus): giữ `correlation_id`
+    # của ticket thay vì mở một gốc nhân quả mới (ib1-quansat Q1).
+    cause = o.bus.latest("pull-requests", ticket_id) or o.bus.latest("tasks", ticket_id)
+    make = cause.child if cause is not None else Envelope
+    return o.bus.publish(make(topic="pull-requests", key=ticket_id, actor=by, payload=p))  # type: ignore[arg-type]  # child() khai kiểu Envelope của core
