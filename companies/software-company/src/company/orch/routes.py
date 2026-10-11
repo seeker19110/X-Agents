@@ -13,6 +13,7 @@ from ..events import Envelope
 from ..registry import AgentSpec
 from ..roles import BUILD_PHASES, FINDING_KIND, PHASE, ROLE, SOURCE
 from ..runner import CONTEXT_ONLY
+from ..stop_kind import STOP_POLICY
 
 if TYPE_CHECKING:
     pass
@@ -45,8 +46,9 @@ from .guards import spec_runtime_gap as spec_runtime_gap
 ACTOR = "orchestrator"
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
 
-MAX_CONFLICT_RETRIES = 6  # xung đột merge thứ 7 liên tiếp cho một ticket mới tính vào retry nội dung (xem conflict_retries)
-MAX_TURN_CONTINUATIONS = 3  # lần builder hết lượt tool mà worktree có tiến độ được làm tiếp không tính retry (xem turn_continuations)
+# ADR-0052: hai trần này là hai dòng của bảng `STOP_POLICY`, khai một chỗ ở `stop_kind.py`; giữ tên ở đây cho chỗ nhập cũ.
+MAX_CONFLICT_RETRIES = STOP_POLICY["merge_conflict"].free_stops or 0
+MAX_TURN_CONTINUATIONS = STOP_POLICY["turn_limit"].free_stops or 0
 # Chuỗi nghiên cứu chạy theo key=project, không có ticket/retry/blocked: một agent lỗi là cả dự án đứng mà không ai
 # thấy. Lỗi ở các topic này mở gate `escalation` cấp dự án (approve = chạy lại event, reject = đóng dự án).
 RESEARCH_TOPICS = frozenset({"research-requests", "research-findings", "requirements-draft", "clarification-answers"})

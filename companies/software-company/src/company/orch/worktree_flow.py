@@ -157,7 +157,8 @@ def merge_ticket_locked(o: Orchestrator, tid: str, res: StepResult, release_id: 
         res.actions.append(f"integration_failed:{tid}")
         return False
     hint = f"xung đột với nhánh tích hợp {integration.branch} ở: {', '.join(m.conflicts or [])}. Làm lại trên nền mới."
-    o._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts}, ticket_id=tid)
+    o._audit("integration.conflict", {"release_id": release_id, "ticket_id": tid, "conflicts": m.conflicts,
+                                      "stop_kind": "merge_conflict"}, ticket_id=tid)
     with o._lock: o.conflict_retries[tid] += 1; n = o.conflict_retries[tid]
     try:
         ws.fresh()
@@ -165,7 +166,7 @@ def merge_ticket_locked(o: Orchestrator, tid: str, res: StepResult, release_id: 
         # `request_changes_no_retry_bump`). Vượt ngưỡng: lặp quá nhiều lần là dấu hiệu bế tắc cấu trúc
         # (nhiều ticket cùng sửa một file interface) — tính vào retry nội dung như cũ để cuối cùng mở gate.
         if n > MAX_CONFLICT_RETRIES:
-            o.lead.request_changes(tid, hint)
+            o.lead.request_changes(tid, hint, kind="merge_conflict")
         else:
             o.lead.request_changes_no_retry_bump(tid, hint)
     except (ValueError, WorkspaceError) as e:

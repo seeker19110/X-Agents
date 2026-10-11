@@ -59,7 +59,7 @@
       {
         "action": "delivery-lead: ticket.blocked",
         "at": "<…>",
-        "detail": "{\"ticket_id\": \"T1\", \"retry\": 3, \"max_retries\": 3}"
+        "detail": "{\"ticket_id\": \"T1\", \"retry\": 3, \"max_retries\": 3, \"stop_kind\": \"agent_error\", \"stops\": {\"agent_error\": 3}}"
       }
     ],
     "rulings": [],
@@ -70,6 +70,9 @@
       "retry": 2,
       "risk_tags": [],
       "state": "blocked",
+      "stops": {
+        "agent_error": 3
+      },
       "title": "GET /orders"
     },
     "worktree": {}
