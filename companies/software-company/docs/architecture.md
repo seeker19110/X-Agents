@@ -39,7 +39,7 @@ phải có mặt; agent được liệt kê mà không có route phải ghi `(ch
 | release-events | ops (pha `deploy`) | code (`delivery.py`), qa[review] (staging), ops (pha `docs`, production), ops (pha `account`, chỉ đọc), human gate | release_id |
 | incidents | ops (pha `docs`) | product (pha `plan` khi root_cause_class code/ops/design), ops (pha `docs`, → research-requests khi requirement) | incident_id |
 | external-feedback | human (khách, người dùng) | ops (pha `docs`), ops (pha `account`) | project_id |
-| change-requests | ops (pha `account`) | product (pha `plan` khi decision=pending hoặc accepted; pha `intake` khi accepted và đổi yêu cầu) | change_id |
+| change-requests | ops (pha `account`); code (`delivery.py`, `REPLAN-*` khi ticket hết retry, ADR-0051) | product (pha `plan` khi decision=pending hoặc accepted; pha `intake` khi accepted và đổi yêu cầu) | change_id |
 | acceptance-results | ops (pha `account`) | code (`delivery.py`, đóng ticket của release), ops (pha `account`, → change-requests khi verdict conditional) | release_id |
 | shared-context | theo namespace | tất cả | namespace |
 | audit-log | tất cả | supervisor | actor |

@@ -41,7 +41,7 @@ from xagents_core.registry import AgentSpec, load_agent
 
 from . import guard
 
-ASSET_DIRS = ("agents", "skills", "templates", "gates", "topics")
+ASSET_DIRS = ("agents", "skills", "templates", "gates", "topics", "roleplay")  # roleplay: ADR-0050
 ASSET_SUFFIXES = frozenset({".md", ".json", ".yaml", ".yml", ".txt"})
 WAIVERS_FILE = "assetscan-waivers.txt"
 

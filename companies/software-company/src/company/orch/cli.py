@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..roleplay import RolePlay
 from ..runner import artifact_store
 from . import cli_cmds
 
@@ -72,6 +73,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--artifacts", type=Path, help="artifact store của blackboard (mặc định <db>.artifacts/)")
     ap.add_argument("--workers", type=int, default=1, help="số event khác key chạy song song (mặc định 1)")
     ap.add_argument("--web", action="store_true", help="cho researcher tool web_search/fetch_url (mạng ra ngoài)")
+    ap.add_argument("--debate", type=int, default=None, metavar="N",
+                    help="ADR-0050: N lượt role-play đề xuất/phản biện trước pha research mỗi dự án (mặc định tắt; "
+                         "hoặc COMPANY_DEBATE_TURNS=N)")
     ap.add_argument("--batch-release", action="store_true",
                     help="gom mọi ticket approved của dự án vào một RC khi không còn ticket đang chạy (mặc định: mỗi ticket một RC)")
     ap.add_argument("--deliver", action="store_true",
@@ -147,7 +151,9 @@ def main(argv: list[str] | None = None) -> int:
     # `run`, `redeploy`, `recheck` GỌI MODEL (lượt staging của release-engineer, lượt security) nên cần client thật;
     # status/report/show/comment/takeover là việc của người và của code, không được đòi SDK/API key.
     # Thiếu `redeploy` ở đây thì lệnh chạy bằng FakeClient và chết "FakeClient hết câu trả lời" — đo được 2026-09-06.
-    orch = Orchestrator(bus, make_client() if ns.cmd in {"run", "redeploy", "recheck"} else FakeClient(), repo=ns.repo, base=ns.base,
+    client = make_client() if ns.cmd in {"run", "redeploy", "recheck"} else FakeClient()
+    orch = Orchestrator(bus, client, repo=ns.repo, base=ns.base,
+                        roleplay=RolePlay.from_env(client, turns=ns.debate, pricing=getattr(client, "pricing", None)),
                         integration=ns.integration, workers=ns.workers,
                         web=ns.web, batch_releases=ns.batch_release, artifacts=ns.artifacts or artifact_store(ns.db),
                         deliver=ns.deliver, push_remote=ns.push_remote, release_branch=ns.release_branch,

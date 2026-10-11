@@ -21,6 +21,7 @@ from ..roles import PHASE, ROLE, SOURCE
 from ..routing import retry_after_seconds
 from ..runner import RunnerError
 from .fsm import Transition
+from .gates_flow import _retire_replanned
 from .guards import pending_clarifications
 from .routes import PLAN_INPUTS, PLAN_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
 
@@ -99,6 +100,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             # đã qua `_check_plan` và đã dispatch — có mặt ở đây là đang sống, không cần hỏi gate nữa.
             o._audit("plan.duplicate_spec", {"project_id": project, "event_id": env.event_id, "existing": live}, project_id=project)
             res.actions.append(f"plan_skipped:{','.join(live)}"); o._mark(env, res); return res
+    if env.topic == "change-requests": _retire_replanned(o, env, res)  # ADR-0051: CR replan → đóng ticket cũ trước
     cal = o.supervisor.calibration()  # vòng học: bài học estimate-vs-actual quay lại người ước lượng
     inp = env.model_copy(update={"payload": {**env.payload, "estimate_calibration": cal}}) if cal else env
     try:

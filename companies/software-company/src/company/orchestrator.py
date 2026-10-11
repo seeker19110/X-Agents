@@ -108,6 +108,7 @@ from .orch.routes import THREAT_ROUTE as THREAT_ROUTE
 from .orch.routes import spec_runtime_gap as spec_runtime_gap
 from .orch.state import OrchState, install_aliases
 from .registry import AgentSpec, load_agents
+from .roleplay import RolePlay
 from .roles import ENGINEERING as ENGINEERING
 from .runner import CONTEXT_ONLY, AgentRunner, RunnerError
 from .sandbox import Sandbox, SubprocessSandbox
@@ -176,8 +177,8 @@ class Orchestrator:
                  deliver: bool = False, push_remote: str | None = None, release_branch: str = "company/release",
                  test_author: bool = False, sandbox: Sandbox | None = None, deliver_pr: bool = False,
                  deploy_fn: Any = None, quality_driver: TrustedDriver | None = None,
-                 quality_trust: Path | None = None, quality_lookup: ApprovalLookup | None = None):
-        self.bus = bus
+                 quality_trust: Path | None = None, quality_lookup: ApprovalLookup | None = None, roleplay: RolePlay | None = None):
+        self.bus, self.roleplay = bus, roleplay  # roleplay: ADR-0050, mặc định tắt như `test_author` (thêm lượt model)
         self.quality_driver, self.quality_lookup = quality_driver, quality_lookup  # ADR gốc 0021; mặc định None → CLI commit
         self.quality_trust, self._quality_lock = (Path(quality_trust) if quality_trust else None), threading.RLock()
         self._quality_stuck, self._quality_done = {}, {}  # RAM, run_id → attempt (orch/quality_flow.py)

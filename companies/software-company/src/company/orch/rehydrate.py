@@ -96,7 +96,7 @@ def rehydrate(o: Orchestrator) -> None:
                 try: o.lead.close_accepted(str(d["release_id"]))
                 finally: o.lead.replaying = prev_r
             elif a["action"] == "delivery.rolled_back": o.delivered.pop(d["release_id"], None)
-            elif a["action"] == "ticket.abandoned":  # khi chạy `close_escalated` đặt `closed`; dựng lại phải giống
+            elif a["action"] in {"ticket.abandoned", "ticket.replanned"}:  # `close_escalated` đặt `closed`; dựng lại phải giống
                 o.lead.state[str(d["ticket_id"])] = "closed"; o.lead.abandon(d["ticket_id"])
             elif a["action"] == "defer.until" and d.get("event_id"):
                 hen[str(d["event_id"])] = (str(d.get("until") or ""), str(d.get("reason") or "transient:?"))

@@ -69,7 +69,17 @@ def decide_change(bus: SQLiteBus, ns: argparse.Namespace) -> int:
     payload = {**cr.payload, "decision": ns.decision, "impact": {**cr.payload.get("impact", {}), **impact.get("impact", {}),
                                                                    "decided_by": ns.by, "reason": ns.reason}}
     env = bus.publish(Envelope(topic="change-requests", key=ns.change_id, actor=ns.by, payload=payload))
-    print(f"{ns.change_id}: {ns.decision} by {ns.by} event={env.event_id}"); return 0
+    print(f"{ns.change_id}: {ns.decision} by {ns.by} event={env.event_id}")
+    imp = payload["impact"]
+    if imp.get("kind") == "replan" and ns.decision == "accepted":
+        # ADR-0051: chấp nhận replan = ticket cũ đóng (`_retire_replanned`); gate escalation của nó đóng DƯỚI CHỮ KÝ
+        # NGƯỜI ngay tại đây — máy không ghi `gate.decide` được (bus chặn; `_trusted` cũng không tin khi replay).
+        from ..gate_cli import PersistentGate, gate_approvers
+        gate = PersistentGate(bus, approvers=gate_approvers()); tid = str(imp.get("ticket_id"))
+        if (g := gate.pending.get(tid)) is not None and g.kind == "escalation":
+            gate.decide(tid, "reject", by=ns.by, reason=f"replan {ns.change_id} accepted: {ns.reason or 'ticket thay bằng kế hoạch mới'}"[:300])
+            print(f"gate escalation {tid}: reject by {ns.by} (replan {ns.change_id})")
+    return 0
 
 
 def metrics(bus: SQLiteBus, ns: argparse.Namespace) -> int:

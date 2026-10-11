@@ -7,7 +7,16 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from .bus import InMemoryBus
-from .events import BUDGET_FACTOR, AcceptanceResult, AuditLog, Envelope, ReviewResult, Task, can_transition
+from .events import (
+    BUDGET_FACTOR,
+    AcceptanceResult,
+    AuditLog,
+    ChangeRequest,
+    Envelope,
+    ReviewResult,
+    Task,
+    can_transition,
+)
 from .gate_cli import PersistentGate
 from .gate_risk import request_gate
 from .gates import GateRequest
@@ -31,8 +40,13 @@ class DeliveryLead:
     IN_FLIGHT = frozenset({"waiting", "dispatched", "in_progress", "in_review", "changes_requested"})
 
     def __init__(self, bus: InMemoryBus, gate: PersistentGate, max_retries: int = 3,
-                 review_timeout: timedelta = timedelta(hours=2), batch_releases: bool = False):
+                 review_timeout: timedelta = timedelta(hours=2), batch_releases: bool = False, replan_rounds: int = 1):
         self.bus, self.gate, self.max_retries, self.review_timeout = bus, gate, max_retries, review_timeout
+        # ADR-0051: hết retry thì ngoài gate escalation còn nộp CR `REPLAN-<ticket>-<thế hệ>` cho planner lập lại;
+        # `replan_rounds` là trần THẾ HỆ (ticket sinh từ replan lại hết retry → thế hệ 2), 0 = tắt.
+        self.replan_rounds = replan_rounds
+        self.replan_open: dict[str, str] = {}  # ticket_id → change_id REPLAN đang chờ người quyết (checklist gate escalation)
+        self.replans_filed: set[str] = set()   # change_id đã nộp (dựng lại từ bus): block lần hai cùng thế hệ không nộp lại
         # batch_releases: gom mọi ticket approved của dự án vào MỘT RC khi không còn ticket nào đang chạy (thay vì mỗi
         # ticket một release → mỗi ticket một lần staging, một gate 3, một UAT). Ticket blocked/escalated chờ người,
         # không giữ release của người khác.
@@ -229,9 +243,33 @@ class DeliveryLead:
                                                  evidence=json.dumps({"ticket_id": tid, "retry": t.retry + 1,
                                                                       "max_retries": self.max_retries},
                                                                      ensure_ascii=False)).model_dump()))
+            self._request_replan(t, hint)
             return
         nt = t.model_copy(update={"retry": t.retry + 1, "hint": hint})
         self.tickets[tid] = nt; self._publish_task(nt)
+
+    def replan_generation(self, tid: str) -> int:
+        """Thế hệ replan của ticket theo chuỗi nhân quả: ticket giao từ kế hoạch của một CR `REPLAN-*` là thế hệ
+        `impact.generation + 1`; còn lại là 1. Đếm theo `cause` chứ không theo id vì planner đặt id mới cho ticket thay thế."""
+        c = self.cause.get(tid)
+        imp = c.payload.get("impact") or {} if c is not None and c.topic == "change-requests" else {}
+        return int(imp.get("generation", 0)) + 1 if imp.get("kind") == "replan" else 1
+
+    def _request_replan(self, t: Task, hint: str | None) -> None:
+        """ADR-0051: coordinator không tự lập kế hoạch — nó nộp một change request cho planner (`product[plan]`) và
+        người quyết qua `decide-change`. Gate escalation vẫn mở song song (reopen/close); đây là lựa chọn thứ ba.
+        Một CR cho mỗi (ticket, thế hệ): người mở lại rồi ticket block lần nữa thì không nộp lại cùng mã."""
+        gen = self.replan_generation(t.ticket_id); cid = f"REPLAN-{t.ticket_id}-{gen}"
+        if gen > self.replan_rounds or cid in self.replans_filed: return
+        deps = [x.ticket_id for x in self.tickets.values()
+                if t.ticket_id in x.depends_on and self.state.get(x.ticket_id) == "waiting"]
+        desc = (f"Ticket {t.ticket_id} ({t.title}) hết {self.max_retries} lần retry; lỗi cuối: {hint or '?'}. "
+                f"Lập lại kế hoạch cho phần việc này (requirement {t.requirement_id}): cắt ticket khác, id MỚI, "
+                f"không dùng lại {t.ticket_id}. Ticket đang chờ nó: {deps or 'không'}.")
+        cr = ChangeRequest(change_id=cid, project_id=t.project_id, requested_by=LEAD_ACTOR, description=desc[:1000],
+                           impact={"kind": "replan", "ticket_id": t.ticket_id, "generation": gen, "retry": t.retry + 1,
+                                   "hint": (hint or "")[:500], "dependents": deps})
+        self._emit(Envelope(topic="change-requests", key=cid, actor=LEAD_ACTOR, payload=cr.model_dump()))
 
     def _on_review(self, env: Envelope) -> None:
         r = ReviewResult.model_validate(env.payload)
@@ -498,6 +536,13 @@ class DeliveryLead:
         đi lập kế hoạch riêng; rejected/deferred → không làm nữa) thì release đó coi như đã nghiệm thu: ticket đóng.
         Trước đây ticket giữ `released` mãi, dự án không bao giờ hết việc."""
         p = env.payload
+        imp = p.get("impact") or {}
+        if imp.get("kind") == "replan":  # ADR-0051: sổ CR replan — ai đóng ticket cũ là orchestrator (`_retire_replanned`)
+            cid, tid = str(p.get("change_id")), str(imp.get("ticket_id"))
+            self.replans_filed.add(cid)
+            if p.get("decision", "pending") == "pending": self.replan_open[tid] = cid
+            else: self.replan_open.pop(tid, None)
+            return
         rid = p.get("release_id")
         if p.get("decision", "pending") == "pending" or not rid: return
         a = self.acceptance.get(str(rid))

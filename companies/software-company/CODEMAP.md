@@ -101,6 +101,8 @@
 | Trợ lý kiểm duyệt `sc-*` | `src/company/subagents.py` sinh từ agents + skills + checklists — không sửa tay đầu ra |
 | Quét tài sản prompt, ngân sách prompt tĩnh | `src/company/assetscan.py` (ADR-0022) |
 | Tool web cho `product` pha research | `src/company/web.py` |
+| Phiên role-play đề xuất/phản biện trước pha research (ADR-0050): hạn mức lượt/token, hai vai, `debate` vào payload | `src/company/roleplay.py` (`RolePlay`, `from_env`), prompt hai vai `roleplay/proposer.md`, `roleplay/critic.md` (+`version`), enrich `_with_debate` ở `src/company/orch/enrich.py`; bật `--debate N` / `COMPANY_DEBATE_TURNS`; test `tests/test_roleplay.py` |
+| Coordinator hết retry → nộp CR `REPLAN-<ticket>-<thế hệ>` cho planner, người quyết; chấp nhận thì đóng ticket cũ + gate escalation (ADR-0051) | `delivery.py::_request_replan`/`replan_generation` (`replan_rounds`, `replan_open`, `replans_filed`), ACL `core.py` (`LEAD_ACTOR` phát `change-requests`), `orch/gates_flow.py::_retire_replanned` (gọi từ `orch/ticket_fsm.py::_plan`), checklist `replan:<cid>` ở `_check_escalations`, `orch/cli_cmds.py::decide_change` ký gate dưới tên người, `orch/rehydrate.py` dựng `ticket.replanned`; test `tests/test_replan_adr0051.py` |
 | Mô phỏng cả công ty offline | `src/company/demo.py`, `examples/donghanhcungban_demo.py`, `examples/relay_client.py` |
 | Nối agent thành đồ thị LangGraph (tùy chọn) | `src/company/graph.py` (`research_order`, `build_graph`) — extra `[graph]`; không nơi nào trong `src/` gọi, `omit` khỏi coverage vì CI không cài `langgraph` |
 | Yêu cầu mẫu để publish | `examples/yeu-cau-mau-web-app.json` |
