@@ -1,0 +1,9 @@
+# Sàn ĐIỂM của thước đo ngoài GAIA (ADR keeper 0003). `python -m keeper.benchmark gaia --replay <bản ghi> --strict`
+# đỏ khi accuracy < min_accuracy, số đề < min_tasks, hoặc hai số này còn null (= CHƯA ĐO: chưa đo không phải đạt).
+#
+# Cách điền (người có key, xem README.md cùng thư mục): tải GAIA validation (165 đề), chạy `--record`, đọc bảng,
+# làm tròn XUỐNG 0.05 theo quy ước CONTRIBUTING.md §3, ghi ngày + model vào `note`. Không hạ số để né đỏ (luật cấm 6).
+min_accuracy: null
+min_tasks: null
+levels: {}
+note: "chưa đo — bộ mẫu sample.jsonl không phải GAIA, không được dùng để đặt sàn"

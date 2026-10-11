@@ -31,6 +31,7 @@ sâu hơn bảng này.
 | Nạp danh sách agent | `registry.load_agents()` — `AgentSpec` của lõi (không lớp con riêng); `check_owners=False` vì `keeper/skills/` chưa tồn tại | `tests/test_runner.py`, `tests/test_golden_agents.py` |
 | Blackboard giữa các agent | `blackboard.py` — lớp con mỏng của `xagents_core.blackboard`, `store=None`; chưa agent nào ghi namespace, tồn tại vì `EvalSuite.run_eval` dựng một cái cho mỗi ca | `tests/test_runner.py` |
 | Eval prompt: ghi/phát lại, ngưỡng điểm | `evals.py` — `python -m keeper.evals <agent>` (hoặc `all`), `--record` (model thật) / `--replay --strict` (CI); đỏ khi BẤT KỲ ca nào `errored`, cộng `evals/thresholds.yaml` gác điểm; bộ ca `evals/<agent>.yaml` chỉ 4/10 agent (lý do trong docstring) | `tests/test_evals.py` |
+| Thước đo NGOÀI theo khuôn GAIA: scorer chính thức, `--record`/`--replay`, sàn `floor.yaml`, tín hiệu `benchmark` (ADR keeper 0003) | `benchmark.py` — `python -m keeper.benchmark gaia --replay <bản ghi> --strict`; đề mẫu + sàn + hướng dẫn ở `benchmarks/gaia/` (sàn `null` = chưa đo = đỏ) | `tests/test_benchmark.py` |
 | Bus/envelope riêng của keeper | `bus.py` (`KeeperBus`/`KeeperMemoryBus`), `events.py` (`Topic`, `PAYLOAD_MODELS`, `NAMESPACE_OWNERS`) | `tests/test_bus.py`, `tests/test_events.py` |
 | Cấu hình gốc/tên công ty | `core.py` — `CORE = CoreConfig(prefix="KEEPER", ...)`, MỘT chỗ duy nhất | `tests/test_core.py` |
 | Test không chạm mạng thật | `fakes.FakeGitHub` — JSON cố định, mọi test dùng | — |

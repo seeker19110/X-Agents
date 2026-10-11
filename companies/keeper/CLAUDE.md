@@ -13,6 +13,7 @@ uv run python -m keeper.cli run --tickets <file.json> --root <worktree phụ> --
 uv run python -m keeper.cli watch --db <path> --repo <path> --interval N
 uv run python -m keeper.cli drift --repo ../..                   # thuần cục bộ, cùng phép kiểm job CI drift-check
 uv run python -m keeper.cli publish --db <path> --repo <path> <ticket_id>   # push + gh pr create THẬT (BT8)
+uv run python -m keeper.benchmark gaia --replay benchmarks/gaia/recordings/<tên>.json --strict   # thước đo ngoài (ADR keeper 0003)
 ```
 
 Package không có `__main__.py`: mọi lệnh đi qua `keeper.cli` (hoặc `keeper.evals` cho eval).
