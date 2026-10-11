@@ -282,4 +282,4 @@ def takeover(o: Orchestrator, ticket_id: str, by: str, message: str | None = Non
     # của ticket thay vì mở một gốc nhân quả mới (ib1-quansat Q1).
     cause = o.bus.latest("pull-requests", ticket_id) or o.bus.latest("tasks", ticket_id)
     make = cause.child if cause is not None else Envelope
-    return o.bus.publish(make(topic="pull-requests", key=ticket_id, actor=by, payload=p))  # type: ignore[arg-type]  # child() khai kiểu Envelope của core
+    return o.bus.publish(make(topic="pull-requests", key=ticket_id, actor=by, payload=p))

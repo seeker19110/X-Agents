@@ -130,3 +130,11 @@ def test_cua_thoat_la_THAM_SO_khong_viet_cung_ten_cua_mot_cong_ty():
     rieng = frozenset({"huy"})
     assert can_transition("a", "huy", BANG, rieng)
     assert not can_transition("a", "blocked", BANG, rieng), "đổi tham số thì cửa thoát cũ phải đóng"
+
+
+def test_child_khai_kieu_self_de_lop_con_khong_phai_type_ignore():
+    """`type(self)(...)` trả về lớp con lúc chạy (test trên), nhưng chữ ký khai `Envelope` của core nên mọi
+    company gọi `cause.child(...)` rồi đưa vào bus của mình phải `# type: ignore[arg-type]`. Khai `Self` thì
+    mypy thấy đúng điều runtime đã làm."""
+    from typing import Self, get_type_hints
+    assert get_type_hints(Envelope.child)["return"] is Self

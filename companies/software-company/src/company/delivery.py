@@ -129,7 +129,7 @@ class DeliveryLead:
         self._set(task.ticket_id, "dispatched")
         cause = self.cause.get(task.ticket_id)
         make = cause.child if cause is not None else Envelope
-        self._emit(make(topic="tasks", key=task.ticket_id, actor=LEAD_ACTOR, payload=task.model_dump()))  # type: ignore[arg-type]
+        self._emit(make(topic="tasks", key=task.ticket_id, actor=LEAD_ACTOR, payload=task.model_dump()))
 
     def dispatch(self, task: Task, plan_id: str, cause: Envelope | None = None) -> Task:
         """Ticket vào hàng chờ nếu phụ thuộc chưa xong; ngược lại publish ngay. Phụ thuộc phải là ticket đã biết."""
