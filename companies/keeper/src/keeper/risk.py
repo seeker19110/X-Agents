@@ -76,6 +76,9 @@ RISK_RULES: tuple[RiskRule, ...] = (
              lambda s: _touches(s, lambda p: p.endswith("pyproject.toml"))
              and bool(_COVERAGE_RE.search(f"{s.detail} {s.evidence}"))),
     RiskRule("security-high", "high", lambda s: s.kind == "security" and s.severity in {"high", "critical"}),
+    # Thước đo ngoài tụt dưới sàn (ADR keeper 0003): không có patch máy nào sửa được điểm benchmark — chỉ người
+    # đổi prompt/model/sàn, nên mọi tín hiệu `benchmark` là `high` (ticket chờ người), không bao giờ tự vá.
+    RiskRule("benchmark-regression", "high", lambda s: s.kind == "benchmark"),
     # --- low: hai hàng của §6 (đứng SAU mọi hàng high, xem docstring) ---
     RiskRule("dev-dependency-patch-minor", "low",
              lambda s: s.kind == "dependency" and s.is_dev and s.semver_jump in {"patch", "minor"}),

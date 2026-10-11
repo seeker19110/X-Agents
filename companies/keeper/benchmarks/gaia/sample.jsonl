@@ -1,0 +1,5 @@
+{"task_id": "sample-01", "Question": "How many Python packages does the X-Agents uv workspace contain, according to the table in AGENTS.md?", "Level": 1, "Final answer": "5", "file_name": ""}
+{"task_id": "sample-02", "Question": "What is the name of the X-Agents company whose customer number zero is the repository itself? Answer with the package name only.", "Level": 1, "Final answer": "keeper", "file_name": ""}
+{"task_id": "sample-03", "Question": "List, in order, the three risk tiers that keeper's risk_tier() can return, from most to least severe.", "Level": 2, "Final answer": "high, medium, low", "file_name": ""}
+{"task_id": "sample-04", "Question": "If coverage fail_under is 100 and a package has 853 tests, by what percentage may coverage drop before CI turns red? Give a number without the percent sign.", "Level": 1, "Final answer": "0", "file_name": ""}
+{"task_id": "sample-05", "Question": "The attached spreadsheet lists keeper's maintenance tickets per week. What is the mean number of tickets per week, rounded to one decimal?", "Level": 3, "Final answer": "2.5", "file_name": "tickets.xlsx"}

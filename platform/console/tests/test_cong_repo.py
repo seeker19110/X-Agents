@@ -114,7 +114,8 @@ TRAN_PRAGMA = {                      # `# pragma: no cover` / `no branch` trong 
                                        # tracer ngay trên dòng (arc thoát qua `with` bị ghi về dòng `with`)
                                        # +1 (2026-10-11): llm.py `_complete_cli_bridge` — cùng arc `raise` xuyên
                                        # context manager lồng nhau như `_complete_mcp`, ca `boom` chứng minh nhánh chạy
-    "companies/keeper": 4,               # +1 (2026-09-12): PullRequestExists.__str__ (publish.py) — chỉ phục
+    "companies/keeper": 5,                 # +1 (cm1-gaia): `__main__` của benchmark.py, cùng khuôn cli.py/evals.py
+                                           # +1 (2026-09-12): PullRequestExists.__str__ (publish.py) — chỉ phục
                                           # vụ traceback người đọc, không ai assert chuỗi này
 }
 TRAN_SKIP = {                        # skip/xfail trong tests/ của từng package

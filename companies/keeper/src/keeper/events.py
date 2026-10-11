@@ -21,7 +21,7 @@ Topic = Literal[
 ]
 Namespace = Literal["knowledge"]
 RiskTier = Literal["low", "medium", "high"]
-SignalKind = Literal["dependency", "health", "drift", "security"]
+SignalKind = Literal["dependency", "health", "drift", "security", "benchmark"]
 SemverJump = Literal["patch", "minor", "major"]
 
 ID_PATTERN = r"^[A-Za-z0-9_.:/-]{1,200}$"

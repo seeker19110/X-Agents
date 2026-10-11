@@ -112,9 +112,30 @@ def _check_escalations(o: Orchestrator) -> None:
         if tid in o.gate.pending or key in o.once: continue
         if o.lead.state.get(tid) == "blocked" or n:
             o._remember(key)
+            # ADR-0051: có CR `REPLAN-*` đang chờ thì checklist nhắc người lựa chọn thứ ba (`decide-change <cid> accepted`).
+            extra = [f"replan:{cid}"] if (cid := o.lead.replan_open.get(tid)) else []
             request_gate(o.gate, GateRequest(kind="escalation", subject_id=tid, created_by=ROLE.SUPERVISOR,
-                                          checklist=["root_cause", "decision:reopen|close", "hint"]))
+                                          checklist=["root_cause", "decision:reopen|close", "hint", *extra]))
     o._check_debt()
+
+
+def _retire_replanned(o: Orchestrator, env: Envelope, res: StepResult) -> None:
+    """ADR-0051: người `accepted` CR `REPLAN-<ticket>-<n>` → ticket cũ đóng như bị từ chối ở escalation (`close_escalated`:
+    ticket phụ thuộc không âm thầm chạy trên nền thiếu). Gate escalation của nó do CHÍNH người ký đóng trong
+    `decide-change` (`cli_cmds.decide_change`) — máy không ghi `gate.decide` (bus chặn, `_trusted` không tin khi replay);
+    gate còn treo thì `reject` rơi vào nhánh `closed:already` bên dưới. Ticket không còn `blocked`/`escalated` (người đã
+    reopen trước) thì không đóng sau lưng ai — chỉ lập kế hoạch mới. Gọi từ `_plan` TRƯỚC lượt planner: quyết định thay
+    thế được ghi dù planner lỗi."""
+    imp = env.payload.get("impact") or {}
+    if imp.get("kind") != "replan" or env.payload.get("decision") != "accepted": return
+    tid, cid, by = str(imp.get("ticket_id")), str(env.payload.get("change_id")), str(imp.get("decided_by") or env.actor)
+    if o.lead.state.get(tid) not in {"blocked", "escalated"}:
+        res.actions.append(f"replan:{tid}:not_blocked"); return
+    blocked = o.lead.close_escalated(tid)
+    o._audit("ticket.replanned", {"ticket_id": tid, "change_id": cid, "by": by, "dependents_blocked": blocked},
+             ticket_id=tid, project_id=o.lead.tickets[tid].project_id)
+    res.actions.append(f"replan:{tid}:{cid}")
+    if blocked: res.actions.append("blocked:" + ",".join(blocked))
 
 def _check_debt(o: Orchestrator) -> None:
     """ADR-0032: mã nợ kiến trúc chạm ngưỡng (supervisor đếm từ bus, xác định) → gate `escalation` cấp DỰ ÁN với
@@ -227,6 +248,8 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
         # mới nhất (`_rerun_missing_reviews`).
         _rerun_missing_reviews(o, tid, by, res)
     elif decision in {"reject", "rollback"} and tid in o.lead.tickets:
+        if o.lead.state.get(tid) in DONE_STATES:  # ADR-0051: `_retire_replanned` đã đóng ticket và rút gate này
+            res.actions.append(f"closed:{tid}:already"); return
         blocked = o.lead.close_escalated(tid); res.actions.append(f"closed:{tid}")
         o._audit("ticket.abandoned", {"ticket_id": tid, "by": by, "dependents_blocked": blocked}, ticket_id=tid,
                     project_id=o.lead.tickets[tid].project_id)

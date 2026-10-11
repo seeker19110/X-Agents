@@ -567,6 +567,11 @@ không được nạp skill review và không thấy diff (`BLIND_STRIP`), nên 
   biết bộ test này không độc lập và tự chấm kỹ hơn.
 - Giá: thêm một lượt model (tier `standard`) mỗi ticket, và ticket chạy tuần tự hơn một nhịp.
 
+**Role-play trước pha research (ADR-0050, mặc định tắt).** `--debate 4` (hoặc `COMPANY_DEBATE_TURNS=4`) cho hai vai
+đề xuất/phản biện (`companies/software-company/roleplay/*.md`) tranh luận tối đa 4 lượt tier `standard` trước lượt
+research của mỗi dự án; `COMPANY_DEBATE_BUDGET` đổi trần token (mặc định 60 000). Kết quả vào `debate` của payload
+research và audit `research.debate` (xem bằng `report`); lỗi model của phiên không chặn research.
+
 ### 5.3 Duyệt human gate
 
 Vòng lặp dừng ở ba điểm: spec, release, và khách ký nghiệm thu (`GateKind` còn bốn giá trị — thêm `escalation` khi
@@ -610,6 +615,13 @@ uv run python -m company.orchestrator decide-change CR-1 accepted --by human:po
 uv run python -m company.orchestrator comment  T-12 --by human:lead --text "dùng idempotency key cho webhook"
 uv run python -m company.orchestrator takeover T-12 --by human:lead      # đã sửa tay trong worktree: chạy lint/test, thay PR của agent
 ```
+
+Ticket hết `max_retries` thì ngoài gate `escalation` (reopen/close) còn một **change request `REPLAN-<ticket>-<thế hệ>`** do
+`delivery-lead` nộp (ADR-0051): planner ước lượng impact như CR thường, checklist gate escalation có mục `replan:<cid>`.
+`decide-change REPLAN-T-12-1 accepted --by human:po --reason "cắt sai, lập lại"` → ticket cũ đóng (ticket phụ thuộc
+`blocked`, có gate riêng), gate escalation của nó được ký `reject` **dưới tên bạn** ngay trong lệnh, `product[plan]` lập kế
+hoạch mới với id mới. `rejected`/`deferred` → không đổi gì, gate escalation vẫn chờ. Một thế hệ replan mặc định
+(`replan_rounds=1`): ticket sinh từ replan lại hết retry thì chỉ còn gate escalation.
 
 Sau khi `ops` (pha `deploy`) deploy staging và `qa` (pha `review`) hồi quy pass, gate `release` mở; approve xong mới
 lên production. Khách ký nghiệm thu bằng `acceptance-results` qua `ops` (pha `account`) — gate `acceptance`, ADR-0017.

@@ -2,7 +2,8 @@
   "code_checklist": [
     "root_cause",
     "decision:reopen|close",
-    "hint"
+    "hint",
+    "replan:REPLAN-T1-1"
   ],
   "created_by": "supervisor",
   "extra": {

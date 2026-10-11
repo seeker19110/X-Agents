@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     pass
 
 from .enrich import BLIND_STRIP as BLIND_STRIP  # re-export: worktree_flow/orchestrator nhập từ đây
-from .enrich import _with_chan_doan, _with_diff, _with_draft, _with_intake, _with_task
+from .enrich import _with_chan_doan, _with_debate, _with_diff, _with_draft, _with_intake, _with_task
 from .guards import MAX_CLARIFY_ROUNDS as MAX_CLARIFY_ROUNDS
 from .guards import PLAN_REWORKS as PLAN_REWORKS
 from .guards import SPEC_KINDS as SPEC_KINDS
@@ -161,8 +161,9 @@ ROUTES: tuple[Route, ...] = (
     # `risks` (schema nâng lên required ở PR-5e), nên một lượt ít hơn cho mỗi dự án và không còn hai bản draft
     # chồng nhau cho cùng một key.
     Route("research-requests", ROLE.PRODUCT, "research-findings", phase=PHASE.INTAKE),
+    # ADR-0050: `_with_debate` chạy phiên đề xuất/phản biện trước lượt research khi `Orchestrator.roleplay` bật.
     Route("research-findings", ROLE.PRODUCT, "research-findings", _from_kind(FINDING_KIND.INTAKE),
-          tools="research", phase=PHASE.RESEARCH),
+          tools="research", phase=PHASE.RESEARCH, enrich=_with_debate),
     Route("research-findings", ROLE.PRODUCT, "requirements-draft", _from_kind(FINDING_KIND.RESEARCH),
           enrich=_with_intake, phase=PHASE.SPEC),
     Route("requirements-draft", ROLE.PRODUCT, "clarification-questions", _from_phase(PHASE.SPEC), phase=PHASE.INTAKE),

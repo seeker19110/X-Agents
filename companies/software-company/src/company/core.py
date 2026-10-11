@@ -51,7 +51,9 @@ TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "release-events": frozenset({ROLE.OPS}),
     "incidents": frozenset({ROLE.OPS}),
     "external-feedback": frozenset(),
-    "change-requests": frozenset({ROLE.OPS}),
+    # ADR-0051: `LEAD_ACTOR` là CODE (`DeliveryLead._request_replan`) nộp CR `REPLAN-<ticket>-<thế hệ>` khi ticket hết
+    # retry — coordinator leo thang retry → replan → người. Người vẫn quyết (`decide-change`), bảng này chỉ nói ai được nộp.
+    "change-requests": frozenset({ROLE.OPS, LEAD_ACTOR}),
     "acceptance-results": frozenset({ROLE.OPS}),
     "supervisor-actions": frozenset({ROLE.SUPERVISOR}),
 }

@@ -4,9 +4,11 @@ Tách cùng lý do `guards.py`. Ranh giới giữ đúng một chiều: `routes.
 """
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 from ..events import Envelope
+from ..llm import LLMError
 from ..roles import FINDING_KIND, ROLE
 from ..workspace import WorkspaceError
 
@@ -72,3 +74,31 @@ def _with_task(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     base = dict(t.payload) if t is not None else {}
     return {**base, "test_suite": {k: e.payload.get(k) for k in ("files", "acceptance_covered", "tests_status", "commit", "notes")},
             "tests_authored_by": ROLE.QA}
+
+
+DEBATE_ACTOR = "roleplay"  # actor của audit `research.debate`: không phải agent, không có front matter
+
+
+def _with_debate(e: Envelope, o: Orchestrator) -> dict[str, Any]:
+    """ADR-0050: phiên đề xuất/phản biện chạy TRƯỚC lượt research, kết quả vào `debate` của payload. Khoá theo
+    event nguồn và đọc từ bus: cùng event xử lý lại (restart, `_recall`) lấy audit `research.debate` cũ, không tốn
+    lượt model nữa (khuôn 2 `TRAPS.md`). Lỗi model của phiên không làm hỏng lượt research — nó chỉ thiếu `debate`
+    và mang `debate_error`; `TransientError` thì để lan ra cho `_call` hoãn event như mọi lượt khác."""
+    rp = o.roleplay
+    if rp is None: return {}
+    pid = str(e.payload.get("project_id") or e.key)
+    for a in o.bus.replay(topic="audit-log"):
+        if a.payload.get("action") != "research.debate": continue
+        ev = json.loads(a.payload.get("evidence") or "{}")
+        if ev.get("source_event") == e.event_id:
+            return {"debate": {k: ev.get(k) for k in ("proposals", "objections", "open_questions", "stopped_by", "tokens")}
+                    | {"turns": len(ev.get("turns") or [])}}
+    try:
+        d = rp.run({k: v for k, v in e.payload.items() if k != "project_id"} | {"project_id": pid})
+    except LLMError as ex:
+        o._audit("research.debate_failed", {"source_event": e.event_id, "error": str(ex)[:300]}, actor=DEBATE_ACTOR,
+                 project_id=pid)
+        return {"debate_error": f"{type(ex).__name__}: {ex}"[:300]}
+    o._audit("research.debate", {**d.as_audit(), "source_event": e.event_id}, actor=DEBATE_ACTOR, tokens=d.tokens,
+             cost=d.cost_usd, project_id=pid)
+    return {"debate": d.summary()}
