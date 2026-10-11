@@ -7,7 +7,7 @@ Subagent sinh ra ở đây đứng ở PHÍA BÊN KIA gate: nó chuẩn bị b�
 Dẫn xuất là MỘT CHIỀU, từ hai nguồn (đặc tả `docs/dac-ta-tro-ly-kiem-duyet.md` §4):
 
 - `agents/<block>/<id>.md` → `.claude/agents/sc-<id>.md`: trợ lý CHUYÊN MÔN, chấm bằng chứng theo tiêu chuẩn của
-  đúng agent đó (20 file).
+  đúng agent đó (6 file, một cho mỗi agent trong `agents/`).
 - `gates/checklists.md` (qua `gate_checklists.parse`) → `.claude/agents/sc-gate-<kind>.md`: trợ lý THEO GATE, mỗi mục
   "Người tự kiểm thêm" thành một đề mục bắt buộc trả lời kèm nguồn bằng chứng (4 file, một cho mỗi `GateKind`).
 

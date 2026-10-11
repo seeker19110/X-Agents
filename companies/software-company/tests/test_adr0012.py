@@ -447,7 +447,7 @@ def test_orchestrator_gives_researcher_repo_and_web_tools(tmp_path):
         _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"}); orch.run()
     finally:
         socket.getaddrinfo = real
-    assert seen["tools"] == ["read_file", "list_files", "search", "web_search", "fetch_url"]
+    assert seen["tools"] == ["read_file", "list_files", "search", "web_search", "fetch_url", "read_artifact"]
     rs = [c for c in client.calls if _agent_of(c["system"]) == "product" and _product_phase(c["system"]) == "research"]
     assert len(rs) == 2 and any(m["role"] == "tool" and "def add" in m["content"] for m in rs[1]["messages"])
     assert any(m["role"] == "tool" and "KHÔNG TIN CẬY" in m["content"] and "doc" in m["content"] for m in rs[1]["messages"])

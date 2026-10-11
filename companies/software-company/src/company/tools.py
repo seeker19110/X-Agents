@@ -12,7 +12,7 @@ import fnmatch
 import json
 import re
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 # Re-export khung từ core (K3.2): 7 module của company nhập `ToolCall`/`ToolSpec`/`ToolBox` TỪ ĐÂY.
 from xagents_core.tools import MAX_OUTPUT as MAX_OUTPUT
@@ -21,9 +21,14 @@ from xagents_core.tools import ToolCall as ToolCall
 from xagents_core.tools import ToolError as ToolError
 from xagents_core.tools import ToolSpec as ToolSpec
 
+from .prd_context import _SECTION
 from .sandbox import RunSpec, Sandbox, SubprocessSandbox, registry_domains
 from .stacks import detect
 from .workspace import TicketWorkspace, clean_env
+
+if TYPE_CHECKING:
+    from .blackboard import Blackboard
+    from .registry import AgentSpec
 
 MAX_WRITE = 200_000         # byte một lần ghi
 MAX_READ = 60_000           # ký tự một lần đọc
@@ -248,6 +253,38 @@ class WorkspaceTools:
                             {"type": "object", "properties": {"command": {"type": "string", "enum": sorted(self.COMMANDS)},
                                                               "paths": {"type": "array", "items": {"type": "string"}}},
                              "required": ["command"]}), self.run)
+        return tb
+
+
+class ArtifactTools:
+    """ADR-0049: đọc đủ artifact blackboard đã bị `fit` cắt khỏi ngữ cảnh. Agent chỉ đưa TÊN namespace; dự án do
+    code chọn (lượt đang chạy), nên không có đường dẫn nào để thoát và không đọc được artifact của dự án khác.
+    Phạm vi = `spec.reads_full` (ADR-0020) trừ namespace toàn công ty (`knowledge`: runner đã bỏ bản thô)."""
+
+    def __init__(self, blackboard: Blackboard, project_id: str | None, spec: AgentSpec):
+        self.blackboard, self.project_id, self.spec = blackboard, project_id, spec
+
+    def read_artifact(self, namespace: str, section: str | None = None) -> str:
+        if namespace in self.blackboard.cfg.global_namespaces or not self.spec.reads_full(namespace):
+            raise ToolError(f"namespace ngoài phạm vi đọc của agent: {namespace!r}")
+        text = self.blackboard.content(namespace, self.project_id)
+        if text is None: return f"lỗi: dự án chưa có artifact {namespace!r}"
+        heads = list(_SECTION.finditer(text))
+        titles = [m.group().removeprefix("##").strip() for m in heads]
+        if section is None:
+            # `ToolBox` cắt đuôi ở `MAX_OUTPUT` — báo trước cách đọc tiếp, đuôi PRD là tiêu chí nghiệm thu.
+            return text if len(text) <= MAX_OUTPUT else (
+                f"({len(text)} ký tự, quá trần {MAX_OUTPUT}: gọi lại với section = một trong: {', '.join(titles)})\n{text}")
+        for i, title in enumerate(titles):
+            if title.casefold() == section.strip().casefold():
+                return text[heads[i].start():heads[i + 1].start() if i + 1 < len(heads) else len(text)]
+        return f"lỗi: {namespace!r} không có mục {section!r}; có: {', '.join(titles)}"
+
+    def add_to(self, tb: ToolBox) -> ToolBox:
+        tb.add(ToolSpec("read_artifact", "Đọc đủ artifact blackboard đã bị cắt khỏi ngữ cảnh, theo tên namespace "
+                        "(vd. prd). `section` = tiêu đề mục ## để chỉ đọc mục đó.",
+                        {"type": "object", "properties": {"namespace": {"type": "string"}, "section": {"type": "string"}},
+                         "required": ["namespace"]}), self.read_artifact)
         return tb
 
 

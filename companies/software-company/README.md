@@ -40,7 +40,7 @@ research-requests → product[intake] → product[research] → product[spec] �
 ## Cấu trúc
 
 ```
-docs/          kiến trúc, tiêu chuẩn, ADR (0001–0048); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
+docs/          kiến trúc, tiêu chuẩn, ADR (0001–0049); reports/ = báo cáo mô phỏng (donghanhcungban: client giả + bản relay model thật)
 agents/        system prompt 6 agent (có version), nhóm theo khối; agent nhiều việc khai `phases:` — skill của pha
                chỉ nạp ở lượt chạy pha đó (ADR-0037), thân bài có tiểu mục `### Pha <tên>` / `### Stack <tên>`
 skills/        45 skill (có version): rule + checklist + ví dụ, theo tiêu chuẩn ngành;
@@ -65,7 +65,7 @@ examples/      donghanhcungban_demo.py (mô phỏng cả công ty, --real/--rela
                phạm vi + NGOÀI phạm vi, ràng buộc, NFR có số đo, tiêu chí nghiệm thu — bốn mảng pha `intake` cần)
                (ModelClient trao đổi qua file <n>.req.json / <n>.res.json để một phiên Claude Code khác đóng vai model)
 evals/         ca eval prompt theo agent (YAML) — đủ 6 agent, mỗi agent ≥ 2 ca (agent nhiều pha: ≥ 2 ca mỗi pha); recordings/ = phản hồi model đã ghi
-tests/         pytest 2048 ca / 114 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
+tests/         pytest 2083 ca / 115 file (bus, registry↔events, delivery+gates, supervisor, orchestrator, release flow, nhánh
                tích hợp, repo theo dự án, giao hàng thật, release tự dừng → gate, routing, runner/persistence, tools/agentic, cầu MCP, probe, assetscan,
                guard/blackboard, schema consistency, golden 6 agent + 4 hồ sơ gate, bộ sinh subagent, hồ sơ gate, deploy compose (runner tiêm được), rà soát bảo mật);
                coverage fail_under=100 (phủ 100% dòng VÀ 100% nhánh, `branch = true` từ 2026-09-13)
@@ -170,7 +170,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 ## Hiện trạng (2026-09-08)
 
 ### Đã có
-- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0048; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
+- Tài liệu: kiến trúc, tiêu chuẩn, ADR 0001–0049; 6 system prompt có version (5 công đoạn + supervisor, ADR-0037); 45 skill có version; 14 template; checklist 3 gate + escalation.
 - 19 JSON Schema topic + bảng owner namespace (thêm change-requests, acceptance-results, external-feedback; namespace contract).
 - Lõi xác định trong `src/company/`: envelope/payload pydantic, bus có validate schema, registry nạp prompt+skill,
   `delivery.py` (lập lịch depends_on/priority, đóng vòng review, retry, budget, staging QA → gate release → production → nghiệm thu;
@@ -224,7 +224,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
   qua bus (nguồn sự thật), mirror ra `<db>.artifacts/<namespace>/v<n>.<ext>` + `latest.<ext>` (`--artifacts`, `show`);
   agent hạ nguồn đọc toàn văn trong prompt, agent chủ namespace bị schema ép trả `content`.
 - **Ngữ cảnh có hạn mức** (`context.py`): `max_input_chars` (llm.yaml / `COMPANY_MAX_INPUT_CHARS`); payload ưu tiên,
-  chuỗi dài nhất cắt giữa có nhãn, blackboard chia water-filling, nhãn cắt chỉ đường dẫn artifact; audit `context_trimmed`.
+  chuỗi dài nhất cắt giữa có nhãn, blackboard chia water-filling, nhãn cắt trỏ tool `read_artifact` (lượt có tool, ADR-0049) hoặc đường dẫn artifact; audit `context_trimmed`.
 - **Quét tài sản prompt** (`assetscan.py`, ADR-0022, `make assetscan`): cổng CI cho chính `agents/ skills/
   templates/ gates/ topics/` — injection (dùng lại `guard.PATTERNS`), ký tự vô hình/bidi, `curl … | sh` và
   `rm -rf /`, khóa lộ; cảnh báo URL ngoài allowlist. Miễn trừ có lý do ở `assetscan-waivers.txt`. `make assetbudget`

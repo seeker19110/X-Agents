@@ -129,7 +129,7 @@ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli
   bắt buộc trả `content`; agent hạ nguồn nhận toàn văn trong prompt (không chỉ `summary`).
 - **Ngữ cảnh có hạn mức** (`context.py`): `max_input_chars` (mặc định 120 000, `llm.yaml`/`COMPANY_MAX_INPUT_CHARS`).
   Payload ưu tiên trước blackboard; chuỗi dài nhất bị cắt giữa có nhãn khi vượt; blackboard chia water-filling giữa
-  các namespace. Audit `context_trimmed` khi có cắt.
+  các namespace. Audit `context_trimmed` khi có cắt. Lượt có tool đọc đủ phần bị cắt bằng `read_artifact` (ADR-0049).
 - **Kết quả tool cũng là dữ liệu ngoài** (`guard.sanitize_tool_output`): `read_file`/`search`/`run` trả nội dung repo
   khách, nên đi qua đúng bộ lọc injection như web trước khi vào ngữ cảnh (cả vòng tool của runner lẫn cầu MCP); đoạn
   khớp bị thay nhãn và ghi audit `injection_sanitized`.

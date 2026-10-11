@@ -491,7 +491,7 @@ def test_orchestrator_with_repo_produces_verified_prs_and_reviewers_read_diff(tm
     # security có tool chỉ-đọc → FakeClient gọi 2 lượt (tool + kết luận) cho cùng PR; diff phải có ở lượt đầu
     assert sec_pr and "+def t2():" in _inp(sec_pr[0]["user"])["diff"], "security review PR T2 (risk_tags) đọc diff"
     qa_pr = [c for c in by_agent["qa"] if c["tools"]]
-    assert qa_pr and all(c["tools"] == ["read_file", "list_files", "search", "run"] for c in qa_pr), "QA có tool chỉ đọc"
+    assert qa_pr and all(c["tools"] == ["read_file", "list_files", "search", "run", "read_artifact"] for c in qa_pr), "QA có tool chỉ đọc"
     assert any(m["role"] == "tool" and m["content"].startswith("exit=0") for c in qa_pr for m in c["messages"])
     assert {t["name"] if isinstance(t, dict) else t for t in by_agent["qa"][0]["tools"]} >= {"read_file", "search"},         "reviewer có tool chỉ-đọc để đọc phần diff bị cắt (2026-09-06)"
     assert orch.supervisor.sprint_report()["prs_unverified"] == 0
@@ -563,6 +563,34 @@ def test_lessons_calibrate_next_plan():
     assert Orchestrator(bus, FakeClient()).supervisor.calibration() == cal
     rep = orch.supervisor.sprint_report()
     assert rep["calibration"] == cal and rep["rework_rate"] == 0.0 and rep["review_catch_rate"] == 0.0
+
+
+def _bai_hoc_co_hint() -> tuple[InMemoryBus, Orchestrator]:
+    """T1 có hint MÁY (delivery-lead ghi đè mỗi retry) và hint NGƯỜI (gate escalation) — bài học phải mang lời người."""
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    orch.lead.tickets["T1"] = orch.lead.tickets["T1"].model_copy(
+        update={"retry": 1, "hint": "lần trước lỗi: test đỏ", "human_hint": "dùng bcrypt, đừng tự băm sha256"})
+    orch._record_lesson("T1")
+    return bus, orch
+
+
+def test_bai_hoc_mang_hint_cua_nguoi():
+    _, orch = _bai_hoc_co_hint()
+    assert [d["hint"] for d in orch.supervisor.lessons()] == ["dùng bcrypt, đừng tự băm sha256"]
+
+
+def test_related_lessons_co_hint():
+    _, orch = _bai_hoc_co_hint()
+    rel = orch._lessons_for_input(_task_env("T2"))   # cùng assignee → bài học T1 vào `related_lessons` của T2
+    assert [(d["ticket_id"], d["hint"]) for d in rel] == [("T1", "dùng bcrypt, đừng tự băm sha256")]
+
+
+def test_knowledge_dung_lai_sau_restart():
+    """`related_lessons` đọc bus, không đọc RAM `Supervisor.knowledge` — lời người còn sau khi mở lại bus."""
+    bus, _ = _bai_hoc_co_hint()
+    o2 = Orchestrator(bus, FakeClient())
+    assert [d["hint"] for d in o2._lessons_for_input(_task_env("T2"))] == ["dùng bcrypt, đừng tự băm sha256"]
 
 
 # ---------- eval ghi / phát lại ----------
@@ -918,7 +946,7 @@ def test_staging_qa_gets_read_only_tools_on_integration_worktree(tmp_path):
     _drive_to_plan(bus, orch); orch.run()
     assert orch.lead.releases == ["REL-001", "REL-002"] and orch.stats["errors"] == 0
     staging_qa = [c for c in client.calls if _agent_of(c["system"]) == "qa" and _inp(c["user"]).get("release_id")]
-    assert staging_qa and all(c["tools"] == ["read_file", "list_files", "search", "run"] for c in staging_qa)
+    assert staging_qa and all(c["tools"] == ["read_file", "list_files", "search", "run", "read_artifact"] for c in staging_qa)
     ran = [m["content"] for c in staging_qa for m in c["messages"] if m["role"] == "tool"]
     assert ran and all(x.startswith("exit=0") for x in ran), "QA tự chạy test trên worktree tích hợp"
     assert not any(e.payload["action"] == "review.no_tool_evidence" for e in bus.replay(topic="audit-log"))
