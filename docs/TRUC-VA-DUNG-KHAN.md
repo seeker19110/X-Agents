@@ -14,7 +14,21 @@
 | **2. Cả dự án** | Nhiều ticket cùng hỏng, hoặc chưa biết ticket nào | Như trên nhưng `--key <project_id>` và `project_id` trong payload | cùng cơ chế |
 | **3. Toàn hệ thống** | Nghi ngờ nghiêm trọng (rò rỉ, agent chạm thứ không được phép) | **Dừng tiến trình `orchestrator run`** (Ctrl-C hoặc kill PID) | tức thì |
 
-### Mức 0 — dừng chính HUB (container console+orchestrator, ADR-0013)
+### Mức 0 — dừng chính HUB chạy bằng systemd (ADR gốc 0032)
+
+Khi hub cài bằng `scripts/systemd.sh install` (`docs/TRIEN-KHAI-SYSTEMD.md`):
+
+```bash
+systemctl --user stop xagents-orchestrator        # = Mức 3: dừng vòng lặp, SIGINT → trả lease bus
+systemctl --user stop xagents-console xagents-gateway xagents-keeper
+scripts/systemd.sh status                         # xác nhận không còn unit nào "active"
+```
+
+`stop` không `disable`: reboot hay `start` lại là chạy tiếp đúng chỗ (bus SQLite). Muốn nó **không** tự bật lại sau
+reboot thì `systemctl --user disable xagents-orchestrator`. Đo 2026-10-11: `stop` xoá `company.sqlite.lock` (lease
+trả sạch); container sản phẩm của khách (Mức 4) không bị đụng.
+
+### Mức 0 (container) — dừng chính HUB (container console+orchestrator, ADR-0013)
 
 Chỉ áp dụng khi hub chạy bằng `docker compose up -d` (gốc repo) theo ADR-0013 — **khác hẳn** Mức 4 dưới đây
 (Mức 4 là container *sản phẩm của khách*, đặt tên `company-<project_id>-<env>`; hub luôn tên project mặc định

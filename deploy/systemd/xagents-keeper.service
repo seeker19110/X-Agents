@@ -1,0 +1,24 @@
+# Mẫu — `scripts/systemd.sh install` thay @REPO_ROOT@/@UV@ rồi ghi vào ~/.config/systemd/user/. ADR gốc 0032.
+# Tùy chọn: cài cùng ba unit kia nhưng không bật mặc định (`systemctl --user enable --now xagents-keeper`).
+[Unit]
+Description=X-Agents keeper — công ty bảo trì (keeper.cli watch)
+Documentation=file://@REPO_ROOT@/docs/TRIEN-KHAI-SYSTEMD.md
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=KEEPER_DB=keeper.sqlite
+Environment=KEEPER_REPO=@REPO_ROOT@
+Environment=KEEPER_INTERVAL=600
+# stdout ra journald là pipe: không đệm thì log (kể cả địa chỉ kèm token của console) hiện ngay.
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.config/x-agents/hub.env
+# `keeper.sqlite` trong thư mục này — đúng file console đọc mặc định.
+WorkingDirectory=@REPO_ROOT@/companies/keeper
+ExecStart=@UV@ run --no-sync python -m keeper.cli watch --db ${KEEPER_DB} --repo ${KEEPER_REPO} --interval ${KEEPER_INTERVAL}
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
