@@ -189,6 +189,7 @@ GET  /sw.js             → static/sw.js — PHẢI ở gốc, service worker ch
                           những đường trong thư mục chứa nó, mà nó cần điều khiển "/"
 GET  /manifest.webmanifest → static/manifest.webmanifest (application/manifest+json)
 GET  /api/state         → collect(...) + {"engine": {"engines": [...], "allowed": bool}}  (ADR-0004)
+                          + {"notify": {enabled, channels, sent, failed, last_error, last_sent_at, watching}}  (ADR-0005)
 GET  /api/stream        → SSE: `event: state` mỗi khi bus đổi, `event: error` khi collect() ném,
                           `: ping` giữ nhịp 15 giây. Không có Content-Length; đóng kết nối là hết thân bài.
 GET  /api/gate/brief    → ?id=<subject>[&xuong=software-company][&closed=1]
@@ -252,6 +253,34 @@ class EngineManager:
 - Động cơ do console bật **chết cùng console**; console không thấy orchestrator do người bật ở terminal.
 - Model dùng gói thuê bao trong `llm.yaml` của công ty (tiến trình con thừa kế env của console) — console
   không truyền model, không truyền API key.
+
+## `notify.py`
+
+```python
+class Notifier:
+    def __init__(self, channels, *, public_url: str, post=http_post)
+    enabled: bool                         # có ít nhất một kênh
+    def observe(self, gates: list[dict]) -> list[Message]   # một lần nhìn hàng đợi; trả tin đã dựng (và đã thử gửi)
+    def status(self) -> dict              # {"enabled", "channels": [name], "sent", "failed", "last_error", "last_sent_at", "watching"}
+
+class NotifyWatcher:                      # thread nền của ConsoleServer khi notifier.enabled
+    def step(self) -> list[Message]       # dấu vân tay bus đổi → collect(company_db, keeper_db) → notifier.observe(state["gates"])
+    def start(self) / stop(self)          # stop() chạy ở server_close()
+
+def build_notifier(*, ntfy, telegram_chat, public_url, env) -> Notifier   # NotifyConfigError khi thiếu/sai
+```
+
+- `gates` là đúng danh sách `collect()["gates"]` (cả hai xưởng, cả `kind=clarification`). Khoá nhận diện là
+  `(xuong, id)`. Lần nhìn đầu: một tin tóm tắt nếu có gate; các lần sau: một tin cho mỗi khoá chưa thấy ở lần
+  trước. Gate biến mất rồi quay lại → báo lại.
+- `Message{title, body, link, priority}`; `link` = `<public_url>/#/truc-ban/gate/<id đã quote>`, tin tóm tắt trỏ
+  `<public_url>/#/truc-ban`. `priority = "high"` khi `sev == "over"`.
+- ntfy: `POST <url>` thân `text/plain; charset=utf-8` = `title\nbody\nlink`, header `Click` = link, `Priority: high`
+  khi cần. KHÔNG header `Title` (không mang được tiếng Việt). Telegram: `POST https://api.telegram.org/bot<token>/
+  sendMessage` JSON `{chat_id, text, disable_web_page_preview: true}`.
+- `post(url, data, headers) -> int` là điểm tiêm: test truyền hàm giả, chạy thật dùng `http_post` (urllib, timeout 5 s,
+  4xx/5xx trả mã thay vì ném). Mã ngoài 2xx hoặc exception → `failed += 1`, `last_error = "<kênh>: HTTP n | <Exc>"`
+  — không URL, không token.
 
 ## `settings.py`
 

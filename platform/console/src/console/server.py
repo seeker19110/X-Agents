@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
+from console.notify import Notifier, NotifyWatcher
+
 logger = logging.getLogger("console.server")
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -207,6 +209,7 @@ class ConsoleServer(ThreadingHTTPServer):
         static_dir: Path = STATIC_DIR,
         stream_max_seconds: float | None = None,
         deliver_remote: str | None = None,
+        notifier: Notifier | None = None,
     ) -> None:
         if ":" in host and not host.startswith("["):
             self.address_family = socket.AF_INET6
@@ -232,9 +235,18 @@ class ConsoleServer(ThreadingHTTPServer):
         # đột ngột (`atexit`) đều phải dọn, nếu không một orchestrator mồ côi vẫn ghi bus sau khi tắt trang.
         atexit.register(self.engine.stop_all)
         super().__init__((host.strip("[]"), port), ConsoleHandler)
+        # Thông báo đẩy (ADR-0005): không kênh nào → Notifier rỗng (status khai `enabled: false`), không thread.
+        # Có kênh → một thread dò bus như `/api/stream` nhưng KHÔNG cần ai mở trang; chết cùng server như động cơ.
+        self.notifier = notifier or Notifier([], public_url=f"http://{host}:{port}")
+        self.notify_watcher: NotifyWatcher | None = None
+        if self.notifier.enabled:
+            self.notify_watcher = NotifyWatcher(self.notifier, (company_db, keeper_db))
+            self.notify_watcher.start()
 
     def server_close(self) -> None:
         self.engine.stop_all()
+        if self.notify_watcher is not None:
+            self.notify_watcher.stop()
         super().server_close()
 
     @property
@@ -469,6 +481,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
 
         state = collect(self.server.company_db, self.server.keeper_db)
         state["engine"] = {**self.server.engine.status(), "allowed": self.server.allow_engine}
+        state["notify"] = self.server.notifier.status()
         return state
 
     def _api_state(self) -> None:
@@ -739,6 +752,7 @@ def make_server(
     static_dir: Path = STATIC_DIR,
     stream_max_seconds: float | None = None,
     deliver_remote: str | None = None,
+    notifier: Notifier | None = None,
 ) -> ConsoleServer:
     return ConsoleServer(
         host,
@@ -754,4 +768,5 @@ def make_server(
         static_dir=static_dir,
         stream_max_seconds=stream_max_seconds,
         deliver_remote=deliver_remote,
+        notifier=notifier,
     )

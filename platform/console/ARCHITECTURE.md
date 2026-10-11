@@ -12,7 +12,8 @@ server.py ── http.server thư viện chuẩn · token phiên mỗi lần ch�
    ├── brief.py ──── hồ sơ gate_brief cho ngăn kéo gate → gọi thẳng `company.gate_brief` (chỉ đọc)
    ├── decide.py ─── duyệt gate → HumanGate của công ty (four-eyes, allowlist, audit-log giữ nguyên)
    ├── submit.py ─── việc mới → SQLiteBus của công ty (JSON Schema kiểm như CLI publish)
-   └── settings.py ─ đọc/ghi llm.yaml của công ty (giữ .bak); CLI `models`
+   ├── settings.py ─ đọc/ghi llm.yaml của công ty (giữ .bak); CLI `models`
+   └── notify.py ─── thread nền: bus đổi → collect() → gate MỚI chờ người → ntfy/Telegram kèm link ngăn kéo (ADR-0005)
 ```
 
 Bảy màn: trực ban · phễu sản phẩm · phần mềm · công ty bảo trì · chi phí · nhật ký · cài đặt (+ hướng dẫn). Console
