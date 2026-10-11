@@ -28,7 +28,8 @@ triển khai lớp thông báo đẩy khi gate pending"*.
 | N1 | ADR-0005; `notify.py`: `Notifier` (ntfy, Telegram), `NotifyWatcher` thread nền, `build_notifier` | console | C2 | xong (commit này) |
 | N2 | Nối `ConsoleServer` (`notifier=`, `notify_watcher`, `server_close`), khoá `notify` trong `/api/state`; cờ CLI + banner | console | C2 | xong (commit này) |
 | N3 | Tài liệu: ADR, CODEMAP, CLAUDE.md, API.md, ARCHITECTURE, README console, README gốc, HUONG-DAN §8, CHANGELOG | docs | C1 | xong (commit này) |
-| L1 | Ô "Thông báo" ở màn Trực ban (hiện `sent`/`failed`/`last_error`) | console | C1 | **lấy sau**: khi `failed > 0` xảy ra thật mà người trực không biết — đo `/api/state.notify.failed` |
+| N4 | Ô "Thông báo" ở màn Trực ban: `Notifier.verdict()` (off/good/warn/crit, tầng dữ liệu), `failing` theo kênh, `watch_error` tách lỗi kênh, `static/js/notify.js` chỉ vẽ | console | C2 | xong — người yêu cầu thẳng (*"triển khai ô Thông báo trên màn Trực ban"*), không chờ điều kiện đo cũ |
+| L5 | Nút "Gửi thử" trên ô Thông báo | console | C2 | **lấy sau**: cần quyền ghi mới + route POST; quay lại khi ô đứng `warn` "chưa gửi tin nào" > 1 ngày ở một máy thật |
 | L2 | Nhắc lại định kỳ gate quá hạn (`sev == over`) | console | C1 | **lấy sau**: khi đo thấy `gate.request → gate.decide` trung vị vẫn > 12 h sau một tuần có tin lần đầu |
 | L3 | Duyệt gate từ trong tin (nút Telegram) | console+core | C3 | **lấy sau**: ADR riêng; chỉ khi mở console trên điện thoại là điểm nghẽn đo được |
 | L4 | Kênh thứ ba (webhook JSON chung / email) | console | C1 | **lấy sau**: khi có người trực không dùng được ntfy lẫn Telegram |
@@ -57,3 +58,4 @@ argument 'notifier'`, `KeyError: 'notifier'` ở CLI), xanh sau.
 
 - 2026-10-11: N1–N3 xong trong một commit; cổng console xanh (xem CHANGELOG). PR mở sau khi #427 (df1) merge để
   không chồng lên PR đang chờ.
+- 2026-10-11: N4 (ô Thông báo) — bốn mức đo bằng Chromium headless trên bus thật + ntfy giả; ảnh chụp lần đầu lộ hai chỗ đọc sai (ô `off` in số 0, ô `crit` in lỗi hai lần), sửa kèm test. Commit riêng sau khi #428 merge.

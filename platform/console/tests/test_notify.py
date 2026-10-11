@@ -275,10 +275,14 @@ def test_watcher_collect_nem_thi_ghi_loi_khong_chet(tmp_path: Path) -> None:
     n = _notifier(_Post())
     w = nt.NotifyWatcher(n, (db, None), collect=bad_collect)
     assert w.step() == []
-    assert "bus khoá" in (n.status()["last_error"] or "")
+    st = n.status()
+    assert "bus khoá" in (st["watch_error"] or "")
+    assert st["last_error"] is None, "lỗi đọc bus không phải lỗi kênh — hai chỗ tách riêng"
+    assert st["verdict"]["level"] == "crit" and "hàng đợi gate" in st["verdict"]["say"]
     # lần sau bus đổi thì vẫn thử lại (dấu vân tay chưa được ghi nhận khi collect hỏng)
     w.collect = lambda *a, **k: {"gates": [_gate("REL-001")]}  # type: ignore[assignment]
     assert len(w.step()) == 1
+    assert n.status()["watch_error"] is None, "đọc lại được thì xoá lỗi cũ"
 
 
 def test_watcher_thread_chay_va_dung_duoc(tmp_path: Path) -> None:
@@ -373,8 +377,10 @@ def test_server_khong_kenh_thi_khong_thread_nhung_state_van_khai(tmp_path: Path)
     try:
         assert server.notify_watcher is None
         code, state = _http(server.port, server.token, "/api/state")
-        assert code == 200 and state["notify"] == {"enabled": False, "channels": [], "sent": 0, "failed": 0,
-                                                    "last_error": None, "last_sent_at": None, "watching": 0}
+        assert code == 200
+        notify = state["notify"]
+        assert notify["enabled"] is False and notify["channels"] == [] and notify["sent"] == 0
+        assert notify["verdict"]["level"] == "off"
     finally:
         server.shutdown(); server.server_close()
 
@@ -441,3 +447,90 @@ def test_cli_notify_telegram_lay_token_tu_env(monkeypatch: pytest.MonkeyPatch, c
     assert got["notifier"].status()["channels"] == ["telegram:4242"]
     out = capsys.readouterr().out
     assert "telegram:4242" in out and "1:x" not in out
+
+
+# --- verdict: ô Thông báo ở màn Trực ban (ADR-0005 bổ sung) ------------------------------------------------------
+#
+# Câu hỏi ô trả lời: *nếu một gate mới mở ra lúc tôi không nhìn, tôi có được báo không — và nếu không thì vì sao?*
+# Mức do TẦNG DỮ LIỆU tính (như `empty=True` của phễu sản phẩm, ADR-0003), JS chỉ vẽ: không có chỗ nào để CSS đoán.
+
+def _st(n: nt.Notifier) -> dict[str, Any]:
+    return n.status()["verdict"]
+
+
+def test_verdict_tat_la_o_xam_va_noi_cach_bat() -> None:
+    v = _st(nt.Notifier([], public_url=PUBLIC))
+    assert v["level"] == "off"
+    assert "--notify-ntfy" in v["say"] and "--notify-telegram" in v["say"]
+
+
+def test_verdict_bat_ma_chua_gui_tin_nao_la_canh_bao_khong_phai_xanh() -> None:
+    """Xanh vì rỗng (TRAPS console #2): một kênh chưa gửi lần nào chưa chứng minh được là thông."""
+    n = _notifier(_Post())
+    n.observe([])
+    v = _st(n)
+    assert v["level"] == "warn" and "chưa gửi" in v["say"].lower()
+
+
+def test_verdict_gui_duoc_la_xanh_kem_so_tin() -> None:
+    n = _notifier(_Post())
+    n.observe([_gate("REL-001")])
+    v = _st(n)
+    assert v["level"] == "good" and "1 tin" in v["say"]
+
+
+def test_verdict_kenh_dang_hong_la_do_va_neu_ten_kenh() -> None:
+    n = _notifier(_Post(status=401), nt.TelegramChannel("1:x", "4242"))
+    n.observe([_gate("REL-001")])
+    st = n.status()
+    assert st["failing"] == ["telegram:4242"]
+    assert st["verdict"]["level"] == "crit"
+    assert "telegram:4242" in st["verdict"]["say"] and "HTTP 401" in st["verdict"]["say"]
+    assert "1:x" not in str(st)
+
+
+def test_kenh_hong_roi_gui_lai_duoc_thi_het_do() -> None:
+    """`failing` là trạng thái HIỆN TẠI của từng kênh, không phải lịch sử: một lần hỏng hôm qua không được tô đỏ
+    mãi. Số `failed` (lịch sử) vẫn giữ."""
+    post = _Post(status=500)
+    n = _notifier(post)
+    n.observe([])
+    n.observe([_gate("A")])
+    assert _st(n)["level"] == "crit"
+    post.status = 200
+    n.observe([_gate("A"), _gate("B")])
+    st = n.status()
+    assert st["failing"] == [] and st["failed"] == 1 and st["verdict"]["level"] == "good"
+
+
+def test_mot_kenh_hong_mot_kenh_thong_van_la_do() -> None:
+    """Người trực có thể chỉ theo dõi một trong hai kênh — kênh của họ hỏng thì họ không được báo."""
+    def post(url: str, data: bytes, headers: dict[str, str]) -> int:
+        return 503 if "ntfy" in url else 200
+
+    n = nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t"), nt.TelegramChannel("1:x", "4242")],
+                    public_url=PUBLIC, post=post)
+    n.observe([_gate("A")])
+    st = n.status()
+    assert st["failing"] == ["ntfy:https://ntfy.sh/t"] and st["verdict"]["level"] == "crit"
+
+
+def test_verdict_link_tro_loopback_la_canh_bao() -> None:
+    """Tin đi tới điện thoại nhưng link `http://127.0.0.1:8200/…` không mở được ở đó — hỏng im lặng thứ hai."""
+    n = nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t")], public_url="http://127.0.0.1:8200", post=_Post())
+    n.observe([_gate("A")])
+    st = n.status()
+    assert st["public_url"] == "http://127.0.0.1:8200"
+    assert st["verdict"]["level"] == "warn" and "--public-url" in st["verdict"]["say"]
+
+
+@pytest.mark.parametrize("url", ["http://localhost:8200", "http://[::1]:8200", "http://127.0.0.1"])
+def test_moi_dang_loopback_deu_bi_nhan_ra(url: str) -> None:
+    n = nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t")], public_url=url, post=_Post())
+    n.observe([_gate("A")])
+    assert _st(n)["level"] == "warn"
+
+
+def test_muc_verdict_la_tap_dong_khai_o_mot_cho() -> None:
+    """JS vẽ pill theo `level`; tập mức phải khai ở một chỗ để test giao diện đối chiếu (test_static_ui)."""
+    assert nt.VERDICT_LEVELS == ("off", "good", "warn", "crit")

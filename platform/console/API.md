@@ -189,7 +189,8 @@ GET  /sw.js             → static/sw.js — PHẢI ở gốc, service worker ch
                           những đường trong thư mục chứa nó, mà nó cần điều khiển "/"
 GET  /manifest.webmanifest → static/manifest.webmanifest (application/manifest+json)
 GET  /api/state         → collect(...) + {"engine": {"engines": [...], "allowed": bool}}  (ADR-0004)
-                          + {"notify": {enabled, channels, sent, failed, last_error, last_sent_at, watching}}  (ADR-0005)
+                          + {"notify": {enabled, channels, sent, failed, last_error, last_sent_at, watching,
+                                      failing, watch_error, public_url, verdict: {level, say}}}  (ADR-0005)
 GET  /api/stream        → SSE: `event: state` mỗi khi bus đổi, `event: error` khi collect() ném,
                           `: ping` giữ nhịp 15 giây. Không có Content-Length; đóng kết nối là hết thân bài.
 GET  /api/gate/brief    → ?id=<subject>[&xuong=software-company][&closed=1]
@@ -261,7 +262,9 @@ class Notifier:
     def __init__(self, channels, *, public_url: str, post=http_post)
     enabled: bool                         # có ít nhất một kênh
     def observe(self, gates: list[dict]) -> list[Message]   # một lần nhìn hàng đợi; trả tin đã dựng (và đã thử gửi)
-    def status(self) -> dict              # {"enabled", "channels": [name], "sent", "failed", "last_error", "last_sent_at", "watching"}
+    def status(self) -> dict              # {"enabled", "channels": [name], "sent", "failed", "last_error", "last_sent_at", "watching",
+                                          #  "failing": [name], "watch_error", "public_url", "verdict": {"level", "say"}}
+    def verdict(self) -> dict             # level ∈ VERDICT_LEVELS = ("off","good","warn","crit"); thứ tự ở ADR-0005 Bổ sung
 
 class NotifyWatcher:                      # thread nền của ConsoleServer khi notifier.enabled
     def step(self) -> list[Message]       # dấu vân tay bus đổi → collect(company_db, keeper_db) → notifier.observe(state["gates"])
@@ -281,6 +284,10 @@ def build_notifier(*, ntfy, telegram_chat, public_url, env) -> Notifier   # Noti
 - `post(url, data, headers) -> int` là điểm tiêm: test truyền hàm giả, chạy thật dùng `http_post` (urllib, timeout 5 s,
   4xx/5xx trả mã thay vì ném). Mã ngoài 2xx hoặc exception → `failed += 1`, `last_error = "<kênh>: HTTP n | <Exc>"`
   — không URL, không token.
+- `failing` = kênh mà LẦN GỬI GẦN NHẤT qua nó hỏng (gửi lại được thì rời danh sách); `failed` = tổng từ khi console
+  chạy. `watch_error` = `collect()` ném trong `NotifyWatcher.step` (xoá khi đọc lại được) — tách khỏi `last_error`.
+- Ô "Thông báo" (`static/js/notify.js`, `#notify` dưới `#engine`) chỉ tra `PILL[verdict.level]` và in `verdict.say`;
+  mọi so sánh nằm ở `verdict()`. `test_static_ui.py` đối chiếu khoá `PILL` với `VERDICT_LEVELS`.
 
 ## `settings.py`
 

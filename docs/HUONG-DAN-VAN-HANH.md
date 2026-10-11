@@ -834,8 +834,9 @@ CONSOLE_TELEGRAM_TOKEN=<token> uv run python -m console --allow-decide --notify-
 
 `--public-url` là địa chỉ console như điện thoại nhìn thấy (Tailscale, Cloudflare Tunnel… — hạ tầng tự lo; console
 vẫn chỉ bind loopback). Không nêu thì link trong tin trỏ `http://127.0.0.1:8200`, chỉ mở được trên chính máy đó.
-Tin có hỏng hay không xem ở `/api/state` khoá `notify` (`sent` / `failed` / `last_error`); console không bao giờ
-chết vì kênh thông báo hỏng. Chưa có nhắc lại định kỳ và chưa duyệt gate từ trong tin — hai việc chờ đo
+Tin có tới không xem ở ô **Thông báo** ngay dưới ô Động cơ (xám = tắt, đỏ = kênh đang hỏng hoặc không đọc được
+hàng đợi, vàng = link trỏ loopback hoặc chưa gửi được tin nào, xanh = đã gửi được); console không bao giờ chết vì
+kênh thông báo hỏng. Chưa có nhắc lại định kỳ, chưa có nút gửi thử và chưa duyệt gate từ trong tin — các việc chờ đo
 (`docs/thi-hanh/tb1.md`).
 
 Tám màn (phím `1`–`8`): **Trực ban** (giao hàng, quality contract, ô *Động cơ*, hàng đợi gate của cả hai công ty
