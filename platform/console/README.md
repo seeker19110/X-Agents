@@ -84,6 +84,27 @@ Không có `--deliver-remote` thì orchestrator chạy không `--deliver --push-
 là chế độ này. Ô Động cơ khai `delivers` cho từng xưởng để chế độ đó không im lặng. Remote đến từ dòng lệnh của
 người trực, **không bao giờ** từ `POST /api/engine`: argv chốt cứng trong `SPECS`, không nhận tham số client.
 
+**Thông báo đẩy khi có gate chờ** (ADR-0005). Hai màu vàng/đỏ theo tuổi gate chỉ có nghĩa với người đang mở
+trang; rời máy là gate chờ hàng giờ không ai hay. Bật một trong hai kênh thì console gửi **một tin cho mỗi gate mới**
+xuất hiện trong hàng đợi (cả hai xưởng, cả câu hỏi làm rõ) kèm link mở đúng ngăn kéo gate, và một tin tóm tắt lúc
+khởi động nếu đã có gì chờ sẵn:
+
+```bash
+uv run python -m console --allow-decide --notify-ntfy https://ntfy.sh/<topic-khó-đoán> --public-url https://<địa-chỉ-console-nhìn-từ-điện-thoại>
+CONSOLE_TELEGRAM_TOKEN=<token bot> uv run python -m console --allow-decide --notify-telegram <chat_id>
+```
+
+ntfy: cài app ntfy trên điện thoại, theo dõi đúng topic đó (topic là địa chỉ công khai — chọn tên khó đoán, bắt buộc
+`https://` trừ máy chủ tự host trên loopback). Telegram: token bot **chỉ** đọc từ biến môi trường (dòng lệnh thì `ps`
+thấy); thiếu là console dừng ngay với mã 2. `--public-url` là địa chỉ console như điện thoại nhìn thấy (qua
+Tailscale/Cloudflare Tunnel — việc của hạ tầng, không phải của console); không nêu thì link trỏ
+`http://127.0.0.1:8200` và chỉ mở được trên chính máy này. Link **không mang token phiên**.
+
+Thông báo chạy trên một thread nền dò bus như `/api/stream`, **không cần ai mở trang**, chết cùng console. Lỗi mạng
+không làm gì chết: `/api/state` khoá `notify` khai `sent` / `failed` / `last_error` (tên kênh + mã HTTP, không URL,
+không token). Không nhắc lại gate đã báo, không nhắc định kỳ — gate bị từ chối rồi mở lại cùng id thì báo lại vì đó
+là một lượt chờ người mới.
+
 Mục **Cài đặt model** trong trang cho từng công ty: chọn model cho tier mạnh/tiêu chuẩn/nhẹ trên từng backend,
 đặt ưu tiên backend theo tier, bật/tắt backend. Giá trị hiển thị là đúng cái đang chạy (`llm.yaml`); lưu là ghi
 thẳng vào file, bản cũ để lại `llm.yaml.bak`. Không muốn mở trang thì dùng CLI:

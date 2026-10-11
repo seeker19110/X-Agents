@@ -44,6 +44,7 @@ tính — có `tests/test_es_module.py` canh việc nhập module, viết test c
 | quyết định gate | `src/console/decide.py` — gọi `HumanGate` công ty; lý do ≥ 20 ký tự |
 | form giao việc | `src/console/submit.py` — payload theo schema topic của công ty |
 | bật/tắt động cơ | `src/console/engine.py` — `argv` chốt cứng trong `SPECS`, KHÔNG nhận tham số client; route `POST /api/engine` (ADR-0004) |
+| thông báo đẩy khi gate chờ | `src/console/notify.py` — chỉ đọc `collect()["gates"]`, thread nền chết cùng server, token Telegram chỉ từ env, lỗi là số đếm trong `status()` (ADR-0005); kênh mới = một lớp có `send(msg, post)` + test không chạm mạng |
 | giao diện | `src/console/static/index.html` (HTML + CSS) và `static/js/*.js` (ES module, K7.1 — không build step). Thêm màn mới: HTML + một module + **nhập nó trong `main.js`** (không nhập = không bao giờ chạy, `tests/test_es_module.py` canh). Gán vào biến nhập từ module khác thì phải qua setter. Route hash `#/<màn>/gate/<id>`… trong `API.md` |
 | đổi hợp đồng giữa lớp | `API.md` cùng PR |
-| kiến trúc | `docs/adr/` (0001–0004) |
+| kiến trúc | `docs/adr/` (0001–0005) |

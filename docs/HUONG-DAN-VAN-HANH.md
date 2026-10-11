@@ -821,6 +821,23 @@ Ba điều phải biết trước khi dựa vào nó:
 Mở đúng địa chỉ terminal in ra (có token phiên trong đó). Đường dẫn DB khác mặc định thì chỉ ra bằng
 `--company-db` / `--keeper-db`.
 
+**Rời máy mà vẫn biết khi có gate chờ (ADR-0005 của console).** Màu vàng/đỏ theo tuổi gate chỉ có nghĩa với người
+đang mở trang. Bật một kênh thông báo thì console gửi một tin cho mỗi gate mới (cả hai xưởng, cả câu hỏi làm rõ) kèm
+link mở đúng ngăn kéo, không cần ai mở trang:
+
+```bash
+# ntfy: cài app ntfy trên điện thoại, theo dõi topic; topic là địa chỉ công khai nên chọn tên khó đoán
+uv run python -m console --allow-decide --notify-ntfy https://ntfy.sh/xagents-<chuỗi-ngẫu-nhiên> --public-url https://<console-nhìn-từ-điện-thoại>
+# Telegram: token bot CHỈ qua biến môi trường; thiếu là console dừng với mã 2
+CONSOLE_TELEGRAM_TOKEN=<token> uv run python -m console --allow-decide --notify-telegram <chat_id>
+```
+
+`--public-url` là địa chỉ console như điện thoại nhìn thấy (Tailscale, Cloudflare Tunnel… — hạ tầng tự lo; console
+vẫn chỉ bind loopback). Không nêu thì link trong tin trỏ `http://127.0.0.1:8200`, chỉ mở được trên chính máy đó.
+Tin có hỏng hay không xem ở `/api/state` khoá `notify` (`sent` / `failed` / `last_error`); console không bao giờ
+chết vì kênh thông báo hỏng. Chưa có nhắc lại định kỳ và chưa duyệt gate từ trong tin — hai việc chờ đo
+(`docs/thi-hanh/tb1.md`).
+
 Tám màn (phím `1`–`8`): **Trực ban** (giao hàng, quality contract, ô *Động cơ*, hàng đợi gate của cả hai công ty
 xếp theo mức quá hạn, việc máy đang làm, chi phí 14 ngày theo tier, gói tài khoản đang xoay, dòng sự kiện), **Phễu
 sản phẩm** (yêu cầu của khách đã đi tới đâu), **Xưởng phần mềm** (giao việc, release, bảng ticket, PR chờ review,

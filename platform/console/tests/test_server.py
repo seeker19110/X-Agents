@@ -492,6 +492,8 @@ def test_stream_day_ngay_trang_thai_dau_tien(make_console, fake_modules, tmp_pat
     # `engine` đi kèm MỌI khung trạng thái (ADR-0004): /api/state và /api/stream phải trả cùng một payload,
     # nếu không thì ô Động cơ chỉ đúng ở đường hỏi lại 10 giây và sai ở đường stream.
     assert payload.pop("engine")["engines"][0]["xuong"] == "software-company"
+    # `notify` cũng đi kèm mọi khung (ADR-0005): không cấu hình kênh nào thì khai `enabled: false`, không im.
+    assert payload.pop("notify")["enabled"] is False
     assert payload == {"generated_at": "2026-09-03T08:41:12+07:00", "tiles": {"events": 7}}
 
 
@@ -519,6 +521,7 @@ def test_stream_day_khung_moi_khi_bus_doi(make_console, fake_modules, tmp_path: 
         def state_khong_engine() -> Any:
             payload = dict(next_state())
             payload.pop("engine", None)
+            payload.pop("notify", None)
             return payload
 
         assert state_khong_engine() == {"n": 1}

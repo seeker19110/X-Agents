@@ -20,12 +20,14 @@ from __future__ import annotations
 import argparse
 import contextlib
 import logging
+import os
 import subprocess
 import sys
 import webbrowser
 from pathlib import Path
 from typing import Any
 
+from console.notify import NotifyConfigError, build_notifier
 from console.server import (
     DEFAULT_COMPANY_DB,
     DEFAULT_HOST,
@@ -59,6 +61,16 @@ def build_parser() -> argparse.ArgumentParser:
                         "được duyệt sẽ tag + đẩy nhánh release lên repo khách. Cần --allow-engine. Không nêu "
                         "thì động cơ chạy KHÔNG giao hàng — gate ký xong sản phẩm vẫn nằm lại máy")
     p.add_argument("--i-know", action="store_true", help="chấp nhận rủi ro khi bind ra ngoài loopback")
+    p.add_argument("--notify-ntfy", metavar="URL",
+                   help="gửi tin khi có gate MỚI chờ người tới một topic ntfy (vd https://ntfy.sh/<topic-khó-đoán>); "
+                        "cài app ntfy trên điện thoại và theo dõi topic đó. Không có cờ thông báo nào thì console "
+                        "chỉ hiện gate cho người đang mở trang (ADR-0005)")
+    p.add_argument("--notify-telegram", metavar="CHAT_ID",
+                   help="gửi tin tới một chat Telegram qua bot; token bot đọc từ biến môi trường "
+                        "CONSOLE_TELEGRAM_TOKEN (không nhận qua dòng lệnh)")
+    p.add_argument("--public-url", metavar="URL",
+                   help="địa chỉ console như điện thoại nhìn thấy (qua tunnel/VPN), dùng để dựng link trong tin; "
+                        "mặc định http://<host>:<port> — chỉ mở được trên chính máy này")
     p.add_argument("--with-gateway", action="store_true",
                    help="bật gateway (pool tài khoản subscription) trước khi phục vụ; đã chạy sẵn thì bỏ qua")
     p.add_argument("--open", dest="open_browser", action="store_true", help="mở trình duyệt (cố gắng, không bắt buộc)")
@@ -190,6 +202,14 @@ def main(argv: list[str] | None = None) -> int:
         print("[-] --deliver-remote cần --allow-engine: console không bật được động cơ thì không giao hàng được.")
         return 2
 
+    public_url = args.public_url or f"http://{'[' + args.host + ']' if ':' in args.host else args.host}:{args.port}"
+    try:
+        notifier = build_notifier(ntfy=args.notify_ntfy, telegram_chat=args.notify_telegram, public_url=public_url,
+                                  env=os.environ)
+    except NotifyConfigError as e:
+        print(f"[-] {e}")
+        return 2
+
     token = generate_token()
     token_path = write_token_file(token)
     try:
@@ -204,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
             company_db=args.company_db,
             keeper_db=args.keeper_db,
             deliver_remote=args.deliver_remote,
+            notifier=notifier,
         )
     except OSError as e:
         print(f"[-] Không mở được {args.host}:{args.port}: {e}")
@@ -219,6 +240,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Cấu hình:    {'SỬA ĐƯỢC model/backend' if args.allow_config else 'chỉ xem (--allow-config để sửa)'}")
     print(f"  Giao việc:   {'CHO PHÉP (form Giao việc ghi vào bus)' if args.allow_submit else 'khoá (--allow-submit để giao việc)'}")
     print(f"  Động cơ:     {'BẬT/TẮT ĐƯỢC trên trang' if args.allow_engine else 'khoá (--allow-engine để bật orchestrator từ trang)'}")
+    if notifier.enabled:
+        print(f"  Thông báo:   {', '.join(notifier.status()['channels'])}  → link trong tin trỏ {notifier.public_url}")
+    else:
+        print("  Thông báo:   tắt (--notify-ntfy URL / --notify-telegram CHAT_ID để nhận tin khi có gate chờ)")
     print(f"  Token file:  {token_path}  (quyền 0600, mới mỗi lần chạy)")
     print(f"  company.db:  {args.company_db}{'' if args.company_db.exists() else '  (chưa có — phần này sẽ trống)'}")
     print(f"  keeper.db:   {args.keeper_db}"
