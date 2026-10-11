@@ -213,21 +213,34 @@ class AgentRunner(Generic[E, S]):
 
         `wants_content`: chỉ công ty có `content` trong hợp đồng `context_writes` mới ghi toàn văn và mới audit
         `context_no_content` khi thiếu. Bật nó cho công ty không hỏi `content` là sinh một audit rác mỗi lần
-        ghi — xem docstring module, quyết định 1."""
+        ghi — xem docstring module, quyết định 1.
+
+        Nhiều bản ghi CÙNG namespace trong một lượt được gộp thành MỘT lần ghi (toàn văn nối bằng `---`, con trỏ
+        nối `+`, summary nối ` | `) và audit `context_merged`: blackboard chỉ giữ bản mới nhất mỗi namespace, ghi
+        từng cái là bản sau đè mất bản trước — lỗi thật 2026-10-11, ADR 3 KB đè PRD và requirements 27 KB."""
         spec = self.agents[agent_id]; done: list[str] = []; empty: list[str] = []
+        groups: dict[str, list[dict[str, Any]]] = {}
         for w in writes:
             ns = w["namespace"]
             if ns not in spec.namespaces_write or self.blackboard is None:
                 self._audit(spec, "context_rejected", inp,
                             evidence=f"namespace {ns} không thuộc {agent_id} hoặc không có blackboard")
                 continue
+            groups.setdefault(ns, []).append(w)
+        merged = [f"{ns} x{len(ws)}" for ns, ws in groups.items() if len(ws) > 1]
+        if merged:
+            self._audit(spec, "context_merged", inp, evidence=",".join(merged))
+        for ns, ws in groups.items():
+            assert self.blackboard is not None   # chỉ có nhóm khi có blackboard (vòng trên đã lọc)
+            ref = "+".join(str(w["content_ref"]) for w in ws)
+            summary = " | ".join(s for w in ws if (s := str(w.get("summary", ""))))
             kw: dict[str, Any] = {}
             if self.wants_content:
-                content = w.get("content")
-                content = str(content) if content is not None and str(content).strip() else None
+                parts = [str(c) for w in ws if (c := w.get("content")) is not None and str(c).strip()]
+                content = "\n\n---\n\n".join(parts) if parts else None
                 if content is None: empty.append(ns)
                 kw = {"content": content, "project_id": self._context_project(inp)}
-            self.blackboard.write(spec.id, ns, str(w["content_ref"]), str(w.get("summary", "")), **kw)
+            self.blackboard.write(spec.id, ns, ref, summary, **kw)
             done.append(ns)
         if done:
             self._audit(spec, "context_written", inp, evidence=",".join(done))
