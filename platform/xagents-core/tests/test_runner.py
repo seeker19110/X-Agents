@@ -240,13 +240,66 @@ def test_wants_content_BAT_thi_ghi_toan_van_va_bao_khi_thieu():
         def _context_project(self, inp): return inp.payload.get("pham_vi")
 
     bb = FakeBB(); bus = FakeBus()
-    r = Company(bus, object(), {"bien-tap": FakeSpec()}, blackboard=bb)
+    r = Company(bus, object(), {"bien-tap": FakeSpec(ns=("giong", "nhip"))}, blackboard=bb)
     r.write_context("bien-tap", _inp(pham_vi="DA1"), [
         {"namespace": "giong", "content_ref": "co.md", "content": "toàn văn"},
-        {"namespace": "giong", "content_ref": "thieu.md", "content": "   "}])
+        {"namespace": "nhip", "content_ref": "thieu.md", "content": "   "}])
     assert bb.writes[0][4] == {"content": "toàn văn", "project_id": "DA1"}
     assert bb.writes[1][4] == {"content": None, "project_id": "DA1"}, "khoảng trắng = không có toàn văn"
     assert [a.payload["action"] for a in bus.published] == ["context_written", "context_no_content"]
+
+
+class _CompanyND(Runner):
+    """Company bật `wants_content` (ADR-0012) — dùng cho các ca gộp namespace."""
+    wants_content = True
+    def _context_project(self, inp): return inp.payload.get("pham_vi")
+
+
+def test_write_context_gop_nhieu_ban_ghi_cung_namespace_thay_vi_de():
+    """Lỗi thật 2026-10-11 (QLLH-TRUONG): `product[spec]` trả 4 `context_writes` cùng namespace `prd` (PRD,
+    requirements, risk register, ADR). Blackboard chỉ giữ bản mới nhất mỗi namespace, nên ghi từng cái là ADR 3 KB
+    đè mất PRD và requirements 27 KB. Một lượt có nhiều bản ghi cùng namespace phải thành MỘT lần ghi gộp."""
+    bb = FakeBB(); bus = FakeBus()
+    r = _CompanyND(bus, object(), {"bien-tap": FakeSpec(ns=("giong", "nhip"))}, blackboard=bb)
+    got = r.write_context("bien-tap", _inp(pham_vi="DA1"), [
+        {"namespace": "giong", "content_ref": "PRD.md", "summary": "prd", "content": "# PRD"},
+        {"namespace": "nhip", "content_ref": "n.md", "summary": "n", "content": "nhịp"},
+        {"namespace": "giong", "content_ref": "req.json", "summary": "", "content": "   "},
+        {"namespace": "giong", "content_ref": "risk.json", "summary": "risk", "content": '{"r": 1}'},
+        {"namespace": "giong", "content_ref": "adr.md", "summary": "adr", "content": "# ADR"}])
+    assert got == ["giong", "nhip"], "mỗi namespace một lần, theo thứ tự xuất hiện đầu tiên"
+    assert [w[1] for w in bb.writes] == ["giong", "nhip"], "một lần ghi blackboard mỗi namespace — không đè"
+    _, _, ref, summary, kw = bb.writes[0]
+    assert ref == "PRD.md+req.json+risk.json+adr.md"
+    assert summary == "prd | risk | adr", "summary rỗng không để lại ' |  | '"
+    assert kw == {"content": '# PRD\n\n---\n\n{"r": 1}\n\n---\n\n# ADR', "project_id": "DA1"}
+    assert bb.writes[1][2:] == ("n.md", "n", {"content": "nhịp", "project_id": "DA1"}), "bản ghi đơn giữ nguyên"
+    acts = [(a.payload["action"], a.payload["evidence"]) for a in bus.published]
+    assert acts == [("context_merged", "giong x4"), ("context_written", "giong,nhip")], \
+        "có một phần thiếu toàn văn nhưng bản gộp vẫn có toàn văn → không audit context_no_content"
+
+
+def test_write_context_gop_ma_moi_phan_deu_thieu_toan_van_thi_van_bao_context_no_content():
+    bb = FakeBB(); bus = FakeBus()
+    r = _CompanyND(bus, object(), {"bien-tap": FakeSpec()}, blackboard=bb)
+    r.write_context("bien-tap", _inp(pham_vi="DA1"), [
+        {"namespace": "giong", "content_ref": "a.md"}, {"namespace": "giong", "content_ref": "b.md", "content": " "}])
+    assert bb.writes == [("bien-tap", "giong", "a.md+b.md", "", {"content": None, "project_id": "DA1"})]
+    assert [(a.payload["action"], a.payload["evidence"]) for a in bus.published] == [
+        ("context_merged", "giong x2"), ("context_written", "giong"),
+        ("context_no_content", "chỉ có con trỏ, không có toàn văn: giong")]
+
+
+def test_write_context_gop_khi_wants_content_TAT_va_bo_ban_ghi_bi_tu_choi():
+    """Studio (không `content`) cũng không được đè; bản ghi namespace lạ vẫn bị từ chối từng cái như cũ."""
+    bb = FakeBB()
+    r, bus = _runner(blackboard=bb)
+    r.write_context("bien-tap", _inp(), [
+        {"namespace": "giong", "content_ref": "a.md", "summary": "a"},
+        {"namespace": "la", "content_ref": "x"},
+        {"namespace": "giong", "content_ref": "b.md", "summary": "b"}])
+    assert bb.writes == [("bien-tap", "giong", "a.md+b.md", "a | b", {})]
+    assert [a.payload["action"] for a in bus.published] == ["context_rejected", "context_merged", "context_written"]
 
 
 def test_new_envelope_la_hook_nen_studio_giu_envelope_moi_con_company_noi_chuoi():
