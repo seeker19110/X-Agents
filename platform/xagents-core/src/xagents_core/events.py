@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -63,7 +63,7 @@ class Envelope(BaseModel):
         if self.correlation_id is None:
             self.correlation_id = self.event_id
 
-    def child(self, **kw: Any) -> Envelope:
+    def child(self, **kw: Any) -> Self:
         """Envelope mới trong cùng chuỗi nhân quả: kế thừa `correlation_id`, `causation_id` = event này."""
         return type(self)(correlation_id=self.correlation_id, causation_id=self.event_id, **kw)
 
