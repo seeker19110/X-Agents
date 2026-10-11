@@ -534,3 +534,152 @@ def test_moi_dang_loopback_deu_bi_nhan_ra(url: str) -> None:
 def test_muc_verdict_la_tap_dong_khai_o_mot_cho() -> None:
     """JS vẽ pill theo `level`; tập mức phải khai ở một chỗ để test giao diện đối chiếu (test_static_ui)."""
     assert nt.VERDICT_LEVELS == ("off", "good", "warn", "crit")
+
+
+# --- nút "Gửi thử" (ADR-0005 bổ sung 2) ---------------------------------------------------------------------------
+#
+# Ô Thông báo đứng vàng "chưa gửi tin nào" cho tới gate thật đầu tiên — có thể là nhiều ngày. Người vừa cấu hình kênh
+# cần biết NGAY là tin có tới điện thoại không. Tin thử: nội dung cố định do server dựng, chỉ tới kênh người chạy
+# console đã khai, không ghi bus, giãn cách tối thiểu giữa hai lần bấm.
+
+class _Clock:
+    def __init__(self) -> None:
+        self.t = 1000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def test_gui_thu_toi_moi_kenh_mot_tin_co_dinh_va_chung_minh_kenh_thong() -> None:
+    post = _Post()
+    n = nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t"), nt.TelegramChannel("1:x", "4242")], public_url=PUBLIC,
+                    post=post, clock=_Clock())
+    n.observe([])
+    assert n.status()["verdict"]["level"] == "warn", "trước khi thử: chưa chứng minh kênh thông"
+    out = n.send_test("human:dong")
+    assert [r["channel"] for r in out["results"]] == ["ntfy:https://ntfy.sh/t", "telegram:4242"]
+    assert all(r["ok"] for r in out["results"]) and len(post.calls) == 2
+    ntfy_body = post.calls[0][1].decode("utf-8")
+    assert ntfy_body.splitlines()[0] == "Tin thử từ console X-Agents"
+    assert "human:dong" in ntfy_body and f"{PUBLIC}/#/truc-ban" in ntfy_body
+    assert post.calls[0][2]["Click"] == f"{PUBLIC}/#/truc-ban"
+    st = out["status"]
+    assert st["sent"] == 2 and st["verdict"]["level"] == "good" and st["last_test_at"]
+    assert "1:x" not in json.dumps(out)
+
+
+def test_gui_thu_khi_khong_co_kenh_thi_tu_choi_khong_gui() -> None:
+    post = _Post()
+    n = nt.Notifier([], public_url=PUBLIC, post=post)
+    with pytest.raises(nt.NotifyDisabled):
+        n.send_test("human:dong")
+    assert post.calls == []
+
+
+def test_gui_thu_gian_cach_toi_thieu_giua_hai_lan() -> None:
+    clock = _Clock()
+    post = _Post()
+    n = _notifier(post)
+    n = nt.Notifier(n.channels, public_url=PUBLIC, post=post, clock=clock)
+    n.send_test("human:dong")
+    clock.t += nt.TEST_COOLDOWN - 1
+    with pytest.raises(nt.NotifyCooldown) as e:
+        n.send_test("human:dong")
+    assert 0 < e.value.retry_after <= nt.TEST_COOLDOWN
+    assert len(post.calls) == 1, "bị chặn thì không gửi"
+    clock.t += 1
+    n.send_test("human:dong")
+    assert len(post.calls) == 2
+
+
+def test_gui_thu_kenh_hong_bao_ket_qua_tung_kenh_va_to_do() -> None:
+    def post(url: str, data: bytes, headers: dict[str, str]) -> int:
+        return 401 if "telegram" in url else 200
+
+    n = nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t"), nt.TelegramChannel("1:x", "4242")], public_url=PUBLIC,
+                    post=post, clock=_Clock())
+    out = n.send_test("human:dong")
+    assert out["results"] == [{"channel": "ntfy:https://ntfy.sh/t", "ok": True, "error": None},
+                              {"channel": "telegram:4242", "ok": False, "error": "HTTP 401"}]
+    assert out["status"]["verdict"]["level"] == "crit" and out["status"]["failing"] == ["telegram:4242"]
+
+
+def test_gui_thu_lam_sach_ten_nguoi_bam() -> None:
+    """`by` là thứ duy nhất từ client đi vào tin: bỏ ký tự điều khiển, cắt ngắn — không để thân tin bị bẻ dòng giả
+    thành tiêu đề khác hay dài vô hạn."""
+    post = _Post()
+    n = nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t")], public_url=PUBLIC, post=post, clock=_Clock())
+    n.send_test("human:x\nGate chờ: giả\r" + "y" * 200)
+    body = post.calls[0][1].decode("utf-8")
+    assert body.splitlines()[0] == "Tin thử từ console X-Agents"
+    assert "Gate chờ: giả" not in body.splitlines()[1:2] and "\r" not in body
+    line = next(ln for ln in body.splitlines() if "human:x" in ln)
+    assert "y" * (nt.BY_MAX + 1) not in line
+
+
+# --- route POST /api/notify/test --------------------------------------------------------------------------------
+
+def _post_json(port: int, token: str | None, path: str, body: Any) -> tuple[int, Any]:
+    import http.client
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["X-Console-Token"] = token
+        conn.request("POST", path, body=json.dumps(body).encode("utf-8"), headers=headers)
+        resp = conn.getresponse()
+        return resp.status, json.loads(resp.read().decode("utf-8"))
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def notify_console(tmp_path: Path):
+    from console import server as srv
+
+    static = tmp_path / "static"; static.mkdir()
+    (static / "index.html").write_text("<html></html>", encoding="utf-8")
+    started: list[Any] = []
+
+    def _make(notifier: nt.Notifier | None) -> Any:
+        server = srv.make_server("127.0.0.1", 0, static_dir=static, notifier=notifier)  # readonly mặc định
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        started.append(server)
+        return server
+
+    yield _make
+    for s in started:
+        s.shutdown(); s.server_close()
+
+
+def test_route_gui_thu_chay_ca_o_che_do_chi_doc_khi_da_khai_kenh(notify_console) -> None:
+    """Ngoại lệ có chủ đích của "chỉ đọc là mặc định": cờ `--notify-*` chính là lời cho phép gửi tới kênh đó."""
+    post = _Post()
+    server = notify_console(nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t")], public_url=PUBLIC, post=post,
+                                        clock=_Clock()))
+    assert server.readonly is True
+    code, body = _post_json(server.port, server.token, "/api/notify/test", {"by": "human:dong"})
+    assert code == 200 and body["results"][0]["ok"] is True
+    assert any(c[1].decode("utf-8").startswith("Tin thử") for c in post.calls)
+
+
+def test_route_gui_thu_khong_co_kenh_tra_409(notify_console) -> None:
+    server = notify_console(None)
+    code, body = _post_json(server.port, server.token, "/api/notify/test", {"by": "human:dong"})
+    assert code == 409 and "--notify-ntfy" in body["error"]
+
+
+def test_route_gui_thu_can_token_va_ten_nguoi_bam(notify_console) -> None:
+    server = notify_console(nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t")], public_url=PUBLIC, post=_Post(),
+                                        clock=_Clock()))
+    assert _post_json(server.port, None, "/api/notify/test", {"by": "human:dong"})[0] == 401
+    for bad in ({}, {"by": ""}, {"by": 5}, {"by": "   "}):
+        assert _post_json(server.port, server.token, "/api/notify/test", bad)[0] == 400
+
+
+def test_route_gui_thu_bam_lien_tiep_tra_429(notify_console) -> None:
+    server = notify_console(nt.Notifier([nt.NtfyChannel("https://ntfy.sh/t")], public_url=PUBLIC, post=_Post(),
+                                        clock=_Clock()))
+    assert _post_json(server.port, server.token, "/api/notify/test", {"by": "human:dong"})[0] == 200
+    code, body = _post_json(server.port, server.token, "/api/notify/test", {"by": "human:dong"})
+    assert code == 429 and "giây" in body["error"]

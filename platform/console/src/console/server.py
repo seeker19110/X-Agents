@@ -17,6 +17,7 @@ import atexit
 import ipaddress
 import json
 import logging
+import math
 import os
 import secrets
 import socket
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
-from console.notify import Notifier, NotifyWatcher
+from console.notify import Notifier, NotifyCooldown, NotifyWatcher
 
 logger = logging.getLogger("console.server")
 
@@ -425,7 +426,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._error(HTTPStatus.UNAUTHORIZED, "thiếu hoặc sai X-Console-Token")
             return
-        if path not in {"/api/gate/decide", "/api/settings", "/api/request", "/api/engine"}:
+        if path not in {"/api/gate/decide", "/api/settings", "/api/request", "/api/engine", "/api/notify/test"}:
             self._error(HTTPStatus.NOT_FOUND, "không có đường dẫn này")
             return
         if path == "/api/gate/decide" and self.server.readonly:
@@ -440,6 +441,11 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if path == "/api/engine" and not self.server.allow_engine:
             self._error(HTTPStatus.FORBIDDEN, "bật/tắt động cơ bị khoá; chạy lại với --allow-engine")
             return
+        # Gửi thử KHÔNG cần cờ --allow-*: cờ --notify-* đã là lời cho phép gửi tới kênh đó (ADR-0005 bổ sung 2).
+        if path == "/api/notify/test" and not self.server.notifier.enabled:
+            self._error(HTTPStatus.CONFLICT, "chưa có kênh thông báo; chạy lại với --notify-ntfy URL hoặc "
+                                             "--notify-telegram CHAT_ID")
+            return
         try:
             payload = self._read_json_body()
         except GateHTTPError as e:
@@ -451,6 +457,8 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             self._api_engine(payload)
         elif path == "/api/request":
             self._api_submit(payload)
+        elif path == "/api/notify/test":
+            self._api_notify_test(payload)
         else:
             self._api_decide(payload)
 
@@ -620,6 +628,20 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         else:
             logger.info("động cơ %s: %s bởi %s", xuong, action, by)
             self._json(HTTPStatus.OK, result)
+
+    def _api_notify_test(self, payload: dict[str, Any]) -> None:
+        """Gửi một tin thử tới các kênh đã khai. Body: `{"by"}`. Nội dung tin do server dựng — client chỉ góp tên."""
+        by = payload.get("by")
+        if not isinstance(by, str) or not by.strip():
+            self._error(HTTPStatus.BAD_REQUEST, "thiếu hoặc sai trường 'by'")
+            return
+        try:
+            result = self.server.notifier.send_test(by)
+        except NotifyCooldown as e:
+            self._error(HTTPStatus.TOO_MANY_REQUESTS, f"vừa gửi thử; thử lại sau {math.ceil(e.retry_after)} giây")
+            return
+        logger.info("gửi thử thông báo bởi %r", by)  # %r: `by` từ client, không để nó bẻ dòng log
+        self._json(HTTPStatus.OK, result)
 
     def _api_submit(self, payload: dict[str, Any]) -> None:
         from console.submit import submit  # nhập trễ, xem _api_state.

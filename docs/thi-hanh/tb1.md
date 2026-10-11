@@ -29,7 +29,7 @@ triển khai lớp thông báo đẩy khi gate pending"*.
 | N2 | Nối `ConsoleServer` (`notifier=`, `notify_watcher`, `server_close`), khoá `notify` trong `/api/state`; cờ CLI + banner | console | C2 | xong (commit này) |
 | N3 | Tài liệu: ADR, CODEMAP, CLAUDE.md, API.md, ARCHITECTURE, README console, README gốc, HUONG-DAN §8, CHANGELOG | docs | C1 | xong (commit này) |
 | N4 | Ô "Thông báo" ở màn Trực ban: `Notifier.verdict()` (off/good/warn/crit, tầng dữ liệu), `failing` theo kênh, `watch_error` tách lỗi kênh, `static/js/notify.js` chỉ vẽ | console | C2 | xong — người yêu cầu thẳng (*"triển khai ô Thông báo trên màn Trực ban"*), không chờ điều kiện đo cũ |
-| L5 | Nút "Gửi thử" trên ô Thông báo | console | C2 | **lấy sau**: cần quyền ghi mới + route POST; quay lại khi ô đứng `warn` "chưa gửi tin nào" > 1 ngày ở một máy thật |
+| L5 | Nút "Gửi thử" trên ô Thông báo: `Notifier.send_test`, `POST /api/notify/test` (quyền = cờ `--notify-*`, giãn cách 30 s, tin do server dựng) | console | C2 | xong — người yêu cầu thẳng (*"triển khai nút Gửi thử trên ô Thông báo"*), ADR-0005 Bổ sung 2 |
 | L2 | Nhắc lại định kỳ gate quá hạn (`sev == over`) | console | C1 | **lấy sau**: khi đo thấy `gate.request → gate.decide` trung vị vẫn > 12 h sau một tuần có tin lần đầu |
 | L3 | Duyệt gate từ trong tin (nút Telegram) | console+core | C3 | **lấy sau**: ADR riêng; chỉ khi mở console trên điện thoại là điểm nghẽn đo được |
 | L4 | Kênh thứ ba (webhook JSON chung / email) | console | C1 | **lấy sau**: khi có người trực không dùng được ntfy lẫn Telegram |
@@ -59,3 +59,6 @@ argument 'notifier'`, `KeyError: 'notifier'` ở CLI), xanh sau.
 - 2026-10-11: N1–N3 xong trong một commit; cổng console xanh (xem CHANGELOG). PR mở sau khi #427 (df1) merge để
   không chồng lên PR đang chờ.
 - 2026-10-11: N4 (ô Thông báo) — bốn mức đo bằng Chromium headless trên bus thật + ntfy giả; ảnh chụp lần đầu lộ hai chỗ đọc sai (ô `off` in số 0, ô `crit` in lỗi hai lần), sửa kèm test. Commit riêng sau khi #428 merge.
+- 2026-10-11: L5 (nút Gửi thử) — 10 ca đỏ trước (`unexpected keyword argument 'clock'`, thiếu `send_test`, route 404 thay
+  vì 409, `notify.js` thiếu `/api/notify/test`), xanh sau. Đo bằng Chromium + ntfy giả: vàng → bấm → xanh; bấm lại →
+  429; cổng chết → đỏ; không kênh → không nút. Commit riêng sau khi #429 merge.

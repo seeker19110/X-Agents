@@ -104,7 +104,9 @@ Thông báo chạy trên một thread nền dò bus như `/api/stream`, **không
 không làm gì chết: ô **Thông báo** ngay dưới ô Động cơ ở màn Trực ban nói kênh có đang thông không — *tắt* (xám,
 kèm cách bật), *hỏng* (đỏ: kênh nào, mã lỗi gì, hoặc không đọc được hàng đợi gate), *cần xem* (vàng: link trỏ
 loopback nên điện thoại không mở được, hoặc chưa gửi được tin nào), *đang báo* (xanh: đã gửi bao nhiêu tin, lần cuối
-lúc nào). Cùng dữ liệu ở `/api/state` khoá `notify` (tên kênh + mã HTTP, không URL, không token). Không nhắc lại gate đã báo, không nhắc định kỳ — gate bị từ chối rồi mở lại cùng id thì báo lại vì đó
+lúc nào). Vừa khai kênh thì bấm **Gửi thử** trên ô đó: một tin cố định tới mọi kênh, kết quả từng kênh hiện ngay
+và ô đổi màu theo (tới được → xanh, không tới → đỏ); nút có ngay cả khi console chỉ đọc vì quyền của nó là cờ
+`--notify-*`, giãn cách 30 giây giữa hai lần. Cùng dữ liệu ở `/api/state` khoá `notify` (tên kênh + mã HTTP, không URL, không token). Không nhắc lại gate đã báo, không nhắc định kỳ — gate bị từ chối rồi mở lại cùng id thì báo lại vì đó
 là một lượt chờ người mới.
 
 Mục **Cài đặt model** trong trang cho từng công ty: chọn model cho tier mạnh/tiêu chuẩn/nhẹ trên từng backend,

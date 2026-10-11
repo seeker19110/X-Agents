@@ -836,7 +836,8 @@ CONSOLE_TELEGRAM_TOKEN=<token> uv run python -m console --allow-decide --notify-
 vẫn chỉ bind loopback). Không nêu thì link trong tin trỏ `http://127.0.0.1:8200`, chỉ mở được trên chính máy đó.
 Tin có tới không xem ở ô **Thông báo** ngay dưới ô Động cơ (xám = tắt, đỏ = kênh đang hỏng hoặc không đọc được
 hàng đợi, vàng = link trỏ loopback hoặc chưa gửi được tin nào, xanh = đã gửi được); console không bao giờ chết vì
-kênh thông báo hỏng. Chưa có nhắc lại định kỳ, chưa có nút gửi thử và chưa duyệt gate từ trong tin — các việc chờ đo
+kênh thông báo hỏng. Vừa bật xong thì bấm **Gửi thử** trên ô đó để biết ngay tin có tới điện thoại không (không cần
+`--allow-*`; 30 giây mới thử lại được). Chưa có nhắc lại định kỳ và chưa duyệt gate từ trong tin — các việc chờ đo
 (`docs/thi-hanh/tb1.md`).
 
 Tám màn (phím `1`–`8`): **Trực ban** (giao hàng, quality contract, ô *Động cơ*, hàng đợi gate của cả hai công ty
