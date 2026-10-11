@@ -77,8 +77,7 @@ def test_hai_backend_tra_cung_khuon_result(tmp_path, i):
     r = sb.run(_spec(tmp_path, max_output=5))
     assert r.exit_code == 3 and r.timed_out is False
     assert r.stdout == "AAAAA" and r.stderr == "BBBBB"      # cắt đuôi đúng max_output
-    assert r.sandbox == sb.name and sb.name in {"subprocess", "container:python:3.12-slim",
-                                                "container:python:3.12-slim:no-uid"}
+    assert r.sandbox == sb.name and sb.name in {"subprocess", "container:python:3.12-slim"}
 
 
 @pytest.mark.parametrize("i", [0, 1])
@@ -150,43 +149,22 @@ def test_container_khi_can_stdin_thi_env_buoc_phai_ra_dong_lenh(tmp_path):
     assert rec[0]["input"] == "xin chào"
 
 
-def test_container_tren_windows_env_qua_dong_lenh_va_noi_thang_trong_ten(tmp_path):
-    """docker CLI trên Windows coi `-` của `--env-file` là TÊN FILE ("open -: The system cannot find the file
-    specified") → không có đường stdin; env buộc quay về `-e` như ca stdin, và tên sandbox phải nói thẳng đánh đổi."""
+def test_container_env_qua_dong_lenh_thi_noi_thang_trong_ten(tmp_path):
+    """`env_via_stdin=False`: env quay về `-e` như ca stdin, và tên sandbox phải nói thẳng đánh đổi."""
     rec: list[dict[str, Any]] = []
     sb = ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), env_via_stdin=False)
     sb.run(RunSpec(argv=["pytest"], cwd=tmp_path, env={"LANG": "vi"}))
     argv = rec[0]["argv"]
     assert "--env-file" not in argv and "LANG=vi" in argv and argv[argv.index("LANG=vi") - 1] == "-e"
     assert rec[0]["input"] == ""                       # không đẩy KEY=VALUE vào stdin của một lệnh không đọc nó
-    assert sb.name == "container:img:1:env-argv" or sb.name == "container:img:1:no-uid:env-argv"
+    assert sb.name == "container:img:1:env-argv"
 
 
-def test_container_mac_dinh_chon_duong_env_theo_he_dieu_hanh(monkeypatch):
-    # Chỉ `xagents_core.sandbox` thấy `os.name` giả: đổi `os.name` toàn cục thì test đỏ không báo được lỗi —
-    # pytest dựng `Path` khi in báo cáo và sập `INTERNALERROR: cannot instantiate 'WindowsPath'`.
-    class OsGia:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-        def __getattr__(self, attr: str) -> Any:
-            return getattr(os, attr)
-
-    monkeypatch.setattr("xagents_core.sandbox.os", OsGia("nt"))
-    assert ContainerSandbox("docker", "img:1").env_via_stdin is False
-    monkeypatch.setattr("xagents_core.sandbox.os", OsGia("posix"))
-    assert ContainerSandbox("docker", "img:1").env_via_stdin is True
-
-
-def test_container_khong_co_getuid_thi_noi_thang_trong_ten_sandbox(monkeypatch):
-    monkeypatch.delattr(os, "getuid", raising=False)
-    monkeypatch.delattr(os, "getgid", raising=False)
-    sb = ContainerSandbox("docker", "img:1", env_via_stdin=True)
-    assert sb.name == "container:img:1:no-uid" and "-u" not in sb._argv(RunSpec(argv=["x"], cwd=Path(".")), "n")
-    monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
-    monkeypatch.setattr(os, "getgid", lambda: 1000, raising=False)
-    sb2 = ContainerSandbox("docker", "img:1", env_via_stdin=True)
-    assert sb2.name == "container:img:1" and "1000:1000" in sb2._argv(RunSpec(argv=["x"], cwd=Path(".")), "n")
+def test_container_mac_dinh_env_qua_stdin_va_chay_bang_uid_nguoi_van_hanh():
+    sb = ContainerSandbox("docker", "img:1")
+    argv = sb._argv(RunSpec(argv=["x"], cwd=Path(".")), "n")
+    assert sb.env_via_stdin is True and sb.name == "container:img:1"
+    assert argv[argv.index("-u") + 1] == f"{os.getuid()}:{os.getgid()}"
 
 
 # ---------- spawn: tiến trình chạy nền ----------
@@ -367,10 +345,8 @@ def test_container_don_dep_that_bai_khong_nuot_ket_qua(tmp_path):
 
 
 def test_subprocess_timeout_giet_ca_cay_tien_trinh_khong_treo_vi_chau_giu_ong(tmp_path):
-    """Lệnh của khách thường là một CÂY: `uv run pytest` → launcher `.venv/Scripts/python` → python thật. Hết giờ mà
-    chỉ giết con trực tiếp thì cháu sống tiếp và vẫn giữ ống stdout: trên Windows `subprocess.run` sau khi kill còn
-    `communicate()` KHÔNG trần → cả orchestrator treo tới khi cháu tự xong; trên POSIX không treo nhưng cháu thành
-    mồ côi chạy tiếp. Đo được 2026-09-24 (CAMPUS-UNI/TCK-002): `run test` quá 600s, pytest mồ côi ăn 1245s CPU,
+    """Lệnh của khách thường là một CÂY: `uv run pytest` → python thật. Hết giờ mà chỉ giết con trực tiếp thì cháu
+    sống tiếp, giữ ống stdout và thành mồ côi chạy tiếp. Đo được 2026-09-24 (CAMPUS-UNI/TCK-002): `run test` quá 600s, pytest mồ côi ăn 1245s CPU,
     orchestrator 0% CPU, 0 event suốt 20+ phút."""
     marker = tmp_path / "chau-con-song.txt"
     chau = f"import time, pathlib; time.sleep(4); pathlib.Path({str(marker)!r}).write_text('x')"
@@ -401,18 +377,8 @@ class _Proc:
         return "", ""
 
 
-def test_kill_tree_tren_windows_goi_taskkill_ca_cay(monkeypatch):
+def test_kill_tree_giet_ca_nhom(monkeypatch):
     import xagents_core.sandbox as SB
-    monkeypatch.setattr(SB.sys, "platform", "win32")
-    seen: list[list[str]] = []
-    p = _Proc()
-    SB._kill_tree(p, runner=lambda argv, **kw: seen.append(argv))
-    assert seen == [["taskkill", "/T", "/F", "/PID", "42"]] and p.killed == 1
-
-
-def test_kill_tree_tren_posix_giet_ca_nhom(monkeypatch):
-    import xagents_core.sandbox as SB
-    monkeypatch.setattr(SB.sys, "platform", "linux")
     seen: list[tuple[int, int]] = []
     monkeypatch.setattr(SB.os, "killpg", lambda pid, sig: seen.append((pid, sig)), raising=False)
     monkeypatch.setattr(SB.signal, "SIGKILL", 9, raising=False)
@@ -422,13 +388,13 @@ def test_kill_tree_tren_posix_giet_ca_nhom(monkeypatch):
 
 
 def test_kill_tree_giet_cay_that_bai_van_giet_con_truc_tiep(monkeypatch):
-    """Cây đã tự tan (`ProcessLookupError`) hay `taskkill` treo: không được che kết quả timeout."""
+    """Cây đã tự tan (`ProcessLookupError`): không được che kết quả timeout."""
     import xagents_core.sandbox as SB
-    monkeypatch.setattr(SB.sys, "platform", "win32")
-    def boom(argv, **kw):
-        raise subprocess.TimeoutExpired(argv, 30)
+    def boom(pid, sig):
+        raise ProcessLookupError
+    monkeypatch.setattr(SB.os, "killpg", boom)
     p = _Proc()
-    SB._kill_tree(p, runner=boom)
+    SB._kill_tree(p)
     assert p.killed == 1
 
 
@@ -448,11 +414,9 @@ def test_subprocess_that_chay_xong_tra_exit_stdout_va_nhan_stdin(tmp_path):
     assert (r.exit_code, r.stdout.strip(), r.timed_out) == (0, "TIẾNG VIỆT", False)
 
 
-@pytest.mark.parametrize("platform", ["linux", "win32"])
-def test_spawn_kill_uses_tree_cleanup(tmp_path, monkeypatch, platform):
+def test_spawn_kill_uses_tree_cleanup(tmp_path, monkeypatch):
     import xagents_core.sandbox as SB
 
-    monkeypatch.setattr(SB.sys, "platform", platform)
     proc = _FakeProc()
     spawned, killed = [], []
 
@@ -468,7 +432,7 @@ def test_spawn_kill_uses_tree_cleanup(tmp_path, monkeypatch, platform):
     handle = SubprocessSandbox(popen=popen).spawn(_spec(tmp_path))
     handle.kill()
     assert killed == [proc]
-    assert spawned[0].get("start_new_session", False) == (platform != "win32")
+    assert spawned[0]["start_new_session"] is True
     assert proc.killed
 
 

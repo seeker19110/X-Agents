@@ -738,7 +738,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         self._send(HTTPStatus.OK, html.encode("utf-8"), "text/html; charset=utf-8", csp_nonce=nonce)
 
     def _serve_static(self, rel: str) -> None:
-        # Byte NUL chặn trước mọi thao tác đường dẫn: POSIX ném ValueError ở `resolve()`, Windows mới ném ở `open()`.
+        # Byte NUL chặn trước mọi thao tác đường dẫn: không trông vào chỗ nào của pathlib ném ValueError.
         if "\x00" in rel:
             self._error(HTTPStatus.NOT_FOUND, "không có file này")
             return

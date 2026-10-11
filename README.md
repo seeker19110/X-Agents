@@ -22,10 +22,10 @@ companies/    software-company/  keeper/
 
 | Thư mục | Vai trò | Quy mô |
 |---|---|---|
-| [`companies/software-company/`](companies/software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 6 agent (5 công đoạn + supervisor), 45 skill, 19 topic, 14 template, 3 human gate (+ gate `escalation`; kế hoạch do `_check_plan` chặn bằng code, ADR-0037) có trợ lý kiểm duyệt chỉ đọc (10 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0052, 2137 test |
-| [`platform/gateway/`](platform/gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code. **Nhiều tài khoản có rủi ro khoá tài khoản Google — đọc [§Rủi ro tài khoản](platform/gateway/README.md#rủi-ro-tài-khoản--đọc-trước-khi-gõ-make-login-lần-thứ-hai) trước** | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/ready/setup/models`, ADR 0001–0004, 312 test |
-| [`platform/console/`](platform/console/) | Trực ban hợp nhất: một trang web cục bộ nhìn công ty — hàng đợi human gate, ticket, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend khi bật `--allow-config`, giao việc mới (yêu cầu phần mềm kèm nơi lưu dự án) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA), đẩy tin ntfy/Telegram khi có gate mới chờ người (`--notify-ntfy` / `--notify-telegram`). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 8 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0005, 842 test |
-| [`platform/xagents-core/`](platform/xagents-core/) | Lõi chung của mọi công ty AI: bus, llm, runner, guard, gate, **execution harness kernel** — company import từ đây thay vì tự fork | mypy `strict` + phủ 100% dòng VÀ 100% nhánh từ ngày đầu, 684 test; execution contract/state/journal theo ADR gốc 0017, mở đường để phiên chính làm director thay vì giữ execution state trong context |
+| [`companies/software-company/`](companies/software-company/) | Công ty gia công phần mềm: từ ý tưởng thô → PRD → ticket → code trên worktree thật → review/QA/security → release → khách ký nghiệm thu | 7 khối, 6 agent (5 công đoạn + supervisor), 45 skill, 19 topic, 14 template, 3 human gate (+ gate `escalation`; kế hoạch do `_check_plan` chặn bằng code, ADR-0037) có trợ lý kiểm duyệt chỉ đọc (10 subagent + hồ sơ bằng chứng `gate_brief`, `/gate-brief`), giao hàng thật bằng tag + nhánh `company/release` (`--deliver`), ADR 0001–0052, 2133 test |
+| [`platform/gateway/`](platform/gateway/) | Proxy OpenAI-compatible cục bộ, xoay vòng nhiều tài khoản Google Antigravity (Gemini / Claude). Mọi công ty trỏ `base_url` vào đây, không đổi code. **Nhiều tài khoản có rủi ro khoá tài khoản Google — đọc [§Rủi ro tài khoản](platform/gateway/README.md#rủi-ro-tài-khoản--đọc-trước-khi-gõ-make-login-lần-thứ-hai) trước** | daemon `127.0.0.1:1123/v1`, CLI `python -m gateway start/stop/status/login/logout/reset/ready/setup/models`, ADR 0001–0004, 303 test |
+| [`platform/console/`](platform/console/) | Trực ban hợp nhất: một trang web cục bộ nhìn công ty — hàng đợi human gate, ticket, token và chi phí, gói tài khoản đang xoay — duyệt gate ngay tại chỗ khi bật `--allow-decide`, đổi model/backend khi bật `--allow-config`, giao việc mới (yêu cầu phần mềm kèm nơi lưu dự án) khi bật `--allow-submit`. Cập nhật tức thì bằng SSE, địa chỉ deep-link tới từng gate/ticket, tìm và lọc mọi bảng, cài được thành app (PWA), đẩy tin ntfy/Telegram khi có gate mới chờ người (`--notify-ntfy` / `--notify-telegram`). Đọc bus SQLite ở chế độ chỉ đọc; quyết định đi qua đúng `HumanGate`, việc mới đi qua đúng bus + schema của công ty | `127.0.0.1:8200`, chỉ thư viện chuẩn (`http.server`), 8 màn hình, chỉ đọc mặc định + token mỗi lần chạy, ADR 0001–0005, 839 test |
+| [`platform/xagents-core/`](platform/xagents-core/) | Lõi chung của mọi công ty AI: bus, llm, runner, guard, gate, **execution harness kernel** — company import từ đây thay vì tự fork | mypy `strict` + phủ 100% dòng VÀ 100% nhánh từ ngày đầu, 676 test; execution contract/state/journal theo ADR gốc 0017, mở đường để phiên chính làm director thay vì giữ execution state trong context |
 | [`companies/keeper/`](companies/keeper/) | Công ty bảo trì: tín hiệu → ticket bảo trì → patch có bằng chứng đo hai chiều → PR; khách hàng số 0 là chính repo này | 6 khối / 10 agent theo ADR-0006; BT1–BT7 đã merge — package có mã thật, chạy được, chưa qua canary (BT8), 890 test — chi tiết ở [`companies/keeper/README.md`](companies/keeper/README.md), lộ trình ở [`companies/keeper/docs/DAC-TA-KEEPER.md`](companies/keeper/docs/DAC-TA-KEEPER.md) |
 | [`docs/HUONG-DAN-VAN-HANH.md`](docs/HUONG-DAN-VAN-HANH.md) | Hướng dẫn cài đặt và vận hành từng bước: cấu hình gói tài khoản, chạy thử, đưa yêu cầu, duyệt gate, theo dõi chi phí, bảo trì | |
 | [`docs/TRIEN-KHAI-SYSTEMD.md`](docs/TRIEN-KHAI-SYSTEMD.md) | Triển khai hub trên Ubuntu bằng systemd user unit (ADR gốc 0032): `scripts/systemd.sh install`, theo dõi bằng console qua SSH tunnel + `journalctl`, cập nhật, dừng, gỡ | |
@@ -65,8 +65,8 @@ scripts/dev-task.sh gate all   # cổng đúng như CI: ruff → mypy → pytest
 cd companies/software-company && make test && make demo
 ```
 
-Không có `make` (Windows): mỗi target đều có dạng `uv run` tương đương trong `Makefile`, ví dụ `make test` = `uv run pytest -q`,
-`make demo` = `uv run python -m company.demo` — dùng nguyên văn được cả trong PowerShell.
+Mỗi target đều có dạng `uv run` tương đương trong `Makefile`, ví dụ `make test` = `uv run pytest -q`,
+`make demo` = `uv run python -m company.demo`. Repo chỉ chạy trên Linux/Ubuntu (ADR gốc [0031](docs/adr/0031-chi-chay-tren-linux.md)).
 `uv run` trong bất kỳ thư mục con nào cũng dùng `.venv` chung ở gốc.
 
 Chạy model thật, không API key: mỗi công ty có sẵn hồ sơ **gói Claude + gateway Antigravity** — `make llm` chép
@@ -109,18 +109,18 @@ uv run python -m console models          # xem/đổi model từng tier, từng 
 
 **Chạy hub lâu dài trên Ubuntu:** systemd user unit — [`docs/TRIEN-KHAI-SYSTEMD.md`](docs/TRIEN-KHAI-SYSTEMD.md) (ADR gốc 0032; container hub dưới đây chưa chạy được trên Docker Engine Linux, xem ADR đó).
 
-**Chạy hub bằng Docker trên WSL** (ADR-0013 — cố định môi trường, tránh bẫy PATH của `uv`/`nvm` trong shell WSL
-không tương tác đã đo ở `docs/sessions/2026-09-09-van-hanh-qlkh.md`):
+**Chạy hub bằng Docker** (ADR-0013 — cố định môi trường, tránh bẫy PATH của `uv`/`nvm` trong shell không
+tương tác đã đo ở `docs/sessions/2026-09-09-van-hanh-qlkh.md`):
 
 ```bash
-cp .env.example .env   # điền GH_TOKEN, GIT_AUTHOR_*, CLIENT_REPO=/mnt/.../repo-khach
+cp .env.example .env   # điền GH_TOKEN, GIT_AUTHOR_*, CLIENT_REPO=/srv/.../repo-khach
 touch companies/software-company/company.sqlite companies/keeper/keeper.sqlite   # bind mount cần file có sẵn
 docker compose up -d --build
 docker compose logs -f hub
 docker compose down     # dừng khẩn — xem docs/TRUC-VA-DUNG-KHAN.md §1 Mức 0
 ```
 
-Cần Docker Engine cài sẵn trong WSL và `/var/run/docker.sock` khả dụng (orchestrator tự gọi `docker compose`
+Cần Docker Engine cài sẵn trên máy Ubuntu và `/var/run/docker.sock` khả dụng (orchestrator tự gọi `docker compose`
 cho khách qua socket này, ADR-0039 — container hub không chạy `dockerd` riêng).
 
 ## Kiến trúc chung của một công ty

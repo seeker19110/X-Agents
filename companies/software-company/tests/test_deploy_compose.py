@@ -278,8 +278,8 @@ def test_khong_co_binary_luc_chay_va_qua_gio_deu_thanh_ly_do_doc_duoc(tmp_path):
 def test_binary_co_that_ma_khong_chay_duoc_thi_ly_do_doc_duoc(tmp_path):
     """`_compose` hứa "không ném" nhưng chỉ bắt `FileNotFoundError`: binary CÓ trên đĩa mà không chạy được ném
     `OSError` khác, xuyên qua `deploy()` (cả `up -d` lẫn `logs`/`down` của nhánh dọn). File thật,
-    `subprocess.run` thật; đuôi `.exe` để Windows không tự thêm `.exe` rồi đọc thành "không có"."""
-    f = tmp_path / "khong-chay.exe"
+    `subprocess.run` thật."""
+    f = tmp_path / "khong-chay"
     f.write_text("khong phai binary\n", encoding="utf-8")   # 0o644: không ai chạy được, kể cả root
     r = deploy(_repo(tmp_path), "P1", "staging", RT, mode="compose", binary=str(f),
                run=subprocess.run, which=lambda b: b)

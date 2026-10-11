@@ -123,7 +123,7 @@ def test_reported_model_gia_tri_khong_phai_dict_khong_lam_no():
 # ---------- adapter CLI ----------
 
 def test_argv_limit_du_cho_windows_va_posix():
-    assert ARGV_LIMIT in (30_000, 120_000)
+    assert ARGV_LIMIT == 120_000
 
 
 @pytest.mark.parametrize("muc", CLAUDE_EFFORT)
@@ -171,28 +171,9 @@ def test_find_codex_binary_uu_tien_path(monkeypatch):
     assert find_codex_binary() == "/usr/bin/codex"
 
 
-def test_find_codex_binary_khong_co_path_khong_co_localappdata_thi_tra_lai_ten(monkeypatch):
+def test_find_codex_binary_khong_co_tren_path_thi_tra_lai_ten(monkeypatch):
     monkeypatch.setattr("xagents_core.llm.shutil.which", lambda b: None)
-    monkeypatch.delenv("LOCALAPPDATA", raising=False)
     assert find_codex_binary("codex") == "codex"
-
-
-def test_find_codex_binary_tim_ban_kem_app_tren_windows(monkeypatch, tmp_path):
-    """Windows: app Codex cài binary vào %LOCALAPPDATA% chứ không lên PATH. Nhiều bản thì lấy bản MỚI NHẤT."""
-    monkeypatch.setattr("xagents_core.llm.shutil.which", lambda b: None)
-    for ver, mtime in (("0.1", 1_000_000), ("0.2", 2_000_000)):
-        d = tmp_path / "OpenAI" / "Codex" / "bin" / ver
-        d.mkdir(parents=True)
-        exe = d / "codex.exe"
-        exe.write_text("", encoding="utf-8")
-        os_utime(exe, mtime)
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    assert find_codex_binary("codex").endswith(str(Path("0.2") / "codex.exe"))
-
-
-def os_utime(p: Path, t: int) -> None:
-    import os
-    os.utime(p, (t, t))
 
 
 def test_pham_vi_bon_adapter_chua_len_core():
@@ -221,14 +202,3 @@ def test_pham_vi_bon_adapter_chua_len_core():
         "Cầu MCP (`_toolbox`, `bind_toolbox`, `_complete_mcp`, ADR-0024) ở LẠI company: studio không có khái "
         "niệm tương đương, đưa lên core là bắt một bên mang 255 dòng `mcp_bridge.py` nó không bao giờ gọi.")
     assert not hasattr(m, "_complete_mcp") and not hasattr(m.ClaudeCodeClient, "bind_toolbox"), _bo_qua
-
-
-def test_find_codex_binary_localappdata_co_nhung_khong_co_ban_nao(monkeypatch, tmp_path):
-    """%LOCALAPPDATA% tồn tại mà KHÔNG có `codex.exe` nào → trả lại tên, không nổ vì `cands[0]` trên list rỗng.
-
-    Đây là trạng thái của gần như mọi máy Windows chưa cài app Codex — tức là nhánh THƯỜNG GẶP hơn nhánh
-    tìm thấy, chứ không phải ca hiếm."""
-    monkeypatch.setattr("xagents_core.llm.shutil.which", lambda b: None)
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))     # thư mục có thật, nhưng rỗng
-
-    assert find_codex_binary("codex") == "codex"

@@ -1,6 +1,7 @@
 # ADR-0013: Container hoá hub (console + orchestrator) để chạy trên WSL
 
-Trạng thái: Chấp nhận · Ngày: 2026-09-13 · Liên quan ADR-0039 (`companies/software-company`, deploy khách bằng
+Trạng thái: Chấp nhận, **bị thay một phần bởi ADR-0031** (repo chỉ chạy trên Linux — phần "trên WSL" không còn) ·
+Ngày: 2026-09-13 · Liên quan ADR-0039 (`companies/software-company`, deploy khách bằng
 compose), ADR-0011 (hợp nhất một công ty), `docs/sessions/2026-09-09-van-hanh-qlkh.md`
 
 ## Bối cảnh

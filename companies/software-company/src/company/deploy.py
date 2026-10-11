@@ -23,10 +23,10 @@ Fail-closed theo đúng khuôn `sandbox_from_settings` (ADR-0035): `COMPANY_DEPL
 binary là **lỗi**, không phải "coi như xong"; `auto` thiếu binary thì nói thiếu kèm tên biến người vận hành phải
 đặt, và "chưa deploy" không bao giờ được đọc thành "đã deploy".
 
-ADR-0040 thêm mode `process` cho khách không dùng Docker (QLKH: tiến trình trần trên WSL, xem
+ADR-0040 thêm mode `process` cho khách không dùng Docker (tiến trình trần, xem
 `docs/adr/0040-deploy-process-wsl.md`). Cùng ba ràng buộc trên, khác ở chỗ không có `ps` để đọc trạng thái —
-`deployed` là hai phần (script `up` thoát 0 **và** smoke vào `rt.port` đã khai trong spec), và runner mặc định
-là một **argv prefix** bắc cầu qua WSL từ hub chạy trên Windows native, không phải một binary đơn.
+`deployed` là hai phần (script `up` thoát 0 **và** smoke vào `rt.port` đã khai trong spec). Runner là một **argv
+prefix** (chuỗi shlex, có thể nhiều token), mặc định `bash` — hub chỉ chạy trên Linux (ADR gốc 0031).
 """
 from __future__ import annotations
 
@@ -50,11 +50,9 @@ from .smoke import _probe as http_probe  # cùng probe với smoke: "đang chạ
 ENV_MODE = "COMPANY_DEPLOY"
 ENV_RUNTIME = "COMPANY_DEPLOY_RUNTIME"
 DEFAULT_RUNTIME = "docker"
-# ADR-0040: mặc định của mode `process` là một PREFIX (nhiều token), không phải một binary đơn — cầu nối WSL từ
-# hub Windows. `.` được thay bằng `repo_root` lúc ghép argv (`_process_prefix`), `wsl.exe --cd` tự dịch đường dẫn
-# Windows sang `/mnt/<ổ>/...` (đã đo thật). Máy Linux/macOS (CI, hub tự chạy trong WSL) đặt
-# `COMPANY_DEPLOY_RUNTIME=bash` để bỏ qua cầu nối.
-DEFAULT_RUNTIME_PROCESS = "wsl.exe --cd . bash"
+# ADR-0040: runner của mode `process` là một PREFIX (có thể nhiều token); `.` được thay bằng `repo_root` lúc ghép
+# argv (`_process_prefix`). Mặc định `bash` trần: hub chỉ chạy trên Linux (ADR gốc 0031 bỏ cầu `wsl.exe`).
+DEFAULT_RUNTIME_PROCESS = "bash"
 MODES = ("auto", "compose", "process", "off")
 # Dò mặc định khi spec không khai `runtime.deploy` (ADR-0039 §1). Cố ý ngắn: đoán thêm tên file là đoán thay khách.
 COMPOSE_NAMES = ("docker-compose.yml", "compose.yaml")
@@ -149,7 +147,7 @@ def _split_runtime(binary: str) -> list[str]:
 
 def _process_prefix(binary: str, repo_root: Path) -> list[str]:
     """Tách `binary` (chuỗi shlex, có thể nhiều token) thành argv prefix; token `.` được thay bằng `repo_root`
-    (ADR-0040 §4) — `wsl.exe --cd <đường dẫn Windows>` tự dịch sang `/mnt/<ổ>/...`."""
+    (ADR-0040 §4), vd `env -C . bash` chạy script từ gốc repo khách."""
     return [str(repo_root) if tok == "." else tok for tok in _split_runtime(binary)]
 
 
@@ -262,7 +260,7 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
            run: Any = _RUN, which: Any = shutil.which) -> DeployRecord:
     """Dựng `runtime.deploy` của spec trong `repo_root` (worktree tích hợp — KHÔNG chạm `main` của khách).
 
-    `run`/`which` tiêm được vì CI không có docker daemon và ma trận còn `windows-latest` (ADR-0039 §"Cách đo"):
+    `run`/`which` tiêm được vì CI không có docker daemon (ADR-0039 §"Cách đo"):
     bốn nhánh của quyết định 3 và fail-closed của quyết định 4 đo được mà không cần container thật.
     """
     mode_, binary_ = deploy_settings()

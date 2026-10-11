@@ -110,12 +110,8 @@ def test_claude_code_luon_chay_khong_tool_va_gui_schema_hai_duong():
 
 
 def test_claude_code_argv_qua_dai_thi_bao_ngay_thay_vi_de_os_no():
-    """Kích thước dựng TỪ `ARGV_LIMIT`, không phải một số cứng.
-
-    Bản đầu dùng `"y" * 40_000`: vượt trần Windows (30 000) nhưng DƯỚI trần Linux (120 000), nên test đỏ trên
-    ubuntu và xanh trên Windows — đúng "cổng đúng-sai theo máy chạy" mà `TRAPS.md` §2 cấm, và CI bắt được ở
-    `keeper-unit (ubuntu-latest)`. `ARGV_LIMIT` là `30_000 if os.name == "nt" else 120_000`
-    (`xagents_core/llm.py:392`), nên phép thử phải bám vào chính hằng số đó."""
+    """Kích thước dựng TỪ `ARGV_LIMIT`, không phải một số cứng: bản đầu dùng `"y" * 40_000` và lệch ngay khi
+    trần đổi (`TRAPS.md` §2), nên phép thử phải bám vào chính hằng số đó."""
     schema = {"type": "object", "x": "y" * (ARGV_LIMIT + 10_000)}
     c = ClaudeCodeClient(_cfg(provider="claude-code"), runner=lambda *a, **k: _cli_out("{}"))
     with pytest.raises(LLMError, match="argv vượt"):

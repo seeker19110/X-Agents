@@ -91,7 +91,7 @@ là chưa đạt, không hạ chuẩn để kết thúc. Nguồn template: `docs
    (`gói`: `company|gateway|console|core|keeper|all`; bỏ trống = `all`). Script giữ lệnh khớp đúng `ci.yml`
    (`ruff check src tests` → `mypy src/<module> --ignore-missing-imports` → `pytest -q --cov`, riêng
    software-company thêm `-n auto`) nên không phải nhớ biến thể của từng package; `DEV_TASK_DRY_RUN=1` để xem
-   trước lệnh sẽ chạy. Windows thiếu 2 dòng POSIX trong coverage là bình thường.
+   trước lệnh sẽ chạy. Repo chỉ chạy trên Linux (ADR gốc 0031).
 4. **TDD là quy trình mặc định cho MỌI code, không chỉ khi sửa lỗi: viết test trước, thấy nó đỏ, rồi mới viết code
    để nó xanh.** Luật cứng:
    ```
@@ -160,7 +160,7 @@ Ba luật của marker:
    thì marker tự mục — `/no-ky-thuat` gắn cờ `no-trigger` cho đúng những dòng đó.
 2. **Chỉ cho cắt góc có trần đã biết**, không phải mọi TODO. "Chưa làm" dùng TODO; "đã làm, biết nó gãy ở đâu"
    mới dùng marker này.
-3. **Tên không dấu** để `grep` được trên mọi shell (Windows `PYTHONIOENCODING`, `CLAUDE.md`). Regex thu hoạch:
+3. **Tên không dấu** để `grep` được trên mọi shell, kể cả locale không UTF-8. Regex thu hoạch:
    `(#|//) ?no-ky-thuat:`.
 
 Đọc sổ: `/no-ky-thuat` (`.claude/commands/no-ky-thuat.md`) — chỉ đọc, không sửa gì. Sổ rỗng nghĩa là **0

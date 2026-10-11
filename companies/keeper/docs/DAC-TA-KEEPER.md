@@ -117,7 +117,7 @@ Nghiệm thu: `grep -ril upkeep . --include="*.md"` rỗng. Chưa có mã → kh
 | `keeper/src/keeper/core.py` | `CORE = CoreConfig(prefix="KEEPER", root=Path(__file__).resolve().parents[2], db_name="keeper.sqlite", topic_acl=…, payload_models=…, namespace_owners=…)` |
 | `keeper/src/keeper/events.py` | `Topic` Literal **10** giá trị (8 topic riêng + `audit-log` + `shared-context`; bản BT0 đếm 9 là sai); model `Signal`, `Ticket`, `PatchProposal`, `VerificationReport`, `DebtEntry`, `SecurityFinding`; `PAYLOAD_MODELS`, `NAMESPACE_OWNERS` |
 | `keeper/topics/schemas/*.json` | 10 schema **viết tay** rồi ép khớp bằng test `set(get_args(Topic)) == set(bus._schemas)` (`Studio-creators/tests/test_bus.py:46`). Đo 2026-09-09: **không có script sinh schema nào** trong repo — "sinh từ pydantic" ở hai công ty kia là mô tả nguồn gốc khái niệm, không phải một lệnh chạy được |
-| `.github/workflows/ci.yml` | job `keeper-static` + `keeper-unit` (3.11, 3.13; ubuntu + windows) theo khuôn `core-static`/`core-unit` |
+| `.github/workflows/ci.yml` | job `keeper-static` + `keeper-unit` (3.11, 3.13; ubuntu) theo khuôn `core-static`/`core-unit` |
 
 Đo hai chiều: bỏ `keeper` khỏi `members` → `uv sync` không thấy package → `pytest` đỏ `ModuleNotFoundError`;
 thêm lại → xanh.

@@ -63,13 +63,12 @@ Hai nguồn chọn lọc nằm thẳng trong `.claude/`, mỗi nguồn một ti�
 - Agent của công ty (`claude -p`) **không** thấy mục vendor: mọi chế độ chạy `--restricted` (đo được 0 với `ecc-*`,
   giống `sc-*`).
 
-## Thao tác trên Windows
+## Thao tác trên Linux
 
-- Shell chính là PowerShell 7; Bash tool là Git Bash. `cd` trong Bash **không giữ** qua lệnh sau — dùng đường dẫn
+- Repo chỉ chạy trên Linux/Ubuntu (ADR gốc 0031). `cd` trong Bash **không giữ** qua lệnh sau — dùng đường dẫn
   tuyệt đối hoặc `cd … && …` trong cùng lệnh.
 - Heredoc bash chứa `'''` hoặc nhiều backtick hay vỡ: patch dài → ghi file vào scratchpad rồi `python file.py`.
-- Lệnh `taskkill`/cron/wakeup có thể bị classifier chặn — không lách; hỏi người dùng đúng lệnh.
-- In tiếng Việt lỗi mã hoá → `PYTHONIOENCODING=utf-8`.
+- In tiếng Việt lỗi mã hoá (locale không UTF-8) → `PYTHONIOENCODING=utf-8`.
 
 ## Khi vận hành công ty (không phải sửa code)
 

@@ -89,7 +89,7 @@ biến, đổi tên là khoá cửa merge. Trên máy, `scripts/dev-task.sh gate
 job mà không kể ở đây là `console-unit` đỏ.
 
 **`ci.yml`** — mỗi PR và mỗi push `main`; 19 job, `quality` (`if: always()`) gom 18 job còn lại. Ma trận `*-unit`
-và `unit`: ubuntu 3.11 + 3.13, windows 3.13; `core-static`/`keeper-static`: ubuntu + windows.
+và `unit`: ubuntu 3.11 + 3.13; mọi job chạy `ubuntu-latest` (ADR gốc 0031: chỉ Linux).
 
 | Gói | Job | Chạy gì |
 |---|---|---|

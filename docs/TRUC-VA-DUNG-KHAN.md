@@ -123,10 +123,8 @@ một bus riêng (`keeper.sqlite`), nên nó dừng độc lập — dừng đú
 `orchestrator run` của hai công ty:
 
 ```bash
-# xem có tiến trình keeper nào đang chạy không (Windows / PowerShell)
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-  Where-Object CommandLine -match 'keeper.cli watch' | Select-Object ProcessId, CommandLine
-# Linux/macOS: pgrep -af 'keeper.cli watch'
+# xem có tiến trình keeper nào đang chạy không
+pgrep -af 'keeper.cli watch'
 ```
 
 Dừng tiến trình đó (Ctrl-C ở cửa sổ đang chạy nó là cách sạch nhất). An toàn như Mức 3: trạng thái nằm trong

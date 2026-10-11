@@ -2,12 +2,10 @@
 cmd_stop (mọi nhánh), cmd_status, cmd_login, _discover_catalog lỗi mạng, main() dispatch.
 
 Tên file cố tình đặt để sort SAU test_server*.py theo alphabet (pytest chạy theo thứ tự thu thập
-mặc định = alphabet). Một vài test ở đây monkeypatch `sys.platform` (để ép nhánh POSIX-only của
-_pid_is_gateway chạy trên Windows CI) — nếu module này chạy TRƯỚC các test aiohttp/async của
-test_server.py, coverage.py trong môi trường này undercount toàn bộ nhánh streaming của
-handle_chat_completions dù test đó vẫn PASS bình thường (đã xác minh qua log assertion). Không rõ
-cơ chế chính xác (nghi là coverage.py + asyncio event loop trên Windows), tái lập ổn định qua nhiều
-lần chạy. Đổi tên file là cách né an toàn nhất; đừng đổi lại tên bắt đầu bằng "test_manage" mà
+mặc định = alphabet). Một vài test ở đây monkeypatch `sys.platform` (để ép nhánh `ps` của macOS
+chạy trên Linux CI) — nếu module này chạy TRƯỚC các test aiohttp/async của test_server.py, coverage.py
+từng undercount toàn bộ nhánh streaming của handle_chat_completions dù test đó vẫn PASS bình thường
+(đã xác minh qua log assertion, trên Windows — trước ADR gốc 0031). Không rõ cơ chế chính xác. Đổi tên file là cách né an toàn nhất; đừng đổi lại tên bắt đầu bằng "test_manage" mà
 không kiểm tra lại `python -m pytest --cov=gateway --cov-report=term-missing -q` sau đó."""
 
 from __future__ import annotations
@@ -37,29 +35,6 @@ class _Runner:
         return subprocess.CompletedProcess(argv, self.rc, self.stdout, "")
 
 
-def test_pid_is_gateway_windows_hoi_tasklist(monkeypatch):
-    """K8.6: trước đây mọi hệ không phải Linux đều trả True — tức `stop` trên Windows/macOS giết BẤT KỲ PID nào
-    trong PID file, kể cả PID đã bị hệ điều hành tái dùng cho tiến trình khác (Windows tái dùng PID nhanh)."""
-    monkeypatch.setattr(sys, "platform", "win32")
-    r = _Runner(stdout='"python.exe","4242","Console","1","40.000 K"')
-    assert manage._pid_is_gateway(4242, runner=r) is True
-    assert r.calls == [["tasklist", "/FI", "PID eq 4242", "/NH", "/FO", "CSV"]]
-
-
-def test_pid_is_gateway_windows_pid_da_bi_tai_dung_thi_khong_giet(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "win32")
-    r = _Runner(stdout='"notepad.exe","4242","Console","1","8.000 K"')
-    assert manage._pid_is_gateway(4242, runner=r) is False
-
-
-def test_pid_is_gateway_windows_khong_co_tien_trinh(monkeypatch):
-    """`tasklist` in "INFO: No tasks..." ra stdout và VẪN thoát 0 — dựa vào mã thoát là sai."""
-    monkeypatch.setattr(sys, "platform", "win32")
-    r = _Runner(stdout="INFO: No tasks are running which match the specified criteria.")
-    assert manage._pid_is_gateway(4242, runner=r) is False
-    assert manage._pid_is_gateway(4242, runner=_Runner(stdout="")) is False
-
-
 def test_pid_is_gateway_macos_hoi_ps(monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     r = _Runner(stdout="/usr/bin/python3 -c from gateway.manage import _run_daemon; ...")
@@ -80,7 +55,7 @@ def test_pid_is_gateway_khong_nhan_nham_tien_trinh_chi_vi_co_chu_gateway(monkeyp
 
 
 def test_pid_is_gateway_khong_doc_duoc_thi_giu_hanh_vi_cu(monkeypatch):
-    """Không đọc được ≠ không tồn tại. `ps`/`tasklist` thiếu hoặc treo thì K8.6 KHÔNG được biến `stop` thành
+    """Không đọc được ≠ không tồn tại. `ps` thiếu hoặc treo thì K8.6 KHÔNG được biến `stop` thành
     lệnh không làm gì — giữ nguyên hành vi trước đó (giết) và để PID file dọn như cũ."""
     monkeypatch.setattr(sys, "platform", "darwin")
     assert manage._pid_is_gateway(1, runner=_Runner(boom=FileNotFoundError("ps"))) is True
@@ -149,42 +124,9 @@ def test_cmd_start_background_spawn_success(tmp_path, monkeypatch, capsys):
     assert manage.get_pid_file().read_text(encoding="utf-8") == "4242"
 
 
-def test_cmd_start_background_spawn_uses_windows_creationflags(tmp_path, monkeypatch, capsys):
-    """Nhánh `if sys.platform == "win32": flags = CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_NO_WINDOW`.
-    Ba hằng số này chỉ có trong `subprocess` trên Windows, nên CI Linux không bao giờ chạy dòng đó — stub
-    chúng (raising=False) và ép platform để phủ cross-platform, đồng thời kiểm đúng flag được truyền cho Popen."""
+def test_cmd_start_background_spawn_tach_session_rieng(tmp_path, monkeypatch):
+    """Daemon tách session riêng: Ctrl+C hay đóng terminal của người gọi `start` không giết theo gateway."""
     monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
-    monkeypatch.setattr(sys, "platform", "win32")
-    for name, val in (("CREATE_NEW_PROCESS_GROUP", 0x200), ("DETACHED_PROCESS", 0x8), ("CREATE_NO_WINDOW", 0x08000000)):
-        monkeypatch.setattr(manage.subprocess, name, val, raising=False)
-    running_calls = {"n": 0}
-
-    def fake_running(host, port):
-        running_calls["n"] += 1
-        return running_calls["n"] > 1
-
-    monkeypatch.setattr(manage, "is_server_running", fake_running)
-    seen = {}
-
-    class FakeProc:
-        pid = 4245
-
-    def fake_popen(*a, **k):
-        seen["creationflags"] = k.get("creationflags")
-        return FakeProc()
-
-    monkeypatch.setattr(manage.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(manage.time, "sleep", lambda s: None)
-    assert manage.main(["start", "--host", "127.0.0.1", "--port", "6"]) == 0
-    assert seen["creationflags"] == 0x200 | 0x8 | 0x08000000
-    assert "PID 4245" in capsys.readouterr().out
-
-
-def test_cmd_start_background_spawn_posix_uses_new_session_without_creationflags(tmp_path, monkeypatch):
-    """Chiều ngược của test trên, ép platform để CI Windows cũng đi nhánh không-phải-win32 (phủ nhánh): không cờ
-    Windows, daemon tách session riêng."""
-    monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
-    monkeypatch.setattr(sys, "platform", "linux")
     running_calls = {"n": 0}
 
     def fake_running(host, port):
@@ -198,13 +140,13 @@ def test_cmd_start_background_spawn_posix_uses_new_session_without_creationflags
         pid = 4246
 
     def fake_popen(*a, **k):
-        seen.update(creationflags=k.get("creationflags"), start_new_session=k.get("start_new_session"))
+        seen.update(start_new_session=k.get("start_new_session"))
         return FakeProc()
 
     monkeypatch.setattr(manage.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(manage.time, "sleep", lambda s: None)
     assert manage.main(["start", "--host", "127.0.0.1", "--port", "7"]) == 0
-    assert seen == {"creationflags": 0, "start_new_session": True}
+    assert seen == {"start_new_session": True}
 
 
 def test_cmd_start_host_la_du_lieu_khong_phai_ma_python(tmp_path, monkeypatch):
@@ -298,32 +240,14 @@ def test_cmd_stop_bad_pid_content_still_removes_file(tmp_path, monkeypatch, caps
     assert not pid_file.exists()
 
 
-def test_cmd_stop_windows_taskkill_success(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
-    monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(manage, "_pid_is_gateway", lambda pid: True)
-    calls = []
-    monkeypatch.setattr(
-        manage.subprocess, "run",
-        lambda *a, **k: calls.append(a) or types.SimpleNamespace(returncode=0),
-    )
-    pid_file = manage.get_pid_file()
-    pid_file.write_text("555", encoding="utf-8")
-    assert manage.main(["stop"]) == 0
-    assert calls and calls[0][0][0] == "taskkill"
-    assert "Đã dừng gateway" in capsys.readouterr().out
-    assert not pid_file.exists()
-
-
 def test_cmd_stop_kill_raises_is_caught(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
-    monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(manage, "_pid_is_gateway", lambda pid: True)
 
     def boom(*a, **k):
         raise OSError("no such process")
 
-    monkeypatch.setattr(manage.subprocess, "run", boom)
+    monkeypatch.setattr(manage.os, "kill", boom)
     pid_file = manage.get_pid_file()
     pid_file.write_text("556", encoding="utf-8")
     assert manage.main(["stop"]) == 0
@@ -346,7 +270,6 @@ def test_cmd_stop_pid_not_gateway_only_removes_file(tmp_path, monkeypatch, capsy
 
 def test_cmd_stop_posix_uses_os_kill(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv(gw_auth.ENV_HOME, str(tmp_path))
-    monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(manage, "_pid_is_gateway", lambda pid: True)
     killed = []
     monkeypatch.setattr(manage.os, "kill", lambda pid, sig: killed.append((pid, sig)))

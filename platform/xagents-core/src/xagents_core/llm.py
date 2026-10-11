@@ -566,7 +566,7 @@ def _ten_bien(khoa: str, core: CoreConfig, env: Mapping[str, str]) -> str:
 
 # ---------- adapter CLI (claude / codex): phần không phụ thuộc công ty ----------
 
-ARGV_LIMIT = 30_000 if os.name == "nt" else 120_000   # Windows: CreateProcess ~32K ký tự; Linux: một đối số ≤ 128K
+ARGV_LIMIT = 120_000   # Linux: một đối số ≤ 128K (MAX_ARG_STRLEN)
 
 # `--effort` theo tier — bảng ĐÓNG, giá trị ngoài bảng phải hỏng to thay vì rơi về mặc định (bài học `none` của
 # codex: cấu hình nói một đằng, CLI chạy một nẻo).
@@ -591,7 +591,7 @@ CLI_SUBTYPE_ERRORS = {
 @contextmanager
 def system_prompt_args(system: str) -> Iterator[list[str]]:
     """`--system-prompt-file <path>` thay vì `--system-prompt <text>`: agent nhiều skill (vd. researcher) có system
-    prompt riêng đã sát hoặc vượt ARGV_LIMIT trên Windows; ghi ra file tạm thì argv chỉ còn một đường dẫn ngắn,
+    prompt riêng có thể sát ARGV_LIMIT; ghi ra file tạm thì argv chỉ còn một đường dẫn ngắn,
     không đụng trần argv nữa (nội dung vẫn không qua stdin, để không lẫn với prompt/schema của user message)."""
     fd, path = tempfile.mkstemp(prefix="claude-sp-", suffix=".txt")
     try:
@@ -612,14 +612,8 @@ def cli_effort_args(effort: dict[str, str], tier: str) -> list[str]:
 
 
 def find_codex_binary(binary: str = "codex") -> str:
-    """`codex` trên PATH; không có thì tìm bản đi kèm app Codex trên Windows (%LOCALAPPDATA%/OpenAI/Codex/bin/*/codex.exe)."""
-    found = shutil.which(binary)
-    if found: return found
-    base = os.environ.get("LOCALAPPDATA")
-    if base:
-        cands = sorted(Path(base).glob("OpenAI/Codex/bin/*/codex.exe"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if cands: return str(cands[0])
-    return binary
+    """`codex` trên PATH; không có thì trả lại tên để lỗi "không tìm thấy" nói đúng tên người đã khai."""
+    return shutil.which(binary) or binary
 
 
 # ---------- K3.3c2: ba adapter trùng gần nguyên văn ----------

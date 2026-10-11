@@ -232,7 +232,7 @@ def sandbox_from_config(cfg: LLMConfig, which=shutil.which) -> Sandbox:
 
 - `llm.py` `LLMConfig` thêm `sandbox`, `sandbox_image`, `sandbox_runtime` (+ env `COMPANY_SANDBOX*`, đọc ở
   `llm.py:259-275`); `llm.example.yaml` thêm ba dòng có chú thích.
-- Windows: `os.getuid` không có → `-u` bỏ qua, ghi audit `sandbox: container:<image>:no-uid`.
+- Container luôn chạy `-u uid:gid` của người vận hành (ADR gốc 0031 bỏ nhánh Windows `:no-uid`).
 - Test `tests/test_sandbox.py`: bộ hợp đồng chạy cho cả hai backend (backend container dùng `runner=` giả trả
   `CompletedProcess`); khẳng định argv; fail-closed; env đã qua `clean_env` (không key nào khớp `SECRET_ENV`).
 

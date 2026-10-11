@@ -81,9 +81,8 @@ def test_real_subprocess_speaks_mcp_and_reaches_the_parent_toolbox(tmp_path):
     with ToolBridge(tb) as br, br.config_file() as cfg_path:
         cfg = json.loads(cfg_path.read_text(encoding="utf-8"))["mcpServers"][SERVER_NAME]
         # env=cfg["env"] NGUYÊN VĂN, không thêm gì: đúng thứ `--mcp-config` hứa với CLI. Trước đây
-        # test thêm `PATH: ""` để chứng minh không cần PATH, nhưng như thế lại giấu mất một yêu cầu
-        # thật — trên Windows thiếu `SystemRoot` thì Winsock không nạp được provider và socket về
-        # tiến trình cha ném WinError 10106. Chạy đúng env đã khai mới bắt được thiếu sót đó.
+        # test thêm `PATH: ""` để chứng minh không cần PATH, nhưng như thế lại có thể giấu mất một yêu
+        # cầu thật của tiến trình con. Chạy đúng env đã khai mới bắt được thiếu sót đó.
         proc = subprocess.Popen([cfg["command"], *cfg["args"]], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 text=True, encoding="utf-8", env=cfg["env"])
         def rpc(method, params=None, mid=1):
@@ -225,7 +224,6 @@ def test_mcp_needs_binding_and_config_flag(tmp_path):
         bound.complete(system="s", user="u", schema={}, model_tier="strong", tools=tb.specs(), workdir=tb.root)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="đường dẫn socket khác trên Windows CI")
 def test_bridge_binds_loopback_only():
     with ToolBridge(_box()) as br:
         assert br._server is not None and br._server.server_address[0] == "127.0.0.1"
@@ -455,23 +453,6 @@ def test_mcp_config_khai_du_moi_thu_tien_trinh_con_can(tmp_path):
     with br:
         env = br.mcp_config()["mcpServers"][SERVER_NAME]["env"]
     assert env["PYTHONIOENCODING"] == "utf-8"
-    if sys.platform == "win32":
-        # Thiếu SystemRoot thì Winsock ném WinError 10106 và cầu không nối được về tiến trình cha.
-        assert env.get("SystemRoot"), env
-
-
-def test_platform_env_chi_them_bien_tren_windows(monkeypatch):
-    from company import mcp_bridge as mb
-
-    monkeypatch.setattr(mb.sys, "platform", "linux")
-    assert mb.platform_env() == {}
-
-    monkeypatch.setattr(mb.sys, "platform", "win32")
-    monkeypatch.setattr(mb.os, "environ", {"SystemRoot": r"C:\Windows"})
-    assert mb.platform_env() == {"SystemRoot": r"C:\Windows"}
-
-    monkeypatch.setattr(mb.os, "environ", {})       # biến không có thì bỏ qua, không ném KeyError
-    assert mb.platform_env() == {}
 
 
 def test_mcp_tran_thoi_gian_cli_chua_du_cho_tool_chay_lau(tmp_path, monkeypatch):

@@ -23,7 +23,7 @@ Mục lục
 
 Mục này dành cho người **chưa từng mở repo này**. Nó không giải thích kiến trúc; nó chỉ đưa bạn đi hết một vòng
 thật — cài, chạy, thấy công ty làm việc, rồi **tự tay ký một quyết định** — bằng provider giả, không API key,
-không tốn hạn mức. Mọi lệnh dưới đây đã được chạy thật trên Windows 11 + PowerShell trước khi viết vào đây; nếu
+không tốn hạn mức. Mọi lệnh dưới đây chạy trên Linux/Ubuntu (ADR gốc 0031: repo chỉ hỗ trợ Linux); nếu
 một lệnh không ra như mô tả thì đó là lỗi của tài liệu, hãy ghi lại chỗ vấp (xem cuối mục).
 
 Cần trước: `git`, [`uv`](https://docs.astral.sh/uv/), và một terminal. Không cần Docker, không cần API key.
@@ -86,7 +86,7 @@ published research-requests key=THU-1 event=245ecda8...
 COMPANY_LLM_PROVIDER=fake COMPANY_SANDBOX=subprocess uv run python -m company.orchestrator --db thu.sqlite run --max-steps 40
 ```
 
-PowerShell: đặt `$env:COMPANY_LLM_PROVIDER="fake"` và `$env:COMPANY_SANDBOX="subprocess"` trên hai dòng riêng trước lệnh. Đây là demo với client giả; khi chạy repo khách thật, cài Docker/Podman và dùng `COMPANY_SANDBOX=container` (hoặc mặc định `auto`). Nếu thiếu runtime, `auto` dừng theo ADR gốc 0023; `subprocess` tường minh không bảo vệ human gate khỏi mã khách ghi thẳng bus.
+Đây là demo với client giả; khi chạy repo khách thật, cài Docker/Podman và dùng `COMPANY_SANDBOX=container` (hoặc mặc định `auto`). Nếu thiếu runtime, `auto` dừng theo ADR gốc 0023; `subprocess` tường minh không bảo vệ human gate khỏi mã khách ghi thẳng bus.
 
 Ra:
 
@@ -148,7 +148,7 @@ chạy lại với `--allow-decide`. Đóng bằng Ctrl-C.
 ### Dọn
 
 ```bash
-cd ../../companies/software-company && rm thu.sqlite req.json     # PowerShell: Remove-Item thu.sqlite, req.json
+cd ../../companies/software-company && rm thu.sqlite req.json
 ```
 
 Không commit `*.sqlite`, `llm.yaml`, `output/` — `.gitignore` đã chặn, nhưng biết vì sao thì hơn.
@@ -180,11 +180,11 @@ tuần** (đó là nghiệm thu K9.3 của `docs/DAC-TA-KICH-BAN-B.md`). Ngườ
 | [`uv`](https://docs.astral.sh/uv/) | Có | quản lý `.venv` và `uv.lock`; không dùng `pip` trực tiếp |
 | Git | Có | software-company tạo git worktree theo ticket khi làm code thật |
 | Claude Code CLI (`claude`) đã `claude login` | Nếu dùng gói Claude Pro/Max | provider `claude-code`; không cần API key |
-| Codex CLI (`codex`) đã `codex login` | Nếu dùng gói ChatGPT Plus/Pro | provider `codex`; app Codex Windows đi kèm CLI |
+| Codex CLI (`codex`) đã `codex login` | Nếu dùng gói ChatGPT Plus/Pro | provider `codex` |
 | Tài khoản Google (Antigravity) | Nếu dùng gateway | miễn phí theo quota; nhiều tài khoản thì xoay vòng |
-| `make` | Không | Windows thường không có; mọi lệnh `make x` đều có dạng `uv run` tương đương ghi trong `Makefile` |
+| `make` | Không | Ubuntu: `sudo apt install make`; mọi lệnh `make x` đều có dạng `uv run` tương đương ghi trong `Makefile` |
 
-Windows: dùng Git Bash hoặc PowerShell đều được. Khi lệnh in tiếng Việt lỗi mã hoá, đặt `PYTHONIOENCODING=utf-8`.
+Khi lệnh in tiếng Việt lỗi mã hoá (locale không UTF-8), đặt `PYTHONIOENCODING=utf-8`.
 
 ## 2. Cài đặt
 
@@ -219,8 +219,7 @@ Mỗi gói đăng nhập một lần, sau đó token tự làm mới:
 # Claude Pro/Max — CLI `claude` dùng đăng nhập sẵn có của máy
 claude auth status                                # "loggedIn": true là đủ; chưa thì: claude login
 
-# ChatGPT Plus/Pro — Codex CLI (app Codex trên Windows đi kèm CLI; adapter tự tìm trong %LOCALAPPDATA%/OpenAI/Codex/bin
-# khi không có `codex` trên PATH, hoặc đặt `binary:` cho backend)
+# ChatGPT Plus/Pro — Codex CLI (`codex` trên PATH, hoặc đặt `binary:` cho backend)
 codex login status                                # "Logged in using ChatGPT"; chưa thì: codex login
 
 # Google Antigravity — thêm tài khoản vào pool của gateway rồi bật daemon
@@ -451,7 +450,7 @@ Tạo `req.json` (đúng `payload` của topic `research-requests`; bắt buộc
   "project_id": "P1",
   "description": "Web bán khoá học tiếng Nhật: catalog, giỏ hàng, thanh toán VNPay, admin quản lý khoá. Mobile-first.",
   "attachments": [],
-  "repo": "D:/khach/web-khoa-hoc",
+  "repo": "/srv/khach/web-khoa-hoc",
   "base": "main"
 }
 ```
@@ -527,8 +526,8 @@ Mỗi môi trường là một compose project riêng do code đặt tên: `comp
 tới được qua đường cũ — `PROD_ROUTE` sau khi người ký gate release; ADR-0039 không thêm cổng nào. Cổng là của
 compose file khách; lệnh dừng khẩn container và cảnh báo tranh cổng ở `TRUC-VA-DUNG-KHAN.md` §1 mức 4.
 
-**Chạy thật một lần rồi ghi báo cáo (nghiệm thu D1).** CI không dựng container thật được (ma trận còn
-`windows-latest`), nên D1 **chưa đóng** cho tới khi có `docs/reports/2026-09-xx-deploy-that.md`. Người vận hành làm
+**Chạy thật một lần rồi ghi báo cáo (nghiệm thu D1).** CI không dựng container thật được (runner không chạy
+Docker daemon cho job này), nên D1 **chưa đóng** cho tới khi có `docs/reports/2026-09-xx-deploy-that.md`. Người vận hành làm
 đúng các bước sau trên máy trực rồi dán kết quả vào báo cáo đó:
 
 ```bash
@@ -929,4 +928,4 @@ export COMPANY_SANDBOX=container
 export COMPANY_SANDBOX_IMAGE=xagents-customer-python:local
 ```
 
-Windows đặt hai biến trên trong môi trường tiến trình watcher, runtime trỏ đường đầy đủ tới docker.exe. Image này có uv và không tải interpreter từ domain khác; phụ thuộc dự án chỉ tải qua hai domain PyPI. Git dependency, registry khác và stack không có tool trong image sẽ dừng — chọn image/policy phù hợp trước khi chạy. Smoke chỉ mở đúng cổng localhost qua relay, không mở toàn bộ Internet cho workload. Không mount bus/config/socket vào image khách.
+Đặt hai biến trên trong môi trường tiến trình watcher (vd. unit systemd). Image này có uv và không tải interpreter từ domain khác; phụ thuộc dự án chỉ tải qua hai domain PyPI. Git dependency, registry khác và stack không có tool trong image sẽ dừng — chọn image/policy phù hợp trước khi chạy. Smoke chỉ mở đúng cổng localhost qua relay, không mở toàn bộ Internet cho workload. Không mount bus/config/socket vào image khách.

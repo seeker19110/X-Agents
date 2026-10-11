@@ -1,6 +1,7 @@
 # ADR-0040: `COMPANY_DEPLOY=process` — deploy khách không dùng Docker (QLKH chạy trên WSL)
 
-Trạng thái: Accepted · Ngày: 2026-09-14 · Nối tiếp ADR-0039 (deploy thật bằng `docker compose`). Ranh giới tin
+Trạng thái: Accepted, **bị thay một phần bởi ADR gốc 0031** (`docs/adr/0031-chi-chay-tren-linux.md`: runner mặc
+định đổi từ cầu `wsl.exe --cd . bash` sang `bash`; mode `process` giữ nguyên) · Ngày: 2026-09-14 · Nối tiếp ADR-0039 (deploy thật bằng `docker compose`). Ranh giới tin
 cậy và ba ràng buộc của ADR-0039 §"Bối cảnh" giữ nguyên — ADR này chỉ thêm một **mode** thứ hai, không đổi
 mode `compose`.
 

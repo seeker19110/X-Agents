@@ -120,12 +120,11 @@ TRAN_PRAGMA = {                      # `# pragma: no cover` / `no branch` trong 
 }
 TRAN_SKIP = {                        # skip/xfail trong tests/ của từng package
     "platform/xagents-core": 1,      # S2 container thật cần Engine + image cài trước, không pull trong test
-    "platform/gateway": 3,
-    "platform/console": 5,          # +3 (#366): regex cũ bỏ sót `pytestmark` của test_cong_khung.py (bỏ CẢ
-                                    # module khi máy thiếu bash) và hai `@POSIX_ONLY` của test_server.py;
-                                    # +1 (2026-10-02): test_settings.py quyền nhóm/người khác của `.bak` —
-                                    # Windows không có khái niệm đó (chmod chỉ đổi cờ read-only)
-    "companies/software-company": 4,  # S1/ADR 0023: +1 ca F1 container thật, skip có lý do khi thiếu Engine/image
+    "platform/gateway": 1,           # −2 (ADR gốc 0031): bỏ skip `os.name == "nt"` khi chỉ còn Linux
+    "platform/console": 2,          # `pytestmark` của test_cong_khung.py (bỏ CẢ module khi máy thiếu bash) +
+                                    # test_static_ui.py khi workspace thiếu software-company; −3 (ADR gốc 0031):
+                                    # hai `@POSIX_ONLY` + skip quyền nhóm của test_settings.py
+    "companies/software-company": 3,  # S1/ADR 0023: +1 ca F1 container thật; −1 (ADR gốc 0031) skip win32
     "companies/keeper": 0,
 }
 TRAN_OMIT = 2                        # dòng `omit` trong pyproject.toml của các package

@@ -179,7 +179,7 @@ UPDATE_GOLDEN=1 uv run pytest tests/test_golden_agents.py   # hoặc: make golde
 - **Runner chạy model thật, trung lập provider** (`runner.py`, `llm.py`, ADR-0005): một interface `ModelClient`;
   adapter `anthropic`, `openai` (mọi server OpenAI-compatible: OpenAI, Ollama, Groq, vLLM, LM Studio...), `claude-code`
   (CLI `claude -p`, gói Claude Pro/Max, `config_dir` → `CLAUDE_CONFIG_DIR`, `effort` → `--effort` — ADR-0026), `codex` (CLI `codex exec --json`, gói ChatGPT
-  Plus/Pro, `config_dir` → `CODEX_HOME`, `effort` → `model_reasoning_effort`, tự tìm binary trong `%LOCALAPPDATA%/OpenAI/Codex/bin`), `fake`.
+  Plus/Pro, `config_dir` → `CODEX_HOME`, `effort` → `model_reasoning_effort`, binary tìm trên PATH hoặc khai `binary:`), `fake`.
   Hai provider CLI không có tool-use nên `supports_tools=false` mặc định: router bỏ qua chúng cho agent cần tool.
   Provider `openai` cũng nhận [`../../platform/gateway`](../../platform/gateway/README.md): proxy cục bộ xoay vòng nhiều tài khoản Google
   Antigravity (Gemini/Claude), tự cooldown khi hết quota và trả `usage` thật.

@@ -192,7 +192,7 @@ Triển khai VPS: copy file token từ máy cá nhân lên, chạy `make start`;
 
 ```bash
 make lint
-make test        # 312 ca (Windows skip 3: 2 quyền file POSIX + 1 `/proc` chỉ có trên Linux), không gọi mạng: httpx MockTransport + aiohttp TestClient
+make test        # 303 ca, không gọi mạng: httpx MockTransport + aiohttp TestClient
 ```
 
 ## Tài liệu
@@ -202,7 +202,7 @@ Bộ khung 4 file cùng cấu trúc với bốn package kia, cộng ADR:
 | File | Trả lời câu gì |
 |---|---|
 | `CLAUDE.md` | luật riêng khi sửa gateway: ba điều không được phá, sửa X thì phải sửa thêm gì |
-| `TRAPS.md` | bẫy đã mắc hoặc thấy trong test: cổng bị giữ, cooldown không chung, LRU hoà trên Windows, skip chmod POSIX… |
+| `TRAPS.md` | bẫy đã mắc hoặc thấy trong test: cổng bị giữ, cooldown không chung, LRU hoà trên đồng hồ thô… |
 | `CODEMAP.md` | muốn đổi X thì sửa hàm nào, dòng nào, kiểm bằng test nào |
 | `ARCHITECTURE.md` | bản đồ bốn file nguồn, ranh giới vào/ra/đĩa với phần còn lại của hub |
 | `docs/adr/0001-xoay-vong-tai-khoan.md` | vì sao thứ tự tài khoản là bearer-rồi-LRU, hạn mức nghỉ theo mã lỗi, không retry |
