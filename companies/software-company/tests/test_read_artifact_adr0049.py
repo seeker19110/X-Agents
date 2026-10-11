@@ -104,14 +104,14 @@ def test_nhan_cat_tro_read_artifact_khong_phai_duong_dan(tmp_path):
         "builder", _task_env(project_id="P1"), "pull-requests", tools=ToolBox()
     )
     user = client.calls[0]["user"]
-    assert 'read_artifact(\\"prd\\")' in user and str(tmp_path) not in user, "nhãn trỏ tool, không trỏ đường dẫn"
+    assert 'read_artifact(\\"prd\\")' in user and tmp_path.name not in user, "nhãn trỏ tool, không trỏ đường dẫn"
     assert "read_artifact" in client.calls[0]["tools"] and seen == [
         "## Tiêu chí nghiệm thu\n\nAC-1 sai mật khẩu báo lỗi\n\n"
     ]
     # chiều ngược: lượt không có tool thì không có `read_artifact` để trỏ — nhãn cũ giữ nguyên
     client2 = FakeClient(handler=lambda s, u: _pr({"ticket_id": "T1"}))
     AgentRunner(bb.bus, client2, blackboard=bb).generate("builder", _task_env(project_id="P1"), "pull-requests")
-    assert "read_artifact" not in client2.calls[0]["user"] and str(tmp_path) in client2.calls[0]["user"]
+    assert "read_artifact" not in client2.calls[0]["user"] and tmp_path.name in client2.calls[0]["user"]
 
 
 def test_route_co_tool_nhan_read_artifact(tmp_path):
