@@ -430,8 +430,9 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
                                          **({"urls": urls} if urls else {})}, ensure_ascii=False))
         # 4L-2: vết TỪNG lời gọi tool (`ToolBox.trace()`), một audit `tools_trace` mỗi lượt tool — riêng với
         # `tools_used` ở trên (đếm gộp theo tên, hình đó `metrics` đang parse, không đổi). mode "cli" (ADR-0023)
-        # tự chạy tool bên trong CLI, không đi qua `ToolBox` của company → `tools.calls` RỖNG ở lượt đó; đây là
-        # giới hạn đã biết, không phải lỗi — `company.trace` phải nói rõ "không có vết" thay vì im lặng in rỗng.
+        # tự chạy tool CLI gốc bên trong CLI, không đi qua `ToolBox` của company → chúng không để vết; chỉ tool đi
+        # cầu MCP hẹp (`read_artifact`, ADR-0023 bổ sung) có vết. Giới hạn đã biết, không phải lỗi — `company.trace`
+        # phải nói rõ "không có vết" thay vì im lặng in rỗng.
         self._audit(spec, "tools_trace", inp,
                     evidence=json.dumps({"turns": turn, "mode": c.tool_mode or "loop", "calls": tools.trace()},
                                         ensure_ascii=False))

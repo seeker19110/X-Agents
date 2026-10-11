@@ -571,3 +571,90 @@ def test_claude_gateway_profile_loads_and_routes_as_documented(monkeypatch):
     for m in ("claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-sonnet-4-6",
               "gemini-3.8-flash-medium", "gemini-3.8-flash-low"):
         assert pricing.rate(m) is not None, m
+
+
+# ---------- ADR-0023 bổ sung: chế độ cli mang cả tool công ty KHÔNG ánh xạ được sang tool CLI (read_artifact) ----------
+
+_RA = ToolSpec(name="read_artifact", description="", parameters={"type": "object", "properties": {"namespace": {"type": "string"}},
+                                                                 "required": ["namespace"]})
+
+
+def _bridge_call(args, name, **kw):
+    """Đóng vai CLI: đọc --mcp-config rồi gọi một tool qua cầu."""
+    from company.mcp_bridge import SERVER_NAME, ProxyServer
+    cfg = json.loads(Path(args[args.index("--mcp-config") + 1]).read_text(encoding="utf-8"))["mcpServers"][SERVER_NAME]
+    a = cfg["args"]
+    return ProxyServer(int(a[a.index("--port") + 1]), a[a.index("--token") + 1]).ask({"op": "call", "name": name, "args": kw})
+
+
+def test_cli_tools_mang_read_artifact_qua_cau_mcp_hep(tmp_path: Path):
+    """Chế độ `cli` (ADR-0023) trước đây chỉ mở tool riêng của CLI, nên `read_artifact` (ADR-0049) — tool đọc
+    blackboard, không có tool CLI tương đương — biến mất và nhãn cắt `tool read_artifact("prd")` trỏ vào hư không.
+    Nay tool công ty không ánh xạ được đi qua cầu MCP HẸP (chỉ chúng), tool CLI gốc vẫn như cũ."""
+    from company.tools import ToolBox, ToolCall
+    tb = ToolBox(); tb.root = str(tmp_path)
+    tb.add(_RA, lambda namespace: f"## PRD {namespace}\nAC-1")
+    seen: list = []
+
+    def runner(args, stdin, cwd=None):
+        seen.append((args, stdin))
+        r = _bridge_call(args, "read_artifact", namespace="prd")
+        assert r == {"ok": True, "result": "## PRD prd\nAC-1"}
+        return _CC_OK
+
+    c = _cc_tools(runner=runner); c.bind_toolbox(tb)
+    out = c.complete(system="SYS", user="u", schema={"type": "object"}, model_tier="strong",
+                     tools=[*_RW, _RA], workdir=str(tmp_path))
+    assert out.json() == {"ticket_id": "T1"} and out.tool_mode == "cli"
+    args, stdin = seen[0]
+    assert args[args.index("--tools") + 1] == "Read,Edit,Write,Grep,Bash", "tool CLI gốc không đổi"
+    assert "--strict-mcp-config" in args and "--mcp-config" in args
+    assert args[args.index("--allowed-tools") + 1] == "Bash(pytest:*) Bash(ruff:*) mcp__company__read_artifact", \
+        "cầu chỉ mang tool không ánh xạ được; tên MCP vào CÙNG cờ với mẫu Bash"
+    assert "mcp__company__read_artifact" in stdin, "prompt phải nói tên tool như CLI thấy nó"
+    assert [x["name"] for x in tb.calls] == ["read_artifact"], "vết gọi nằm ở ToolBox thật của runner (audit tools_trace)"
+    assert isinstance(tb.call(ToolCall(id="x", name="read_artifact", args={"namespace": "prd"})), str)
+
+
+def test_cli_tools_khong_co_tool_ngoai_bang_thi_khong_mo_cau(tmp_path: Path):
+    """Bảng toàn tool ánh xạ được (read_file/write_file/search/run) → không mở cầu, argv y như trước."""
+    from company.tools import ToolBox
+    tb = ToolBox(); tb.root = str(tmp_path)
+    seen: list = []
+    c = _cc_tools(runner=lambda a, s, cwd=None: (seen.append(a), _CC_OK)[1]); c.bind_toolbox(tb)
+    c.complete(system="SYS", user="u", schema={"type": "object"}, model_tier="strong", tools=_RW, workdir=str(tmp_path))
+    assert "--mcp-config" not in seen[0] and seen[0][seen[0].index("--allowed-tools") + 1] == "Bash(pytest:*) Bash(ruff:*)"
+    # `delete_file` cũng ngoài CLI_TOOL_MAP nhưng là tool worktree: KHÔNG bắc cầu (ADR-0023 §3 không mở rộng)
+    c.complete(system="SYS", user="u", schema={"type": "object"}, model_tier="strong",
+               tools=[*_RW, ToolSpec(name="delete_file", description="", parameters={})], workdir=str(tmp_path))
+    assert "--mcp-config" not in seen[1]
+    # không bind ToolBox (gọi ngoài vòng tool của runner) thì cũng không có gì để bắc cầu — không nổ, chạy như cũ
+    c2 = _cc_tools(runner=lambda a, s, cwd=None: (seen.append(a), _CC_OK)[1])
+    c2.complete(system="SYS", user="u", schema={"type": "object"}, model_tier="strong", tools=[*_RW, _RA], workdir=str(tmp_path))
+    assert "--mcp-config" not in seen[2]
+
+
+def test_cli_tools_cli_cu_khong_biet_mcp_thi_lui_ve_cli_thuan(tmp_path: Path):
+    """CLI cũ không biết `--mcp-config`: bỏ cầu, chạy lại chế độ cli thuần như trước (mất read_artifact, không mất lượt)."""
+    from company.tools import ToolBox
+    tb = ToolBox(); tb.root = str(tmp_path); tb.add(_RA, lambda namespace: "x")
+    modes: list[str] = []
+
+    def runner(args, stdin, cwd=None):
+        if "--mcp-config" in args:
+            modes.append("bridge"); raise LLMError("claude -p thoát mã 1: error: unknown option '--mcp-config'")
+        modes.append("cli"); return _CC_OK
+
+    c = _cc_tools(runner=runner); c.bind_toolbox(tb)
+    out = c.complete(system="SYS", user="u", schema={"type": "object"}, model_tier="strong", tools=[*_RW, _RA], workdir=str(tmp_path))
+    assert modes == ["bridge", "cli"] and out.json() == {"ticket_id": "T1"}
+    # mcp_tools bật + CLI cũ: MCP lùi về cli, và cầu hẹp KHÔNG thử `--mcp-config` lần nữa (đã biết CLI không có MCP)
+    modes.clear()
+    c = ClaudeCodeClient(LLMConfig(provider="claude-code", models={"strong": "m"}, cli_tools=True, mcp_tools=True), runner=runner)
+    c.bind_toolbox(tb)
+    c.complete(system="SYS", user="u", schema={"type": "object"}, model_tier="strong", tools=[*_RW, _RA], workdir=str(tmp_path))
+    assert modes == ["bridge", "cli"], "MCP thử một lần (bridge) rồi cli thuần; không có lần bắc cầu hẹp thứ hai"
+    # lỗi KHÁC (hết hạn mức) thì ném thẳng, không lùi
+    boom = _cc_tools(runner=lambda a, s, cwd=None: (_ for _ in ()).throw(LLMError("usage limit"))); boom.bind_toolbox(tb)
+    with pytest.raises(LLMError, match="usage limit"):
+        boom.complete(system="SYS", user="u", schema={"type": "object"}, model_tier="strong", tools=[*_RW, _RA], workdir=str(tmp_path))
