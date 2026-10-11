@@ -9,7 +9,6 @@ Mọi lệnh **trong thư mục này** (gốc hub có `company.sqlite` rỗng �
 
 ```bash
 ../../scripts/dev-task.sh gate company   # ruff + mypy + pytest -n auto --cov, khớp đúng ci.yml
-                                         # (Windows thiếu 2 dòng POSIX trong coverage là bình thường)
 uv run python -m company.orchestrator status | diagnose | metrics
 uv run python -m company.orchestrator --repo <repo khách> run --watch     # tự khởi động lại khi mã đổi
 uv run python -m company.gate_cli list | approve <subject> --by human:<tên> --reason "<root_cause — decision — hint>"

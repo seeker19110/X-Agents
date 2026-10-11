@@ -70,8 +70,8 @@ def _cmdline(pid: int, runner: Any = None) -> str | None:
     lỗi dễ mắc nhất ở đây: "không có tiến trình đó" phải dẫn tới KHÔNG giết, còn "không đọc được" phải dẫn tới
     giữ nguyên hành vi cũ.
 
-    Không dùng `psutil`: gateway cố ý không có phụ thuộc ngoài (xem `pyproject.toml`), và ba lệnh dưới đây có
-    sẵn trên mọi máy chạy được repo này.
+    Không dùng `psutil`: gateway cố ý không có phụ thuộc ngoài (xem `pyproject.toml`); `/proc` (Linux) và `ps`
+    (macOS, BSD) có sẵn trên mọi máy chạy được repo này. Windows không được hỗ trợ (ADR gốc 0031).
     """
     run = runner if runner is not None else subprocess.run
     if sys.platform.startswith("linux"):
@@ -81,22 +81,11 @@ def _cmdline(pid: int, runner: Any = None) -> str | None:
             return ""      # /proc không có mục này = tiến trình đã thoát
         except OSError:
             return None    # quyền, hay /proc bị mount lạ — không biết thì không đoán
-    if sys.platform == "win32":
-        # `tasklist` chỉ cho TÊN ẢNH (python.exe), không cho dòng lệnh. Đủ để loại trường hợp nguy hiểm nhất:
-        # PID được hệ điều hành tái dùng cho một tiến trình KHÔNG PHẢI python (Windows tái dùng PID nhanh và
-        # thường xuyên hơn Linux). Không đủ để phân biệt gateway với một python khác — nói rõ giới hạn đó ở
-        # `_pid_is_gateway` thay vì giả vờ chặt hơn thực tế.
-        argv = ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"]
-    else:
-        argv = ["ps", "-o", "command=", "-p", str(pid)]   # macOS và BSD
     try:
-        r = run(argv, capture_output=True, text=True, timeout=CMDLINE_TIMEOUT_S)
+        r = run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=CMDLINE_TIMEOUT_S)
     except (OSError, subprocess.SubprocessError):
         return None
     out = (r.stdout or "").strip()
-    if sys.platform == "win32":
-        # Không có tiến trình: tasklist in "INFO: No tasks..." ra stdout và VẪN thoát 0 — không dựa vào mã thoát.
-        return "" if (not out or "No tasks" in out or str(pid) not in out) else out
     return out if r.returncode == 0 and out else ""
 
 
@@ -109,19 +98,12 @@ def _pid_is_gateway(pid: int, runner: Any = None) -> bool:
     | dòng lệnh không có chữ ký đó (kể cả `api-gateway-khac.py`) | KHÔNG giết |
     | tiến trình không tồn tại (`""`) | KHÔNG giết, chỉ xoá PID file |
     | không đọc được (`None`) | giết — giữ nguyên hành vi trước K8.6 |
-
-    **Windows chặt tới đâu:** `tasklist` chỉ cho tên ảnh, nên ở đó phép kiểm là "PID này có phải một tiến trình
-    Python đang chạy không". Nó loại được ca nguy hiểm nhất (PID tái dùng cho một tiến trình bất kỳ — Windows
-    tái dùng PID nhanh hơn Linux nhiều) nhưng KHÔNG phân biệt được gateway với một python khác. Nói ra giới hạn
-    còn hơn để người đọc tưởng `stop` an toàn tuyệt đối.
     """
     cmd = _cmdline(pid, runner)
     if cmd is None:
         return True
     if not cmd:
         return False
-    if sys.platform == "win32":
-        return "python" in cmd.lower()
     return DAEMON_SIGNATURE in cmd   # chuỗi con "gateway" khớp cả tiến trình lạ tên có chữ ấy (khuôn 6)
 
 
@@ -165,9 +147,6 @@ def cmd_start(args: argparse.Namespace) -> int:
     # host/port đi qua argv, KHÔNG nội suy vào mã: một dấu `'` trong `--host` từng là chạy mã tuỳ ý trong daemon.
     code = f"import sys; {DAEMON_SIGNATURE}; _run_daemon(host=sys.argv[1], port=int(sys.argv[2]))"
     cmd = [sys.executable, "-u", "-c", code, host, str(port)]
-    flags = 0
-    if sys.platform == "win32":
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
     with open(log_file, "a", encoding="utf-8") as log_fd:
         proc = subprocess.Popen(
             cmd,
@@ -175,9 +154,8 @@ def cmd_start(args: argparse.Namespace) -> int:
             stdout=log_fd,
             stderr=log_fd,
             stdin=subprocess.DEVNULL,
-            creationflags=flags,
             env=env,
-            start_new_session=sys.platform != "win32",
+            start_new_session=True,
         )
     get_pid_file().write_text(str(proc.pid), encoding="utf-8")
 
@@ -206,10 +184,7 @@ def cmd_stop(args: argparse.Namespace) -> int:
         print(f"[*] PID {pid} không phải tiến trình gateway (đã thoát hoặc PID được tái dùng); chỉ xoá PID file.")
     elif pid > 0:
         try:
-            if sys.platform == "win32":
-                subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, check=False)
-            else:
-                os.kill(pid, signal.SIGTERM)
+            os.kill(pid, signal.SIGTERM)
             print(f"[+] Đã dừng gateway (PID {pid})")
         except Exception as e:
             print(f"[*] Tiến trình {pid} không chạy hoặc không dừng được: {e}")
@@ -542,7 +517,7 @@ def cmd_models(args: argparse.Namespace) -> int:
 
 
 def _utf8_stdio(*streams: Any) -> None:
-    """Console Windows mặc định cp1252 không in được tiếng Việt: đổi sang UTF-8 những stream cho đổi."""
+    """Locale không UTF-8 (vd `LANG=C` trên server) không in được tiếng Việt: đổi sang UTF-8 những stream cho đổi."""
     for stream in streams:
         with contextlib.suppress(Exception):  # không có `reconfigure` (StringIO, None) hay đổi hỏng: bỏ qua
             stream.reconfigure(encoding="utf-8", errors="replace")

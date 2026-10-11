@@ -20,7 +20,6 @@ phiên (`secrets.token_hex`) — tiến trình khác trên cùng máy không g�
 from __future__ import annotations
 
 import json
-import os
 import secrets
 import socket
 import socketserver
@@ -37,20 +36,6 @@ from .tools import ToolBox, ToolCall
 SERVER_NAME = "company"          # tool hiện ra với CLI là `mcp__company__<tên>`
 PROTOCOL_VERSION = "2025-06-18"
 LINE_MAX = 8 * 1024 * 1024       # trần một dòng trên socket (kết quả tool đã bị ToolBox cắt trước đó)
-
-
-def platform_env() -> dict[str, str]:
-    """Biến môi trường mà tiến trình con BẮT BUỘC phải có để mở được socket về tiến trình cha.
-
-    Trên Windows, Winsock nạp service provider theo `SystemRoot`; thiếu biến đó thì `socket()` ném
-    `[WinError 10106] The requested service provider could not be loaded or initialized` và cầu
-    không nối về đâu được. Ta khai nó ngay trong `--mcp-config` thay vì trông chờ client trộn môi
-    trường: đặc tả MCP không hứa client giữ lại biến nào, nên client nào thay hẳn môi trường bằng
-    `env` này sẽ làm cầu chết trên Windows. Trên POSIX không cần gì thêm nên trả về rỗng.
-    """
-    if sys.platform != "win32":
-        return {}
-    return {name: os.environ[name] for name in ("SystemRoot",) if os.environ.get(name)}
 
 
 def tool_full_name(name: str) -> str:
@@ -136,10 +121,9 @@ class ToolBridge:
     def mcp_config(self) -> dict[str, Any]:
         """`--mcp-config`: một server stdio duy nhất, chạy chính module này ở chế độ chuyển tiếp."""
         root = str(Path(__file__).resolve().parents[1])   # src/ — tiến trình con import được `company`
-        # PYTHONIOENCODING: CLI sinh tiến trình con này, và trên Windows stdio của nó mặc định là
-        # bảng mã hệ thống (cp1252) chứ không phải UTF-8. Xem chú thích ở `run`.
+        # PYTHONIOENCODING: CLI sinh tiến trình con này, và locale của máy không chắc là UTF-8 — stdio khi ấy mang
+        # bảng mã hệ thống. Xem chú thích ở `run`.
         env = {"PYTHONPATH": root, "PYTHONIOENCODING": "utf-8"}
-        env.update(platform_env())
         return {"mcpServers": {SERVER_NAME: {
             "command": sys.executable,
             "args": ["-m", "company.mcp_bridge", "--port", str(self.port), "--token", self.token],
@@ -222,8 +206,8 @@ class ProxyServer:
             if resp is not None:
                 # `ensure_ascii=True` (mặc định) là CỐ Ý, khác với đường socket ở trên.
                 #
-                # Kênh này là stdio của một tiến trình con do CLI sinh ra. Trên Windows, stdio đó
-                # mặc định mang bảng mã hệ thống (cp1252), không phải UTF-8 — mà mọi thông điệp của
+                # Kênh này là stdio của một tiến trình con do CLI sinh ra. Locale không phải UTF-8 thì
+                # stdio đó mang bảng mã hệ thống — mà mọi thông điệp của
                 # repo này đều là tiếng Việt, nên chỉ cần một lượt tool trả về chữ có dấu là
                 # `UnicodeEncodeError` giết tiến trình con, và cả chế độ `mcp_tools: true` sập theo.
                 #
@@ -236,7 +220,7 @@ class ProxyServer:
 def force_utf8_stdio() -> None:
     """Ép stdio của tiến trình này về UTF-8.
 
-    JSON-RPC qua stdio của MCP là UTF-8. Trên Windows, stdio mặc định lại là bảng mã hệ thống, nên
+    JSON-RPC qua stdio của MCP là UTF-8. Locale không phải UTF-8 thì stdio mang bảng mã hệ thống, nên
     chiều ĐỌC cũng hỏng chứ không riêng chiều ghi: tham số tool có chữ có dấu do CLI gửi sang sẽ bị
     giải mã sai hoặc ném lỗi. Chỉ làm ở `main()` — `run()` nhận stream do người gọi truyền vào thì
     không được tự ý đụng vào."""

@@ -1,6 +1,6 @@
-"""ADR-0040 D1c: `COMPANY_DEPLOY=process` — khách không dùng Docker (QLKH: tiến trình trần trên WSL).
+"""ADR-0040 D1c: `COMPANY_DEPLOY=process` — khách không dùng Docker (QLKH: tiến trình trần).
 
-Cùng khuôn tiêm runner với `test_deploy_compose.py` (ADR-0039): máy chạy test không có `wsl.exe`/`bash` thật, nên
+Cùng khuôn tiêm runner với `test_deploy_compose.py` (ADR-0039): test không chạy script khách thật, nên
 `run`/`which` được tiêm giả — đo đường đi và kết luận, không đo hành vi thật của script.
 
 Đo hai chiều (AGENTS.md luật 4) — bỏ từng vế của `ok` thì đúng một ca dưới đây phải đỏ:
@@ -140,21 +140,21 @@ def test_deploy_script_doc_dung_tu_spec(tmp_path):
 
 
 def test_process_khai_dich_danh_ma_thieu_binary_thi_raise(tmp_path):
-    with pytest.raises(DeployError, match="wsl"):
+    with pytest.raises(DeployError, match="env"):
         deploy(
             _repo(tmp_path),
             "P1",
             "staging",
             RT,
             mode="process",
-            binary="wsl.exe --cd . bash",
+            binary="env -C . bash",
             run=FakeProcess(),
             which=lambda b: None,
         )
 
 
 def test_runtime_thieu_dau_nhay_dong_thi_deploy_error_khong_phai_value_error(tmp_path):
-    """`COMPANY_DEPLOY_RUNTIME` là cấu hình người vận hành gõ tay (đường dẫn Windows có dấu nháy). Gõ thiếu nháy
+    """`COMPANY_DEPLOY_RUNTIME` là cấu hình người vận hành gõ tay (đường dẫn có dấu cách phải bọc nháy). Gõ thiếu nháy
     đóng thì `shlex.split` ném `ValueError` — `verify.py` chỉ bắt `DeployError` (fail-closed nhưng không giết
     orchestrator), nên lỗi cấu hình phải đi đúng đường đó và nói rõ biến nào hỏng."""
     with pytest.raises(DeployError, match=ENV_RUNTIME):
@@ -164,18 +164,19 @@ def test_runtime_thieu_dau_nhay_dong_thi_deploy_error_khong_phai_value_error(tmp
             "staging",
             RT,
             mode="process",
-            binary='wsl.exe --cd "C:\\khach bash',
+            binary='env -C "/srv/khach hang bash',
             run=FakeProcess(),
             which=lambda b: b,
         )
 
 
-def test_mac_dinh_binary_process_la_cau_noi_wsl(monkeypatch):
+def test_mac_dinh_binary_process_la_bash_tran(monkeypatch):
+    """ADR gốc 0031: hub chỉ chạy trên Linux — mặc định cũ `wsl.exe --cd . bash` làm `COMPANY_DEPLOY=process` hỏng
+    ngay trên Ubuntu ("không có trên PATH") khi người vận hành không đặt thêm `COMPANY_DEPLOY_RUNTIME=bash`."""
     monkeypatch.delenv(ENV_MODE, raising=False)
     monkeypatch.delenv(ENV_RUNTIME, raising=False)
     monkeypatch.setenv(ENV_MODE, "process")
-    assert deploy_settings() == ("process", DEFAULT_RUNTIME_PROCESS)
-    assert DEFAULT_RUNTIME_PROCESS.split()[0] == "wsl.exe"
+    assert deploy_settings() == ("process", "bash") == ("process", DEFAULT_RUNTIME_PROCESS)
 
 
 def test_mac_dinh_binary_compose_khong_doi(monkeypatch):
@@ -196,7 +197,7 @@ def test_process_argv_chi_up_down():
 
 
 def test_prefix_thay_dau_cham_bang_duong_dan_repo(tmp_path):
-    assert _process_prefix("wsl.exe --cd . bash", tmp_path) == ["wsl.exe", "--cd", str(tmp_path), "bash"]
+    assert _process_prefix("env -C . bash", tmp_path) == ["env", "-C", str(tmp_path), "bash"]
     assert _process_prefix("bash", tmp_path) == ["bash"], "không có dấu chấm thì giữ nguyên (chạy bash trần)"
 
 
@@ -224,9 +225,9 @@ def test_binary_bien_mat_giua_chung_thi_ly_do_doc_duoc(tmp_path):
 
 def test_binary_co_that_ma_khong_chay_duoc_thi_ly_do_doc_duoc(tmp_path):
     """`_process_cmd` hứa "không ném" nhưng chỉ bắt `FileNotFoundError`: binary CÓ trên đĩa mà không chạy được
-    (thiếu quyền thực thi, không phải Win32 app) ném `OSError` khác, xuyên qua `deploy()` vào lượt verify.
-    File thật + `subprocess.run` thật; đuôi `.exe` để Windows không tự thêm `.exe` rồi đọc thành "không có"."""
-    f = tmp_path / "khong-chay.exe"
+    (thiếu quyền thực thi) ném `OSError` khác, xuyên qua `deploy()` vào lượt verify.
+    File thật + `subprocess.run` thật."""
+    f = tmp_path / "khong-chay"
     f.write_text("khong phai binary\n", encoding="utf-8")  # 0o644: không ai chạy được, kể cả root
     r = deploy(
         _repo(tmp_path), "P1", "staging", RT, mode="process", binary=f.as_posix(), run=subprocess.run, which=lambda b: b
@@ -267,8 +268,8 @@ _IN_BYTE_LA = "import sys; sys.stdout.buffer.write(b'truoc \\xe3\\x28 sau\\n'); 
 
 
 def test_process_giu_output_khi_script_khach_in_byte_khong_phai_utf8(tmp_path: Path) -> None:
-    """Giải mã `encoding="utf-8"` không kèm `errors=`: Linux ném UnicodeDecodeError khỏi deploy, Windows chết ở luồng
-    đọc và trả `stdout=None` → output mất lặng lẽ. Cùng khuôn #329 (git/gh), còn sót ở `deploy.py`."""
+    """Giải mã `encoding="utf-8"` không kèm `errors=`: UnicodeDecodeError ném khỏi deploy → output mất.
+    Cùng khuôn #329 (git/gh), còn sót ở `deploy.py`."""
     import sys
 
     from company.deploy import _process_cmd

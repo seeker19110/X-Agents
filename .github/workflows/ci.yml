@@ -35,7 +35,8 @@ jobs:
 
   unit:
     name: unit
-    runs-on: ${{ matrix.os }}
+    # Chỉ Linux (ADR gốc 0031): hub chạy trên Ubuntu, không còn nhánh mã theo nền tảng nào để canh.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
@@ -43,14 +44,7 @@ jobs:
       fail-fast: false
       matrix:
         # cận dưới của requires-python và bản mới nhất đang dùng
-        os: [ubuntu-latest]
         python: ["3.11", "3.13"]
-        include:
-          # Code có nhánh riêng cho Windows (bảng mã CLI, SystemRoot của cầu MCP, creationflags, _alive)
-          # mà trước đây không CI nào chạy: một job Windows đủ để chúng không mục đi.
-          # Chân Windows đã xanh liên tiếp kể từ khi thêm, nên đã bỏ `continue-on-error`: từ đây nó CHẶN merge.
-          - os: windows-latest
-            python: "3.13"
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -60,14 +54,9 @@ jobs:
       - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
       # --durations: test git/worktree chậm dần thì thấy ngay trong log, không phải đoán.
-      # -n auto (pytest-xdist): test git/worktree nặng I/O, chạy tuần tự 346 s trên Windows; đo cục bộ
-      # 4 worker còn 97 s, 730/730 xanh (2026-09-06). Runner GitHub 4 nhân nên auto = 4.
+      # -n auto (pytest-xdist): test git/worktree nặng I/O; đo cục bộ 4 worker còn 97 s, 730/730 xanh
+      # (2026-09-06). Runner GitHub 4 nhân nên auto = 4.
       - run: uv run pytest -q -n auto --cov --cov-report=term-missing --durations=10
-        if: runner.os != 'Windows'
-        working-directory: companies/software-company
-      # Windows: chạy test, không đo coverage (nhánh riêng của POSIX không chạy ở đây nên ngưỡng sẽ lệch).
-      - run: uv run pytest -q -n auto --durations=10
-        if: runner.os == 'Windows'
         working-directory: companies/software-company
 
   eval-replay:
@@ -194,24 +183,14 @@ jobs:
 
   gateway-unit:
     name: gateway-unit
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
-        include:
-          # Chân Windows. Ba package này KHÔNG có chân Windows nào cho tới 2026-09-09, trong khi K3.1–K3.7
-          # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
-          # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
-          # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
-          # Khác `unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
-          # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
-          - os: windows-latest
-            python: "3.13"
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -220,14 +199,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
-      # `shell: bash` cho CẢ hai nền tảng: mặc định của `run:` trên windows-latest là `pwsh`, và bước này
-      # từng đỏ ở đó với đúng thông điệp "414 passed ... coverage 100.00%" rồi `exit code 1` — pytest xanh,
-      # tiến trình trả 1. Không tái hiện được tại chỗ (Windows 11, cùng Python 3.13.15, cùng lệnh, kể cả chạy
-      # dưới pwsh với `$ErrorActionPreference='stop'` và ép `uv` cài lại): khác biệt nằm ở lớp bọc pwsh của
-      # runner, không ở test. Ba bước này vốn viết theo POSIX và `bash` có sẵn trên cả ba ảnh runner, nên cho
-      # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
-        shell: bash
         working-directory: platform/gateway
 
   # console (trực ban hợp nhất): chỉ stdlib, phụ thuộc hai công ty qua path dependency.
@@ -251,24 +223,14 @@ jobs:
 
   console-unit:
     name: console-unit
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
-        include:
-          # Chân Windows. Ba package này KHÔNG có chân Windows nào cho tới 2026-09-09, trong khi K3.1–K3.7
-          # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
-          # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
-          # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
-          # Khác `unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
-          # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
-          - os: windows-latest
-            python: "3.13"
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -277,31 +239,17 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
       # Ngưỡng coverage nằm trong pyproject (fail_under): chặn tụt lùi, không phải chỉ tiêu thành tích.
-      # `shell: bash` cho CẢ hai nền tảng: mặc định của `run:` trên windows-latest là `pwsh`, và bước này
-      # từng đỏ ở đó với đúng thông điệp "414 passed ... coverage 100.00%" rồi `exit code 1` — pytest xanh,
-      # tiến trình trả 1. Không tái hiện được tại chỗ (Windows 11, cùng Python 3.13.15, cùng lệnh, kể cả chạy
-      # dưới pwsh với `$ErrorActionPreference='stop'` và ép `uv` cài lại): khác biệt nằm ở lớp bọc pwsh của
-      # runner, không ở test. Ba bước này vốn viết theo POSIX và `bash` có sẵn trên cả ba ảnh runner, nên cho
-      # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
-        shell: bash
         working-directory: platform/console
 
   # Lõi chung của mọi công ty (ADR gốc 0001). `strict = true` từ ngày đầu (K6.1): core là chỗ hai công ty
   # tin cậy, nó không được lỏng hơn nơi gọi nó.
   core-static:
     name: core-static
-    # Hai nền tảng, không phải một: `_alive` của `sqlite_bus` có nhánh riêng cho Windows, và chú kiểu cho
-    # nhánh ấy CẦN trên Linux lại THỪA trên Windows (`strict` coi "thừa" là lỗi). Chỉ chạy ubuntu thì repo
-    # không bao giờ biết `mypy` của nửa còn lại đỏ — đúng thứ đã xảy ra tới 2026-09-09.
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -318,24 +266,14 @@ jobs:
 
   core-unit:
     name: core-unit
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
-        include:
-          # Chân Windows. Ba package này KHÔNG có chân Windows nào cho tới 2026-09-09, trong khi K3.1–K3.7
-          # vừa dồn toàn bộ cơ chế chung của hai công ty vào `xagents-core` — package rủi ro cao nhất lại có
-          # phạm vi nền tảng hẹp nhất. Đo được hậu quả: `test_overdue_khong_truyen_now_thi_lay_bay_gio` đỏ
-          # tái hiện được trên Windows (đồng hồ bước ~15,6 ms) mà CI không hề thấy, xem #203.
-          # Khác `unit`: ba package này KHÔNG có nhánh chỉ-POSIX nào bỏ lại, nên chân Windows
-          # đo `--cov` luôn — đã kiểm tại chỗ, cả ba đạt đúng 100% trên Windows.
-          - os: windows-latest
-            python: "3.13"
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -343,26 +281,15 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python }}
       - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
-      # `shell: bash` cho CẢ hai nền tảng: mặc định của `run:` trên windows-latest là `pwsh`, và bước này
-      # từng đỏ ở đó với đúng thông điệp "414 passed ... coverage 100.00%" rồi `exit code 1` — pytest xanh,
-      # tiến trình trả 1. Không tái hiện được tại chỗ (Windows 11, cùng Python 3.13.15, cùng lệnh, kể cả chạy
-      # dưới pwsh với `$ErrorActionPreference='stop'` và ép `uv` cài lại): khác biệt nằm ở lớp bọc pwsh của
-      # runner, không ở test. Ba bước này vốn viết theo POSIX và `bash` có sẵn trên cả ba ảnh runner, nên cho
-      # chúng cùng một vỏ là bỏ hẳn một lớp ngữ nghĩa chỉ-Windows khỏi cổng chất lượng.
       - run: uv run pytest -q --cov --cov-report=term-missing
-        shell: bash
         working-directory: platform/xagents-core
 
   keeper-static:
     name: keeper-static
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -417,18 +344,14 @@ jobs:
 
   keeper-unit:
     name: keeper-unit
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         python: ["3.11", "3.13"]   # cận dưới của requires-python và bản mới nhất đang dùng
-        include:
-          - os: windows-latest
-            python: "3.13"
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -436,9 +359,7 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python }}
       - run: uv sync --locked   # workspace: một .venv ở root cho cả năm package
-      # `shell: bash`: lý do y hệt core-unit ở trên (lớp bọc pwsh của runner Windows nuốt mã thoát).
       - run: uv run pytest -q --cov --cov-report=term-missing
-        shell: bash
         working-directory: companies/keeper
 
   # Tài sản prompt của repo là chuỗi cung ứng (ADR-0022): injection, ký tự ẩn, lệnh nguy hiểm, khóa lộ

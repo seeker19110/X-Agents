@@ -17,7 +17,6 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 import tomllib
 from pathlib import Path
 
@@ -30,56 +29,10 @@ HOOKS = ROOT / ".claude" / "hooks"
 SETTINGS = ROOT / ".claude" / "settings.json"
 
 
-def _bash_chay_duoc(ung_vien: str) -> bool:
-    """Thử THẬT: viết một script vào thư mục tạm rồi bảo `ung_vien` chạy nó bằng đúng đường dẫn hệ điều hành.
-
-    Không hỏi "đây có phải Git Bash không" (đoán theo tên/đường dẫn thì sai khi người ta cài chỗ khác), mà hỏi
-    "cái này chạy được cái mà test sắp truyền vào không".
-    """
-    with tempfile.TemporaryDirectory() as d:
-        s = Path(d) / "probe.sh"
-        s.write_text("echo ok\n", encoding="utf-8")
-        try:
-            kq = subprocess.run(
-                [ung_vien, str(s)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        return kq.returncode == 0 and "ok" in kq.stdout
-
-
-def _tim_bash() -> str | None:
-    """Bash chạy được đường dẫn kiểu Windows — KHÔNG phải cái đầu tiên trong PATH.
-
-    Trên máy Windows có WSL, `shutil.which("bash")` hay trả stub `AppData/Local/Microsoft/WindowsApps/bash.exe`
-    — TUỲ thứ tự PATH của phiên shell, nên nó đỏ chập chờn: cùng một commit, chạy chỗ này xanh chỗ kia đỏ.
-    Stub ấy chuyển tiếp vào WSL, nơi `C:\\Users\\x\\a.sh` bị nuốt hết dấu `\\` thành `C:Usersxa.sh` → 127 cho
-    MỌI ca của file này (đo 2026-09-14: 51/73 đỏ trên máy phát triển, trong khi CI ubuntu xanh — cổng chết im
-    lặng, đúng khuôn nguy hiểm mà chính file này được dựng để chặn).
-
-    Git Bash hiểu đường dẫn Windows. Vị trí của nó suy từ `git --exec-path` (`<git>/mingw64/libexec/git-core`)
-    chứ không đoán `C:\\Program Files`, để máy cài git chỗ khác vẫn đúng.
-    """
-    ung_vien: list[str] = []
-    if (b := shutil.which("bash")) is not None:
-        ung_vien.append(b)
-    if os.name == "nt":
-        try:
-            ep = subprocess.run(
-                ["git", "--exec-path"], capture_output=True, text=True, check=True, timeout=30
-            ).stdout.strip()
-        except (OSError, subprocess.SubprocessError):
-            ep = ""
-        if ep:
-            goc = Path(ep).parents[2]
-            ung_vien += [str(goc / "bin" / "bash.exe"), str(goc / "usr" / "bin" / "bash.exe")]
-    return next((c for c in ung_vien if _bash_chay_duoc(c)), None)
-
-
-BASH = _tim_bash()
+BASH = shutil.which("bash")
 # cong_repo: file này đọc script, hook, workflow ở gốc repo → hook chạy nó cả ở chế độ nhanh (F6).
 pytestmark = [
-    pytest.mark.skipif(BASH is None, reason="cần bash (Git Bash trên Windows) để chạy hook"),
+    pytest.mark.skipif(BASH is None, reason="cần bash để chạy hook"),
     pytest.mark.cong_repo,
 ]
 
@@ -102,7 +55,7 @@ def _chay(script: Path, *args: str, stdin: str = "", **moi_truong: str) -> subpr
         capture_output=True,
         text=True,
         encoding="utf-8",
-        errors="replace",  # hook in tiếng Việt ra stderr; mặc định Windows là cp1252 → vỡ, stderr thành None
+        errors="replace",  # hook in tiếng Việt ra stderr; byte lạ không được làm stderr thành None
         env=env,
         cwd=ROOT,
     )
@@ -1076,30 +1029,6 @@ def test_bo_loc_dung_chung_lib_sh_duoc_ca_hai_hook_soi_lenh_source() -> None:
     assert not any("_lib.sh" in mot_lenh for mot_lenh in lenh), "_lib.sh là thư viện source, không phải hook"
 
 
-@pytest.mark.parametrize("hook", [CHAN_GIT, CONG_COMMIT], ids=lambda h: h.name)
-def test_hook_tim_duoc_lib_sh_khi_dollar0_la_duong_dan_windows(hook: Path, tmp_path: Path) -> None:
-    """Git Bash trên Windows đưa `$0` = `D:\\a\\…\\hooks\\x.sh` (dấu `\\`): `${0%/*}` không cắt được, `HOOK_DIR` rơi về
-    `.` và `./_lib.sh` không có → hook fail-open cho MỌI lệnh (CI windows 2026-10-10: 78 ca đỏ, exit 0 cả
-    `git push origin main`). Giả `$0` kiểu Windows trên mọi hệ bằng `bash -c '. "$1"' '<\\-path>' <hook>`, cwd
-    không phải thư mục hook: hook phải vẫn tìm ra `_lib.sh` (cắt theo cả `/` lẫn `\\`, hoặc lùi về
-    `$CLAUDE_PROJECT_DIR/.claude/hooks`), không được bỏ qua kiểm tra."""
-    assert BASH is not None
-    gia_dollar0 = "D:\\a\\X-Agents\\X-Agents\\.claude\\hooks\\" + hook.name
-    kq = subprocess.run(
-        [BASH, "-c", '. "$1"', gia_dollar0, str(hook)],
-        input=_payload("git push origin main"),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env={**os.environ, "CLAUDE_PROJECT_DIR": str(ROOT), "DEV_TASK_DRY_RUN": "1"},
-        cwd=str(tmp_path),
-    )
-    assert "thiếu .claude/hooks/_lib.sh" not in kq.stderr, f"{hook.name} không tìm ra _lib.sh: {kq.stderr}"
-    if hook == CHAN_GIT:
-        assert kq.returncode == 2, f"đáng lẽ chặn git push origin main (exit {kq.returncode}): {kq.stderr}"
-
-
 def test_moi_hook_deu_co_test_trong_file_nay() -> None:
     """Thêm hook mà quên test = thêm một cổng không ai biết nó còn sống không."""
     than = Path(__file__).read_text(encoding="utf-8")
@@ -1108,7 +1037,7 @@ def test_moi_hook_deu_co_test_trong_file_nay() -> None:
 
 
 def test_moi_script_sh_duoc_chot_eol_lf() -> None:
-    """Máy phát triển là Windows: `.sh` lọt vào repo với CRLF thì bash trên CI Linux báo `\\r: command not found`.
+    """`.sh` lọt vào repo với CRLF (soạn ở máy khác) thì bash trên Linux báo `\\r: command not found`.
 
     Hook vỡ theo kiểu này KHÔNG đỏ ở đâu cả — nó chỉ lặng lẽ không canh gì nữa.
     """
@@ -1163,20 +1092,3 @@ def test_file_luat_cho_harness_khac_tro_ve_agents_md(ten: str) -> None:
     f = ROOT / ten
     assert f.is_file(), f"thiếu {ten}: agent khác Claude Code vào repo không biết luật ở đâu"
     assert "AGENTS.md" in f.read_text(encoding="utf-8")
-
-
-def test_bash_duoc_chon_chay_duoc_script_theo_duong_dan_repo(tmp_path: Path) -> None:
-    """Cổng phải chọn bash chạy được **chính đường dẫn** test truyền vào, không phải bash đầu PATH.
-
-    Trên Windows `shutil.which("bash")` hay trúng stub WSL ở `AppData/Local/Microsoft/WindowsApps`: nó nhận
-    `C:\\Users\\...\\x.sh` rồi NUỐT sạch dấu `\\` (`/bin/bash: C:Usersliend...: No such file or directory`)
-    và trả 127 cho MỌI ca của file này — 51/73 đỏ, đúng khuôn "chế độ hỏng không tự khai báo": cổng chết mà
-    CI ubuntu vẫn xanh nên không ai thấy. Git Bash hiểu đường dẫn Windows; WSL bash thì không.
-    """
-    script = tmp_path / "in-ra.sh"
-    script.write_text("echo CHAY_DUOC\n", encoding="utf-8")
-    assert BASH is not None
-    kq = subprocess.run([BASH, str(script)], capture_output=True, text=True, encoding="utf-8", errors="replace")
-    assert kq.returncode == 0 and "CHAY_DUOC" in kq.stdout, (
-        f"bash được chọn ({BASH}) không chạy nổi script ở {script}: rc={kq.returncode} err={kq.stderr!r}"
-    )

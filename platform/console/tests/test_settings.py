@@ -129,8 +129,7 @@ def test_validation_rejects_bad_input_without_writing(llm):
 
 def test_ghi_giu_nguyen_quyen_file_llm_yaml_va_ban_bak(llm):
     """Audit 2026-09-23: tmp và .bak tạo theo umask (0644) rồi `os.replace` → llm.yaml mất 0600.
-    So với quyền THỰC của file gốc sau chmod (không skip trên Windows — ở đó chmod chỉ đổi cờ read-only,
-    phép so vẫn đúng nghĩa; trên POSIX nó bắt được 0644 ≠ 0600)."""
+    So với quyền THỰC của file gốc sau chmod: bắt được 0644 ≠ 0600."""
     os.chmod(llm, 0o600)
     goc = stat.S_IMODE(llm.stat().st_mode)
     settings.update_settings(llm, models={"antigravity": {"standard": "gemini-3.7-flash-medium"}})
@@ -195,7 +194,6 @@ def test_tat_backend_da_tat_la_khong_doi_gi(llm):
     assert llm.read_text(encoding="utf-8") == before
 
 
-@pytest.mark.skipif(os.name == "nt", reason="quyền nhóm/người khác là khái niệm POSIX")
 def test_khong_luc_nao_ban_sao_khoa_mang_quyen_rong(llm, monkeypatch):
     """`.bak`/`.tmp` từng được ghi đủ nội dung (có khoá) theo umask 0644 rồi mới chmod: chết hay chmod lỗi giữa
     hai bước là bản sao khoá nằm lại cho mọi user trên máy đọc. Quyền phải siết TRƯỚC khi nội dung vào file."""

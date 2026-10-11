@@ -34,7 +34,6 @@ import re
 import shutil
 import signal
 import subprocess
-import sys
 import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -143,16 +142,12 @@ class _ProcHandle:
         return self._tail[-n:]
 
 
-def _kill_tree(proc: Any, runner: Any = subprocess.run) -> None:
-    """Giết CẢ CÂY của `proc`, không chỉ con trực tiếp. Windows: `taskkill /T` đi theo quan hệ cha-con từ gốc (gốc
-    còn sống lúc hết giờ nên cây còn tìm được); POSIX: cả nhóm tiến trình (`start_new_session=True` lúc dựng).
-    Nỗ lực tốt nhất: cây đã tự tan hay `taskkill` treo không được che kết quả timeout — `proc.kill()` luôn chạy."""
+def _kill_tree(proc: Any) -> None:
+    """Giết CẢ CÂY của `proc`, không chỉ con trực tiếp: cả nhóm tiến trình (`start_new_session=True` lúc dựng).
+    Nỗ lực tốt nhất: cây đã tự tan không được che kết quả timeout — `proc.kill()` luôn chạy."""
     try:
-        if sys.platform == "win32":
-            runner(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=30)
-        else:
-            os.killpg(proc.pid, signal.SIGKILL)
-    except (OSError, subprocess.SubprocessError):
+        os.killpg(proc.pid, signal.SIGKILL)
+    except OSError:
         pass
     proc.kill()
 
@@ -161,12 +156,10 @@ def _run_tree(argv: list[str], *, cwd: str, env: dict[str, str], input: str | No
               popen: Any = subprocess.Popen, kill_tree: Any = _kill_tree, **_: Any) -> subprocess.CompletedProcess[str]:
     """Như `subprocess.run(capture_output=True, text=True, encoding="utf-8", errors="replace")`, trừ hai chỗ khi hết
     giờ: giết CẢ CÂY (`_kill_tree`), và chờ ống tối đa 5s thay vì vô hạn. `subprocess.run` chỉ giết con trực tiếp,
-    rồi trên Windows `communicate()` không trần — cháu (`uv run` → launcher venv → python thật) còn giữ ống stdout
-    là treo tới khi cháu tự xong. Đo được 2026-09-24 (CAMPUS-UNI/TCK-002): orchestrator 0% CPU, 0 event 20+ phút
+    rồi `communicate()` không trần — cháu (`uv run` → python thật) còn giữ ống stdout là treo tới khi cháu tự xong. Đo được 2026-09-24 (CAMPUS-UNI/TCK-002): orchestrator 0% CPU, 0 event 20+ phút
     trong khi pytest mồ côi ăn 1245s CPU."""
-    extra: dict[str, Any] = {} if sys.platform == "win32" else {"start_new_session": True}
     proc = popen(argv, cwd=cwd, env=env, stdin=None if input is None else subprocess.PIPE, stdout=subprocess.PIPE,
-                 stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", **extra)
+                 stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", start_new_session=True)
     try:
         out, err = proc.communicate(input, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -211,10 +204,9 @@ class SubprocessSandbox:
     def spawn(self, spec: RunSpec) -> Handle:
         if spec.allowed_domains:
             raise SandboxError("subprocess không enforce được allowed_domains")
-        extra: dict[str, Any] = {} if sys.platform == "win32" else {"start_new_session": True}
         return _TreeHandle(self._popen(spec.argv, cwd=str(spec.cwd), env=sanitize_env(spec.env),
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
-                                       encoding="utf-8", errors="replace", **extra))
+                                       encoding="utf-8", errors="replace", start_new_session=True))
 
 
 def _container_name() -> str:
@@ -230,25 +222,19 @@ class ContainerSandbox:
 
     def __init__(self, runtime: str, image: str, cpus: str = "2", memory: str = "2g",
                  runner: Any = subprocess.run, popen: Any = subprocess.Popen,
-                 env_via_stdin: bool | None = None, egress: EgressProxy | None = None):
+                 env_via_stdin: bool = True, egress: EgressProxy | None = None):
         self.runtime, self.image, self.cpus, self.memory = runtime, image, cpus, memory
         self._runner, self._popen = runner, popen
         self._egress = egress
-        # Windows không có `/dev/stdin` cho Docker CLI; env ra `-e` như ca stdin (cùng đánh đổi, xem docstring
-        # module); `None` = tự chọn theo hệ điều hành, đặt tường minh để test không phụ thuộc máy chạy. Tên mang
-        # `:env-argv` cùng khuôn `:no-uid`: audit đọc tên là biết cách ly còn gì.
-        self.env_via_stdin = (os.name != "nt") if env_via_stdin is None else env_via_stdin
-        self.name = (f"container:{image}" + ("" if self._uid() else ":no-uid")
-                     + ("" if self.env_via_stdin else ":env-argv"))
+        # `False` = env ra `-e` như ca stdin (cùng đánh đổi, xem docstring module). Tên mang `:env-argv`: audit
+        # đọc tên là biết cách ly còn gì.
+        self.env_via_stdin = env_via_stdin
+        self.name = f"container:{image}" + ("" if self.env_via_stdin else ":env-argv")
 
     @staticmethod
-    def _uid() -> str | None:
-        """Windows không có `os.getuid` → bỏ cờ `-u` (container chạy user mặc định của image) và nói thẳng trong
-        tên sandbox để audit không tưởng là đã hạ quyền."""
-        getuid, getgid = getattr(os, "getuid", None), getattr(os, "getgid", None)
-        if getuid is None or getgid is None:
-            return None
-        return f"{getuid()}:{getgid()}"
+    def _uid() -> str:
+        """Container chạy bằng uid:gid của người vận hành: file nó ghi vào `/w` không thành của root trên máy chủ."""
+        return f"{os.getuid()}:{os.getgid()}"
 
     def _remove(self, name: str) -> None:
         """Giết client `docker run` KHÔNG dừng container — nó sống tiếp dưới daemon. Dọn theo tên, nỗ lực tốt
@@ -260,8 +246,7 @@ class ContainerSandbox:
 
     def _argv(self, spec: RunSpec, name: str, network: str = "none") -> list[str]:
         base = [self.runtime, "run", "--rm", "--name", name, "--pids-limit", "256", "--cpus", self.cpus, "--memory", self.memory]
-        uid = self._uid()
-        if uid: base += ["-u", uid]
+        base += ["-u", self._uid()]
         base += ["-v", f"{spec.cwd}:/w:{'ro' if spec.read_only else 'rw'}", "-w", "/w"]
         if spec.stdin is None and self.env_via_stdin:
             base += ["--env-file", "/dev/stdin"]
