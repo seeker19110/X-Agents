@@ -247,7 +247,8 @@ def _defer(o: Orchestrator, env: Envelope, res: StepResult, reason: str, wait_s:
         if time.monotonic() - t0 > transient_limit():
             with o._lock: o.transient_since.pop(env.event_id, None)
             agent = reason.split(":", 2)[1] if reason.count(":") >= 2 else ACTOR
-            o._mark_unhandled(env, agent, f"hoãn transient quá {int(transient_limit())}s: {reason[:200]}", res)
+            o._mark_unhandled(env, agent, f"hoãn transient quá {int(transient_limit())}s: {reason[:200]}", res,
+                              error_kind="infra_transient")
             o._mark(env, res); return res
     with o._lock:
         o.deferred[env.event_id] = (env, reason); res.deferred = reason; o.stats["deferred"] += 1

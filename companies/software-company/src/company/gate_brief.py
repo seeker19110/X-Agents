@@ -597,8 +597,11 @@ def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str
         vong = diagnose(orch.bus, top=30)["ticket_quay_vong"].get(subject)
     except Exception:  # chẩn đoán hỏng không được làm hỏng hồ sơ
         vong = None
+    # ADR-0052: `ticket.blocked` mang `stops` (đếm retry theo kiểu dừng) — người duyệt thấy ngay ba retry cháy vì gì.
+    stops = next((_evidence(e.payload).get("stops") or {} for e in reversed(list(orch.bus.replay(topic="audit-log")))
+                  if e.payload.get("action") == "ticket.blocked" and _evidence(e.payload).get("ticket_id") == subject), {})
     extra = {"scope": "ticket", "ticket": {"title": excerpt(t.title), "assignee": t.assignee, "retry": t.retry, "risk_tags": t.risk_tags,
-                                            "state": orch.lead.state.get(subject), "hint": excerpt(t.hint)},
+                                            "state": orch.lead.state.get(subject), "hint": excerpt(t.hint), "stops": stops},
              "history": history[-40:], "hints_used": hints, "duplicate_hints": dup, "budget": budget, "worktree": worktree,
              "diagnose": vong}
     return [item], unavailable, extra

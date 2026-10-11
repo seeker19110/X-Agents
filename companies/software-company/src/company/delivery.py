@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -22,6 +22,7 @@ from .gate_risk import request_gate
 from .gates import GateRequest
 from .quality_floor import QualityBar, QualityEvidence, ReleaseQuality, collect_evidence, project_bar
 from .roles import LEAD_ACTOR, SOURCE
+from .stop_kind import STOP_KINDS
 
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
 
@@ -47,6 +48,9 @@ class DeliveryLead:
         self.replan_rounds = replan_rounds
         self.replan_open: dict[str, str] = {}  # ticket_id → change_id REPLAN đang chờ người quyết (checklist gate escalation)
         self.replans_filed: set[str] = set()   # change_id đã nộp (dựng lại từ bus): block lần hai cùng thế hệ không nộp lại
+        # ADR-0052: ticket_id → đếm lần `_retry` theo kiểu dừng (`stop_kind.STOP_KINDS`), để `ticket.blocked` nói được
+        # ba retry đã cháy vì gì. Chỉ sống trong RAM; bản chụp nằm trong evidence của `ticket.blocked`.
+        self.stops: dict[str, Counter[str]] = defaultdict(Counter)
         # batch_releases: gom mọi ticket approved của dự án vào MỘT RC khi không còn ticket nào đang chạy (thay vì mỗi
         # ticket một release → mỗi ticket một lần staging, một gate 3, một UAT). Ticket blocked/escalated chờ người,
         # không giữ release của người khác.
@@ -210,13 +214,13 @@ class DeliveryLead:
         self.tickets[t.ticket_id] = t; self.state[t.ticket_id] = "dispatched"
         self.reviews[t.ticket_id] = {}; self.review_since.pop(t.ticket_id, None)
 
-    def rework(self, tid: str, hint: str) -> None:
+    def rework(self, tid: str, hint: str, kind: str = "agent_error") -> None:
         """PR bị code từ chối trước review (lint/test thật fail): ticket về `changes_requested` rồi retry+1 kèm hint là
         đầu ra test, không đi qua reviewer/QA/security chỉ để nghe lại điều máy đã biết. Hết retry → blocked."""
         if self.state.get(tid) not in {"dispatched", "in_progress"}:
             raise ValueError(f"{tid}: rework chỉ từ dispatched/in_progress (đang {self.state.get(tid)})")
         self.state[tid] = "changes_requested"
-        self._retry(tid, hint)
+        self._retry(tid, hint, kind)
 
     def overdue_reviews(self, now: datetime | None = None) -> dict[str, set[str]]:
         """Ticket ở in_review quá review_timeout: trả về nguồn review còn thiếu để supervisor giao lại/escalate."""
@@ -227,8 +231,10 @@ class DeliveryLead:
                 if missing: out[tid] = missing
         return out
 
-    def _retry(self, tid: str, hint: str | None) -> None:
-        t = self.tickets[tid]
+    def _retry(self, tid: str, hint: str | None, kind: str = "agent_error") -> None:
+        if kind not in STOP_KINDS:
+            raise ValueError(f"{tid}: stop_kind {kind!r} không có trong bảng STOP_POLICY (ADR-0052)")
+        t = self.tickets[tid]; self.stops[tid][kind] += 1
         if t.retry + 1 >= self.max_retries:
             self._set(tid, "blocked")
             # `blocked` phải BỀN, không chỉ nằm trong RAM: nó suy ra từ số lần retry chứ không từ event nào, nên
@@ -241,7 +247,8 @@ class DeliveryLead:
             self._emit(Envelope(topic="audit-log", key=LEAD_ACTOR, actor=LEAD_ACTOR,
                                 payload=AuditLog(actor=LEAD_ACTOR, action="ticket.blocked", ticket_id=tid,
                                                  evidence=json.dumps({"ticket_id": tid, "retry": t.retry + 1,
-                                                                      "max_retries": self.max_retries},
+                                                                      "max_retries": self.max_retries,
+                                                                      "stop_kind": kind, "stops": dict(self.stops[tid])},
                                                                      ensure_ascii=False)).model_dump()))
             self._request_replan(t, hint)
             return
@@ -268,7 +275,7 @@ class DeliveryLead:
                 f"không dùng lại {t.ticket_id}. Ticket đang chờ nó: {deps or 'không'}.")
         cr = ChangeRequest(change_id=cid, project_id=t.project_id, requested_by=LEAD_ACTOR, description=desc[:1000],
                            impact={"kind": "replan", "ticket_id": t.ticket_id, "generation": gen, "retry": t.retry + 1,
-                                   "hint": (hint or "")[:500], "dependents": deps})
+                                   "hint": (hint or "")[:500], "dependents": deps, "stops": dict(self.stops[t.ticket_id])})
         self._emit(Envelope(topic="change-requests", key=cid, actor=LEAD_ACTOR, payload=cr.model_dump()))
 
     def _on_review(self, env: Envelope) -> None:
@@ -444,11 +451,11 @@ class DeliveryLead:
             if self.state.get(tid) == "merged":
                 self._set(tid, "changes_requested"); self._retry(tid, hint)
 
-    def request_changes(self, tid: str, hint: str) -> None:
+    def request_changes(self, tid: str, hint: str, kind: str = "agent_error") -> None:
         """Ticket đã approved nhưng không tích hợp được (xung đột với nhánh tích hợp): làm lại với hint, tính một retry.
         Release candidate đang chứa ticket này do orchestrator huỷ (không đi tiếp). Dùng khi xung đột đã LẶP LẠI quá
         `MAX_CONFLICT_RETRIES` (orchestrator.py) — coi là bế tắc thật, tính vào retry nội dung như trước."""
-        self._set(tid, "changes_requested"); self._retry(tid, hint)
+        self._set(tid, "changes_requested"); self._retry(tid, hint, kind)
 
     def request_changes_no_retry_bump(self, tid: str, hint: str) -> None:
         """Như `request_changes` nhưng KHÔNG tính vào retry nội dung: dùng khi xung đột merge còn dưới ngưỡng
@@ -474,6 +481,7 @@ class DeliveryLead:
         if self.state.get(tid) not in {"blocked", "escalated"}:
             raise ValueError(f"{tid}: chỉ mở lại ticket blocked/escalated (đang {self.state.get(tid)})")
         nt = self.tickets[tid].model_copy(update={"retry": 0, "hint": hint, "human_hint": hint}); self.tickets[tid] = nt
+        self.stops.pop(tid, None)  # ADR-0052: đếm theo kiểu về 0 cùng `retry`
         self._publish_task(nt); return nt
 
     def mark_done_already_integrated(self, tid: str) -> None:

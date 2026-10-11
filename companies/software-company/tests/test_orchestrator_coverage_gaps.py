@@ -79,7 +79,7 @@ def test_rework_after_error_bat_value_error(monkeypatch):
     orch.lead.tickets["T1"] = Task.model_validate(T1)
     orch.lead.state["T1"] = "dispatched"
 
-    def boom(tid, hint):
+    def boom(tid, hint, kind="agent_error"):  # ADR-0052: `rework` nhận `kind`
         raise ValueError(f"{tid}: rework chỉ từ dispatched/in_progress (đang blocked)")
 
     monkeypatch.setattr(orch.lead, "rework", boom)
