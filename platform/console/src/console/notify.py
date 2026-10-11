@@ -37,6 +37,11 @@ DEFAULT_TIMEOUT = 5.0
 SUMMARY_IDS = 5      # tin tóm tắt lúc khởi động liệt kê tối đa bấy nhiêu gate
 WATCH_INTERVAL = 1.0  # giây giữa hai lần dò dấu vân tay bus — rẻ (chỉ `stat()`), như `/api/stream`
 
+# Mức của ô Thông báo ở màn Trực ban. Tập ĐÓNG, khai một chỗ: `static/js/notify.js` tra pill theo đúng tập này
+# (test_static_ui đối chiếu). off = ô xám (ADR-0003), không bao giờ xanh.
+VERDICT_LEVELS = ("off", "good", "warn", "crit")
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+
 
 class NotifyConfigError(Exception):
     """Cấu hình thông báo sai hoặc thiếu — nói ra lúc khởi động, không nhận rồi im."""
@@ -114,6 +119,8 @@ class Notifier:
         self.failed = 0
         self.last_error: str | None = None
         self.last_sent_at: str | None = None
+        self._failing: dict[str, str] = {}   # kênh -> lỗi của LẦN GỬI GẦN NHẤT qua kênh đó (hiện tại, không lịch sử)
+        self.watch_error: str | None = None  # đọc hàng đợi gate hỏng (collect ném) — khác lỗi kênh
 
     @property
     def enabled(self) -> bool:
@@ -151,17 +158,20 @@ class Notifier:
             try:
                 code = ch.send(msg, self.post)
             except Exception as e:  # mạng, DNS, timeout — không được ném lên thread theo dõi
-                self.failed += 1
-                self.last_error = f"{ch.name}: {type(e).__name__}"
-                logger.warning("thông báo qua %s hỏng: %s", ch.name, type(e).__name__)
+                self._fail(ch.name, type(e).__name__)
                 continue
             if 200 <= code < 300:
                 self.sent += 1
                 self.last_sent_at = datetime.now(UTC).isoformat(timespec="seconds")
+                self._failing.pop(ch.name, None)
             else:
-                self.failed += 1
-                self.last_error = f"{ch.name}: HTTP {code}"
-                logger.warning("thông báo qua %s bị từ chối: HTTP %s", ch.name, code)
+                self._fail(ch.name, f"HTTP {code}")
+
+    def _fail(self, channel: str, why: str) -> None:
+        self.failed += 1
+        self.last_error = f"{channel}: {why}"
+        self._failing[channel] = why
+        logger.warning("thông báo qua %s hỏng: %s", channel, why)
 
     def observe(self, gates: list[Mapping[str, Any]]) -> list[Message]:
         """Một lần nhìn hàng đợi gate. Lần đầu: một tin tóm tắt nếu có gì chờ. Các lần sau: một tin cho mỗi gate
@@ -179,10 +189,35 @@ class Notifier:
             self._deliver(m)
         return msgs
 
+    def _loopback_link(self) -> bool:
+        host = self.public_url.split("://", 1)[-1].split("/", 1)[0]
+        return any(host == h or host.startswith(h + ":") for h in _LOOPBACK_HOSTS)
+
+    def verdict(self) -> dict[str, str]:
+        """Câu trả lời của ô Thông báo: *gate mới mở ra lúc tôi không nhìn thì tôi có được báo không?* Thứ tự là thứ
+        tự nghiêm trọng — chỗ đầu tiên khớp thắng. Không bao giờ xanh khi chưa có bằng chứng (đã gửi được tin)."""
+        if not self.enabled:
+            return {"level": "off", "say": "Tắt — rời máy thì không ai báo bạn khi có gate mới. Bật bằng "
+                                           "--notify-ntfy URL hoặc --notify-telegram CHAT_ID (ADR-0005)."}
+        if self.watch_error:
+            return {"level": "crit", "say": f"Không đọc được hàng đợi gate ({self.watch_error}) — gate mới sẽ "
+                                            "không được báo cho tới khi đọc lại được."}
+        if self._failing:
+            hong = "; ".join(f"{k}: {v}" for k, v in sorted(self._failing.items()))
+            return {"level": "crit", "say": f"Kênh đang hỏng — lần gửi gần nhất không tới: {hong}."}
+        if self._loopback_link():
+            return {"level": "warn", "say": f"Link trong tin trỏ {self.public_url} — điện thoại không mở được. "
+                                            "Chạy lại với --public-url <địa chỉ console nhìn từ điện thoại>."}
+        if not self.sent:
+            return {"level": "warn", "say": "Chưa gửi tin nào — kênh chưa được chứng minh là thông. Tin đầu tiên đi "
+                                            "khi có gate mới."}
+        return {"level": "good", "say": f"Đã gửi {self.sent} tin, lần cuối {self.last_sent_at}."}
+
     def status(self) -> dict[str, Any]:
         return {"enabled": self.enabled, "channels": [c.name for c in self.channels], "sent": self.sent,
                 "failed": self.failed, "last_error": self.last_error, "last_sent_at": self.last_sent_at,
-                "watching": len(self._seen or ())}
+                "watching": len(self._seen or ()), "failing": sorted(self._failing), "watch_error": self.watch_error,
+                "public_url": self.public_url, "verdict": self.verdict()}
 
 
 class NotifyWatcher:
@@ -211,11 +246,12 @@ class NotifyWatcher:
         try:
             state = self.collect(self.dbs[0], self.dbs[1])
         except Exception as e:
-            # Không ghi nhận dấu vân tay: lần sau thử lại. Lỗi hiện trong status để người trực thấy.
-            self.notifier.last_error = f"collect: {type(e).__name__}: {e}"
+            # Không ghi nhận dấu vân tay: lần sau thử lại. Lỗi hiện ở ô Thông báo (đỏ) để người trực thấy.
+            self.notifier.watch_error = f"{type(e).__name__}: {e}"
             logger.exception("collect() thất bại trong NotifyWatcher")
             return []
         self._fingerprint = current
+        self.notifier.watch_error = None
         return self.notifier.observe(list(state.get("gates") or []))
 
     def _run(self) -> None:
@@ -255,5 +291,5 @@ def build_notifier(*, ntfy: str | None, telegram_chat: str | None, public_url: s
     return Notifier(channels, public_url=public_url, post=post)
 
 
-__all__ = ["Message", "Notifier", "NotifyConfigError", "NotifyWatcher", "NtfyChannel", "TelegramChannel",
+__all__ = ["VERDICT_LEVELS", "Message", "Notifier", "NotifyConfigError", "NotifyWatcher", "NtfyChannel", "TelegramChannel",
            "build_notifier", "http_post"]

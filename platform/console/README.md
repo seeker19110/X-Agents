@@ -101,8 +101,10 @@ Tailscale/Cloudflare Tunnel — việc của hạ tầng, không phải của co
 `http://127.0.0.1:8200` và chỉ mở được trên chính máy này. Link **không mang token phiên**.
 
 Thông báo chạy trên một thread nền dò bus như `/api/stream`, **không cần ai mở trang**, chết cùng console. Lỗi mạng
-không làm gì chết: `/api/state` khoá `notify` khai `sent` / `failed` / `last_error` (tên kênh + mã HTTP, không URL,
-không token). Không nhắc lại gate đã báo, không nhắc định kỳ — gate bị từ chối rồi mở lại cùng id thì báo lại vì đó
+không làm gì chết: ô **Thông báo** ngay dưới ô Động cơ ở màn Trực ban nói kênh có đang thông không — *tắt* (xám,
+kèm cách bật), *hỏng* (đỏ: kênh nào, mã lỗi gì, hoặc không đọc được hàng đợi gate), *cần xem* (vàng: link trỏ
+loopback nên điện thoại không mở được, hoặc chưa gửi được tin nào), *đang báo* (xanh: đã gửi bao nhiêu tin, lần cuối
+lúc nào). Cùng dữ liệu ở `/api/state` khoá `notify` (tên kênh + mã HTTP, không URL, không token). Không nhắc lại gate đã báo, không nhắc định kỳ — gate bị từ chối rồi mở lại cùng id thì báo lại vì đó
 là một lượt chờ người mới.
 
 Mục **Cài đặt model** trong trang cho từng công ty: chọn model cho tier mạnh/tiêu chuẩn/nhẹ trên từng backend,

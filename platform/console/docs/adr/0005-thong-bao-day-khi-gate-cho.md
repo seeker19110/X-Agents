@@ -66,7 +66,38 @@ Năm ràng buộc là một phần của quyết định:
 - Người trực nhận một tin trên điện thoại trong ~1 giây sau khi gate xuất hiện, bấm là mở đúng ngăn kéo (cần
   `--public-url` trỏ địa chỉ console nhìn từ ngoài — tunnel/VPN là việc của hạ tầng, không phải của console).
 - Console có thêm một thread nền khi bật; chết cùng server (`server_close`), như động cơ.
-- `/api/state` thêm khoá `notify`; trang chưa vẽ ô cho nó (lấy sau khi có ô "Thông báo" ở màn Trực ban — điều kiện:
-  `failed > 0` xảy ra thật mà người trực không biết).
+- `/api/state` thêm khoá `notify`; ô "Thông báo" ở màn Trực ban vẽ nó — xem Bổ sung dưới.
 - Hai kênh gọi ra Internet từ tiến trình console. Nội dung tin: tên xưởng, `kind`, `subject_id`, tiêu đề ticket, hậu
   quả duyệt, link. Không có checklist, không có bằng chứng, không có token.
+
+## Bổ sung 2026-10-11 — ô "Thông báo" ở màn Trực ban
+
+Trạng thái `notify` có trong `/api/state` nhưng không ô nào vẽ: kênh hỏng (token Telegram sai, topic ntfy gõ nhầm)
+thì `failed` tăng trong JSON mà người trực vẫn tin là mình sẽ được báo. Đó là hỏng im lặng thứ hai, nằm ngay trong
+lớp sinh ra để chống hỏng im lặng.
+
+Quyết định: ô "Thông báo" ngay dưới ô Động cơ (hai câu "công ty có chạy không" và "rời máy tôi có được báo không"
+đứng cạnh nhau). **Mức do tầng dữ liệu tính**, như `empty=True` của phễu sản phẩm (ADR-0003): `Notifier.verdict()`
+trả `{level, say}`, `level` thuộc tập đóng `VERDICT_LEVELS = (off, good, warn, crit)`; `static/js/notify.js` chỉ tra
+pill theo `level` và in `say`. Thứ tự (chỗ đầu tiên khớp thắng):
+
+| Mức | Khi | Vì sao không xanh |
+|---|---|---|
+| `off` (xám) | không kênh nào | không có gì canh — số 0 ở đây là số của một việc không diễn ra, nên ô không in số |
+| `crit` | đọc hàng đợi gate hỏng (`watch_error`) | gate mới không được thấy thì không được báo |
+| `crit` | có kênh mà **lần gửi gần nhất** qua nó hỏng (`failing`) | người trực có thể chỉ theo dõi đúng kênh đó |
+| `warn` | `--public-url` là loopback | tin tới điện thoại nhưng link không mở được |
+| `warn` | chưa gửi được tin nào | kênh chưa được chứng minh là thông (xanh vì rỗng) |
+| `good` | còn lại | đã gửi được, lần cuối lúc nào |
+
+`failing` là trạng thái hiện tại từng kênh, không phải lịch sử: gửi lại được thì hết đỏ, còn `failed` (đếm từ khi
+console chạy) vẫn giữ. Lỗi đọc bus tách khỏi lỗi kênh (`watch_error` ≠ `last_error`), đọc lại được thì xoá.
+
+Phương án đã loại: tính mức trong JS (không test được — CI không chạy JS, repo kiểm giao diện bằng phép đọc mã
+nguồn; và lặp lại đúng thứ ADR-0003 cấm: CSS đoán trạng thái); nút "Gửi thử" (cần một quyền ghi mới `--allow-*` và
+một route POST — việc riêng, điều kiện quay lại ở `docs/thi-hanh/tb1.md`).
+
+Đo bằng trình duyệt thật (Chromium headless, bus thật, ntfy giả trên loopback): bốn mức hiện đúng, 0 lỗi JS; thêm
+một gate `escalation` vào bus đang chạy → tin đi trong ~1 giây với link `#/truc-ban/gate/TCK-112`, ô chuyển "Đã gửi
+2 tin". Ảnh chụp lần đầu lộ hai chỗ đọc sai — ô `off` vẫn in "đang canh 0 gate · đã gửi 0 tin", ô `crit` in cùng
+một lỗi hai lần — cả hai có test riêng (`test_static_ui.py`).

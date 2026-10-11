@@ -119,3 +119,38 @@ def test_escalation_khong_duyet_duoc_bang_ly_do_qua_ngan(page: str) -> None:
     assert 'g.kind==="escalation"' in sync and ".length<20" in sync
     assert "disabled=READONLY||left>0||thin" in sync, "thin phải khoá nút Duyệt"
     assert '$("#reason").addEventListener("input",sync)' in page, "gõ lý do phải tính lại trạng thái nút"
+
+
+def test_o_thong_bao_co_tren_truc_ban_va_ve_dung_muc_tu_du_lieu(page: str) -> None:
+    """ADR-0005 bổ sung: ô Thông báo nằm ở màn Trực ban, ngay dưới Động cơ — hai câu "công ty có chạy không" và
+    "rời máy tôi có được báo không" đứng cạnh nhau. Mức (`verdict.level`) do Python tính; JS chỉ tra bảng pill,
+    nên bảng pill phải phủ ĐỦ tập mức Python khai — thiếu một mức là ô hiện pill sai mà không lỗi."""
+    from console.notify import VERDICT_LEVELS
+
+    html = PAGE.read_text(encoding="utf-8")
+    truc_ban = html.split('id="v-truc-ban"', 1)[1].split('<section class="view', 1)[0]
+    assert 'id="notify"' in truc_ban, "ô Thông báo phải nằm trong màn Trực ban"
+    assert truc_ban.index('id="engine"') < truc_ban.index('id="notify"') < truc_ban.index('id="queue"'), \
+        "thứ tự: Động cơ → Thông báo → Chờ bạn duyệt"
+    js = (JS_DIR / "notify.js").read_text(encoding="utf-8")
+    pill = re.search(r"export const PILL=\{(.*?)\};", js, re.S)
+    assert pill, "notify.js phải khai bảng PILL"
+    keys = set(re.findall(r"(\w+):\[", pill.group(1)))
+    assert keys == set(VERDICT_LEVELS), f"PILL {sorted(keys)} lệch VERDICT_LEVELS {list(VERDICT_LEVELS)}"
+    assert "verdict.level" in js and "verdict.say" in js, "mức và lời giải thích đọc từ dữ liệu, không tự tính"
+    assert not re.search(r"\.failed\s*[<>=]", js), "JS không được tự so số tin hỏng — đó là việc của notify.py"
+    main = (JS_DIR / "main.js").read_text(encoding="utf-8")
+    assert "renderNotify()" in main.split("export function render()", 1)[1].split("\n}\n", 1)[0], \
+        "render() phải vẽ ô Thông báo mỗi khung"
+
+
+def test_o_thong_bao_tat_khong_hien_so_canh_va_hong_khong_in_loi_hai_lan() -> None:
+    """Đo bằng ảnh chụp trình duyệt 2026-10-11: (1) ô ở mức `off` vẫn ghi "đang canh 0 gate · đã gửi 0 tin" — một
+    con số cho một việc KHÔNG diễn ra (console không canh gì khi không có kênh), đúng loại số ADR-0003 cấm;
+    (2) mức `crit` in cùng một lỗi hai lần (trong `verdict.say` và dòng "lỗi gần nhất")."""
+    js = (JS_DIR / "notify.js").read_text(encoding="utf-8")
+    facts = js.split("export function facts(n){", 1)[1].split("\n}\n", 1)[0]
+    assert re.search(r'if\(!n\.enabled\) return ""', facts), "tắt thì không có số nào để kể"
+    render = js.split("export function renderNotify(){", 1)[1]
+    assert re.search(r"n\.last_error&&!\(n\.failing&&n\.failing\.length\)", render), \
+        "kênh đang hỏng thì lỗi đã nằm trong verdict.say — dòng 'lỗi gần nhất' chỉ cho lỗi đã qua"
