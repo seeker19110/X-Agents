@@ -99,6 +99,8 @@ từ `requirements-dev.txt` + `-r requirements.txt`). Đó là đúng kiểu tr�
 **Phương án đã loại.** Chỉ dựng từ file dev (bố cục cài hai file riêng thì thiếu Django); grep chuỗi `pytest` trong
 mọi `*.txt` (comment và constraint thành khai báo giả); sinh `[project]` hộ khách (sửa repo khách thay cho builder).
 
+**ruff gọi thẳng binary ở nhánh requirements (đo sau khi merge, cùng ngày).** Lượt TCK-01 kế tiếp có test xanh nhưng lint đỏ: trong env `--with-requirements`, `python -m ruff` tìm `ruff.exe` ở thư mục Scripts của trình thông dịch tạm (`cache/builds-v0/.tmp*`) trong khi binary nằm ở lớp cache (`archive-v0/*/Scripts`) → `FileNotFoundError`. Lệnh lint của nhánh này nay là `uv run --isolated --no-project --with-requirements <file> -- ruff check` (cùng worktree: "All checks passed!"). Nhánh `[project]` và đường `sys.executable` giữ `python -m ruff`: ở đó `ruff.exe` nằm đúng Scripts của trình thông dịch đang chạy.
+
 **Còn hở, biết rõ.** `Runtime.argv` của smoke (`smoke.py`) vẫn thay `python` đầu lệnh bằng `sys.executable` —
 venv của orchestrator, cho CẢ hai bố cục (`[project]` lẫn requirements); lệnh không bắt đầu bằng `python`
 (`gunicorn …`) thì tìm trên `PATH` của orchestrator. Không sửa ở đây vì nó đổi đường bằng chứng release

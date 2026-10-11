@@ -103,13 +103,17 @@ def _py_stack(root: Path) -> Stack:
     requirements của khách (ADR-0044 bổ sung 2026-10-11), cùng điều kiện "công cụ phải được khai"."""
     deps = _khai_bao(root / "pyproject.toml")
     if deps is not None:
-        prefix = _UV_RUN
+        prefix, ruff = _UV_RUN, [*_UV_RUN, "ruff", "check"]
     else:
         files, deps = _requirements(root)
-        prefix = [*_REQ_RUN, *(x for f in files for x in ("--with-requirements", f)), "--", "python", "-m"]
+        env = [*_REQ_RUN, *(x for f in files for x in ("--with-requirements", f)), "--"]
+        prefix = [*env, "python", "-m"]
+        # ruff gọi THẲNG binary: trong env `--with-requirements`, `python -m ruff` tìm `ruff.exe` ở Scripts của trình
+        # thông dịch tạm chứ không ở lớp cache chứa nó → FileNotFoundError, lint đỏ dù code sạch (đo QLLH-TRUONG/TCK-01).
+        ruff = [*env, "ruff", "check"]
     return Stack(
         "python",
-        [*prefix, "ruff", "check"] if "ruff" in deps else PY.lint,
+        ruff if "ruff" in deps else PY.lint,
         [*prefix, "pytest", "-q", "-p", "no:cacheprovider"] if "pytest" in deps else PY.test,
         PY_TEST_GLOBS,
     )
