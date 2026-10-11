@@ -109,9 +109,11 @@ TRAN_PRAGMA = {                      # `# pragma: no cover` / `no branch` trong 
     "platform/xagents-core": 6,      # `grep 'pragma: no cover'` ra 7: llm.py:509 là văn xuôi NHẮC TỚI
     "platform/gateway": 0,           # `` `pragma: no cover` `` (có backtick), không phải directive
     "platform/console": 2,
-    "companies/software-company": 13,  # +3 (#366): `no branch` bắt đầu được đếm khi cả năm package bật
+    "companies/software-company": 14,  # +3 (#366): `no branch` bắt đầu được đếm khi cả năm package bật
                                        # `branch = true` — mcp_bridge.py:181/183, llm.py:497; cả ba có lời đo
                                        # tracer ngay trên dòng (arc thoát qua `with` bị ghi về dòng `with`)
+                                       # +1 (2026-10-11): llm.py `_complete_cli_bridge` — cùng arc `raise` xuyên
+                                       # context manager lồng nhau như `_complete_mcp`, ca `boom` chứng minh nhánh chạy
     "companies/keeper": 4,               # +1 (2026-09-12): PullRequestExists.__str__ (publish.py) — chỉ phục
                                           # vụ traceback người đọc, không ai assert chuỗi này
 }

@@ -42,3 +42,20 @@ Lý do kỹ thuật thì hẹp: `claude -p` không trả `tool_calls` ra cho l�
 - Ngân sách token mỗi lượt tool không còn đếm được từng lượt: cả phiên CLI về như một `Completion`, `budget_tokens_per_task`
   chỉ chặn được SAU khi phiên kết thúc chứ không cắt giữa chừng. `cli_max_turns` là cái hãm thay thế.
 - Mặc định vẫn `cli_tools: false`: hành vi cũ không đổi cho mọi cấu hình đang chạy.
+
+## Bổ sung 2026-10-11 — tool không ánh xạ được đi qua cầu MCP hẹp
+
+ADR-0049 thêm `read_artifact` (đọc artifact blackboard theo tên namespace) và đổi nhãn cắt trong prompt thành
+`tool read_artifact("<ns>")`. Ở chế độ `cli` tool này không có tool CLI nào thay được (nó đọc blackboard, không đọc
+worktree), nên CLI thấy một nhãn trỏ vào tool không tồn tại — đo được: `cli_tool_names` bỏ qua nó, argv không có gì
+cho nó.
+
+Quyết định: chế độ `cli` mở thêm **một cầu MCP hẹp** (`mcp_bridge.ToolBridge`, cùng cơ chế ADR-0024) chỉ cho tool
+trong allowlist `CLI_BRIDGE_TOOLS = {read_artifact}`; tool CLI gốc và mọi hàng rào ở mục 4 giữ nguyên, vẫn
+`--strict-mcp-config` (chỉ server của ta), tên MCP vào **cùng một** `--allowed-tools` với mẫu Bash. Mỗi tool trên cầu
+gọi xuyên về `ToolBox` thật của runner nên `tools_trace` có vết `read_artifact` ngay ở chế độ `cli` (giới hạn "cli
+không có vết" chỉ còn đúng với tool CLI gốc). Allowlist tường minh, không phải "mọi tool ngoài `CLI_TOOL_MAP`":
+`delete_file` cũng ngoài bảng nhưng là tool worktree — mở nó là mở rộng mục 3, không phải việc của cầu này. CLI cũ không
+biết `--mcp-config` thì chạy cli thuần như trước (mất `read_artifact`, không mất lượt); nếu `mcp_tools` đã lùi vì CLI
+cũ thì cầu hẹp không thử lại. Phương án loại: ghi artifact ra file trong worktree cho CLI `Read` — để lại rác trong cây
+nguồn khách và mất phạm vi `reads_full` của ADR-0020.
