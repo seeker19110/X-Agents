@@ -1,6 +1,7 @@
-"""`scripts/ecc_vendor.py` — vendor ECC chọn lọc vào `.claude/` có tiền tố `ecc-`, ghim commit + sha256 (ADR-0028).
+"""`scripts/vendor_skills.py` — vendor skill chọn lọc từ nhiều nguồn vào `.claude/`, mỗi nguồn một lock mang tiền
+tố riêng, ghim commit + sha256 (ADR gốc 0028, 0030).
 
-Mọi ca dựng một "ECC giả" là một repo git thật trong `tmp_path`: script kiểm `HEAD == revision` nên không giả được
+Mọi ca dựng một "nguồn giả" là một repo git thật trong `tmp_path`: script kiểm `HEAD == revision` nên không giả được
 bằng thư mục trơn. Không gọi mạng — `fetch` đi qua URI `file://`.
 """
 
@@ -19,11 +20,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook chạy cả ở chế độ nhanh (F6)
-SCRIPT = ROOT / "scripts" / "ecc_vendor.py"
+SCRIPT = ROOT / "scripts" / "vendor_skills.py"
 
 
 def _load() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("ecc_vendor", SCRIPT)
+    spec = importlib.util.spec_from_file_location("vendor_skills", SCRIPT)
     assert spec and spec.loader, f"Không tải được script {SCRIPT}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -116,6 +117,11 @@ def _lock_for(src: Path, **override: object) -> dict:
         "revision": _git(src, "rev-parse", "HEAD"),
         "version": "0",
         "license": "MIT",
+        "license_holder": "Affaan Mustafa",
+        "license_path": "docs/integrations/ecc.LICENSE",
+        "prefix": "ecc-",
+        "label": "ECC",
+        "coupling": {r"\becc:[a-z]": "gọi mục ECC theo namespace plugin"},
         "adr": "docs/adr/0028-vendor-ecc-chon-loc-vao-claude.md",
         "budget_description_chars": 1000,
         "select": {
@@ -135,6 +141,10 @@ def root(tmp_path: Path, src: Path) -> Path:
     (r / "docs" / "integrations").mkdir(parents=True)
     (r / "docs" / "integrations" / "ecc.lock.json").write_text(json.dumps(_lock_for(src)), encoding="utf-8")
     return r
+
+
+def _lock_path(root: Path, name: str = "ecc") -> Path:
+    return root / "docs" / "integrations" / f"{name}.lock.json"
 
 
 def _read(root: Path, rel: str) -> str:
@@ -196,7 +206,7 @@ def test_render_ghi_chu_nguon_ngay_sau_frontmatter(V: ModuleType, src: Path) -> 
             continue
         body = text.partition("\n---\n")[2] if text.startswith("---\n") else text
         dong = body.lstrip("\n").splitlines()
-        assert dong[0].startswith("<!-- Sinh bởi scripts/ecc_vendor.py"), rel
+        assert dong[0].startswith("<!-- Sinh bởi scripts/vendor_skills.py"), rel
         assert lock["revision"] in dong[0] and f"({source})" in dong[0], rel
         assert any("`AGENTS.md`" in d and "fail_under = 100" in d for d in dong[1:4]), rel
 
@@ -257,7 +267,6 @@ def test_trung_ten_giua_hai_loai_bi_tu_choi(V: ModuleType, src: Path) -> None:
         "node scripts/setup.js",
         "npx -y some-tool",
         "npx --yes some-tool",
-        "run /ecc:plan first",
     ],
 )
 def test_dau_hieu_chi_chay_khi_la_plugin_bi_tu_choi(V: ModuleType, src: Path, dong: str) -> None:
@@ -324,7 +333,7 @@ def test_build_ghi_tep_lock_va_don_tep_ecc_cu(V: ModuleType, src: Path, root: Pa
             ".claude/skills/khac/SKILL.md": "của repo",
         },
     )
-    lock = V.build(root, src)
+    lock = V.build(root, src, _lock_path(root))
     assert not (root / ".claude/skills/ecc-old").exists()
     assert not (root / ".claude/commands/ecc-old.md").exists()
     assert not (root / ".claude/agents/ecc-old.md").exists()
@@ -346,29 +355,29 @@ def test_build_ghi_tep_lock_va_don_tep_ecc_cu(V: ModuleType, src: Path, root: Pa
 
 
 def test_build_ghi_lf_va_lock_tat_dinh(V: ModuleType, src: Path, root: Path) -> None:
-    V.build(root, src)
+    V.build(root, src, _lock_path(root))
     lan1 = (root / "docs/integrations/ecc.lock.json").read_bytes()
-    V.build(root, src)
+    V.build(root, src, _lock_path(root))
     assert (root / "docs/integrations/ecc.lock.json").read_bytes() == lan1
     assert lan1.endswith(b"}\n") and b"\r" not in lan1
     assert all(b"\r" not in (root / rel).read_bytes() for rel in EXPECTED)
 
 
 def test_check_sach_ngay_sau_build(V: ModuleType, src: Path, root: Path) -> None:
-    V.build(root, src)
-    assert V.check(root, src) == []
+    V.build(root, src, _lock_path(root))
+    assert V.check(root, src, _lock_path(root)) == []
 
 
 def test_check_chap_nhan_crlf_tren_dia(V: ModuleType, src: Path, root: Path) -> None:
     """Windows `core.autocrlf=true` checkout tệp `.md` thành CRLF — không phải trôi."""
-    V.build(root, src)
+    V.build(root, src, _lock_path(root))
     p = root / ".claude/commands/ecc-beta-cmd.md"
     p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
-    assert V.check(root, src) == []
+    assert V.check(root, src, _lock_path(root)) == []
 
 
 def test_check_bao_tep_sua_tay_thua_thieu_va_lock_lech(V: ModuleType, src: Path, root: Path) -> None:
-    V.build(root, src)
+    V.build(root, src, _lock_path(root))
     (root / ".claude/agents/ecc-gamma-agent.md").write_text("sửa tay\n", encoding="utf-8")
     (root / ".claude/skills/ecc-alpha-skill/extra.md").unlink()
     _write(root, {".claude/commands/ecc-la.md": "thừa\n", ".claude/skills/ecc-la/SKILL.md": "thừa\n"})
@@ -376,7 +385,7 @@ def test_check_bao_tep_sua_tay_thua_thieu_va_lock_lech(V: ModuleType, src: Path,
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
     lock["measured"]["files"] = 99
     lock_path.write_text(json.dumps(lock), encoding="utf-8")
-    loi = "\n".join(V.check(root, src))
+    loi = "\n".join(V.check(root, src, _lock_path(root)))
     for can in (
         "lệch: .claude/agents/ecc-gamma-agent.md",
         "thiếu: .claude/skills/ecc-alpha-skill/extra.md",
@@ -390,12 +399,12 @@ def test_check_bao_tep_sua_tay_thua_thieu_va_lock_lech(V: ModuleType, src: Path,
 
 def test_check_bao_hash_trong_lock_bi_sua(V: ModuleType, src: Path, root: Path) -> None:
     """Sửa cả tệp lẫn hash trong lock vẫn lộ: check so với bản sinh lại từ nguồn, không so với lock."""
-    V.build(root, src)
+    V.build(root, src, _lock_path(root))
     lock_path = root / "docs/integrations/ecc.lock.json"
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
     lock["files"][0]["sha256"] = "0" * 64
     lock_path.write_text(json.dumps(lock), encoding="utf-8")
-    assert V.check(root, src) == ["lock lệch: files"]
+    assert V.check(root, src, _lock_path(root)) == ["lock lệch: files"]
 
 
 # --- fetch / main --------------------------------------------------------------------------------------------------
@@ -411,18 +420,18 @@ def test_fetch_lay_dung_commit_ghim(V: ModuleType, src: Path, tmp_path: Path) ->
 
 
 def test_main_build_check_va_ma_thoat(V: ModuleType, src: Path, root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert V.main(["build", "--src", str(src), "--root", str(root)]) == 0
-    assert "5 tệp" in capsys.readouterr().out
-    assert V.main(["check", "--src", str(src), "--root", str(root)]) == 0
+    assert V.main(["build", "--src", str(src), "--root", str(root), "--lock", str(_lock_path(root))]) == 0
+    assert "ECC v0 → 5 tệp" in capsys.readouterr().out
+    assert V.main(["check", "--src", str(src), "--root", str(root), "--lock", str(_lock_path(root))]) == 0
     (root / ".claude/commands/ecc-beta-cmd.md").write_text("sửa tay\n", encoding="utf-8")
-    assert V.main(["check", "--src", str(src), "--root", str(root)]) == 1
+    assert V.main(["check", "--src", str(src), "--root", str(root), "--lock", str(_lock_path(root))]) == 1
     err = capsys.readouterr().err
-    assert "lệch: .claude/commands/ecc-beta-cmd.md" in err and "make ecc-vendor" in err
+    assert "lệch: .claude/commands/ecc-beta-cmd.md" in err and "make vendor LOCK=docs/integrations/ecc.lock.json" in err
 
 
 def test_main_tu_fetch_khi_khong_co_src(V: ModuleType, src: Path, root: Path) -> None:
-    assert V.main(["build", "--root", str(root), "--remote", src.as_uri()]) == 0
-    assert V.main(["check", "--root", str(root), "--remote", src.as_uri()]) == 0
+    assert V.main(["build", "--root", str(root), "--remote", src.as_uri(), "--lock", str(_lock_path(root))]) == 0
+    assert V.main(["check", "--root", str(root), "--remote", src.as_uri(), "--lock", str(_lock_path(root))]) == 0
 
 
 def test_main_loi_vendor_in_stderr_ma_1(
@@ -430,15 +439,15 @@ def test_main_loi_vendor_in_stderr_ma_1(
 ) -> None:
     lock_path = root / "docs/integrations/ecc.lock.json"
     lock_path.write_text(json.dumps(_lock_for(src, revision="0" * 40)), encoding="utf-8")
-    assert V.main(["check", "--src", str(src), "--root", str(root)]) == 1
+    assert V.main(["check", "--src", str(src), "--root", str(root), "--lock", str(_lock_path(root))]) == 1
     assert "revision" in capsys.readouterr().err
 
 
 def test_chay_nhu_script_tu_goc_repo(src: Path, root: Path) -> None:
-    """Đúng lệnh `make ecc-vendor`/CI gọi: `python scripts/ecc_vendor.py …`, in tiếng Việt không vỡ mã hoá."""
+    """Đúng lệnh `make vendor`/CI gọi: `python scripts/vendor_skills.py …`, in tiếng Việt không vỡ mã hoá."""
     env = {**os.environ, "PYTHONIOENCODING": "ascii"}
     kq = subprocess.run(
-        [sys.executable, str(SCRIPT), "build", "--src", str(src), "--root", str(root)],
+        [sys.executable, str(SCRIPT), "build", "--src", str(src), "--root", str(root), "--lock", str(_lock_path(root))],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -446,3 +455,108 @@ def test_chay_nhu_script_tu_goc_repo(src: Path, root: Path) -> None:
     )
     assert kq.returncode == 0, kq.stderr
     assert "tệp" in kq.stdout
+
+
+# --- đa nguồn: mỗi lock một tiền tố, khuôn thư mục, tệp bỏ qua, coupling riêng (ADR gốc 0030) ---------------------
+
+
+def test_sources_bo_qua_tep_khop_ignore(V: ModuleType, src: Path) -> None:
+    """Mọi skill của mattpocock/skills kèm `agents/openai.yaml` (metadata cho Codex): `ignore` bỏ qua đúng tệp đó.
+    Chiều ngược: `ignore` rỗng thì tệp không phải `.md` vẫn bị từ chối như cũ."""
+    _write(src, {"skills/alpha-skill/agents/openai.yaml": "interface: {}\n"})
+    rev = _commit(src)
+    assert "skills/alpha-skill/agents/openai.yaml" in _loi(V, src, _lock_for(src, revision=rev))
+    out = V.render(src, _lock_for(src, revision=rev, ignore=["agents/openai.yaml"]))
+    assert {rel: source for rel, (source, _) in out.items()} == EXPECTED
+
+
+def test_rewrite_doi_ten_trong_nhay_kep(V: ModuleType) -> None:
+    """Pocock gọi skill bằng `Call the Skill tool with "x"` — nháy kép là dạng tường minh; tên trơn vẫn để nguyên."""
+    text = 'Call the Skill tool with "alpha-skill". Plain alpha-skill stays.'
+    assert V.rewrite_refs(text, {"alpha-skill": "skills"}, "mp-") == (
+        'Call the Skill tool with "mp-alpha-skill". Plain alpha-skill stays.'
+    )
+
+
+@pytest.mark.parametrize("khac", ["ecc-", "ecc-a-"])
+def test_tien_to_long_nhau_bi_tu_choi(V: ModuleType, src: Path, khac: str) -> None:
+    """Build xoá mọi tệp `<tiền tố>*` cũ: tiền tố lồng nhau thì lock này xoá tệp của lock kia."""
+    loi = _loi_others(V, src, _lock_for(src), [{"prefix": khac, "label": "Nguồn khác"}])
+    assert khac in loi and "Nguồn khác" in loi
+
+
+def _loi_others(V: ModuleType, src: Path, lock: dict, others: list[dict]) -> str:
+    with pytest.raises(V.VendorError) as e:
+        V.render(src, lock, others=others)
+    return str(e.value)
+
+
+def test_tien_to_sc_bi_tu_choi(V: ModuleType, src: Path) -> None:
+    """`sc-` là của `make subagents` (`.claude/agents/sc-*`) — build với tiền tố này xoá nhầm trợ lý của repo."""
+    assert "sc-" in _loi(V, src, _lock_for(src, prefix="sc-"))
+
+
+@pytest.mark.parametrize("prefix", ["ecc", "Ecc-", "ecc_", "", "a-b-"])
+def test_tien_to_sai_khuon_bi_tu_choi(V: ModuleType, src: Path, prefix: str) -> None:
+    assert "prefix" in _loi(V, src, _lock_for(src, prefix=prefix))
+
+
+def test_main_can_lock(V: ModuleType, src: Path, root: Path) -> None:
+    with pytest.raises(SystemExit) as e:
+        V.main(["build", "--src", str(src), "--root", str(root)])
+    assert e.value.code == 2
+
+
+def test_note_dung_label_cua_lock(V: ModuleType, src: Path) -> None:
+    lock = _lock_for(src, prefix="mp-", label="Nguồn Thử", license="Apache-2.0")
+    out = V.render(src, lock, lock_rel="docs/integrations/thu.lock.json")
+    text = out[".claude/skills/mp-alpha-skill/SKILL.md"][1]
+    assert "đổi thì sửa docs/integrations/thu.lock.json rồi chạy lại" in text
+    assert "> **Nguồn Thử (Apache-2.0), vendor vào X-Agents.**" in text
+    assert "Mục của Nguồn Thử được nhắc tới mà không có tệp `mp-<tên>`" in text
+    assert "ECC" not in text.replace(lock["repository"], "")
+
+
+def test_skill_trong_thu_muc_bucket(V: ModuleType, src: Path, root: Path) -> None:
+    """mattpocock/skills xếp skill theo `skills/<bucket>/<tên>/`: `paths` nói khuôn, glob phải khớp đúng một chỗ."""
+    _write(src, {"skills/eng/omega-skill/SKILL.md": "---\nname: omega-skill\ndescription: O.\n---\n"})
+    lock = _lock_for(
+        src, revision=_commit(src), paths={"skills": "skills/*/{name}"}, select={"skills": {"omega-skill": "lý do"}}
+    )
+    out = V.render(src, lock)
+    assert out[".claude/skills/ecc-omega-skill/SKILL.md"][0] == "skills/eng/omega-skill/SKILL.md"
+    _lock_path(root).write_text(json.dumps(lock), encoding="utf-8")
+    assert V.build(root, src, _lock_path(root))["measured"]["upstream"] == {"skills": 1, "commands": 1, "agents": 2}
+    _write(src, {"skills/misc/omega-skill/SKILL.md": "---\nname: omega-skill\ndescription: O.\n---\n"})
+    loi = _loi(V, src, {**lock, "revision": _commit(src)})
+    assert "skills/*/omega-skill" in loi and "2" in loi
+
+
+def test_build_khong_dong_tep_cua_tien_to_khac(V: ModuleType, src: Path, root: Path) -> None:
+    ecc = {".claude/skills/ecc-cu/SKILL.md": "của ECC", ".claude/commands/ecc-cu.md": "của ECC"}
+    _write(root, {**ecc, "docs/integrations/ecc.LICENSE": "của ECC"})
+    mp = _lock_for(src, prefix="mp-", label="Thử", license_path="docs/integrations/mp.LICENSE")
+    _lock_path(root, "mp").write_text(json.dumps(mp), encoding="utf-8")
+    lock = V.build(root, src, _lock_path(root, "mp"))
+    assert all(_read(root, rel) == "của ECC" for rel in [*ecc, "docs/integrations/ecc.LICENSE"])
+    assert "docs/integrations/mp.LICENSE" in [f["path"] for f in lock["files"]]
+    assert _read(root, ".claude/skills/mp-alpha-skill/SKILL.md").startswith("---\nname: mp-alpha-skill\n")
+    assert V.check(root, src, _lock_path(root, "mp")) == []
+
+
+def test_build_tu_tim_lock_anh_em_co_select(V: ModuleType, src: Path, root: Path) -> None:
+    """Lock cùng thư mục có `select` là nguồn khác cần kiểm tiền tố; lock khác khuôn (projects-template) bỏ qua."""
+    _lock_path(root, "projects-template").write_text(json.dumps({"prefix": "ecc-"}), encoding="utf-8")
+    V.build(root, src, _lock_path(root))
+    _lock_path(root, "mp").write_text(json.dumps(_lock_for(src, label="Trùng")), encoding="utf-8")
+    for call in (V.build, V.check):
+        with pytest.raises(V.VendorError, match="Trùng"):
+            call(root, src, _lock_path(root))
+
+
+def test_coupling_rieng_trong_lock(V: ModuleType, src: Path) -> None:
+    """`ecc:` chỉ là dấu hiệu plugin của ECC — mẫu nằm trong lock của ECC, không trong `COUPLING` chung."""
+    _write(src, {"skills/alpha-skill/extra.md": EXTRA + "run /ecc:plan first\n"})
+    rev = _commit(src)
+    assert "skills/alpha-skill/extra.md" in _loi(V, src, _lock_for(src, revision=rev))
+    assert V.render(src, _lock_for(src, revision=rev, coupling={}))

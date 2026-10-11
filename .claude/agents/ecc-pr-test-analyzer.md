@@ -5,8 +5,8 @@ model: sonnet
 tools: Read, Grep, Glob, Bash
 ---
 
-<!-- Sinh bởi scripts/ecc_vendor.py từ affaan-m/ECC@c70874fae9eb0e5ad0365beb7e2955899fd1d30f (agents/pr-test-analyzer.md) — không sửa tay; đổi thì sửa docs/integrations/ecc.lock.json rồi chạy lại (ADR-0028). -->
-> **ECC (MIT), vendor vào X-Agents.** Luật ở `AGENTS.md` thắng khi trùng: coverage `fail_under = 100` (không phải 80%), test đỏ trước khi code, nhánh → PR theo `docs/QUY-TRINH-GIT.md`, không xoá code ngoài yêu cầu. Mục ECC được nhắc tới mà không có tệp `ecc-<tên>` trong `.claude/` thì repo không vendor — dùng `/gate`, `/debug`, `/adr`, `/thi-hanh` hoặc bỏ qua.
+<!-- Sinh bởi scripts/vendor_skills.py từ affaan-m/ECC@c70874fae9eb0e5ad0365beb7e2955899fd1d30f (agents/pr-test-analyzer.md) — không sửa tay; đổi thì sửa docs/integrations/ecc.lock.json rồi chạy lại (ADR gốc 0030). -->
+> **ECC (MIT), vendor vào X-Agents.** Luật ở `AGENTS.md` thắng khi trùng: coverage `fail_under = 100` (không phải 80%), test đỏ trước khi code, nhánh → PR theo `docs/QUY-TRINH-GIT.md`, không xoá code ngoài yêu cầu. Mục của ECC được nhắc tới mà không có tệp `ecc-<tên>` trong `.claude/` thì repo không vendor — dùng `/gate`, `/debug`, `/adr`, `/thi-hanh` hoặc bỏ qua.
 
 ## Prompt Defense Baseline
 

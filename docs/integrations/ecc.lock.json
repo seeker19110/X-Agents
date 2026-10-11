@@ -4,6 +4,14 @@
   "revision": "c70874fae9eb0e5ad0365beb7e2955899fd1d30f",
   "version": "2.2.2",
   "license": "MIT",
+  "license_holder": "Affaan Mustafa",
+  "license_path": "docs/integrations/ecc.LICENSE",
+  "prefix": "ecc-",
+  "label": "ECC",
+  "ignore": [],
+  "coupling": {
+    "\\becc:[a-z]": "gọi mục ECC theo namespace plugin"
+  },
   "adr": "docs/adr/0028-vendor-ecc-chon-loc-vao-claude.md",
   "budget_description_chars": 6000,
   "select": {
@@ -68,122 +76,122 @@
     {
       "path": ".claude/agents/ecc-code-reviewer.md",
       "source": "agents/code-reviewer.md",
-      "sha256": "dca250141f520f2ebc8439e48b5dcbb6c7a4e7c1daf5b8fe4b0625b72b10826b"
+      "sha256": "cf448b5c1743669096fd3e341c6bf65ac4ce2a7c4aa9a161875a5c8dee1cc319"
     },
     {
       "path": ".claude/agents/ecc-code-simplifier.md",
       "source": "agents/code-simplifier.md",
-      "sha256": "f9b98500be92e252765642c2a7abd01f8a1d19665d04904ce2e1085ce75f41df"
+      "sha256": "ad22b2c49588336eeee8ac583f0997469ce10e84d133ada1b7f0b087fd30fcfa"
     },
     {
       "path": ".claude/agents/ecc-comment-analyzer.md",
       "source": "agents/comment-analyzer.md",
-      "sha256": "85193f127947f176f1854cc9940daaac83b47658f2b461e6dc8bb4ca6e54dfba"
+      "sha256": "f37de19faa78833411aad03b39d37c8a27bc47d3c17a1eedc346a3c4a867e203"
     },
     {
       "path": ".claude/agents/ecc-pr-test-analyzer.md",
       "source": "agents/pr-test-analyzer.md",
-      "sha256": "f069a57aa7e97a15f51409af18c636e5c0196842c56d284f820d8547c4c4e67a"
+      "sha256": "1ab9f1b95a7a81b28b86d7f1251292e53f05eefc244f141cc7aaf03159d6e13f"
     },
     {
       "path": ".claude/agents/ecc-python-reviewer.md",
       "source": "agents/python-reviewer.md",
-      "sha256": "5c9d7cd19d3c6e0204687095f8b966c79f78b9cfd666718e31b09feb422b98b4"
+      "sha256": "c4c9f4f3ecfaaae978898d8bc10c264954112e1f05906a3b86f8c721d70a3ace"
     },
     {
       "path": ".claude/agents/ecc-security-reviewer.md",
       "source": "agents/security-reviewer.md",
-      "sha256": "712806ac54335384483260004c35602e483872ee1b12024b0850291efb00801d"
+      "sha256": "32102edeca01c933dcdd8f9448e0c7bd8017a1c045051d352d2f165e3c7cba97"
     },
     {
       "path": ".claude/agents/ecc-silent-failure-hunter.md",
       "source": "agents/silent-failure-hunter.md",
-      "sha256": "1c2a0160192891a85a0622ee3a6ef7739d83006454b20f26e63dd35277b62207"
+      "sha256": "20b767724792f8db71f6b6f25975510cb292b314560f31970a1e5eee2df05fb3"
     },
     {
       "path": ".claude/agents/ecc-type-design-analyzer.md",
       "source": "agents/type-design-analyzer.md",
-      "sha256": "f280142e058b9a8294c7aa5e26f06bca884659fa48c91439faa94e9a3698960b"
+      "sha256": "3bb95691585e8945d90df1f6ee65c504f0be5e48167084eef3ce4d2c42ce204a"
     },
     {
       "path": ".claude/commands/ecc-build-fix.md",
       "source": "commands/build-fix.md",
-      "sha256": "8ff949265a1ae84ad05cff018eda13f1e03fc218bcac0213a2803c3ad639096f"
+      "sha256": "5d2ac2ef37483f17b02261c9805e3751fb71d04c2a79e19a96693839bbd325e7"
     },
     {
       "path": ".claude/commands/ecc-python-review.md",
       "source": "commands/python-review.md",
-      "sha256": "3f574977e80affcc5a7d0c3ccda630aa91195dee985bac632802b61aee2db0fa"
+      "sha256": "5103ff383e6560daa6f54da73f505cd5ceb50c9d7a6de5082b4ce9ecd9453436"
     },
     {
       "path": ".claude/commands/ecc-review-pr.md",
       "source": "commands/review-pr.md",
-      "sha256": "1d96a53537018aa5188ab12b085f7ba06b1a0ff01fb9fab165be530182daf925"
+      "sha256": "3d95e83ac0742ede0604c0ac3b41bbbaf07b0cfc9c62a931b5b0ccd91898e4ba"
     },
     {
       "path": ".claude/skills/ecc-accessibility/SKILL.md",
       "source": "skills/accessibility/SKILL.md",
-      "sha256": "4e679669fa178aea5362fd978cb60f91e4a8019c11904bdb14d33d8bd73ef814"
+      "sha256": "45e23c3f8d4bd094d0bb18a322a01e27c5fa2ccaa4701e218e3d17514c42c4e7"
     },
     {
       "path": ".claude/skills/ecc-agent-architecture-audit/SKILL.md",
       "source": "skills/agent-architecture-audit/SKILL.md",
-      "sha256": "6ea464306e610d59cd251efa17c63c8c14186fd7e576af250db369f2584621ab"
+      "sha256": "583638e7c995409c2801254bbccc97f9ebb46af134cde1a0de08a554e4ef3aa8"
     },
     {
       "path": ".claude/skills/ecc-agent-harness-construction/SKILL.md",
       "source": "skills/agent-harness-construction/SKILL.md",
-      "sha256": "d18756af5c317f1699df095677f95ba6b0b7593e5ce503dec7f3e865c9a26090"
+      "sha256": "0f419cfa63cf78aaca51f2a507e9857987ae3850a07b3b6eb9e4f9c3a57c7cd2"
     },
     {
       "path": ".claude/skills/ecc-agent-introspection-debugging/SKILL.md",
       "source": "skills/agent-introspection-debugging/SKILL.md",
-      "sha256": "fc08c4e1cbd4429a033fa37ccda4308291106138321c1d1bb45e0fdf346facee"
+      "sha256": "5c0c29b65242ce67ba457af4390a43b6a0043fdabf56f61efab9d998f4edc6a3"
     },
     {
       "path": ".claude/skills/ecc-api-design/SKILL.md",
       "source": "skills/api-design/SKILL.md",
-      "sha256": "fd33045cac3cc69867cd396a389fc2874212974e9b861971b61da446af32889b"
+      "sha256": "23862f39e29d62905ab07864e8ffb1c4ead7ac34e83e919f398390ea778dfeff"
     },
     {
       "path": ".claude/skills/ecc-cost-aware-llm-pipeline/SKILL.md",
       "source": "skills/cost-aware-llm-pipeline/SKILL.md",
-      "sha256": "e1b86a8420c29b6ac42e9a76bca477426ad2d554dc301d2aa1ae9d4886501118"
+      "sha256": "52f1e1b9fe272d61e357e472b74a15d1fcf000d07eaefac11b4c430db333fd56"
     },
     {
       "path": ".claude/skills/ecc-docker-patterns/SKILL.md",
       "source": "skills/docker-patterns/SKILL.md",
-      "sha256": "2afa78935c1c34f81e12df98b9c2caf5b38f4c85d49681dad87ed1036c25d57e"
+      "sha256": "7dd9af1dba5dedbe9c2b96ba1209881a87f7ff53204f1aa7fc26a8302eacc459"
     },
     {
       "path": ".claude/skills/ecc-error-handling/SKILL.md",
       "source": "skills/error-handling/SKILL.md",
-      "sha256": "44640b0bdc424be6ee05f6bdffe2aa1e019cb6dfd7de777a1b3f6f060faaabd2"
+      "sha256": "9b19636ec4e1ebba0df1782d2bd254a7f10d041357ab763de93d52d74e4ce260"
     },
     {
       "path": ".claude/skills/ecc-production-audit/SKILL.md",
       "source": "skills/production-audit/SKILL.md",
-      "sha256": "acd0ddf44820d31414a85f4c9075a2e4c953f5aa34c4ed100bfb2648655a7330"
+      "sha256": "23a5e35188fbb79f68b6de79110a3662267f14340bd86ddc58fbd1f4e1c695d6"
     },
     {
       "path": ".claude/skills/ecc-python-patterns/SKILL.md",
       "source": "skills/python-patterns/SKILL.md",
-      "sha256": "0b711fd3bf78b2966c60c065f54a8d41eec1b3462f1b095f31df21b55991e3e8"
+      "sha256": "e13c5f2afa56f50d56d7e733ae61079b8b67c0b52e8aa5990eb4a332bb711b7c"
     },
     {
       "path": ".claude/skills/ecc-python-testing/SKILL.md",
       "source": "skills/python-testing/SKILL.md",
-      "sha256": "81a01d8f27f16347433f4450a4ba6e6ef22538a92a6a5d140a6292e9d9745f45"
+      "sha256": "0c8f55c074182da518c51faf5467268d280e6c3d3186daa2b62cf1eb6d13ec74"
     },
     {
       "path": ".claude/skills/ecc-security-review/SKILL.md",
       "source": "skills/security-review/SKILL.md",
-      "sha256": "7ad5432cb333c9f9d9983d284cb4a80ed3c87ed3ea90ddf37251091c76e7a060"
+      "sha256": "ca226720e799f065340025b8d22dcfebcebfc8c2d35d15ccd6326d73dd25c689"
     },
     {
       "path": ".claude/skills/ecc-security-review/cloud-infrastructure-security.md",
       "source": "skills/security-review/cloud-infrastructure-security.md",
-      "sha256": "4af77c86a050b535f0c838d6d88a50e6946acdd4f3a91d1c5f4fac7ce1f2b569"
+      "sha256": "7dc1c25ea04dbc01f241a550278a1ef94586aefde1b75c8d64bd514654a8cc09"
     },
     {
       "path": "docs/integrations/ecc.LICENSE",
@@ -196,7 +204,7 @@
     "commands": 3,
     "agents": 8,
     "files": 25,
-    "bytes": 197621,
+    "bytes": 197981,
     "description_chars": 5035,
     "upstream": {
       "skills": 293,

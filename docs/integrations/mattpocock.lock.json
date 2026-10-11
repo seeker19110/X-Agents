@@ -1,0 +1,100 @@
+{
+  "repository": "mattpocock/skills",
+  "tag": null,
+  "revision": "49dd158d1076134a641b33efb035946536778336",
+  "version": "1.3.1",
+  "license": "MIT",
+  "license_holder": "Matt Pocock",
+  "license_path": "docs/integrations/mattpocock.LICENSE",
+  "prefix": "mp-",
+  "label": "mattpocock/skills",
+  "ignore": [
+    "agents/openai.yaml"
+  ],
+  "coupling": {},
+  "paths": {
+    "skills": "skills/*/{name}"
+  },
+  "adr": "docs/adr/0030-vendor-skill-da-nguon.md",
+  "budget_description_chars": 1500,
+  "select": {
+    "skills": {
+      "writing-for-agents": "audit tối giản 2026-10-10 đo luật nạp mỗi phiên 26,5 KB, pe2 P0 '15 dòng thuật ngữ dày'; repo có cổng và từ vựng nhưng chưa có hướng dẫn VIẾT tài liệu cho agent",
+      "retro": "bốn audit 2026-10-10 là hồi cứu thủ công; skill biến hồi cứu thành đề xuất hàng rào — đúng triết lý AGENTS.md §Hàng rào thi hành; user-invoked, không tốn context load"
+    }
+  },
+  "rejected": {
+    "tdd": "khác luật bắt buộc 4 ở 'test only at pre-agreed seams' và 'refactor ngoài vòng'; đã có ecc-python-testing và /gate",
+    "diagnosing-bugs": "trùng /debug (thêm Pha 0 tra TRAPS, Pha 6 rà cả họ); kèm scripts/hitl-loop.template.sh không phải .md",
+    "code-review": "trùng /gate, /ecc-review-pr và trợ lý sc-*; Claude Code đã có /code-review dựng sẵn",
+    "domain-modeling": "GLOSSARY.md + ADR một đoạn trái khuôn docs/NGON-NGU.md ('chỉ thêm chữ đã gây nhầm') và ADR có số đo",
+    "grill-with-docs": "repo đã loại 3 lần vì ngược AGENTS.md §Khi bối rối (2026-09-14, CHANGELOG, v4); quyết định giữ nguyên 2026-10-10; kéo theo domain-modeling",
+    "grill-me": "repo đã loại 3 lần vì ngược AGENTS.md §Khi bối rối (2026-09-14, CHANGELOG, v4); quyết định giữ nguyên 2026-10-10",
+    "grilling": "repo đã loại 3 lần vì ngược AGENTS.md §Khi bối rối (2026-09-14, CHANGELOG, v4); quyết định giữ nguyên 2026-10-10",
+    "implement": "trùng /thi-hanh + docs/thi-hanh/<mã>.md idempotent (docs/KHUON-THI-HANH.md)",
+    "implement-spec": "router cần issue tracker + nhãn triage do setup tạo; trùng /thi-hanh, chưa có sự cố",
+    "ask-matt": "router skill trỏ các skill không vendor; CLAUDE.md đã liệt kê lệnh của repo, chưa có sự cố",
+    "to-spec": "trùng /thi-hanh (đặc tả trong hồ sơ thi hành) và /product-goal",
+    "to-tickets": "bảng B + gói việc 7 mục của docs/TASK-PACK.md chia theo hạng mục/C1-C3 — hai cách chia, không thiếu",
+    "triage": "cần issue tracker + nhãn do setup tạo; keeper triager đã phân loại tín hiệu máy",
+    "wayfinder": "trùng /thi-hanh + hồ sơ docs/thi-hanh/<mã>.md làm bản đồ việc dở",
+    "setup-matt-pocock-skills": "ghi ~/.claude và tạo nhãn issue tracker — trái ADR gốc 0027:107-109, ngoài lock",
+    "pr": "mẫu PR của repo đã có khối BÁO CÁO XÁC THỰC; PR theo docs/QUY-TRINH-GIT.md",
+    "handoff": "ghi /tmp, mất khi container cloud thu hồi; trùng Compact Instructions + nhật ký docs/sessions/",
+    "wait-what": "trỏ GLOSSARY.md mà repo không có (từ vựng ở docs/NGON-NGU.md); chưa có sự cố",
+    "research": "ghép được từ docs/PROMPT-SHEET.md §H + subagent Explore; chưa có sự cố",
+    "to-questionnaire": "ô 'chờ người' của /thi-hanh đã gom câu hỏi cho người; chưa có sự cố",
+    "prototype": "luật bắt buộc 4 đã có ngoại lệ prototype vứt đi, cần hỏi người trước; chưa có sự cố",
+    "wizard": "kèm template.sh (không phải .md); chưa có sự cố",
+    "teach": "chưa có sự cố ở repo này cần skill dạy học",
+    "codebase-design": "ADR gốc 0015 cố ý không dựng radar kiến trúc; chưa có sự cố",
+    "improve-codebase-architecture": "ADR gốc 0015 cố ý không dựng radar kiến trúc; chưa có sự cố",
+    "chief-of-staff": "in-progress: upstream chưa promote, không ship trong gói",
+    "claude-handoff": "in-progress: upstream chưa promote; trùng Compact Instructions + nhật ký phiên",
+    "loop-me": "in-progress: upstream chưa promote, không ship trong gói",
+    "setup-ts-deep-modules": "in-progress: upstream chưa promote; stack TypeScript (kèm dependency-cruiser.config.cjs), repo là Python",
+    "writing-beats": "in-progress: upstream chưa promote, không ship trong gói",
+    "writing-fragments": "in-progress: upstream chưa promote, không ship trong gói",
+    "writing-shape": "in-progress: upstream chưa promote, không ship trong gói",
+    "git-guardrails-claude-code": "misc: upstream không ship; hàng rào git của repo ở .claude/hooks/block-dangerous-git.sh có test",
+    "migrate-to-shoehorn": "misc: upstream không ship; thư viện TypeScript, repo là Python",
+    "scaffold-exercises": "misc: upstream không ship; dựng bài tập khoá học, ngoài phạm vi repo",
+    "setup-pre-commit": "misc: upstream không ship; pre-commit của repo là .claude/hooks/pre-commit-gate.sh có test"
+  },
+  "assetscan_waivers": {},
+  "files": [
+    {
+      "path": ".claude/skills/mp-retro/SKILL.md",
+      "source": "skills/engineering/retro/SKILL.md",
+      "sha256": "5a77bbc50a8992c367b1a8fdb69f3e3ac764f484e8d45a35c38c151f25a94195"
+    },
+    {
+      "path": ".claude/skills/mp-writing-for-agents/SKILL-MECHANICS.md",
+      "source": "skills/productivity/writing-for-agents/SKILL-MECHANICS.md",
+      "sha256": "cdb80db5bc372032028cec3cde141a33b0c6c17ca0c76f32d558d5a517f31682"
+    },
+    {
+      "path": ".claude/skills/mp-writing-for-agents/SKILL.md",
+      "source": "skills/productivity/writing-for-agents/SKILL.md",
+      "sha256": "a2a393eee1955ddcec02e90aa684f3d68b36dc2b06f2bbe101ab1368f5bdc453"
+    },
+    {
+      "path": "docs/integrations/mattpocock.LICENSE",
+      "source": "LICENSE",
+      "sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5"
+    }
+  ],
+  "measured": {
+    "skills": 2,
+    "commands": 0,
+    "agents": 0,
+    "files": 4,
+    "bytes": 21132,
+    "description_chars": 147,
+    "upstream": {
+      "skills": 38,
+      "commands": 0,
+      "agents": 0
+    }
+  }
+}
