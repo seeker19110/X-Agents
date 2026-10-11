@@ -190,7 +190,7 @@ GET  /sw.js             → static/sw.js — PHẢI ở gốc, service worker ch
 GET  /manifest.webmanifest → static/manifest.webmanifest (application/manifest+json)
 GET  /api/state         → collect(...) + {"engine": {"engines": [...], "allowed": bool}}  (ADR-0004)
                           + {"notify": {enabled, channels, sent, failed, last_error, last_sent_at, watching,
-                                      failing, watch_error, public_url, verdict: {level, say}}}  (ADR-0005)
+                                      failing, watch_error, public_url, last_test_at, verdict: {level, say}}}  (ADR-0005)
 GET  /api/stream        → SSE: `event: state` mỗi khi bus đổi, `event: error` khi collect() ném,
                           `: ping` giữ nhịp 15 giây. Không có Content-Length; đóng kết nối là hết thân bài.
 GET  /api/gate/brief    → ?id=<subject>[&xuong=software-company][&closed=1]
@@ -207,6 +207,10 @@ POST /api/engine        → body {xuong, action: "start"|"stop", by, interval?} 
                           bật/tắt `orchestrator run --watch` của xưởng; `interval` giây, kẹp [5, 3600],
                           mặc định `DEFAULT_ENGINE_INTERVAL` = 30. Trả trạng thái sau thao tác.
                           409 khi bật cái đang chạy / tắt cái không chạy; 400 tham số sai; 500 không spawn được
+POST /api/notify/test   → body {by}  (KHÔNG cần --allow-*: quyền là cờ --notify-*; ADR-0005 Bổ sung 2)
+                          gửi một tin thử nội dung cố định tới mọi kênh đã khai; trả
+                          {"results": [{channel, ok, error}], "status": <notify status>}.
+                          409 không có kênh; 429 thử lại trong TEST_COOLDOWN = 30 giây; 400 `by` thiếu/rỗng
 GET  /healthz           → {"ok": true}
 ```
 
@@ -224,6 +228,8 @@ Bảo mật — bắt buộc, đây là bề mặt đầu tiên cho phép duyệ
    `--allow-config` cho `POST /api/settings`, `--allow-submit` cho `POST /api/request`,
    `--allow-engine` cho `POST /api/engine`. Duyệt gate, đổi model, giao việc và bật động cơ là bốn rủi
    ro khác nhau — `--allow-engine` nặng nhất: nó tạo tiến trình con gọi model và ghi vào repo khách.
+   Ngoại lệ duy nhất: `POST /api/notify/test` mở theo cờ `--notify-*` (đã khai kênh là đã cho gửi tới kênh đó),
+   nội dung tin do server dựng, giãn cách 30 giây — không ghi bus, không ghi file.
 5. `--readonly` (mặc định **bật**) chặn mọi POST. Muốn duyệt gate từ trang thì chạy
    `--allow-decide`, và trang hiện rõ đang ở chế độ nào.
 6. Không log token, không log body. Vì `log_message` ghi nguyên dòng request, token **không được**
@@ -259,12 +265,14 @@ class EngineManager:
 
 ```python
 class Notifier:
-    def __init__(self, channels, *, public_url: str, post=http_post)
+    def __init__(self, channels, *, public_url: str, post=http_post, clock=time.monotonic)
     enabled: bool                         # có ít nhất một kênh
     def observe(self, gates: list[dict]) -> list[Message]   # một lần nhìn hàng đợi; trả tin đã dựng (và đã thử gửi)
     def status(self) -> dict              # {"enabled", "channels": [name], "sent", "failed", "last_error", "last_sent_at", "watching",
-                                          #  "failing": [name], "watch_error", "public_url", "verdict": {"level", "say"}}
+                                          #  "failing": [name], "watch_error", "public_url", "last_test_at", "verdict": {"level", "say"}}
     def verdict(self) -> dict             # level ∈ VERDICT_LEVELS = ("off","good","warn","crit"); thứ tự ở ADR-0005 Bổ sung
+    def send_test(self, by: str) -> dict  # {"results": [{"channel","ok","error"}], "status"}; NotifyDisabled khi không kênh,
+                                          # NotifyCooldown(retry_after) khi gọi lại trong TEST_COOLDOWN = 30 s
 
 class NotifyWatcher:                      # thread nền của ConsoleServer khi notifier.enabled
     def step(self) -> list[Message]       # dấu vân tay bus đổi → collect(company_db, keeper_db) → notifier.observe(state["gates"])
@@ -288,6 +296,9 @@ def build_notifier(*, ntfy, telegram_chat, public_url, env) -> Notifier   # Noti
   chạy. `watch_error` = `collect()` ném trong `NotifyWatcher.step` (xoá khi đọc lại được) — tách khỏi `last_error`.
 - Ô "Thông báo" (`static/js/notify.js`, `#notify` dưới `#engine`) chỉ tra `PILL[verdict.level]` và in `verdict.say`;
   mọi so sánh nằm ở `verdict()`. `test_static_ui.py` đối chiếu khoá `PILL` với `VERDICT_LEVELS`.
+- Tin thử (`send_test`): tiêu đề cố định `TEST_TITLE`, thân "Bấm bởi <by> lúc <UTC>…", link `<public_url>/#/truc-ban`.
+  `by` bỏ ký tự điều khiển, cắt `BY_MAX` = 64. Kết quả vào `sent`/`failing` như tin thật; không đụng `_seen`. Nút
+  `data-act="notify-test"` chỉ vẽ khi `enabled`, không khoá theo `READONLY`.
 
 ## `settings.py`
 

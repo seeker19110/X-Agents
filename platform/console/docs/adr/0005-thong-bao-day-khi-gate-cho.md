@@ -94,10 +94,36 @@ pill theo `level` và in `say`. Thứ tự (chỗ đầu tiên khớp thắng):
 console chạy) vẫn giữ. Lỗi đọc bus tách khỏi lỗi kênh (`watch_error` ≠ `last_error`), đọc lại được thì xoá.
 
 Phương án đã loại: tính mức trong JS (không test được — CI không chạy JS, repo kiểm giao diện bằng phép đọc mã
-nguồn; và lặp lại đúng thứ ADR-0003 cấm: CSS đoán trạng thái); nút "Gửi thử" (cần một quyền ghi mới `--allow-*` và
-một route POST — việc riêng, điều kiện quay lại ở `docs/thi-hanh/tb1.md`).
+nguồn; và lặp lại đúng thứ ADR-0003 cấm: CSS đoán trạng thái); nút "Gửi thử" (việc riêng lúc đó — làm ở Bổ sung 2).
 
 Đo bằng trình duyệt thật (Chromium headless, bus thật, ntfy giả trên loopback): bốn mức hiện đúng, 0 lỗi JS; thêm
 một gate `escalation` vào bus đang chạy → tin đi trong ~1 giây với link `#/truc-ban/gate/TCK-112`, ô chuyển "Đã gửi
 2 tin". Ảnh chụp lần đầu lộ hai chỗ đọc sai — ô `off` vẫn in "đang canh 0 gate · đã gửi 0 tin", ô `crit` in cùng
 một lỗi hai lần — cả hai có test riêng (`test_static_ui.py`).
+
+## Bổ sung 2 (2026-10-11) — nút "Gửi thử" trên ô Thông báo
+
+Ô Thông báo đứng vàng "chưa gửi tin nào" cho tới gate thật đầu tiên — có thể nhiều ngày. Người vừa khai kênh cần
+biết NGAY là tin có tới điện thoại không; chờ gate thật để phát hiện topic gõ nhầm là phát hiện lúc đã muộn.
+
+Quyết định: nút **Gửi thử** (chỉ vẽ khi có kênh) → `POST /api/notify/test` body `{by}` → `Notifier.send_test(by)`.
+
+- **Quyền là cờ `--notify-*`, không thêm `--allow-*`.** Đây là ngoại lệ có chủ đích của "chỉ đọc là mặc định"
+  (`CLAUDE.md` của console, điều 2): người chạy console đã khai kênh là đã cho phép console gửi tới kênh đó; tin
+  thử không đụng bus, không đụng `HumanGate`, không đụng repo khách — không có gì để khoá thêm. Không kênh → 409.
+- **Nội dung do server dựng.** Tiêu đề cố định `Tin thử từ console X-Agents`, link `<public_url>/#/truc-ban` (cùng
+  link với tin tóm tắt — thử luôn được `--public-url`). Thứ duy nhất từ client là `by`: ký tự điều khiển thành dấu
+  cách, cắt `BY_MAX` = 64 ký tự — không bẻ được dòng thành tiêu đề giả, không dài vô hạn.
+- **Giãn cách** `TEST_COOLDOWN` = 30 giây giữa hai lần thử (đếm cả lần hỏng) → 429 "thử lại sau N giây". Bấm lặp
+  không thành spam điện thoại; khoá cùng lượt kiểm–ghi nên hai cú bấm đồng thời không cùng lọt.
+- **Tin thử là bằng chứng như tin thật.** Kết quả đi vào `sent`/`failing` như mọi tin: tới được thì ô vàng → xanh,
+  không tới thì ô đỏ ngay, kèm kết quả từng kênh `{channel, ok, error}` trả về cho nút. `status()` thêm
+  `last_test_at`. Không đụng `_seen` — gate đang chờ vẫn được báo như trước.
+- Vẫn cần token phiên (401) như mọi `/api/*`.
+
+Phương án đã loại: cờ `--allow-notify-test` riêng (thêm một cờ để mở một việc mà cờ `--notify-*` đã nói rõ ý; người
+chạy chỉ đọc + có kênh sẽ phải chạy lại console chỉ để thử); gửi thử tự động lúc khởi động (tin rác mỗi lần chạy
+lại, và không trả lời được "kênh còn thông không" về sau); cho client gửi nội dung tin (biến console thành relay).
+
+Đo bằng Chromium headless + ntfy giả trên loopback: ô vàng → bấm → "ntfy:…: tới", ô xanh "Đã gửi 1 tin"; bấm lại →
+"vừa gửi thử; thử lại sau 30 giây"; kênh trỏ cổng chết → ô đỏ, "không tới (URLError)"; không kênh → không có nút.

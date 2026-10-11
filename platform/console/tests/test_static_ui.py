@@ -154,3 +154,14 @@ def test_o_thong_bao_tat_khong_hien_so_canh_va_hong_khong_in_loi_hai_lan() -> No
     render = js.split("export function renderNotify(){", 1)[1]
     assert re.search(r"n\.last_error&&!\(n\.failing&&n\.failing\.length\)", render), \
         "kênh đang hỏng thì lỗi đã nằm trong verdict.say — dòng 'lỗi gần nhất' chỉ cho lỗi đã qua"
+
+
+def test_o_thong_bao_co_nut_gui_thu_goi_dung_route_va_chi_hien_khi_co_kenh() -> None:
+    """Nút Gửi thử (ADR-0005 bổ sung 2): chỉ vẽ khi `notify.enabled` (không kênh thì không có gì để thử), gửi tên
+    người bấm từ ô "Bạn là" như mọi nút ghi khác, và KHÔNG khoá theo `READONLY` — quyền của nó là cờ `--notify-*`."""
+    js = (JS_DIR / "notify.js").read_text(encoding="utf-8")
+    assert '"/api/notify/test"' in js and "ME_KEY" in js
+    assert re.search(r'n\.enabled\?`[^`]*data-act="notify-test"', js), "nút chỉ vẽ khi có kênh"
+    assert "READONLY" not in js, "nút không phụ thuộc --allow-decide"
+    assert 'closest("#notify button[data-act=\\"notify-test\\"]")' in js or \
+           "closest('#notify button[data-act=\"notify-test\"]')" in js, "một listener ở document, như ô Động cơ"

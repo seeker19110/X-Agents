@@ -28,8 +28,9 @@ tính — có `tests/test_es_module.py` canh việc nhập module, viết test c
 
 1. **Console không tự dựng event.** Quyết định đi qua `HumanGate` của công ty (four-eyes, allowlist, audit-log giữ
    nguyên); việc mới đi qua `SQLiteBus` của công ty và bị kiểm JSON Schema y như CLI `publish`.
-2. **Chỉ đọc là mặc định**: không cờ `--allow-*` thì mọi POST 403 và nút khoá; token phiên sinh mới mỗi lần chạy;
-   service worker **không** cache `/api/*` và `/` — số liệu cũ trên mặt kính trực ban là thứ tệ nhất.
+2. **Chỉ đọc là mặc định**: không cờ `--allow-*` thì mọi POST 403 và nút khoá (ngoại lệ duy nhất: `POST
+   /api/notify/test` mở theo cờ `--notify-*`, tin do server dựng, không ghi gì — ADR-0005 Bổ sung 2); token phiên
+   sinh mới mỗi lần chạy; service worker **không** cache `/api/*` và `/` — số liệu cũ trên mặt kính trực ban là thứ tệ nhất.
 3. **Mỗi ô trả lời một câu hỏi của người trực; ô không có dữ liệu là ô XÁM** (ADR-0003). Mỗi con số phải nói nó đo cái gì. Nhãn FSM (`merged`) tách khỏi sự thật git; `delivery` phải hiện "đã giao
    n/m"; xanh vì rỗng phải có cảnh báo. Xem `TRAPS.md` — 10 chỗ đã đánh lừa người trực một đêm.
 
@@ -44,7 +45,7 @@ tính — có `tests/test_es_module.py` canh việc nhập module, viết test c
 | quyết định gate | `src/console/decide.py` — gọi `HumanGate` công ty; lý do ≥ 20 ký tự |
 | form giao việc | `src/console/submit.py` — payload theo schema topic của công ty |
 | bật/tắt động cơ | `src/console/engine.py` — `argv` chốt cứng trong `SPECS`, KHÔNG nhận tham số client; route `POST /api/engine` (ADR-0004) |
-| thông báo đẩy khi gate chờ | `src/console/notify.py` — chỉ đọc `collect()["gates"]`, thread nền chết cùng server, token Telegram chỉ từ env, lỗi là số đếm trong `status()` (ADR-0005); kênh mới = một lớp có `send(msg, post)` + test không chạm mạng |
+| thông báo đẩy khi gate chờ | `src/console/notify.py` — chỉ đọc `collect()["gates"]`, thread nền chết cùng server, token Telegram chỉ từ env, lỗi là số đếm trong `status()` (ADR-0005); kênh mới = một lớp có `send(msg, post)` + test không chạm mạng. Nút Gửi thử: `Notifier.send_test` + route `POST /api/notify/test` |
 | giao diện | `src/console/static/index.html` (HTML + CSS) và `static/js/*.js` (ES module, K7.1 — không build step). Thêm màn mới: HTML + một module + **nhập nó trong `main.js`** (không nhập = không bao giờ chạy, `tests/test_es_module.py` canh). Gán vào biến nhập từ module khác thì phải qua setter. Route hash `#/<màn>/gate/<id>`… trong `API.md` |
 | đổi hợp đồng giữa lớp | `API.md` cùng PR |
 | kiến trúc | `docs/adr/` (0001–0005) |

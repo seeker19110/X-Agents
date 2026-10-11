@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Mapping
@@ -36,11 +37,26 @@ TELEGRAM_TOKEN_ENV = "CONSOLE_TELEGRAM_TOKEN"
 DEFAULT_TIMEOUT = 5.0
 SUMMARY_IDS = 5      # tin tóm tắt lúc khởi động liệt kê tối đa bấy nhiêu gate
 WATCH_INTERVAL = 1.0  # giây giữa hai lần dò dấu vân tay bus — rẻ (chỉ `stat()`), như `/api/stream`
+TEST_COOLDOWN = 30.0  # giây tối thiểu giữa hai lần "Gửi thử" — bấm lặp không thành spam điện thoại
+BY_MAX = 64           # ký tự tối đa của tên người bấm đi vào tin thử
+TEST_TITLE = "Tin thử từ console X-Agents"
 
 # Mức của ô Thông báo ở màn Trực ban. Tập ĐÓNG, khai một chỗ: `static/js/notify.js` tra pill theo đúng tập này
 # (test_static_ui đối chiếu). off = ô xám (ADR-0003), không bao giờ xanh.
 VERDICT_LEVELS = ("off", "good", "warn", "crit")
 _LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+
+
+class NotifyDisabled(Exception):
+    """Gửi thử khi chưa khai kênh nào — không có gì để thử."""
+
+
+class NotifyCooldown(Exception):
+    """Gửi thử quá dày. `retry_after` là số giây còn phải chờ."""
+
+    def __init__(self, retry_after: float) -> None:
+        super().__init__(f"thử lại sau {retry_after:.0f} giây")
+        self.retry_after = retry_after
 
 
 class NotifyConfigError(Exception):
@@ -110,10 +126,15 @@ def _key(gate: Mapping[str, Any]) -> tuple[str, str]:
 
 
 class Notifier:
-    def __init__(self, channels: Iterable[Channel], *, public_url: str, post: Post = http_post) -> None:
+    def __init__(self, channels: Iterable[Channel], *, public_url: str, post: Post = http_post,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.channels = list(channels)
         self.public_url = public_url.rstrip("/")
         self.post = post
+        self.clock = clock
+        self._test_lock = threading.Lock()
+        self._last_test: float | None = None   # mốc `clock()` của lần gửi thử gần nhất — cho giãn cách
+        self.last_test_at: str | None = None
         self._seen: set[tuple[str, str]] | None = None  # None = chưa quan sát lần nào
         self.sent = 0
         self.failed = 0
@@ -153,19 +174,23 @@ class Notifier:
 
     # --- gửi ----------------------------------------------------------------------------------------------------
 
-    def _deliver(self, msg: Message) -> None:
+    def _deliver(self, msg: Message) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
         for ch in self.channels:
             try:
                 code = ch.send(msg, self.post)
             except Exception as e:  # mạng, DNS, timeout — không được ném lên thread theo dõi
-                self._fail(ch.name, type(e).__name__)
-                continue
-            if 200 <= code < 300:
+                why: str | None = type(e).__name__
+            else:
+                why = None if 200 <= code < 300 else f"HTTP {code}"
+            if why is None:
                 self.sent += 1
                 self.last_sent_at = datetime.now(UTC).isoformat(timespec="seconds")
                 self._failing.pop(ch.name, None)
             else:
-                self._fail(ch.name, f"HTTP {code}")
+                self._fail(ch.name, why)
+            results.append({"channel": ch.name, "ok": why is None, "error": why})
+        return results
 
     def _fail(self, channel: str, why: str) -> None:
         self.failed += 1
@@ -188,6 +213,26 @@ class Notifier:
         for m in msgs:
             self._deliver(m)
         return msgs
+
+    def send_test(self, by: str) -> dict[str, Any]:
+        """Nút "Gửi thử" (ADR-0005 bổ sung 2): một tin nội dung cố định do server dựng, tới đúng các kênh đã khai.
+        Không ghi bus, không đụng `_seen`. Kết quả từng kênh trả về ngay, và đi vào `sent`/`failing` như tin thật —
+        tin thử tới được là bằng chứng kênh thông, tới không được là kênh hỏng."""
+        if not self.enabled:
+            raise NotifyDisabled("chưa có kênh thông báo nào")
+        with self._test_lock:  # hai cú bấm đồng thời không cùng lọt qua giãn cách
+            now = self.clock()
+            if self._last_test is not None and now - self._last_test < TEST_COOLDOWN:
+                raise NotifyCooldown(TEST_COOLDOWN - (now - self._last_test))
+            self._last_test = now
+        who = " ".join("".join(c if c.isprintable() else " " for c in by).split())[:BY_MAX]
+        at = datetime.now(UTC).isoformat(timespec="seconds")
+        msg = Message(title=TEST_TITLE, body=f"Bấm bởi {who} lúc {at}. Tin này tới được là kênh thông — gate mới "
+                                             "sẽ được báo qua đây.", link=f"{self.public_url}/#/truc-ban",
+                      priority="default")
+        results = self._deliver(msg)
+        self.last_test_at = at
+        return {"results": results, "status": self.status()}
 
     def _loopback_link(self) -> bool:
         host = self.public_url.split("://", 1)[-1].split("/", 1)[0]
@@ -217,7 +262,7 @@ class Notifier:
         return {"enabled": self.enabled, "channels": [c.name for c in self.channels], "sent": self.sent,
                 "failed": self.failed, "last_error": self.last_error, "last_sent_at": self.last_sent_at,
                 "watching": len(self._seen or ()), "failing": sorted(self._failing), "watch_error": self.watch_error,
-                "public_url": self.public_url, "verdict": self.verdict()}
+                "public_url": self.public_url, "last_test_at": self.last_test_at, "verdict": self.verdict()}
 
 
 class NotifyWatcher:
@@ -291,5 +336,5 @@ def build_notifier(*, ntfy: str | None, telegram_chat: str | None, public_url: s
     return Notifier(channels, public_url=public_url, post=post)
 
 
-__all__ = ["VERDICT_LEVELS", "Message", "Notifier", "NotifyConfigError", "NotifyWatcher", "NtfyChannel", "TelegramChannel",
-           "build_notifier", "http_post"]
+__all__ = ["BY_MAX", "TEST_COOLDOWN", "VERDICT_LEVELS", "Message", "Notifier", "NotifyConfigError", "NotifyCooldown",
+           "NotifyDisabled", "NotifyWatcher", "NtfyChannel", "TelegramChannel", "build_notifier", "http_post"]

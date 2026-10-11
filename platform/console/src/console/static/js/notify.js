@@ -6,9 +6,16 @@
 
    Mức (`verdict.level`) và lời giải thích (`verdict.say`) do `console/notify.py` tính — tầng dữ liệu, như
    `empty=True` của phễu sản phẩm (ADR-0003). Ở đây chỉ tra bảng pill và vẽ; không so số tin hỏng, không đoán.
-   `off` là ô xám, không bao giờ xanh: "không có kênh nào" và "kênh đang thông" nhìn phải khác hẳn nhau. */
-import {st} from "./state.js";
+   `off` là ô xám, không bao giờ xanh: "không có kênh nào" và "kênh đang thông" nhìn phải khác hẳn nhau.
+
+   Nút "Gửi thử" (bổ sung 2) chỉ vẽ khi có kênh: không có gì để thử thì không có nút. Nó KHÔNG khoá theo chế độ chỉ
+   đọc — quyền gửi tới kênh là cờ `--notify-*` người chạy console đã khai; server từ chối khi không có kênh (409) hoặc
+   bấm quá dày (429). Kết quả từng kênh giữ ở `testNote` để lần vẽ lại sau không xoá mất. */
+import {ME_KEY, api} from "./api.js";
+import {S, st} from "./state.js";
 import {$, esc} from "./util.js";
+
+let testNote="";   // kết quả lần gửi thử gần nhất (HTML đã esc) — sống qua các lần renderNotify()
 
 export const PILL={off:["calm","tắt"],good:["good","đang báo"],warn:["warn","cần xem"],crit:["crit","hỏng"]};
 
@@ -33,5 +40,26 @@ export function renderNotify(){
       <div class="note">${esc(n.verdict.say)}</div>
       ${n.enabled?`<div class="note">${facts(n)}</div>`:""}
       ${n.last_error&&!(n.failing&&n.failing.length)?`<div class="note">lỗi gần nhất (đã qua): <span class="mono">${esc(n.last_error)}</span></div>`:""}
+      ${n.enabled?`<div class="filters"><button data-act="notify-test">Gửi thử</button> <span class="note" data-note>${testNote}</span></div>`:""}
     </div>`;
 }
+
+export function testResult(results){
+  return (results||[]).map(r=>r.ok?`${esc(r.channel)}: tới`:`${esc(r.channel)}: <b>không tới</b> (${esc(r.error)})`)
+    .join(" · ");
+}
+
+document.addEventListener("click",async e=>{
+  const btn=e.target.closest("#notify button[data-act=\"notify-test\"]"); if(!btn) return;
+  const by=localStorage.getItem(ME_KEY)||"human:owner";
+  btn.disabled=true; testNote="đang gửi…"; $("[data-note]",$("#notify")).textContent=testNote;
+  try{
+    const out=await api("/api/notify/test",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({by})});
+    testNote=testResult(out.results);
+    if(S) S.notify=out.status;   // mức ô đổi ngay (vàng → xanh, hoặc → đỏ), không đợi vòng đọc state kế tiếp
+  }catch(err){
+    testNote=esc(err.message);
+  }
+  renderNotify();
+});
