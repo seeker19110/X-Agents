@@ -23,7 +23,7 @@ DOMAINS = ("auth.docker.io", "registry-1.docker.io")
 DOCKERFILES = ("Dockerfile", "*/Dockerfile")  # đúng tập mà job `image-pin` của khách quét
 _FROM = re.compile(r"^\s*FROM\s+(.*)$", re.IGNORECASE)
 _IMAGE = re.compile(r"""^\s*image:\s*["']?([^"'\s#]+)""")
-_REF = re.compile(r"^[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]{1,128})?$")
+_REF = re.compile(r"^[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]{1,128})?(@sha256:[0-9a-f]{64})?$")
 _SKIP = frozenset({"scratch"})
 
 # Chạy TRONG sandbox bằng python của image (chỉ stdlib, không docker): token pull ẩn danh rồi HEAD manifest.
@@ -55,7 +55,7 @@ sys.exit(1 if bad else 0)
 """
 
 
-def _dockerfile_refs(text: str) -> list[str]:
+def _dockerfile_refs(text: str, pinned: bool = False) -> list[str]:
     refs, aliases = [], set()
     for line in text.splitlines():
         if not (m := _FROM.match(line)):
@@ -66,21 +66,22 @@ def _dockerfile_refs(text: str) -> list[str]:
         ref = toks[0]
         if len(toks) >= 3 and toks[1].upper() == "AS":
             aliases.add(toks[2])
-        if ref not in aliases and ref not in _SKIP and "@" not in ref and _REF.match(ref):
+        if ref not in aliases and ref not in _SKIP and (pinned or "@" not in ref) and _REF.match(ref):
             refs.append(ref)
     return refs
 
 
-def _compose_refs(text: str) -> list[str]:
+def _compose_refs(text: str, pinned: bool = False) -> list[str]:
     return [
         m.group(1)
         for ln in text.splitlines()
-        if (m := _IMAGE.match(ln)) and "@" not in m.group(1) and _REF.match(m.group(1))
+        if (m := _IMAGE.match(ln)) and (pinned or "@" not in m.group(1)) and _REF.match(m.group(1))
     ]
 
 
-def references(root: Path) -> list[str]:
-    """Image chưa ghim digest, theo thứ tự gặp, không trùng. Bỏ alias stage, `${ARG}`, `scratch`, đã có `@sha256:`."""
+def references(root: Path, *, pinned: bool = False) -> list[str]:
+    """Image chưa ghim digest, theo thứ tự gặp, không trùng. Bỏ alias stage, `${ARG}`, `scratch`, đã có `@sha256:`.
+    `pinned=True` giữ cả image đã ghim — tập để quét lỗ hổng image nền (ADR-0056), không phải tập cần ghim."""
     out: list[str] = []
     files = [(p, _dockerfile_refs) for g in DOCKERFILES for p in sorted(root.glob(g))]
     files += [(root / n, _compose_refs) for n in COMPOSE_NAMES]
@@ -89,7 +90,7 @@ def references(root: Path) -> list[str]:
             text = p.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        for r in read(text):
+        for r in read(text, pinned):
             if r not in out:
                 out.append(r)
     return out

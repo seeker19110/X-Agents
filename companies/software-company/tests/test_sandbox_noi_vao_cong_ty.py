@@ -155,6 +155,9 @@ MIEN_HOAN_TOAN = {"sandbox.py", "llm.py"}
 CHI_GIT = {"workspace.py", "gate_brief.py"}
 CHI_GH = {"github_pr.py"}
 CHI_COMPOSE = {"deploy.py"}
+# ADR-0056: trivy/gitleaks là công cụ ĐỌC chạy trên máy trực (cần DB và docker daemon, không chạy code khách);
+# `run`/`which` là thuộc tính module để test tiêm như `deploy.py`, không gọi `subprocess.run(...)` trực tiếp.
+CHI_QUET_MAY_TRUC = {"scanners.py"}
 
 
 def _goi_subprocess(src: str) -> list[str]:
@@ -178,6 +181,8 @@ def test_pham_vi_khong_module_nao_ngoai_sandbox_goi_subprocess_truc_tiep():
                 continue
             if p.name in CHI_COMPOSE and "compose" in goi:
                 continue
+            if p.name in CHI_QUET_MAY_TRUC and goi == "subprocess.run":
+                continue
             vi_pham.append(f"{p.relative_to(SRC).as_posix()}: {goi[:110]}")
     assert not vi_pham, ("lệnh chạy ngoài Sandbox (ADR-0035) — đưa qua `Sandbox` hoặc ghi lý do vào danh sách "
                          "ngoại lệ của test này:\n" + "\n".join(vi_pham))
@@ -188,6 +193,16 @@ def test_pham_vi_git_van_duoc_phep_ngoai_sandbox():
     for name in sorted(CHI_GIT):
         goi = _goi_subprocess((SRC / name).read_text(encoding="utf-8"))
         assert goi and all('"git"' in g for g in goi), f"mọi lời gọi còn lại trong {name} phải là git: {goi}"
+
+
+def test_pham_vi_quet_may_truc_chi_tiem_run_khong_goi_truc_tiep():
+    """Chiều ngược cho ngoại lệ ADR-0056: `scanners.py` chỉ giữ `subprocess.run` làm giá trị mặc định tiêm được,
+    mọi lời gọi thật đi qua `which(...)` + `run(...)` của module — không có `subprocess.run(` nào gọi thẳng."""
+    for name in sorted(CHI_QUET_MAY_TRUC):
+        src = (SRC / name).read_text(encoding="utf-8")
+        goi = _goi_subprocess(src)
+        assert goi == ["subprocess.run"], f"{name}: chỉ một chỗ, là mặc định của `run`: {goi}"
+        assert "run: Any = subprocess.run" in src and "which: Any = shutil.which" in src
 
 
 def test_pham_vi_gh_chi_o_github_pr_va_la_gh_that():
