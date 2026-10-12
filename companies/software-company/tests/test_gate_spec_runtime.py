@@ -14,7 +14,9 @@ from company.orchestrator import SPEC_RUNTIME_REWORKS, Orchestrator, spec_runtim
 from company.sqlite_bus import SQLiteBus
 from test_orchestrator import _agent_of, _inp, _product_phase, _pub, _thuoc_tinh_lech, handler
 
-RUNTIME = {"command": "python -m app --port {port}", "port": 0, "health": "/health", "dependencies": ["sqlite"]}
+# `dependencies` rỗng: sqlite chạy trong tiến trình — không phải phụ thuộc ngoài (ADR-0053 đòi `runtime.deploy` cho
+# phụ thuộc ngoài; ca đó có test riêng bên dưới).
+RUNTIME = {"command": "python -m app --port {port}", "port": 0, "health": "/health", "dependencies": []}
 ARTIFACTS = {"prd": "docs/prd.md", "requirements": "docs/requirements.json"}
 
 
@@ -73,6 +75,18 @@ def test_khong_gap_khi_library_docs_hoac_ung_dung_co_runtime():
     assert spec_runtime_gap({"kind": "docs"}) is None
     assert spec_runtime_gap({"kind": "application", "runtime": RUNTIME}) is None
     assert spec_runtime_gap({"runtime": RUNTIME}) is None, "thiếu kind = application; có runtime là đủ"
+
+
+def test_gap_phu_thuoc_ngoai_ma_khong_khai_deploy():
+    """ADR-0053: phụ thuộc ngoài (DB, cache, cloud) không dựng được trong smoke trần — sandbox tắt mạng. Spec phải
+    khai `runtime.deploy` (compose file dựng đủ phụ thuộc + app) ngay ở Gate 1; để tới release mới lộ là 6 RC
+    `failed` liên tiếp (QLKH-DD-CSV 2026-10-12). Đo hai chiều: bỏ nhánh mới trong `spec_runtime_gap` → đỏ."""
+    rt = {**RUNTIME, "dependencies": ["PostgreSQL qua QLKH_DB_DSN"]}
+    gap = spec_runtime_gap({"kind": "application", "runtime": rt})
+    assert gap is not None and "runtime.deploy" in gap and "compose" in gap and "PostgreSQL" in gap
+    assert spec_runtime_gap({"kind": "application", "runtime": {**rt, "deploy": "docker-compose.yml"}}) is None
+    assert spec_runtime_gap({"kind": "application", "runtime": {**rt, "dependencies": [" "]}}) is None, (
+        "dòng trắng không phải phụ thuộc")
 
 
 # ---------- orchestrator: hai chiều ----------
@@ -251,13 +265,14 @@ def _brief_item(orch, subject="SPEC-P1"):
 
 
 def test_gate_brief_spec_in_lenh_cong_health_phu_thuoc():
-    h, _ = _handler_with(lambda p, n: _spec("P1", kind="application", **({"runtime": RUNTIME} if "hint" in p else {})))
+    rt = {**RUNTIME, "dependencies": ["PostgreSQL"], "deploy": "docker-compose.yml"}
+    h, _ = _handler_with(lambda p, n: _spec("P1", kind="application", **({"runtime": rt} if "hint" in p else {})))
     bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=h)); _to_spec(bus, orch)
     it = _brief_item(orch)
     assert it["verdict"] == "ok"
     facts = " | ".join(it["facts"])
     assert "kind=application" in facts and "python -m app --port {port}" in facts and "GET /health" in facts
-    assert "sqlite" in facts and "trả lại vì thiếu runtime: 1 lần" in facts
+    assert "PostgreSQL" in facts and "trả lại vì thiếu runtime: 1 lần" in facts
     assert any(s["ref"] == "approved-specs" for s in it["sources"])
 
 

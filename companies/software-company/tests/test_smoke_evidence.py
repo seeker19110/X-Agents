@@ -231,6 +231,69 @@ def test_runtime_deploy_khai_thi_smoke_bo_qua_khong_fail(tmp_path):
         "không mở escalation ở bước smoke/regression — pipeline đi tiếp bình thường tới Gate 3 (release)")
 
 
+def _them_compose(repo: Path) -> None:
+    (repo / "docker-compose.yml").write_text("services:\n  db:\n    image: postgres:16\n", encoding="utf-8")
+    _git(repo, "add", "-A"); _git(repo, "commit", "-q", "-m", "compose")
+
+
+def test_phu_thuoc_ngoai_va_repo_co_compose_thi_smoke_tran_nhuong_deploy(tmp_path, monkeypatch):
+    """ADR-0053: spec duyệt TRƯỚC luật "phụ thuộc ngoài phải khai `runtime.deploy`" (QLKH-DD-CSV 2026-10-12: cần
+    PostgreSQL qua `QLKH_DB_DSN`, thiếu thì thoát khác 0) không bao giờ qua được smoke trần — sandbox tắt mạng, không
+    ai dựng DB. Repo khách đã có compose file thì `deploy()` sẽ dò ra nó (ADR-0039 §1) và đó là bằng chứng thật;
+    smoke trần chạy trước nó chỉ sinh một `failed` chắc chắn.
+
+    Đo hai chiều: bỏ vế `dependencies + compose_file` trong `verify._deploy_thay_smoke` → test đỏ (status `failed`,
+    `release.smoke_failed`)."""
+    monkeypatch.setenv("COMPANY_DEPLOY", "off")   # CI ubuntu có docker: test này đo smoke, không dựng compose thật
+    repo = _repo(tmp_path, SERVER_DIE)
+    _them_compose(repo)
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 2,
+                                       "dependencies": ["PostgreSQL qua QLKH_DB_DSN"]})
+    orch.run()
+    st = _staging(bus)
+    assert st and st[-1]["status"] == "deployed", "phụ thuộc ngoài + compose — không để smoke trần hạ status"
+    sm = st[-1]["smoke"]
+    assert sm["unverified"] is True and "docker-compose.yml" in sm["reason"] and "dependencies" in sm["reason"]
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
+    assert "release.smoke" not in acts and "release.smoke_failed" not in acts
+
+
+def test_compose_ma_khong_khai_phu_thuoc_thi_van_smoke_tran(tmp_path, monkeypatch):
+    """Chiều ngược của ca trên: compose file có mặt nhưng spec không khai phụ thuộc ngoài → app tự chạy được, smoke
+    trần vẫn là bằng chứng (ADR-0041 quyết định 3 giữ nguyên). Có file trong repo KHÔNG đủ để miễn smoke."""
+    monkeypatch.setenv("COMPANY_DEPLOY", "off")
+    repo = _repo(tmp_path, SERVER_DIE)
+    _them_compose(repo)
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 10, "dependencies": []})
+    orch.run()
+    assert _staging(bus)[-1]["status"] == "failed"
+
+
+def test_phu_thuoc_ngoai_khong_co_compose_thi_van_smoke_tran(tmp_path, monkeypatch):
+    """Khai phụ thuộc nhưng repo chưa có compose file → không có gì thay smoke; smoke trần chạy và fail thật."""
+    monkeypatch.setenv("COMPANY_DEPLOY", "off")
+    repo = _repo(tmp_path, SERVER_DIE)
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 10,
+                                       "dependencies": ["PostgreSQL"]})
+    orch.run()
+    assert _staging(bus)[-1]["status"] == "failed"
+
+
+def test_hoi_quy_phu_thuoc_ngoai_va_compose_khong_chay_smoke_tran(tmp_path, monkeypatch):
+    """Cùng họ (luật 5): `regression_run` dùng CHUNG điều kiện với `smoke()` — tách hai bản là sớm muộn lệch nhau."""
+    from company.orch import verify as ov
+    monkeypatch.setenv("COMPANY_DEPLOY", "off")
+    repo = _repo(tmp_path, SERVER_DIE)
+    _them_compose(repo)
+    bus, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 2,
+                                       "dependencies": ["PostgreSQL"]})
+    orch.run()
+    monkeypatch.setattr(ov, "run_smoke", lambda *a, **k: (_ for _ in ()).throw(AssertionError("smoke trần chạy")))
+    ev = next(e for e in bus.replay(topic="release-events") if e.payload.get("env") == "staging")
+    run = ov.regression_run(orch, ev)
+    assert run["unverified"] is True and run["deploy_declared"] is True
+
+
 def test_smoke_fail_lan_hai_gate_da_pending_khong_mo_gate_trung(tmp_path):
     """verify.py 91->94: RC đã escalate vì smoke fail lần đầu (gate `REL-001` đang pending) → smoke fail LẦN NỮA
     cho cùng release không mở thêm gate escalation, chỉ ghi audit + hạ status."""

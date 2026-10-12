@@ -227,7 +227,17 @@ def spec_runtime_gap(payload: dict[str, Any]) -> str | None:
         return f"`kind`={kind!r} không hợp lệ; phải là một trong {', '.join(SPEC_KINDS)}"
     if kind != "application":
         return None
-    if parse_runtime(payload) is not None:
+    if (parsed := parse_runtime(payload)) is not None:
+        if parsed.dependencies and not parsed.deploy.strip():
+            # ADR-0053: smoke trần chạy trong sandbox tắt mạng — không ai dựng DB/cache cho nó. Đo QLKH-DD-CSV
+            # 2026-10-12: spec cần PostgreSQL qua spec gate, rồi mọi RC `failed` ở smoke.
+            return (
+                f"spec khai phụ thuộc ngoài ({'; '.join(parsed.dependencies)[:200]}) nhưng thiếu `runtime.deploy`: "
+                "smoke trần chạy trong sandbox tắt mạng không dựng được phụ thuộc. Khai `runtime.deploy` là đường dẫn "
+                "file compose trong repo khách (vd `docker-compose.yml`) dựng đủ phụ thuộc + migration + app, và kế "
+                "hoạch phải có ticket tạo file đó; phụ thuộc chạy trong tiến trình (sqlite, in-memory) thì để "
+                "`dependencies` rỗng"
+            )
         return None
     rt = payload.get("runtime")
     what = (
