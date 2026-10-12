@@ -164,6 +164,29 @@ def test_env_mau_khong_mang_gia_tri_bi_mat() -> None:
             assert v == "", f"{k} trong file mẫu phải để trống — bí mật chỉ điền trên máy chủ"
 
 
+def test_env_mau_claude_code_bang_bien_moi_truong_du_chay_mot_du_an(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đo 2026-10-12 trên hub thật: chỉ đặt `COMPANY_LLM_PROVIDER=claude-code` (ghi đè llm.yaml, xoá `backends:`) thì
+    dự án đầu tiên kẹt hai lần — product thiếu model tier `strong`, rồi `research-findings` thiếu vòng tool. Khối mẫu
+    bỏ dấu `#` phải tự đủ: model cho cả ba tier và cầu MCP (ADR-0024), đọc bằng đúng `load_config` orchestrator dùng."""
+    from company.llm import load_config
+
+    khoi = [
+        d.removeprefix("# ").split("=", 1)
+        for d in (MAU / "hub.env.example").read_text(encoding="utf-8").splitlines()
+        if re.match(r"# COMPANY_[A-Z_]+=\S", d)
+    ]
+    assert khoi, "hub.env.example thiếu khối mẫu cấu hình model bằng biến môi trường"
+    for k in [k for k in os.environ if k.startswith("COMPANY_")]:
+        monkeypatch.delenv(k)
+    for k, v in khoi:
+        monkeypatch.setenv(k, v)
+    cfg = load_config(Path("/khong/co/llm.yaml"))
+    assert cfg.provider == "claude-code"
+    tier = ("strong", "standard", "light")
+    assert {t: cfg.models.get(t) for t in tier} == {t: cfg.model_for(t) for t in tier}, "mỗi tier một model riêng"
+    assert cfg.mcp_tools, "claude-code không có cầu MCP thì agent cần tool (product research-findings, dev…) kẹt"
+
+
 def test_script_systemd_co_bit_thuc_thi_trong_git() -> None:
     kq = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "-s", "scripts/systemd.sh"], capture_output=True, text=True

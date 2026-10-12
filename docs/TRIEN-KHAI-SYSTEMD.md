@@ -24,6 +24,10 @@ uv sync --locked                 # unit chạy `uv run --no-sync`: môi trườn
 cp companies/software-company/llm.example.yaml companies/software-company/llm.yaml   # rồi sửa theo gói tài khoản
 ```
 
+Không dùng `llm.yaml` mà cấu hình model bằng `hub.env` (`COMPANY_LLM_PROVIDER=…`) thì biến đó **ghi đè** llm.yaml
+và bỏ `backends:` — phải đặt đủ khối mẫu trong `hub.env.example` (model ba tier + `COMPANY_CLAUDE_MCP=1` cho
+claude-code). Thiếu một dòng là dự án đầu tiên kẹt ở gate escalation chứ không lỗi lúc khởi động.
+
 ## 2. Cài unit
 
 ```bash
