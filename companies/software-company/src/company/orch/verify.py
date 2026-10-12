@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .. import dast, supply_chain
+from .. import dast, image_digest, scanners, supply_chain
 from ..deploy import DeployError, _smoke_running, deploy_thay_smoke, project_name
 from ..events import Envelope
 from ..gate_risk import request_gate
@@ -269,7 +269,8 @@ def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope,
         rid, pid = str(inp.payload.get("release_id") or inp.key), o.project_for(inp)
         integ = o._integration_of_release(inp)
         if integ is None or not integ.path.exists():
-            ev = dict.fromkeys(("supply_chain", "dast"), unverified("không có worktree tích hợp (dự án chạy không repo)"))
+            ev = dict.fromkeys(("supply_chain", "dast", "vuln", "secrets"),
+                               unverified("không có worktree tích hợp (dự án chạy không repo)"))
         else:
             root, sha = _release_root(o, rid, integ), o.release_sha.get(rid) or integ.sha()
             st = _staging_event(o, rid)
@@ -277,9 +278,13 @@ def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope,
             ev = {"supply_chain": supply_chain.evidence(root, o.sandbox, sha=sha),
                   "dast": dast.evidence(root, spec.payload if spec is not None else None, o.sandbox,
                                         o.blackboard.content("api-contract", pid), sha,
-                                        deployed=dast.deploy_of(st.payload.get("evidence") if st is not None else None))}
-        # audit không kèm toàn văn SBOM / checks: chúng đi trong `review-results`
-        for action, ev1, big in (("supply_chain.run", ev["supply_chain"], "sbom"), ("dast.run", ev["dast"], "checks")):
+                                        deployed=dast.deploy_of(st.payload.get("evidence") if st is not None else None)),
+                  # ADR-0056: SCA + secret trên máy trực — cùng lý do SBOM/DAST: security không đoán, máy phải đưa số
+                  "vuln": scanners.vuln_evidence(root, sha, image_digest.references(root, pinned=True)),
+                  "secrets": scanners.secret_evidence(root, sha)}
+        # audit không kèm toàn văn SBOM / checks / danh sách phát hiện: chúng đi trong `review-results`
+        for action, ev1, big in (("supply_chain.run", ev["supply_chain"], "sbom"), ("dast.run", ev["dast"], "checks"),
+                                 ("vuln.run", ev["vuln"], "targets"), ("secrets.run", ev["secrets"], "findings")):
             o._audit(action, {"release_id": rid, **{k: v for k, v in ev1.items() if k != big}}, project_id=pid)
         kind = "supply_chain"
     return inp.model_copy(update={"payload": {**inp.payload, "evidence": {**_dict_of(inp.payload.get("evidence")), **ev}}}), kind
@@ -296,7 +301,9 @@ def evidence_after(o: Orchestrator, agent: str, inp: Envelope, p: dict[str, Any]
     ev_p = _dict_of(p.get("evidence"))
     claimed = {k: v for k, v in (("supply_chain", ev_p.get("supply_chain")), ("sbom_ref", p.get("sbom_ref"))) if v is not None}
     rid = str(inp.payload.get("release_id") or inp.key)
-    for action, c in (("supply_chain.claimed_ignored", claimed or None), ("dast.claimed_ignored", ev_p.get("dast"))):
+    for action, c in (("supply_chain.claimed_ignored", claimed or None), ("dast.claimed_ignored", ev_p.get("dast")),
+                      ("vuln.claimed_ignored", ev_p.get("vuln")), ("secrets.claimed_ignored", ev_p.get("secrets"))):
         if c is not None:
             o._audit(action, {"release_id": rid, "claimed": c}, actor=agent, project_id=o.project_for(inp))
-    return {**p, "evidence": {**ev_p, "supply_chain": ev, "dast": mine["dast"]}, "sbom_ref": ev.get("sbom_ref")}
+    mine_rest = {k: mine[k] for k in ("dast", "vuln", "secrets") if k in mine}
+    return {**p, "evidence": {**ev_p, "supply_chain": ev, **mine_rest}, "sbom_ref": ev.get("sbom_ref")}

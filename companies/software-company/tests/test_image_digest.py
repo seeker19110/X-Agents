@@ -71,6 +71,15 @@ def test_references_doc_from_va_image_bo_alias_arg_scratch_da_ghim(tmp_path):
     ], "alias stage, ${ARG}, scratch, đã có @sha256, image build tại chỗ: không phải thứ cần digest; trùng thì một"
 
 
+def test_references_pinned_giu_ca_image_da_ghim_cho_quet_lo_hong(tmp_path):
+    """ADR-0056: trivy image quét MỌI image của RC, kể cả đã ghim — `pinned=True`; mặc định vẫn chỉ image cần ghim."""
+    root = _repo(tmp_path, Dockerfile=DOCKERFILE, **{"docker-compose.yml": COMPOSE})
+    pinned = references(root, pinned=True)
+    assert "postgres:16.10-bookworm@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74" in pinned
+    assert pinned[:2] == ["python:3.12.11-slim-bookworm", "ghcr.io/org/tool:1.2"] and "scratch" not in pinned
+    assert "${BASE}" not in pinned and "build" not in pinned and len(pinned) == len(references(root)) + 1
+
+
 def test_references_khong_co_dockerfile_hay_compose_thi_rong(tmp_path):
     root = _repo(tmp_path, **{"pyproject.toml": "[project]\nname='x'\nversion='0'\n"})
     assert references(root) == [] and argv(root) is None
