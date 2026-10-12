@@ -272,8 +272,12 @@ class ContainerSandbox:
         return "\n".join(f"{k}={v}" for k, v in sanitize_env(spec.env).items() if "\n" not in v)
 
     def _prepare(self, spec: RunSpec, name: str) -> tuple[RunSpec, EgressSession | None]:
+        # Biến mang đường dẫn MÁY CHỦ vô nghĩa trong image: PATH/VIRTUAL_ENV che trình thông dịch của image; HOME/XDG_*/
+        # TMPDIR trỏ thư mục không tồn tại, uid người vận hành không tạo được. Đo 2026-10-12: `uv lock` trong container
+        # exit=2 "Failed to initialize cache at /home/liend/.cache/uv — Permission denied". `HOME=/tmp` ghi được.
         spec = replace(spec, env={k: v for k, v in sanitize_env(spec.env).items()
-                                  if k.upper() not in {"PATH", "VIRTUAL_ENV"}})
+                                  if k.upper() not in {"PATH", "VIRTUAL_ENV", "HOME", "TMPDIR"}
+                                  and not k.upper().startswith("XDG_")} | {"HOME": "/tmp"})
         if not spec.network and not spec.allowed_domains:
             return spec, None
         from .egress import DockerSquidProxy

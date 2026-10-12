@@ -217,7 +217,7 @@ def test_spawn_tra_handle_poll_kill_stderr_cho_ca_hai_backend(tmp_path, monkeypa
     p2 = _P()
     ContainerSandbox("docker", "img:1", popen=lambda *a, **k: p2, env_via_stdin=True).spawn(
         RunSpec(argv=["x"], cwd=tmp_path, env={"LANG": "vi"}))
-    assert p2.written == ["LANG=vi\nPYTHONDONTWRITEBYTECODE=1"]
+    assert p2.written == ["LANG=vi\nPYTHONDONTWRITEBYTECODE=1\nHOME=/tmp"]
 
 
 def test_stderr_tail_rong_khi_khong_lay_duoc_dau_ra():
@@ -575,3 +575,19 @@ def test_s2_container_giu_path_va_venv_cua_image_khong_nhan_host(tmp_path, stdin
     blob = repr(calls)
     assert 'C:/host' not in blob
     assert 'APP_MODE=test' in blob
+
+
+@pytest.mark.parametrize('stdin_env', [True, False])
+def test_s2_container_khong_nhan_home_xdg_cua_may_chu_ma_home_la_tmp(tmp_path, stdin_env):
+    """Đo hub thật 2026-10-12 (QLKH-DD-CSV/DDCSV-02): `run lock` trong container trả exit=2 "Failed to initialize
+    cache at /home/liend/.cache/uv — Permission denied". Container chạy `-u uid:gid` của người vận hành nhưng `HOME`
+    máy chủ không tồn tại trong image; `HOME=/tmp` thì `uv` dựng được cache. Cùng họ với PATH/VIRTUAL_ENV ở trên:
+    biến mang đường dẫn máy chủ vô nghĩa trong container."""
+    calls = []
+    sb = ContainerSandbox('docker', 'img', runner=_fake_runner(calls), env_via_stdin=stdin_env)
+    sb.run(RunSpec(argv=['uv', 'lock'], cwd=tmp_path,
+                   env={'HOME': '/home/host', 'XDG_CACHE_HOME': '/home/host/.cache', 'XDG_RUNTIME_DIR': '/run/user/1000',
+                        'TMPDIR': '/home/host/tmp', 'APP_MODE': 'test'}))
+    blob = repr(calls)
+    assert '/home/host' not in blob and '/run/user/1000' not in blob
+    assert 'HOME=/tmp' in blob and 'APP_MODE=test' in blob
