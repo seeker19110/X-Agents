@@ -207,6 +207,8 @@ class WorkspaceTools:
     def run(self, command: str, paths: list[str] | None = None) -> str:
         argv = self.COMMANDS.get(command)
         if argv is None: raise ToolError(f"lệnh không trong allowlist: {command} (có: {sorted(self.COMMANDS)})")
+        if command == "lock" and paths:  # ADR-0054: công thức lock là của repo khách, model không thêm đối số
+            raise ToolError("lock không nhận paths: công thức lockfile do code ghép từ repo khách (ADR-0054)")
         for x in paths or []:  # "-x"/"--flag" là cờ, không phải đường dẫn: model không được thêm tuỳ chọn cho lệnh
             if not isinstance(x, str) or x.startswith("-"):
                 raise ToolError(f"paths chỉ nhận đường dẫn, không nhận tuỳ chọn: {x!r}")
@@ -252,7 +254,9 @@ class WorkspaceTools:
         tb.add(ToolSpec("search", "Tìm regex trong file (mặc định **/*.py); trả path:line: nội dung.",
                         {"type": "object", "properties": {"pattern": s(), "glob": s()}, "required": ["pattern"]}), self.search)
         if self.allow_run:
-            tb.add(ToolSpec("run", f"Chạy một lệnh trong allowlist: {sorted(self.COMMANDS)}. `paths` giới hạn phạm vi (tuỳ chọn).",
+            lock_note = (" `lock` sinh lại lockfile bằng uv (có mạng PyPI qua egress, ADR-0054) — chạy sau khi đổi phụ thuộc, "
+                         "không nhận `paths`." if "lock" in self.COMMANDS else "")
+            tb.add(ToolSpec("run", f"Chạy một lệnh trong allowlist: {sorted(self.COMMANDS)}. `paths` giới hạn phạm vi (tuỳ chọn).{lock_note}",
                             {"type": "object", "properties": {"command": {"type": "string", "enum": sorted(self.COMMANDS)},
                                                               "paths": {"type": "array", "items": {"type": "string"}}},
                              "required": ["command"]}), self.run)
