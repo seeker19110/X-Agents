@@ -29,8 +29,8 @@ from .guards import (
     When,
     _answers_incomplete,
     _can_author_tests,
-    _cr_accepted_direct,
-    _cr_accepted_needs_research,
+    _cr_accepted_when,
+    _cr_pending,
     _deployed,
     _field,
     _from_kind,
@@ -203,8 +203,8 @@ ROUTES: tuple[Route, ...] = (
     Route("external-feedback", ROLE.OPS, "incidents", many=True, phase="docs"),
     Route("incidents", ROLE.OPS, "research-requests", _field("root_cause_class", "requirement"), many=True, phase="docs"),
     Route("acceptance-results", ROLE.OPS, "change-requests", _field("verdict", "conditional"), many=True, phase="account"),
-    Route("change-requests", ROLE.PRODUCT, "audit-log", _field("decision", "pending"), phase=PHASE.PLAN),  # ước lượng impact → người quyết
-    Route("change-requests", ROLE.PRODUCT, "research-findings", _cr_accepted_needs_research, phase=PHASE.INTAKE),
+    Route("change-requests", ROLE.PRODUCT, "audit-log", _cr_pending, phase=PHASE.PLAN),  # ước lượng impact → người/reviewer quyết
+    Route("change-requests", ROLE.PRODUCT, "research-findings", _cr_accepted_when(True), phase=PHASE.INTAKE),
 )
 PROD_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="production", phase="deploy")
 
@@ -241,7 +241,7 @@ THREAT_ROUTE = Route("approved-specs", ROLE.SECURITY, "review-results")  # threa
 PLAN_INPUTS: dict[str, When] = {
     "approved-specs": lambda e, _o: True,
     "incidents": _field("root_cause_class", "code", "ops", "design"),
-    "change-requests": _cr_accepted_direct,
+    "change-requests": _cr_accepted_when(False),
 }
 
 
