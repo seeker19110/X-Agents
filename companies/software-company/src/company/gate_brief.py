@@ -33,6 +33,7 @@ from .bus import InMemoryBus
 from .events import Envelope
 from .gate_checklists import GateSection, SelfItem
 from .gate_checklists import load as load_gates
+from .gate_reviewer import RELEASE_PREFIX
 from .gates import GateRequest
 from .llm import FakeClient
 from .orchestrator import Orchestrator, _evidence, spec_runtime_gap
@@ -142,6 +143,7 @@ def _project_of(orch: Orchestrator, kind: str, subject: str) -> str | None:
     if kind == "acceptance":
         return _project_of(orch, "release", subject[4:] if subject.startswith("UAT-") else subject)
     if kind == "escalation":
+        if subject.startswith(RELEASE_PREFIX): return _project_of(orch, "release", subject)  # REL-* escalation (ops)
         if subject in orch.stalled: return subject
         t = orch.lead.tickets.get(subject)
         return t.project_id if t else (subject if subject in {p["project_id"] for p in orch.plans.values()} else None)
@@ -522,12 +524,61 @@ def _hints_used(orch: Orchestrator, subject: str) -> list[dict[str, Any]]:
     return out
 
 
+def _brief_escalation_release(orch: Orchestrator, it: Any, subject: str, pid: str | None, hints: list[dict[str, Any]],
+                              dup: list[str]) -> tuple[list[dict], list[dict], dict]:
+    """Escalation của một release (`ops` mở khi smoke/deploy hỏng, `release_fsm`). Đo hub thật 2026-10-12: nhánh
+    "dự án/stalled" bên dưới nhận `REL-*` (không phải ticket) và tìm audit có `project_id == "REL-001"` — không có gì,
+    hồ sơ trống, agent duyệt giữ cả 10 gate vì mù. Bằng chứng của release nằm ở `release-events` (key = release) và
+    audit `release.*` mang `release_id` trong evidence — gom ở đây theo thứ tự `seq`."""
+    seq = {e.event_id: i for i, e in enumerate(orch.bus.replay())}
+    history: list[dict[str, Any]] = []
+    for e in orch.bus.replay(topic="release-events", key=subject):
+        p = e.payload; sm_raw = p.get("smoke"); sm: dict[str, Any] = sm_raw if isinstance(sm_raw, dict) else {}
+        dp = (p.get("evidence") or {}).get("deploy") if isinstance(p.get("evidence"), dict) else None
+        detail = (sm.get("error") or sm.get("reason") or (dp or {}).get("error") or (dp or {}).get("skipped") or p.get("notes"))
+        if sm.get("stderr_tail"): detail = f"{detail or ''} | stderr: {sm['stderr_tail']}"
+        if sm.get("exit_code") is not None: detail = f"{detail or ''} | exit={sm['exit_code']}"
+        history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(),
+                        "action": f"release-events {p.get('env')} {p.get('status')}", "detail": excerpt(detail)})
+    for e in orch.bus.replay(topic="audit-log"):
+        p = e.payload; a = str(p.get("action") or "")
+        if not (a.startswith("release.") or a in ERROR_ACTIONS): continue
+        d = _evidence(p)
+        if d.get("release_id") != subject: continue
+        history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"{p.get('actor')}: {a}",
+                        "detail": excerpt(d.get("error") or d.get("reason") or d.get("stderr_tail")
+                                          or " ".join(f"{k}={d[k]}" for k in ("claimed_status", "http_status", "exit_code") if k in d)
+                                          or p.get("evidence"))})
+    for e in orch.bus.replay(topic="review-results", key=subject):
+        p = e.payload
+        if p.get("verdict") in {"block", "fail"}:
+            detail = p.get("root_cause") or "; ".join(f.get("text", "") for f in p.get("findings", []) if isinstance(f, dict) and f.get("level") == "block")
+            history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"review {p.get('source')} {p.get('verdict')}", "detail": excerpt(detail)})
+    history.sort(key=lambda h: (str(h["at"]), h["_seq"]))
+    for h in history: del h["_seq"]
+    rc = orch.latest("release-candidates", subject)
+    tids = list(orch.lead.release_tickets.get(subject) or (rc.payload.get("tickets") if rc is not None else []) or [])
+    release = {"version": rc.payload.get("version") if rc is not None else None, "tickets": tids,
+               "ticket_states": {t: orch.lead.state.get(t) for t in tids},
+               "last_event": next((f"{e.payload.get('env')} {e.payload.get('status')}"
+                                   for e in reversed(list(orch.bus.replay(topic="release-events", key=subject)))), None)}
+    cost = orch.supervisor.project_cost.get(pid or "", 0.0); pb = orch.supervisor.project_budget_usd
+    facts = [f"dự án đã tiêu {cost:.2f} USD; trần dự án: {pb if pb is not None else 'chưa đặt'}"]
+    item = _item(it, "unknown" if pb is None else ("ok" if cost < pb else "gap"), facts,
+                 [_topic_src("release-events", subject, list(orch.bus.replay(topic="release-events", key=subject)))])
+    extra = {"scope": "release", "release": release, "history": history[-40:], "hints_used": hints, "duplicate_hints": dup,
+             "budget": {"cost_usd": round(cost, 4), "project_budget_usd": pb}}
+    return [item], [], extra
+
+
 def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str | None,
                       repo: Path | None) -> tuple[list[dict], list[dict], dict]:
     items = _by_id(g); it = items["escalation.ngan-sach"]
     unavailable: list[dict[str, Any]] = []
     hints = _hints_used(orch, subject)
     dup = sorted({h["reason"] for h in hints if h["reason"] and sum(1 for x in hints if x["reason"] == h["reason"]) > 1})
+    if subject.startswith(RELEASE_PREFIX):
+        return _brief_escalation_release(orch, it, subject, pid, hints, dup)
 
     if subject in orch.stalled or subject not in orch.lead.tickets:
         st = orch.stalled.get(subject, {})
@@ -660,6 +711,7 @@ def render_md(b: dict[str, Any]) -> str:
     if b["kind"] == "escalation":
         if ex.get("ticket"): lines += ["", "## Ticket", "", "- " + ", ".join(f"{k}={v}" for k, v in ex["ticket"].items())]
         if ex.get("stalled"): lines += ["", "## Dự án kẹt", "", f"- {excerpt(json.dumps(ex['stalled'], ensure_ascii=False), 400)}"]
+        if ex.get("release"): lines += ["", "## Release", "", "- " + ", ".join(f"{k}={v}" for k, v in ex["release"].items())]
         lines += ["", "## Lịch sử thất bại", ""] + ([f"- {h['at']} — {h['action']}: {h['detail']}" for h in ex.get("history", [])] or ["- (trống)"])
         lines += ["", "## Hint đã dùng", ""] + ([f"- {h['at']} — {h['by']} {h['decision']}: {h['reason']}" for h in ex.get("hints_used", [])] or ["- (chưa có)"])
         if ex.get("duplicate_hints"): lines.append("- hint lặp lại y hệt: " + " | ".join(ex["duplicate_hints"]))
