@@ -21,6 +21,7 @@ from xagents_core.tools import ToolCall as ToolCall
 from xagents_core.tools import ToolError as ToolError
 from xagents_core.tools import ToolSpec as ToolSpec
 
+from . import image_digest
 from .prd_context import _SECTION
 from .sandbox import RunSpec, Sandbox, SubprocessSandbox, registry_domains
 from .stacks import detect
@@ -85,6 +86,9 @@ class WorkspaceTools:
         # Thư mục thường mà được phép chạy (QA hồi quy trên worktree tích hợp) thì nhận stack theo file dấu hiệu ở gốc.
         self.stack = self.ws.stack() if self.ws is not None else detect(self.root)
         stack_cmds = self.stack.commands() if allow_run else {}
+        # ADR-0055: image trong Dockerfile/compose chưa ghim digest ⇒ lệnh `image_digest` (argv do code ghép từ repo).
+        if allow_run and (dg := image_digest.argv(self.root)):
+            stack_cmds = {**stack_cmds, "image_digest": dg}
         self.COMMANDS: dict[str, list[str]] = {**stack_cmds, **self.GIT_COMMANDS}
         # Phân vùng ghi (ADR-0028): `tests` cho test-author, `src` cho agent viết code, `all` là đường cũ.
         # Fail closed — không biết đâu là test thì không giả vờ có ranh giới, dựng bảng tool luôn hỏng
@@ -207,8 +211,8 @@ class WorkspaceTools:
     def run(self, command: str, paths: list[str] | None = None) -> str:
         argv = self.COMMANDS.get(command)
         if argv is None: raise ToolError(f"lệnh không trong allowlist: {command} (có: {sorted(self.COMMANDS)})")
-        if command == "lock" and paths:  # ADR-0054: công thức lock là của repo khách, model không thêm đối số
-            raise ToolError("lock không nhận paths: công thức lockfile do code ghép từ repo khách (ADR-0054)")
+        if command in ("lock", "image_digest") and paths:  # ADR-0054/0055: đối số do code ghép từ repo khách
+            raise ToolError(f"{command} không nhận paths: đối số do code ghép từ repo khách (ADR-0054, ADR-0055)")
         for x in paths or []:  # "-x"/"--flag" là cờ, không phải đường dẫn: model không được thêm tuỳ chọn cho lệnh
             if not isinstance(x, str) or x.startswith("-"):
                 raise ToolError(f"paths chỉ nhận đường dẫn, không nhận tuỳ chọn: {x!r}")
@@ -221,7 +225,7 @@ class WorkspaceTools:
         sb = SubprocessSandbox() if command in self.GIT_COMMANDS else self.sandbox
         r = sb.run(RunSpec(argv=[*argv, *(["--", *args] if args else [])], cwd=self.root,
                            env=clean_env(), timeout=float(self.timeout), max_output=MAX_OUTPUT,
-                           allowed_domains=registry_domains(argv, sb.name)))
+                           allowed_domains=registry_domains(argv, sb.name, command)))
         if r.timed_out:
             return f"lỗi: {command} quá {self.timeout}s"
         return f"exit={r.exit_code}\n{(r.stdout + r.stderr)[-MAX_OUTPUT:]}"
@@ -256,7 +260,10 @@ class WorkspaceTools:
         if self.allow_run:
             lock_note = (" `lock` sinh lại lockfile bằng uv (có mạng PyPI qua egress, ADR-0054) — chạy sau khi đổi phụ thuộc, "
                          "không nhận `paths`." if "lock" in self.COMMANDS else "")
-            tb.add(ToolSpec("run", f"Chạy một lệnh trong allowlist: {sorted(self.COMMANDS)}. `paths` giới hạn phạm vi (tuỳ chọn).{lock_note}",
+            digest_note = (" `image_digest` in `image@sha256:…` cho mọi image chưa ghim trong Dockerfile/compose (Docker Hub "
+                           "qua egress, ADR-0055) — đọc rồi tự ghim vào file, không nhận `paths`."
+                           if "image_digest" in self.COMMANDS else "")
+            tb.add(ToolSpec("run", f"Chạy một lệnh trong allowlist: {sorted(self.COMMANDS)}. `paths` giới hạn phạm vi (tuỳ chọn).{lock_note}{digest_note}",
                             {"type": "object", "properties": {"command": {"type": "string", "enum": sorted(self.COMMANDS)},
                                                               "paths": {"type": "array", "items": {"type": "string"}}},
                              "required": ["command"]}), self.run)

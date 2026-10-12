@@ -41,6 +41,11 @@ def sandbox_from_config(cfg: LLMConfig, which: Any = shutil.which) -> Sandbox:
     return sandbox_from_settings(mode, runtime, image, "COMPANY_SANDBOX", which)
 
 
-def registry_domains(argv: Sequence[str], mode: str) -> tuple[str, ...]:
-    """S2: uv tự sync phụ thuộc khách; chỉ cho PyPI khi backend enforce được ACL."""
-    return ('pypi.org', 'files.pythonhosted.org') if argv[0] == 'uv' and mode.startswith('container:') else ()
+def registry_domains(argv: Sequence[str], mode: str, command: str | None = None) -> tuple[str, ...]:
+    """S2: uv tự sync phụ thuộc khách; chỉ cho PyPI khi backend enforce được ACL. ADR-0055: `image_digest` mở Docker Hub."""
+    if not mode.startswith('container:'):
+        return ()
+    if command == 'image_digest':
+        from .image_digest import DOMAINS
+        return DOMAINS
+    return ('pypi.org', 'files.pythonhosted.org') if argv[0] == 'uv' else ()
