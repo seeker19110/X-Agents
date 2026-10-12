@@ -50,6 +50,10 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
   chính, `reviewer:phien-chinh`) `approve`/`reject` mọi gate trừ `spec`, không trần, kể cả chấp nhận finding của release
   và nghiệm thu thay khách. Four-eyes thực chất không còn; dấu vết vẫn trung thực (không `human:*`). Lộ khoá ở phạm vi
   này = mã khách tự duyệt được release/nghiệm thu.
+- **Phạm vi `toan-bo`** (ADR gốc 0033, `COMPANY_GATE_REVIEWER_SCOPE=toan-bo`, chủ dự án chọn 2026-10-12): như `rong`
+  cộng gate `spec`. Không còn điểm dừng bắt buộc nào của người trước khi code được viết. Lộ khoá ở phạm vi này = mã
+  khách tự duyệt được cả spec — chỉ bật cùng sandbox container. `BusApprovalLookup` (profile chất lượng) vẫn chỉ tin
+  spec do người duyệt.
 - **Chống prompt injection** (`guard.py`, ADR-0012): dữ liệu nguồn nội bộ nghi injection thì từ chối chạy; dữ liệu
   nguồn ngoài (khách, web, diff repo khách) bị lọc đoạn khớp mẫu và ghi audit, vì không thể từ chối đọc.
 - **Quét tài sản prompt** (`company.assetscan`, ADR-0022): `guard.py` canh dữ liệu chạy qua, còn cổng này canh

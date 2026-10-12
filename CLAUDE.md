@@ -31,6 +31,7 @@ oan thì sửa hook kèm test trong `test_cong_khung.py`.
 - `/gate-review [subject]` — reviewer có chữ ký (ADR gốc 0024): một phiên Claude **mới, tách riêng** mở lại ticket/dự án
   bị chặn trong phạm vi hẹp; actor `reviewer:<id>`, không bao giờ `human:*`. Phiên đã sửa code/viết hint thì không chạy.
   Phạm vi `rong` (ADR gốc 0025, `COMPANY_GATE_REVIEWER_SCOPE=rong`): phiên chính quyết mọi gate trừ spec, ký `reviewer:phien-chinh`.
+  Phạm vi `toan-bo` (ADR gốc 0033): như `rong` cộng gate spec — vẫn `reviewer:phien-chinh`, không bao giờ `human:*`.
 - `/thi-hanh <mã> [đề bài]` — thi hành một đề bài từ đặc tả tới mọi PR merge theo `docs/KHUON-THI-HANH.md`: phiên chính
   điều phối, subagent thực thi theo mức C1/C2/C3, người ra lệnh một lần. Trạng thái ở `docs/thi-hanh/<mã>.md`.
 - `.claude/agents/sc-*` — 10 trợ lý kiểm duyệt chỉ đọc (một per agent + một per gate), sinh tự động; gọi khi cần
