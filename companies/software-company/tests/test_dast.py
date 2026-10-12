@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from company.dast import BURST, deploy_of, evidence, login_op, run_dast, scan
+from company.dast import BURST, contract_in_tree, deploy_of, evidence, login_op, run_dast, scan
 from company.smoke import Runtime, run_smoke
 
 # Sản phẩm mẫu hai chế độ: `kin` (làm đúng) và `ho` (hở). Chạy được cả trong tiến trình test lẫn làm tiến trình con.
@@ -157,10 +157,24 @@ def test_login_op_doc_tu_api_contract():
     op, why = login_op(CONTRACT)
     assert op == {
         "path": "/api/v1/auth/session",
+        "paths": ["/api/v1/auth/session"],
         "operation_id": "createSession",
         "fields": {"password": "password", "username": ""},
     }, "changePassword cần phiên (security gốc) nên không phải cửa đăng nhập"
     assert "createSession" in why
+
+
+def test_login_op_them_duong_theo_servers_cua_contract():
+    """Đo hub 2026-10-13 (QLKH-DD-CSV): contract khai `servers: [{url: https://api…/v1}]` và `/auth/login`; devserver
+    mount `/v1/auth/login`. Đường khai trong contract gồm cả tiền tố `servers[].url` — không phải dò đường (ADR-0047)."""
+    c = CONTRACT.replace(
+        "security: [{session: []}]\n",
+        "security: [{session: []}]\nservers: [{url: https://api.x.vn/v1}, {url: /}, {url: 'http://h/api/v1/'}]\n",
+    )
+    op, _ = login_op(c)
+    assert op is not None and op["paths"] == ["/api/v1/auth/session", "/v1/api/v1/auth/session"], (
+        "gốc `/` không thêm gì; tiền tố đã có sẵn trong path thì không lặp; không trùng"
+    )
 
 
 @pytest.mark.parametrize(
@@ -270,6 +284,29 @@ def test_scan_khong_co_cua_dang_nhap_thi_ghi_skipped(app):
     assert any("không thử cửa đăng nhập" in n for n in r["notes"])
 
 
+def test_scan_chon_cua_dang_nhap_theo_servers_khi_duong_goc_404(app):
+    """Contract khai `/auth/session` với `servers: [{url: /api/v1}]`; sản phẩm mount `/api/v1/auth/session` → thử
+    đường gốc (404) rồi đường có tiền tố; burst chạy trên cửa thật, `login.path` ghi cửa đã chọn."""
+    c = CONTRACT.replace("  /api/v1/auth/session:", "  /auth/session:").replace(
+        "security: [{session: []}]\n", "security: [{session: []}]\nservers: [{url: /api/v1}]\n"
+    )
+    r = scan(app("kin"), "/healthz", c)
+    login = r["checks"]["login"]
+    assert login["path"] == "/api/v1/auth/session" and login["paths"] == ["/auth/session", "/api/v1/auth/session"]
+    assert login["same_username"]["attempts"] == BURST and login["same_username"]["limited"] is True
+
+
+def test_scan_moi_cua_dang_nhap_deu_404_thi_skipped_noi_ro_khong_burst(app):
+    """Đo hub 2026-10-13 (REL-021): 24/24 POST trả 404 — cửa khai trong contract chưa được mount. Nói đúng điều đó
+    thay vì 24 con số 404; không ghi thành lỗ hổng (sản phẩm chưa có cửa, không phải cửa hở)."""
+    c = CONTRACT.replace("  /api/v1/auth/session:", "  /khong/co:")
+    r = scan(app("kin"), "/healthz", c)
+    login = r["checks"]["login"]
+    assert "attempts" not in json.dumps(login) and "404" in login["skipped"] and "/khong/co" in login["skipped"]
+    assert login["operation_id"] == "createSession" and not any("đăng nhập" in i for i in r["issues"])
+    assert any("chưa được mount" in n for n in r["notes"])
+
+
 def test_scan_truong_email_gui_email_hop_le(app):
     c = CONTRACT.replace("username: {type: string}", "email: {type: string, format: email}")
     c = c.replace("required: [username, password]", "required: [email, password]")
@@ -326,6 +363,60 @@ def test_evidence_theo_runtime_cua_spec(tmp_path):
     dep = evidence(tmp_path, {"runtime": {**spec["runtime"], "deploy": "compose.yml"}}, None, CONTRACT, sha="s")
     assert dep["unverified"] is True and "runtime.deploy" in dep["reason"]
     assert json.loads(json.dumps(ev)) == ev, "bằng chứng đi trên bus: phải là JSON"
+
+
+def test_contract_in_tree_chon_openapi_trong_cay_rc_bo_thu_muc_rac(tmp_path):
+    """Đo hub 2026-10-13 (QLKH-DD-CSV): DDCSV-01 đưa contract 1.5.0 vào repo (`api/QLKH/openapi.yaml`, có fitness test
+    cấm `createSession`), còn bản `api-contract` trên blackboard từ pha plan vẫn khai `/auth/session` → DAST quét cửa
+    sản phẩm không hề hứa. Contract trong cây RC là bản sống; blackboard chỉ là dự phòng."""
+
+    assert contract_in_tree(tmp_path) is None
+    (tmp_path / "api").mkdir()
+    (tmp_path / "api" / "openapi.yaml").write_text(CONTRACT, encoding="utf-8")
+    (tmp_path / "node_modules" / "x").mkdir(parents=True)
+    (tmp_path / "node_modules" / "x" / "openapi.yaml").write_text(
+        "openapi: 3.0.3\npaths:\n" + "".join(f"  /p{i}: {{}}\n" for i in range(20)), encoding="utf-8"
+    )
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "openapi-old.json").write_text(
+        json.dumps({"openapi": "3.0.0", "paths": {"/a": {}}}), encoding="utf-8"
+    )
+    (tmp_path / "openapi-hong.yaml").write_text("paths: [", encoding="utf-8")
+    (tmp_path / "swagger.yaml").write_text("foo: 1\n", encoding="utf-8")
+    text, rel = contract_in_tree(tmp_path)
+    assert rel == "api/openapi.yaml" and text == CONTRACT, (
+        "nhiều paths nhất ngoài thư mục rác; hỏng/không phải OpenAPI bỏ qua"
+    )
+
+
+def test_contract_in_tree_file_khong_doc_duoc_thi_bo_qua(tmp_path):
+    (tmp_path / "openapi.yaml").write_bytes(b"openapi: 3.0.3\npaths: {\xff\xfe}\n")
+    assert contract_in_tree(tmp_path) is None, "file không phải UTF-8 không làm hỏng lượt quét"
+
+
+def test_scan_nhieu_duong_theo_servers_deu_404_thi_skipped_khong_burst(app):
+    """Như REL-021 sau khi đọc contract trong repo: `/auth/login` và `/v1/auth/login` đều 404 — dò một POST mỗi đường
+    rồi dừng, không bắn 24 lần vào cửa không tồn tại."""
+    c = CONTRACT.replace("  /api/v1/auth/session:", "  /khong/co:").replace(
+        "security: [{session: []}]\n", "security: [{session: []}]\nservers: [{url: /v9}]\n"
+    )
+    r = scan(app("kin"), "/healthz", c)
+    login = r["checks"]["login"]
+    assert login["paths"] == ["/khong/co", "/v9/khong/co"] and "/v9/khong/co" in login["skipped"]
+    assert "distinct_usernames" not in login and any("chưa được mount" in n for n in r["notes"])
+
+
+def test_evidence_uu_tien_contract_trong_cay_rc_va_ghi_nguon(tmp_path):
+    rt = _rt(tmp_path)
+    spec = {"runtime": {"command": list(rt.command), "health": "/healthz", "timeout_s": 20}}
+    bb = CONTRACT.replace("operationId: createSession", "operationId: taoPhienCu")
+    ev = evidence(tmp_path, spec, None, bb, sha="s")
+    assert ev["checks"]["login"]["operation_id"] == "taoPhienCu" and ev["contract_source"] == "blackboard:api-contract"
+    (tmp_path / "openapi.yaml").write_text(CONTRACT, encoding="utf-8")
+    ev = evidence(tmp_path, spec, None, bb, sha="s")
+    assert ev["checks"]["login"]["operation_id"] == "createSession" and ev["contract_source"] == "repo:openapi.yaml"
+    (tmp_path / "openapi.yaml").unlink()
+    assert evidence(tmp_path, spec, None, None, sha="s")["contract_source"] is None
 
 
 def test_evidence_quet_moi_truong_deploy_dang_chay_khi_spec_can_deploy(tmp_path, app):
