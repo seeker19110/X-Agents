@@ -606,3 +606,34 @@ def test_history_thu_tu_theo_bus_khi_trung_dau_thoi_gian(tmp_path):
     inval = [i for i, a in enumerate(acts) if "invalid_output" in a]
     assert inval and inval[0] < acts.index("tasks retry=2"), "lỗi phải đứng TRƯỚC lần retry mà nó gây ra"
     assert acts[-1].endswith("ticket.blocked"), "event ghi muộn nhất phải đứng cuối"
+
+
+# ---------- escalation của release: hồ sơ phải thấy smoke/deploy đã hỏng (hub thật 2026-10-12) ----------
+
+def test_escalation_release_co_lich_su_smoke_fail_va_du_an(tmp_path):
+    """Đo hub thật 2026-10-12: REL-001→010 escalation vì smoke fail, nhưng hồ sơ `gate_brief` cho `REL-*` rơi vào
+    nhánh "dự án/stalled" (subject không phải ticket) — `project_id` `?`, "Lịch sử thất bại" trống, audit-log key=REL
+    0 event. Agent duyệt tự động (ADR gốc 0034) giữ cả 10 gate vì mù. Hồ sơ escalation của release phải mang
+    `release-events` (env/status/lỗi smoke) và audit `release.smoke_failed`/`deploy_failed` của đúng release."""
+    from test_smoke_evidence import SERVER_DIE, _orch, _repo
+    repo = _repo(tmp_path, SERVER_DIE)
+    _, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 10})
+    orch.run()
+    assert orch.gate.pending["REL-001"].kind == "escalation"
+    _pub(orch.bus, "review-results", "REL-001", "security",
+         {"ticket_id": "REL-001", "source": "security", "verdict": "block", "root_cause": "SBOM thiếu gói mới"})
+    _pub(orch.bus, "review-results", "REL-001", "qa", {"ticket_id": "REL-001", "source": "qa", "verdict": "pass"})
+    orch._audit("release.smoke_unverified", {"release_id": "REL-999", "reason": "release khác, không được lẫn"})
+    b = GB.build(orch, "REL-001")
+    assert b["project_id"] == "P", "project của release lấy từ ticket của nó, không phải '?'"
+    ex = b["extra"]
+    assert ex["scope"] == "release"
+    acts = [h["action"] for h in ex["history"]]
+    assert any("release.smoke_failed" in a for a in acts), acts
+    assert any("release-events staging failed" in a for a in acts), acts
+    assert "review security block" in acts and any("SBOM" in (h["detail"] or "") for h in ex["history"])
+    assert not any("qa pass" in a for a in acts) and not any("REL-999" in (h["detail"] or "") for h in ex["history"])
+    assert any("DATABASE_URL" in (h["detail"] or "") or "exit" in (h["detail"] or "") for h in ex["history"]), ex["history"]
+    assert ex["release"]["version"] == "0.1.0" and ex["release"]["tickets"] == ["T1"]
+    md = GB.render_md(b)
+    assert "release.smoke_failed" in md and "(trống)" not in md
