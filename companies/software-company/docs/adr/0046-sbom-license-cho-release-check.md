@@ -40,12 +40,13 @@ người khác" của ADR-0044.
 ## Bổ sung 2026-09-27 — lock file ngoài uv
 
 Bản đầu chỉ đọc `uv.lock`; dự án Node/Go/Rust ra `unverified` và security chặn như trước. Nay `supply_chain.evidence`
-đọc bốn loại lock ở **gốc cây RC và thư mục con một tầng** (monorepo `frontend/`, `backend/`; bỏ thư mục ẩn,
+đọc năm loại lock ở **gốc cây RC và thư mục con một tầng** (monorepo `frontend/`, `backend/`; bỏ thư mục ẩn,
 `node_modules`, `target`, `vendor`), gộp theo `purl`, ghi `lock` của từng dòng và `source = "uv.lock+frontend/…"`:
 
 | Lock | Thành phần | License |
 |---|---|---|
 | `uv.lock` | như trên | metadata gói đã cài, `uv run --frozen` trong sandbox |
+| `requirements.lock` (bổ sung 2026-10-12) | dòng ghim `tên[extra]==bản` của `uv pip compile` (bỏ hash, `# via`, `-e`) | metadata gói trong env dựng từ chính lockfile: `uv run --isolated --no-project --with-requirements requirements.lock` trong sandbox. Đo hub thật QLKH-DD-CSV REL-011: thiếu dòng này thì RC ra `unverified` dù lockfile đủ hash |
 | `package-lock.json` v2/v3 | `packages` dưới `node_modules/` (bỏ gốc, `link`) | trường `license` npm tự ghi vào lock; thiếu thì `package.json` trong `node_modules` — không chạy gì |
 | `Cargo.lock` | gói có `source` (không có là crate của workspace) | `cargo metadata --locked --offline` trong sandbox; `/` là cú pháp OR cũ Cargo còn chấp nhận nên đổi thành ` OR ` |
 | `go.mod` | các dòng `require` (Go ≥ 1.17 ghi đủ gián tiếp) | không có nguồn: `NOASSERTION`, `licenses_error` nói vì sao |
