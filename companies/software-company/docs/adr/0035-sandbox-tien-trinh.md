@@ -58,6 +58,25 @@ quyết được việc mã khách đọc file ngoài worktree.
 - `SECURITY.md` sẽ sửa đoạn tự nhận nói trên khi K2.2 nối xong — **không sửa trước**, vì trước K2.2 câu đó vẫn
   đúng: module tồn tại nhưng chưa có nơi gọi.
 
+## Bổ sung 2026-10-12 — chế độ container chạy được repo Python thật
+
+Đo trên hub thật (dự án `QLKH-DD-CSV`, `sandbox_mode: container:python:3.12-slim`, ADR gốc 0032): mọi lượt builder
+nhận exit 127 từ tool `run` rồi cháy lượt (`error_max_turns`) hoặc bỏ cuộc không sửa file nào. Hai lỗ, cả hai ngược
+với chính ADR này:
+
+1. **Git đi vào container.** `WorkspaceTools.run` gửi cả `git_status`/`git_diff` qua sandbox, trái §4. Image không có
+   git, và `.git` của worktree là file trỏ ra kho gốc ngoài mount `/w`. Sửa: lệnh trong `GIT_COMMANDS` chạy bằng
+   `SubprocessSandbox` (argv vẫn hard-code, không có lệnh git ghi nào trong allowlist).
+2. **Trình thông dịch máy chủ trong argv.** Stack Python (`stacks.PY`) và smoke (`Runtime.argv`) ghép
+   `sys.executable` — đúng cho subprocess, nhưng là đường dẫn venv của orchestrator, không tồn tại trong container.
+   Sửa ở **một** chỗ: `ContainerSandbox._argv` đổi `sys.executable` ở argv[0] thành `python` của image, nên cả
+   tool `run`, `run_checks` lẫn smoke cùng đúng.
+
+Còn lại là việc của người vận hành, như §Hệ quả đã nói về `sandbox_image`: image phải có sẵn **công cụ và phụ
+thuộc của khách** (ruff, pytest, driver DB…, cộng `uv` nếu repo đi đường ADR-0044) vì container chạy mạng tắt, không
+cài được gì lúc chạy. `python:3.12-slim` trơn không đủ cho repo Python nào có phụ thuộc: dựng image từ lockfile
+của khách rồi đặt `COMPANY_SANDBOX_IMAGE`.
+
 ## Liên quan
 
 ADR-0029 (smoke do orchestrator chạy — nguồn của lệnh không allowlist), ADR-0033 (smoke thành DoD nên rủi ro

@@ -214,9 +214,12 @@ class WorkspaceTools:
         # `--` chốt hết tuỳ chọn trước danh sách đường dẫn. Lệnh đi qua `Sandbox` (ADR-0035): argv vẫn do code
         # ghép từ allowlist, nhưng NỘI DUNG repo khách thì không — backend `container` chạy nó với mạng tắt và
         # không thấy `HOME` của người vận hành. `env=clean_env()` tường minh (xem `TicketWorkspace._run`).
-        r = self.sandbox.run(RunSpec(argv=[*argv, *(["--", *args] if args else [])], cwd=self.root,
-                                     env=clean_env(), timeout=float(self.timeout), max_output=MAX_OUTPUT,
-                                     allowed_domains=registry_domains(argv, self.sandbox.name)))
+        # ADR-0035 §4: git ở lại subprocess — argv hard-code từ `GIT_COMMANDS`, image của mã khách không có git và
+        # `.git` của worktree trỏ ra ngoài mount (đo 2026-10-12: `container:python:3.12-slim` trả exit 127).
+        sb = SubprocessSandbox() if command in self.GIT_COMMANDS else self.sandbox
+        r = sb.run(RunSpec(argv=[*argv, *(["--", *args] if args else [])], cwd=self.root,
+                           env=clean_env(), timeout=float(self.timeout), max_output=MAX_OUTPUT,
+                           allowed_domains=registry_domains(argv, sb.name)))
         if r.timed_out:
             return f"lỗi: {command} quá {self.timeout}s"
         return f"exit={r.exit_code}\n{(r.stdout + r.stderr)[-MAX_OUTPUT:]}"

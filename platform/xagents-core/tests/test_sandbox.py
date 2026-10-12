@@ -121,6 +121,19 @@ def test_container_argv_mount_rw_mang_tat_va_env_qua_stdin(tmp_path):
     assert "LANG=vi" in rec[0]["input"]        # env đi qua stdin, không hiện trong danh sách tiến trình
 
 
+def test_container_doi_trinh_thong_dich_may_chu_thanh_python_cua_image(tmp_path):
+    """Đo 2026-10-12 (QLKH-DD-CSV, sandbox `container:python:3.12-slim`): lint/test của stack Python gọi
+    `sys.executable` — đường dẫn venv của ORCHESTRATOR trên máy chủ — mà container chỉ mount worktree ở `/w`, nên mọi
+    lượt builder nhận exit 127 rồi cháy lượt. Trong container, trình thông dịch là `python` của image."""
+    rec: list[dict[str, Any]] = []
+    ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), env_via_stdin=True).run(
+        RunSpec(argv=[sys.executable, "-m", "pytest", "-q"], cwd=tmp_path, env={}))
+    assert rec[0]["argv"][-4:] == ["python", "-m", "pytest", "-q"]
+    rec.clear()
+    SubprocessSandbox(runner=_fake_runner(rec)).run(RunSpec(argv=[sys.executable, "-V"], cwd=tmp_path, env={}))
+    assert rec[0]["argv"][0] == sys.executable, "subprocess chạy trên máy chủ: giữ nguyên trình thông dịch"
+
+
 def test_container_env_file_doc_stdin_qua_dev_stdin(tmp_path):
     rec: list[dict[str, Any]] = []
     ContainerSandbox("docker", "img:1", runner=_fake_runner(rec), env_via_stdin=True).run(

@@ -225,6 +225,21 @@ def test_tool_run_cua_model_di_qua_sandbox(tmp_path):
     assert out.startswith("exit=0") and "All checks passed!" in out
 
 
+def test_tool_run_git_khong_di_qua_sandbox(tmp_path):
+    """ADR-0035 §4: git ở lại subprocess. Đo 2026-10-12 (QLKH-DD-CSV, `container:python:3.12-slim`): `git_status` /
+    `git_diff` của tool `run` đi vào container — image không có git, và `.git` của worktree trỏ ra ngoài mount —
+    builder nhận exit 127 liên tiếp rồi cháy lượt. Argv git là hard-code từ `GIT_COMMANDS`, model không viết được."""
+    ws = _ws(tmp_path)
+    (ws.path / "moi.py").write_text("x = 1\n", encoding="utf-8")
+    spy = SpySandbox()
+    tools = WorkspaceTools(ws, sandbox=spy)
+    out = tools.run("git_status")
+    assert spy.specs == [], "git không được đi qua sandbox của mã khách"
+    assert out.startswith("exit=0") and "moi.py" in out, out
+    tools.run("lint")
+    assert len(spy.specs) == 1, "lint/test vẫn đi qua sandbox"
+
+
 def test_run_checks_di_qua_sandbox_cua_worktree(tmp_path):
     ws = _ws(tmp_path)
     spy = SpySandbox()
