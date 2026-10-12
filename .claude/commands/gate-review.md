@@ -56,9 +56,16 @@ Chủ dự án giao phiên chính quyết mọi gate trừ duyệt spec. Khi bi�
 - Lý do vẫn phải có `root_cause`/`decision`/`hint`. Chấp nhận rủi ro (license, finding security) thì ghi rõ rủi ro
   gì đã được chấp nhận trong `root_cause` — người đọc sau phải thấy máy đã chấp nhận cái gì.
 
+## Phạm vi `toan-bo` (ADR gốc 0033) — khi `COMPANY_GATE_REVIEWER_SCOPE=toan-bo`
+
+Mọi điều của `rong` **cộng** gate `spec`. Chủ dự án giao luôn việc duyệt spec. Quyết spec theo hồ sơ
+`gate_brief`: PRD có NFR đo được, ngoài phạm vi rõ, câu hỏi làm rõ đã trả lời hoặc thành giả định có owner, runtime
+khai đủ → `approve`; thiếu thứ chặn tiêu chí nghiệm thu hay ruling tự quyết đổi phạm vi khách đã nêu → `reject` với
+hint cụ thể. Ghi trong `root_cause` những ruling tự quyết đáng kể nhất mà bạn đã chấp nhận thay khách.
+
 ## Không bao giờ
 
 - Ký bằng `human:*`, hay gõ `gate_cli approve` (đó là cửa của người).
 - Sửa registry, khoá, cờ, hoặc bất kỳ file nào của repo.
 - Quyết gate mà chính phiên này đã góp phần tạo ra nguyên nhân hoặc hint (trừ phạm vi `rong` ở trên).
-- Quyết gate `spec`, ở bất kỳ phạm vi nào.
+- Quyết gate `spec`, trừ khi phạm vi là `toan-bo` (ADR gốc 0033).

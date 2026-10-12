@@ -100,6 +100,39 @@ def test_rong_van_khong_duyet_spec(khoa, brief):
     assert "SPEC-P1" in g.pending, "ghi thẳng bus cũng không qua"
 
 
+LY_DO_SPEC = "root_cause: PRD đủ NFR có số, out-of-scope rõ; decision: approve; hint: threat model phủ PII trẻ em"
+
+
+def test_toan_bo_duyet_va_tu_choi_duoc_spec(khoa, brief, monkeypatch):
+    """ADR gốc 0033: chủ dự án 2026-10-12 chọn "Bật lâu dài" — phiên chính duyệt cả spec, vẫn dưới chữ ký reviewer."""
+    monkeypatch.setenv(gr.SCOPE_ENV, gr.SCOPE_TOAN_BO)
+    g = _gate_kind("spec", "SPEC-P1", ROLE.PRODUCT)
+    gr.decide(g, "SPEC-P1", ID, LY_DO_SPEC, khoa, brief)
+    assert "SPEC-P1" not in g.pending and g.history[-1].decided_by == ID, "không bao giờ human:*"
+    g2 = _gate_kind("spec", "SPEC-P2", ROLE.PRODUCT)
+    gr.decide(g2, "SPEC-P2", ID, LY_DO_SPEC, khoa, brief, decision="reject")
+    assert g2.history[-1].decision == "reject"
+
+
+def test_toan_bo_gom_moi_viec_cua_rong(khoa, brief, monkeypatch):
+    monkeypatch.setenv(gr.SCOPE_ENV, gr.SCOPE_TOAN_BO)
+    g = _gate_kind("release", "REL-004", "delivery-lead")
+    gr.decide(g, "REL-004", ID, LY_DO_REL, khoa, brief)
+    assert "REL-004" not in g.pending
+
+
+def test_ve_rong_thi_spec_reviewer_da_duyet_khong_duoc_ap(tmp_path, khoa, brief, monkeypatch):
+    """Hỏng thì đóng: bỏ `toan-bo` (về `rong`) rồi mở lại tiến trình thì spec reviewer đã duyệt hiện lại chờ người."""
+    monkeypatch.setenv(gr.SCOPE_ENV, gr.SCOPE_TOAN_BO)
+    db = tmp_path / "c.sqlite"
+    g = PersistentGate(SQLiteBus(db))
+    g.request(GateRequest(kind="spec", subject_id="SPEC-P1", created_by=ROLE.PRODUCT, checklist=["prd"]))
+    gr.decide(g, "SPEC-P1", ID, LY_DO_SPEC, khoa, brief)
+    g.bus.close()
+    monkeypatch.setenv(gr.SCOPE_ENV, gr.SCOPE_RONG)
+    assert "SPEC-P1" in PersistentGate(SQLiteBus(db)).pending
+
+
 def test_rong_decision_la_thi_khong_tin(khoa):
     g = _gate()
     _publish_signed(g, "T1", khoa, decision="waive", principal=ID)

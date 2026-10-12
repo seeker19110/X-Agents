@@ -198,6 +198,9 @@ env của CẢ orchestrator lẫn phiên ký, khoá `init-key --id phien-chinh`.
 `gate_reviewer decide <subject> --id phien-chinh [--decision reject] ...`. Dừng: bỏ biến rồi mở lại orchestrator —
 quyết định ngoài S2 của reviewer không còn được áp, các gate đó hiện lại chờ người.
 
+**Phạm vi `toan-bo`** (ADR gốc 0033 — như `rong` cộng gate spec): `COMPANY_GATE_REVIEWER_SCOPE=toan-bo`, cùng khoá
+`phien-chinh`. Dừng: đặt lại `rong` (hoặc bỏ biến) rồi mở lại orchestrator — spec reviewer đã duyệt hiện lại chờ người.
+
 ### Bước agent chậm ở đâu — span (ADR gốc 0009)
 
 `export COMPANY_OTEL=1` trước khi mở orchestrator software-company thì span `runner.step` → `llm.complete` →

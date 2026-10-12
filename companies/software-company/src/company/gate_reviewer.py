@@ -7,7 +7,8 @@ và ghi `gate.decide`. Code — không phải lời hứa của phiên — giữ
    khuôn ADR gốc 0020), trên nội dung gồm cả THẾ HỆ gate — chữ ký của gate cũ không dùng lại được cho gate mới.
 2. **Phạm vi (S2)**: chỉ `approve` gate `escalation` có checklist `decision:reopen|close` (ticket) hoặc
    `decision:retry|close` (dự án), subject không phải release. Release (`approve` = waive finding), nợ kiến trúc
-   (`decision:adr|waive`), spec, reject/close: người.
+   (`decision:adr|waive`), spec, reject/close: người. Phạm vi `rong` (ADR gốc 0025) nới tới mọi gate trừ spec;
+   `toan-bo` (ADR gốc 0033) gồm cả spec.
 3. **Trần**: mỗi subject một lần. Lần chặn sau về người — reviewer không bao giờ duyệt lại hint do chính nó viết.
 
 Cờ `COMPANY_GATE_REVIEWER` đọc lại mỗi lần kiểm, như `COMPANY_GATE_AUTOAPPROVE`: tắt = không ký mới, và bản ghi
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 FLAG_ENV = "COMPANY_GATE_REVIEWER"
 SCOPE_ENV = "COMPANY_GATE_REVIEWER_SCOPE"
 SCOPE_RONG = "rong"  # ADR gốc 0025: mọi gate trừ `spec`, approve lẫn reject, không trần
+SCOPE_TOAN_BO = "toan-bo"  # ADR gốc 0033: như `rong` cộng gate `spec`
 REGISTRY_ENV = "COMPANY_GATE_REVIEWER_REGISTRY"
 PREFIX = REVIEWER_PREFIX
 DEFAULT_REGISTRY = Path.home() / ".config" / "xagents" / "gate-reviewers.json"
@@ -58,8 +60,14 @@ def enabled() -> bool:
 
 
 def scope_rong() -> bool:
-    """Phạm vi ADR gốc 0025, đọc lại mỗi lần như cờ: bỏ biến là quyết định ngoài S2 thôi được tin khi replay."""
-    return os.environ.get(SCOPE_ENV, "").strip().lower() == SCOPE_RONG
+    """Phạm vi ADR gốc 0025 (hoặc rộng hơn, `toan-bo` của ADR gốc 0033), đọc lại mỗi lần như cờ: bỏ biến là quyết
+    định ngoài S2 thôi được tin khi replay."""
+    return os.environ.get(SCOPE_ENV, "").strip().lower() in {SCOPE_RONG, SCOPE_TOAN_BO}
+
+
+def scope_toan_bo() -> bool:
+    """ADR gốc 0033: `rong` cộng gate `spec`. Đọc lại mỗi lần, về `rong` là spec reviewer đã duyệt thôi được tin."""
+    return os.environ.get(SCOPE_ENV, "").strip().lower() == SCOPE_TOAN_BO
 
 
 def machine_acceptor(actor: str) -> bool:
@@ -180,10 +188,12 @@ def sign_decision(
 
 def refusal(req: GateRequest, history: list[GateRequest], decision: object) -> str:
     """Lý do reviewer KHÔNG được quyết gate này; "" = trong phạm vi. Một chỗ cho cả chiều ghi (CLI) và chiều tin."""
-    if scope_rong():  # ADR gốc 0025: chủ dự án giữ lại đúng một quyết định — duyệt spec
+    if scope_rong():  # ADR gốc 0025: chủ dự án giữ lại đúng một quyết định — duyệt spec; 0033 (`toan-bo`) trao nốt
         if decision not in {"approve", "reject"}:
             return f"ngoài phạm vi: decision {decision!r} — reviewer chỉ approve/reject"
-        return "ngoài phạm vi: spec luôn là của người (ADR gốc 0025)" if req.kind == "spec" else ""
+        if req.kind == "spec" and not scope_toan_bo():
+            return "ngoài phạm vi: spec là của người ở phạm vi `rong` (ADR gốc 0025; `toan-bo` là ADR gốc 0033)"
+        return ""
     if decision != "approve":
         return "ngoài phạm vi: reviewer chỉ approve (mở lại/chạy lại); reject/close là của người"
     if (
