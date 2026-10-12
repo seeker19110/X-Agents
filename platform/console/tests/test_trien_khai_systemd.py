@@ -23,7 +23,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "systemd.sh"
 MAU = ROOT / "deploy" / "systemd"
-DICH_VU = ("xagents-gateway", "xagents-orchestrator", "xagents-console", "xagents-keeper")
+DICH_VU = ("xagents-gateway", "xagents-orchestrator", "xagents-console", "xagents-keeper", "xagents-reviewer")
 CHO_TRONG = re.compile(r"@[A-Z_]+@")
 
 pytestmark = pytest.mark.cong_repo

@@ -16,8 +16,8 @@ CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
 UNIT_DIR="$CFG/systemd/user"
 ENV_FILE="$CFG/x-agents/hub.env"
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
-DICH_VU=(xagents-gateway xagents-orchestrator xagents-console xagents-keeper)
-MAC_DINH=(xagents-gateway xagents-orchestrator xagents-console)
+DICH_VU=(xagents-gateway xagents-orchestrator xagents-console xagents-keeper xagents-reviewer)
+MAC_DINH=(xagents-gateway xagents-orchestrator xagents-console xagents-reviewer)
 
 uv_path() {
   command -v uv || { echo "[systemd] không thấy uv trên PATH — cài uv trước (docs/TRIEN-KHAI-SYSTEMD.md §1)" >&2; exit 1; }

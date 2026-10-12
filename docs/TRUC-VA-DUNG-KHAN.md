@@ -20,6 +20,7 @@ Khi hub cài bằng `scripts/systemd.sh install` (`docs/TRIEN-KHAI-SYSTEMD.md`):
 
 ```bash
 systemctl --user stop xagents-orchestrator        # = Mức 3: dừng vòng lặp, SIGINT → trả lease bus
+systemctl --user stop xagents-reviewer            # agent duyệt tự động (ADR gốc 0034): dừng = không ký gate mới
 systemctl --user stop xagents-console xagents-gateway xagents-keeper
 scripts/systemd.sh status                         # xác nhận không còn unit nào "active"
 ```

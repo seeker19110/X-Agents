@@ -13,6 +13,10 @@ và ghi `gate.decide`. Code — không phải lời hứa của phiên — giữ
 
 Cờ `COMPANY_GATE_REVIEWER` đọc lại mỗi lần kiểm, như `COMPANY_GATE_AUTOAPPROVE`: tắt = không ký mới, và bản ghi
 reviewer không được áp khi replay (gate hiện lại chờ người — hỏng thì đóng).
+
+ADR gốc 0034: `run` là **agent duyệt tự động** (`reviewer:tu-dong`) — tiến trình riêng, không tool, không hội thoại;
+đọc hồ sơ `gate_brief`, hỏi model (`gates/reviewer-tu-dong.md`), rồi đi đúng `decide()` ở trên. Không quyết được thì
+ghi `reviewer.hold` (một lượt mỗi thế hệ gate) để phiên chính can thiệp — `held()` là thứ `gate_cli list` in ra.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -36,6 +41,7 @@ from .events import AuditLog, Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR
 from .gates import GateRequest
 from .product_quality import IssuerKey
+from .registry import ROOT, split_front_matter
 
 if TYPE_CHECKING:
     from .gate_cli import PersistentGate
@@ -52,6 +58,17 @@ SCOPE_CHECKLIST = frozenset({"decision:reopen|close", "decision:retry|close"})
 RELEASE_PREFIX = "REL-"  # `DeliveryLead`: release_id = f"REL-{n:03d}"
 REASON_PARTS = ("root_cause", "decision", "hint")
 _SIGNED = ("subject_id", "decision", "by", "reason", "generation", "brief_sha256", "signed_at", "key_id")
+# ADR gốc 0034: agent duyệt tự động.
+PROMPT_PATH = ROOT / "gates" / "reviewer-tu-dong.md"
+HOLD_ACTION = "reviewer.hold"
+MAX_PER_TICK_ENV = "COMPANY_GATE_REVIEWER_MAX_PER_TICK"
+DECISIONS = ("approve", "reject", "hold")
+OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"decision": {"type": "string", "enum": list(DECISIONS)}, "root_cause": {"type": "string"},
+                   "hint": {"type": "string"}},
+    "required": ["decision", "root_cause", "hint"], "additionalProperties": False,
+}
 _NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 
 
@@ -296,6 +313,113 @@ def decide(
     return gate.decide_signed(subject_id, principal, reason, signed, decision)
 
 
+# ---------- ADR gốc 0034: agent duyệt tự động ----------
+
+def load_prompt() -> tuple[int, str]:
+    """`(version, thân)` của `gates/reviewer-tu-dong.md` — prompt là code: có version, test cổng kiểm cấu trúc."""
+    fm, body = split_front_matter(PROMPT_PATH.read_text(encoding="utf-8"))
+    return int(fm.get("version", 0)), body.strip()
+
+
+def held(gate: PersistentGate) -> dict[str, dict[str, Any]]:
+    """Gate đang chờ mà agent duyệt đã GIỮ ở đúng thế hệ này: {subject: evidence của `reviewer.hold`}. Thế hệ khác
+    (gate đóng rồi mở lại) không tính — hold cũ không nói gì về gate mới."""
+    out: dict[str, dict[str, Any]] = {}
+    for env in gate.bus.replay(topic="audit-log"):
+        if env.payload.get("action") != HOLD_ACTION or not env.actor.startswith(PREFIX):
+            continue
+        try:
+            d = json.loads(env.payload.get("evidence") or "{}")
+        except (ValueError, TypeError):
+            continue
+        req = gate.pending.get(str(d.get("subject_id")))
+        if req is not None and d.get("generation") == generation_of(req):
+            out[req.subject_id] = {**d, "by": env.actor}
+    return out
+
+
+def _hold(gate: PersistentGate, req: GateRequest, principal: str, reason: str, usage: dict[str, Any]) -> str:
+    data = {"subject_id": req.subject_id, "kind": req.kind, "generation": generation_of(req), "reason": reason[:600],
+            **usage}
+    gate.bus.publish(Envelope(topic="audit-log", key=principal, actor=principal,
+                              payload=AuditLog(actor=principal, action=HOLD_ACTION,
+                                               evidence=json.dumps(data, ensure_ascii=False)).model_dump()))
+    return "hold"
+
+
+def review_one(gate: PersistentGate, subject_id: str, brief_md: str, brief_json: Path, client: Any,
+               principal: str, key: Path) -> str:
+    """Một lượt duyệt cho một gate: hỏi model trên hồ sơ, rồi `approve`/`reject` qua `decide()` (chữ ký, `refusal()`,
+    hash hồ sơ) hoặc `hold` (ghi `reviewer.hold`). Trả về quyết định đã ghi. Không bao giờ ném vì model: lỗi model,
+    đầu ra hỏng, ngoài phạm vi đều là `hold` kèm lý do — phiên chính đọc lý do đó."""
+    from .llm import LLMError  # nhập lười: module này được gate_cli nhập, llm nặng
+
+    req = gate.pending[subject_id]
+    _, body = load_prompt()
+    system = f"{body}\n\nPhạm vi đang bật: {os.environ.get(SCOPE_ENV) or 'S2 (chỉ escalation ticket/dự án, chỉ approve)'}."
+    head = f"GATE {subject_id} ({req.kind}); checklist của code: {', '.join(req.checklist)}\n\n"
+    # `max_input_chars` là trần cho PHẦN HỒ SƠ (prompt hệ thống tĩnh và nhỏ); hồ sơ dài hơn thì cắt đuôi và nói rõ.
+    limit = max(200, int(getattr(client, "max_input_chars", 120_000)) - len(head))
+    user = head + (brief_md if len(brief_md) <= limit else brief_md[:limit] + "\n…(hồ sơ bị cắt theo max_input_chars)")
+    usage: dict[str, Any] = {}
+    try:
+        c = client.complete(system=system, user=user, schema=OUTPUT_SCHEMA, model_tier="strong")
+        usage = {"tokens": c.input_tokens + c.output_tokens, "model": c.model}
+        out = c.json()
+    except LLMError as e:
+        return _hold(gate, req, principal, f"model lỗi: {e}", usage)
+    decision, rc, hint = out.get("decision"), out.get("root_cause"), out.get("hint")
+    if decision not in DECISIONS or not isinstance(rc, str) or not isinstance(hint, str):
+        return _hold(gate, req, principal, f"đầu ra không hợp lệ: {json.dumps(out, ensure_ascii=False)[:200]}", usage)
+    if decision == "hold":
+        return _hold(gate, req, principal, f"máy giữ: {rc}" + (f"; hint: {hint}" if hint else ""), usage)
+    reason = f"root_cause: {rc}; decision: {decision}; hint: {hint or 'không cần'}"
+    try:
+        decide(gate, subject_id, principal, reason, key, brief_json, decision)
+    except (KeyError, PermissionError, ValueError, OSError) as e:
+        return _hold(gate, req, principal, f"code từ chối {decision}: {e}", usage)
+    return decision
+
+
+def _brief_cua(db: Path, repo: Path | None) -> Any:
+    """`brief_fn(orch, sid) -> (md, json_path)` mặc định: dựng hồ sơ thật và ghi ra đĩa như người đọc."""
+    from .gate_brief import build, default_out, render_md, write
+
+    def f(orch: Any, sid: str) -> tuple[str, Path]:
+        b = build(orch, sid, repo=repo)
+        pj, _ = write(b, default_out(db, b))
+        return render_md(b), pj
+    return f
+
+
+def run_tick(db: Path, principal: str, key: Path, client: Any, *, repo: Path | None = None,
+             brief_fn: Any = None, max_per_tick: int | None = None) -> list[tuple[str, str]]:
+    """Một vòng: mọi gate chờ chưa có lượt ở thế hệ này (chưa `hold`, chưa có chữ ký chờ áp) → `review_one`. Trần
+    `max_per_tick` gate một vòng (`COMPANY_GATE_REVIEWER_MAX_PER_TICK`, mặc định 5) — ngân sách là hard stop."""
+    from .gate_brief import load_state
+    from .gate_cli import PersistentGate
+    from .sqlite_bus import SQLiteBus
+
+    cap = max_per_tick if max_per_tick is not None else int(os.environ.get(MAX_PER_TICK_ENV, "5") or 5)
+    principal = _principal(principal)
+    bus = SQLiteBus(db)
+    done: list[tuple[str, str]] = []
+    try:
+        gate = PersistentGate(bus)
+        skip = set(held(gate)) | set(gate.reviewer_signed_pending())
+        todo = [sid for sid in sorted(gate.pending) if sid not in skip][:cap]
+        if not todo:
+            return done
+        orch = load_state(db, repo=repo) if brief_fn is None else None
+        brief = brief_fn or _brief_cua(db, repo)
+        for sid in todo:
+            md, pj = brief(orch, sid)
+            done.append((sid, review_one(gate, sid, md, pj, client, principal, key)))
+    finally:
+        bus.close()
+    return done
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Reviewer gate có chữ ký (ADR gốc 0024)")
     ap.add_argument("--db", type=Path, default=Path("company.sqlite"))
@@ -312,6 +436,13 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--reason", required=True)
     d.add_argument("--key", type=Path, default=None)
     d.add_argument("--brief", type=Path, required=True, help="hồ sơ gate_brief (.json) reviewer đã đọc")
+    r = sub.add_parser("run", help="ADR gốc 0034: agent duyệt tự động — đọc hồ sơ, hỏi model, ký; không quyết được thì giữ")
+    r.add_argument("--id", required=True)
+    r.add_argument("--key", type=Path, default=None)
+    r.add_argument("--repo", type=Path, default=None, help="repo khách (hồ sơ đọc worktree/diff)")
+    r.add_argument("--watch", type=float, default=None, help="chạy liên tục, mỗi N giây một vòng")
+    r.add_argument("--once", action="store_true", help="một vòng rồi thoát")
+    sub.add_parser("holds", help="gate đang chờ mà agent duyệt đã giữ (việc của phiên chính)")
     ns = ap.parse_args(argv)
     if ns.cmd == "init-key":
         path = new_key(ns.id, ns.registry or registry_path(), ns.key_dir, days=ns.days)
@@ -323,6 +454,31 @@ def main(argv: list[str] | None = None) -> int:
     if loi := missing_bus(ns.db):  # họ B3: quyết gate cần bus ĐÃ CÓ — không để lại bus rỗng ở sai thư mục
         print(loi, file=sys.stderr)
         return 2
+    if ns.cmd == "holds":
+        bus = SQLiteBus(ns.db)
+        try:
+            hs = held(PersistentGate(bus))
+        finally:
+            bus.close()
+        for sid, h in hs.items():
+            print(f"{sid:<12} {h.get('kind', '?'):<10} {h['by']}: {h.get('reason', '')}")
+        if not hs:
+            print("(agent duyệt không giữ gate nào)")
+        return 0
+    if ns.cmd == "run":
+        from .llm import make_client
+
+        key = ns.key or DEFAULT_KEY_DIR / f"{_principal(ns.id).removeprefix(PREFIX)}.pem"
+        client = make_client()
+        try:
+            while True:
+                for sid, out in run_tick(ns.db, ns.id, key, client, repo=ns.repo):
+                    print(f"{sid}: {out} bởi {_principal(ns.id)}", flush=True)
+                if ns.once or ns.watch is None:
+                    return 0
+                time.sleep(ns.watch)
+        except KeyboardInterrupt:  # unit systemd dừng bằng SIGINT (cùng khuôn `orchestrator run`): thoát sạch, không traceback
+            return 0
     bus = SQLiteBus(ns.db)
     try:
         key = ns.key or DEFAULT_KEY_DIR / f"{_principal(ns.id).removeprefix(PREFIX)}.pem"
