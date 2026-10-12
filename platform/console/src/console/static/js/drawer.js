@@ -29,7 +29,7 @@ export const toastEl=$("#toast");
 export function toast(m){toastEl.textContent=m;toastEl.classList.add("on");clearTimeout(toastEl._h);toastEl._h=setTimeout(()=>toastEl.classList.remove("on"),2600);}
 
 export const VERB={approve:"Đã duyệt",request_changes:"Đã trả lại sửa",hold:"Đã giữ lại",reject:"Đã từ chối",rollback:"Đã thu hồi"};
-export const VERB_ING={request_changes:"trả lại",hold:"giữ",reject:"từ chối",rollback:"thu hồi"};
+export const VERB_ING={approve:"duyệt",request_changes:"trả lại",hold:"giữ",reject:"từ chối",rollback:"thu hồi"};
 export const HINT_TMPL="root_cause: \ndecision: \nhint: ";
 export const RO_NOTE='Chế độ <b>chỉ đọc</b> — nút quyết định bị khoá. Muốn duyệt gate từ trang này thì dừng server và chạy lại '
   +'<code>uv run python -m console --allow-decide</code> (chỉ nghe trên 127.0.0.1, vẫn cần token phiên).';
@@ -89,10 +89,12 @@ export function openGate(id){
     // duyệt REL-025 bằng "ok"). Chưa đủ 20 ký tự thì KHÔNG cho duyệt, không chỉ cảnh báo.
     const raw=$("#reason").value;
     $("#hint-preview").textContent=raw.trim()?raw:"(chưa ghi gì — agent sẽ nhận một chuỗi rỗng)";
-    const thin=g.kind==="escalation"&&raw.trim().length<20;
+    // Mọi loại gate, không riêng escalation: server từ chối `reason` rỗng, và luật repo là ≥ 20 ký tự (đo
+    // 2026-10-12: gate spec hiện "Đủ điều kiện duyệt." rồi server trả "thiếu hoặc sai trường 'reason'").
+    const thin=raw.trim().length<20;
     drawer.querySelector('[data-d="approve"]').disabled=READONLY||left>0||thin;
     $("#gnote").innerHTML=READONLY?RO_NOTE:left?`Còn ${left} mục chưa tick.`
-      :thin?'Ghi lý do ít nhất 20 ký tự — nó là hint agent nhận: nêu root cause và việc cần làm, không phải "ok".':"Đủ điều kiện duyệt.";
+      :thin?'Ghi lý do ít nhất 20 ký tự — nêu root cause, quyết định và việc cần làm (agent nhận nó làm hint), không phải "ok".':"Đủ điều kiện duyệt.";
   };
   boxes.forEach(b=>b.addEventListener("change",sync));
   $("#reason").addEventListener("input",sync);
@@ -120,7 +122,7 @@ export function openGate(id){
     const b=e.target.closest(".vb"); if(!b||b.disabled) return;
     const d=b.dataset.d, reason=$("#reason").value.trim(), by=$("#by").value.trim();
     if(!by){$("#by").focus();toast("Ghi tên người duyệt trước đã.");return;}
-    if(d!=="approve"&&!reason){$("#reason").focus();toast("Cần ghi lý do trước khi "+VERB_ING[d]+".");return;}
+    if(!reason){$("#reason").focus();toast("Cần ghi lý do trước khi "+VERB_ING[d]+".");return;}
     localStorage.setItem(ME_KEY,by);
     const all=$$(".vb",drawer); all.forEach(x=>{x.disabled=true;});
     $("#gnote").textContent="Đang gửi quyết định…";
