@@ -9,6 +9,8 @@ Tính từ bus, không từ RAM (khuôn 2): mở lại tiến trình vẫn phả
 
 from __future__ import annotations
 
+import json
+
 from company.bus import InMemoryBus
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
@@ -107,4 +109,49 @@ def test_vong_cuoi_da_tra_loi_mot_phan_thi_khong_con_cho():
     _pub(bus, "clarification-answers", "P1", "human:owner",
          {"project_id": "P1", "answers": [{"question_id": "Q-01", "answer": "A"}]})
     assert orch.status()["clarifications_pending"] == {}
+
+
+def _product_khai_vong(vong: int):
+    """FakeClient như `handler`, nhưng lượt hỏi của `product` khai `round` cố định — mô phỏng model khai sai."""
+
+    def h(system: str, user: str) -> dict:
+        out = handler(system, user)
+        return {**out, "round": vong} if "questions" in out and "round" in out else out
+
+    return h
+
+
+def _vong_da_hoi(bus, pid="P1"):
+    return [e.payload["round"] for e in bus.replay(topic="clarification-questions", key=pid)]
+
+
+def test_vong_hoi_dau_tien_la_1_du_model_khai_2():
+    """Đo 2026-10-12 (QLKH-DD-CSV, model thật): lần hỏi ĐẦU TIÊN, `product` khai `round: 2` và ghi "(Hỏi lại)".
+    `round` quyết `_answers_incomplete` có cho hỏi tiếp không (`>= MAX_CLARIFY_ROUNDS` là hết) — model khai vòng
+    cuối là lặng lẽ xoá vòng hỏi lại. Vòng là identity của lượt (đếm trên bus), code điền như `source` của review."""
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=_product_khai_vong(2)))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
+    orch.run()
+    assert _vong_da_hoi(bus) == [1]
+    vet = [json.loads(a.payload["evidence"]) for a in bus.replay(topic="audit-log")
+           if a.payload.get("action") == "clarification.round_overridden"]
+    assert vet and vet[0]["claimed_round"] == 2 and vet[0]["round"] == 1, "khai sai phải để lại vết"
+
+
+def test_tra_loi_thieu_thi_vong_sau_la_2_du_model_khai_1():
+    """Chiều ngược lại: model khai `round: 1` mãi thì `_answers_incomplete` không bao giờ thấy vòng cuối — trả lời
+    thiếu là hỏi lại vô hạn. Vòng đếm từ bus thì lần hỏi lại là 2, và trả lời thiếu lần nữa đi thẳng tới spec."""
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=_product_khai_vong(1)))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app đặt lịch"})
+    orch.run()
+    tra_loi_lac = {"project_id": "P1", "answers": [{"question_id": "Q-KHAC", "answer": "x"}]}
+    _pub(bus, "clarification-answers", "P1", "human:po", tra_loi_lac)
+    orch.run()
+    assert _vong_da_hoi(bus) == [1, 2]
+    _pub(bus, "clarification-answers", "P1", "human:po", tra_loi_lac)
+    orch.run()
+    assert _vong_da_hoi(bus) == [1, 2], "vòng cuối rồi: không hỏi thêm"
+    assert "SPEC-P1" in orch.gate.pending
 

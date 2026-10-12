@@ -95,7 +95,10 @@ def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
     đọc `e.payload`, nên lượt bổ sung luôn bị coi là "thiếu hết các câu trước" và pha `spec` không bao giờ
     chạy lại — câu trả lời nằm im trong bus, không audit, không báo ai (đo được khi chạy thật 2026-09-04)."""
     pid = str(e.payload.get("project_id") or e.key)
-    q = o.latest("clarification-questions", pid)
+    # Vòng mà câu trả lời NÀY đáp lại: câu hỏi đăng TRƯỚC nó, không phải `latest`. Cùng một event chạy qua hai route
+    # liền nhau — route hỏi lại vừa đăng vòng 2 thì `latest` là vòng 2 và `_spec_ready` coi là "hết vòng", viết
+    # spec ngay khi người chưa thấy câu hỏi lại (đo 2026-10-12, lộ ra khi `round` thôi là lời khai cố định của model).
+    q = next((x for x in reversed(list(o.bus.replay(topic="clarification-questions", key=pid))) if x.ts <= e.ts), None)
     if q is None:
         return True
     answered = {str(a.get("question_id")) for a in e.payload.get("answers", [])}
