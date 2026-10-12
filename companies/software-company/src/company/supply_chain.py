@@ -1,8 +1,8 @@
 """ADR-0046: bằng chứng chuỗi cung ứng (SBOM + license) của một cây RC, do orchestrator sinh — không phải lời khai.
 
-Thành phần đọc từ lock file (không chạy gì): `uv.lock`, `package-lock.json` v2/v3, `Cargo.lock`, `go.mod` — ở gốc cây
-RC và thư mục con một tầng. License: uv từ metadata gói đã cài trong môi trường của KHÁCH (`uv run --frozen`,
-ADR-0044), Cargo từ `cargo metadata --offline`, cả hai qua sandbox (ADR-0035); npm từ chính lock + `node_modules`;
+Thành phần đọc từ lock file (không chạy gì): `uv.lock`, `requirements.lock` (`uv pip compile`), `package-lock.json`
+v2/v3, `Cargo.lock`, `go.mod` — ở gốc cây RC và thư mục con một tầng. License: uv từ metadata gói đã cài trong môi
+trường của KHÁCH (`uv run --frozen`, ADR-0044; `requirements.lock` thì env dựng từ chính lockfile), Cargo từ `cargo metadata --offline`, cả hai qua sandbox (ADR-0035); npm từ chính lock + `node_modules`;
 Go không có nguồn nào nên `NOASSERTION`. Chuẩn hoá sang SPDX chỉ khi không mơ hồ; còn lại là `NOASSERTION` kèm
 chuỗi gốc — không đoán. Không kết luận hợp lệ hay không: đó là chính sách của dự án.
 """
@@ -19,6 +19,7 @@ from typing import Any
 
 from .sandbox import RunSpec, clean_env, registry_domains
 from .smoke import VERIFIED_BY, unverified
+from .stacks import _REQ_RUN
 
 NOASSERTION = "NOASSERTION"
 
@@ -113,10 +114,15 @@ def _json_run(sandbox: Any, spec: RunSpec) -> tuple[dict[str, Any], str | None]:
     return data, None
 
 
-def installed_licenses(root: Path, sandbox: Any) -> tuple[dict[str, str], str | None]:
+_UV_ENV = ["uv", "run", "--frozen", "--"]
+# `requirements.lock` không có `[project]`/`uv.lock`: env dựng từ chính lockfile, cùng khuôn lint/test (`stacks`).
+_REQ_ENV = [*_REQ_RUN, "--with-requirements", "requirements.lock", "--"]
+
+
+def installed_licenses(root: Path, sandbox: Any, env: list[str] = _UV_ENV) -> tuple[dict[str, str], str | None]:
     """License gốc của mọi gói đã cài trong môi trường của khách. Lỗi → ({}, lý do), không ném."""
     spec = RunSpec(
-        argv=["uv", "run", "--frozen", "--", "python", "-c", _SCRIPT],
+        argv=[*env, "python", "-c", _SCRIPT],
         cwd=root,
         env=clean_env(),
         timeout=600.0,
@@ -130,13 +136,29 @@ def installed_licenses(root: Path, sandbox: Any) -> tuple[dict[str, str], str | 
 Rows = tuple[list[dict[str, Any]], str | None]
 
 
-def _uv(d: Path, sandbox: Any) -> Rows:
-    lic, err = installed_licenses(d, sandbox)
+def _py_rows(comps: list[dict[str, str]], lic: dict[str, str], err: str | None) -> Rows:
     rows = []
-    for c in components(d) or []:
+    for c in comps:
         raw = lic.get(c["name"])
         rows.append({**c, "raw": raw or "", "installed": (raw is not None) if err is None else None})
     return rows, err
+
+
+def _uv(d: Path, sandbox: Any) -> Rows:
+    return _py_rows(components(d) or [], *installed_licenses(d, sandbox))
+
+
+# Dòng ghim của `uv pip compile`: `tên[extra]==phiên_bản ; marker \`. Dòng hash, `# via`, `-e`, `-r` không khớp.
+_REQ_PIN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?==([^\s;\\]+)")
+
+
+def _req_lock(d: Path, sandbox: Any) -> Rows:
+    comps = []
+    for line in (d / "requirements.lock").read_text(encoding="utf-8").splitlines():
+        if m := _REQ_PIN.match(line):
+            name, version = _pep503(m.group(1)), m.group(2)
+            comps.append({"name": name, "version": version, "purl": f"pkg:pypi/{name}@{version}"})
+    return _py_rows(comps, *installed_licenses(d, sandbox, _REQ_ENV))
 
 
 def _npm_license(v: Any) -> str:
@@ -227,7 +249,7 @@ def _go(d: Path, sandbox: Any) -> Rows:
 
 
 # Lock file → cách đọc. Thứ tự này là thứ tự trong SBOM.
-_READERS = (("uv.lock", _uv), ("package-lock.json", _npm), ("Cargo.lock", _cargo), ("go.mod", _go))
+_READERS = (("uv.lock", _uv), ("requirements.lock", _req_lock), ("package-lock.json", _npm), ("Cargo.lock", _cargo), ("go.mod", _go))
 _SKIP_DIRS = frozenset({"node_modules", "target", "vendor"})
 
 
@@ -257,7 +279,8 @@ def evidence(root: Path, sandbox: Any, sha: str) -> dict[str, Any]:
                 by_purl.setdefault(r["purl"], {**r, "license": r.pop("spdx", None) or spdx_of(r["raw"]), "lock": rel})
     if not sources:
         return unverified(
-            "cây RC không có lock file nào đọc được (uv.lock, package-lock.json, Cargo.lock, go.mod) ở gốc hay "
+            "cây RC không có lock file nào đọc được (uv.lock, requirements.lock, package-lock.json, Cargo.lock, go.mod) "
+            "ở gốc hay "
             "thư mục con một tầng"
         )
     rows = list(by_purl.values())
