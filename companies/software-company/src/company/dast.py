@@ -19,6 +19,7 @@ from dataclasses import replace
 from email.message import Message
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -37,6 +38,54 @@ NOTE_SESSION = "máy không có tài khoản nên không đăng nhập thành c�
 OAS_SECURITY = "security"  # khoá Security Requirement của OpenAPI, không phải agent
 
 Resp = tuple[int | None, Message, str]
+
+
+CONTRACT_GLOBS = ("openapi*.yaml", "openapi*.yml", "openapi*.json", "swagger*.yaml", "swagger*.yml", "swagger*.json")
+CONTRACT_SKIP = frozenset({".git", "node_modules", ".venv", "venv", "dist", "build", "vendor", "site-packages", ".tox"})
+CONTRACT_MAX_BYTES = 2_000_000
+
+
+def _openapi_doc(text: str) -> dict[str, Any] | None:
+    try:
+        doc = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    ok = isinstance(doc, dict) and isinstance(doc.get("paths"), dict) and ("openapi" in doc or "swagger" in doc)
+    return doc if ok else None
+
+
+def contract_in_tree(root: Path) -> tuple[str, str] | None:
+    """OpenAPI trong cây RC: `(toàn văn, đường dẫn tương đối)` của file có nhiều `paths` nhất ngoài thư mục rác; None khi
+    không có. Bản trong repo là bản sống (CI của khách canh nó), bản `api-contract` trên blackboard từ pha plan có thể
+    đã cũ — đo được 2026-10-13: blackboard khai `/auth/session`, repo khai `/auth/login` và cấm `createSession`."""
+    best: tuple[int, int, str, str] | None = None
+    for g in CONTRACT_GLOBS:
+        for f in root.rglob(g):
+            rel = f.relative_to(root)
+            if CONTRACT_SKIP & set(rel.parts[:-1]) or not f.is_file() or f.stat().st_size > CONTRACT_MAX_BYTES:
+                continue
+            try:
+                text = f.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            doc = _openapi_doc(text)
+            if doc is None:
+                continue
+            key = (-len(doc["paths"]), len(rel.as_posix()), rel.as_posix(), text)
+            if best is None or key < best:
+                best = key
+    return (best[3], best[2]) if best else None
+
+
+def _base_paths(doc: dict[str, Any]) -> list[str]:
+    """Tiền tố đường dẫn khai ở `servers[].url` (không phải dò đường: contract tự khai)."""
+    out: list[str] = []
+    for srv in doc.get("servers") or []:
+        url = srv.get("url") if isinstance(srv, dict) else None
+        base = urlparse(str(url)).path.rstrip("/") if url else ""
+        if base and base not in out:
+            out.append(base)
+    return out
 
 
 def _deref(doc: dict[str, Any], node: Any) -> Any:
@@ -88,7 +137,14 @@ def login_op(contract: str | None) -> tuple[dict[str, Any] | None, str]:
         fields = _login_fields(doc, op)
         if fields is not None:
             oid = op.get("operationId")
-            return {"path": str(path), "operation_id": oid, "fields": fields}, f"POST {path} ({oid}) trong api-contract"
+            paths = [str(path), *(b + str(path) for b in _base_paths(doc) if not str(path).startswith(b + "/"))]
+            paths = list(dict.fromkeys(paths))
+            return {
+                "path": paths[0],
+                "paths": paths,
+                "operation_id": oid,
+                "fields": fields,
+            }, f"POST {path} ({oid}) trong api-contract"
     return None, "api-contract không khai operation đăng nhập (POST công khai, thân JSON có `password`, khai 401)"
 
 
@@ -150,10 +206,24 @@ def scan(base: str, health: str, contract: str | None) -> dict[str, Any]:
     notes = [NOTE_TLS]
     op, why = login_op(contract)
     login: dict[str, Any]
+    chua_mount = (
+        f"cửa đăng nhập khai trong contract chưa được mount ở sản phẩm đang chạy (POST {', '.join(op['paths'])} đều 404)"
+        if op is not None
+        else ""
+    )
+    if op is not None and len(op["paths"]) > 1:
+        # nhiều đường khai (gốc rồi `servers[].url` + đường): cửa thật = đường đầu tiên không trả 404, dò bằng một POST
+        # `{}` mỗi đường (tốn một lượt hạn mức trên cửa thật). Một đường thì burst tự nói: toàn 404 = chưa mount.
+        door = next((c for c in op["paths"] if call(c, "POST", b"{}")[0] != 404), None)
+        op = {**op, "path": door} if door else {**op, "skipped": chua_mount}
     if op is None:
         login = {"skipped": why}
         notes.append(f"không thử cửa đăng nhập: {why}")
+    elif "skipped" in op:
+        login = op
+        notes.append(f"không thử cửa đăng nhập: {chua_mount}")
     else:
+        door_op: dict[str, Any] = op
 
         def burst(same: bool) -> dict[str, Any]:
             user, statuses, retry_after = _rand(), [], False
@@ -161,9 +231,9 @@ def scan(base: str, health: str, contract: str | None) -> dict[str, Any]:
                 u = user if same else _rand()
                 body = {
                     f: (secrets.token_urlsafe(12) if f == "password" else f"{u}@dast.invalid" if fmt == "email" else u)
-                    for f, fmt in op["fields"].items()
+                    for f, fmt in door_op["fields"].items()
                 }
-                s, h, _ = call(op["path"], "POST", json.dumps(body).encode())
+                s, h, _ = call(door_op["path"], "POST", json.dumps(body).encode())
                 if s is None:
                     break
                 statuses.append(s)
@@ -174,18 +244,24 @@ def scan(base: str, health: str, contract: str | None) -> dict[str, Any]:
                 "limited": bool({423, 429} & set(statuses)) or retry_after,
             }
 
-        login = {**op, "distinct_usernames": burst(False), "same_username": burst(True)}
-        st, _, text = call(op["path"], "POST", b"{")
+        login = {**door_op, "distinct_usernames": burst(False), "same_username": burst(True)}
+        d = login["distinct_usernames"]
+        if d["statuses"] and set(d["statuses"]) == {404}:
+            # đo hub 2026-10-13 (REL-021): 24/24 POST trả 404 — nói đúng "chưa mount" thay vì 24 con số
+            login = {**door_op, "skipped": chua_mount}
+            notes.append(f"không thử cửa đăng nhập: {chua_mount}")
+    if "distinct_usernames" in login:
+        st, _, text = call(login["path"], "POST", b"{")
         login["malformed_body"] = {"status": st, "debug_markers": _markers(text)}
         d = login["distinct_usernames"]
         if not d["limited"] and 401 in d["statuses"]:
             issues.append(
                 f"{d['attempts']} lần đăng nhập sai liên tiếp từ một nguồn (mỗi lần một username) không bị "
-                f"giới hạn — không có 429/Retry-After ở POST {op['path']}"
+                f"giới hạn — không có 429/Retry-After ở POST {login['path']}"
             )
         if (st or 0) >= 500 or login["malformed_body"]["debug_markers"]:
             issues.append(
-                f"thân JSON hỏng ở POST {op['path']} → HTTP {st}, dấu vết debug: "
+                f"thân JSON hỏng ở POST {login['path']} → HTTP {st}, dấu vết debug: "
                 f"{login['malformed_body']['debug_markers']}"
             )
         notes += [NOTE_ACCOUNT, NOTE_SESSION]
@@ -267,8 +343,12 @@ def evidence(
     rt = parse_runtime(spec)
     if rt is None:
         return unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health) — không có gì để quét")
+    tree = contract_in_tree(root)
+    source: str | None = "blackboard:api-contract" if contract else None
+    if tree is not None:
+        contract, source = tree[0], f"repo:{tree[1]}"
     if why := deploy_thay_smoke(rt, root):
         if deployed is None:
             return unverified(f"{why}; chưa có `evidence.deploy` của staging cho RC này — chưa quét được")
-        return {**scan_deployed(rt, deployed, contract), "sha": sha}
-    return {**run_dast(root, rt, sandbox, contract), "sha": sha}
+        return {**scan_deployed(rt, deployed, contract), "contract_source": source, "sha": sha}
+    return {**run_dast(root, rt, sandbox, contract), "contract_source": source, "sha": sha}

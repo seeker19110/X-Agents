@@ -86,6 +86,30 @@ chặn release-check vì thiếu DAST; gate escalation bị giữ. Bằng chứn
 - Không dựng thêm môi trường nào cho DAST: burst 24 lần đăng nhập sai đi vào DB của staging compose — đó là dữ liệu
   giả của staging (DD-C6), không phải production.
 
+## Bổ sung 2026-10-13 (2) — contract trong cây RC là bản sống; đường khai gồm `servers[].url`
+
+Đo hub thật 2026-10-13 (QLKH-DD-CSV REL-021, recheck sau bổ sung trên): DAST quét được staging compose nhưng 24/24
+`POST /auth/session` trả 404. Không phải sản phẩm hở: DDCSV-01 đã đưa contract 1.5.0 vào repo khách
+(`api/QLKH/openapi.yaml`, fitness test **cấm** `createSession`/`/auth/session`, cửa đăng nhập là `POST /auth/login`
+với `servers: [{url: https://api…/v1}]`), còn bản `api-contract` trên blackboard từ pha plan vẫn khai `/auth/session`.
+Security đọc 24 con số 404 thành "chưa kiểm được phần xác thực, có thể lệch contract DD-C7" — đúng kết luận, sai
+nguyên nhân: máy quét cửa mà sản phẩm không hề hứa.
+
+- `contract_in_tree(root)`: OpenAPI trong cây RC (`openapi*`/`swagger*` `.yaml|.yml|.json`, bỏ `.git`, `node_modules`,
+  `.venv`, `dist`, `vendor`…; file ≤ 2 MB; phải có `openapi`/`swagger` + `paths`), nhiều `paths` nhất thắng. Có thì
+  `dast.evidence` dùng nó, blackboard chỉ là dự phòng; `evidence.dast.contract_source` ghi `repo:<đường dẫn>` hay
+  `blackboard:api-contract` để security biết đã đối chiếu với bản nào.
+- `login_op` trả thêm `paths`: đường khai, rồi tiền tố đường dẫn của từng `servers[].url` + đường (không lặp tiền tố
+  đã có, bỏ `/`). Đây vẫn là **không dò đường**: mọi ứng viên đều do contract tự khai. Nhiều ứng viên thì `scan` chọn
+  cửa thật bằng một `POST {}` mỗi đường (đường đầu tiên không 404; tốn một lượt hạn mức trên cửa thật); một ứng viên
+  thì không tốn thêm request.
+- Mọi cửa đều 404 (dò, hay burst toàn 404) → `checks.login.skipped` nói "cửa đăng nhập khai trong contract chưa được
+  mount ở sản phẩm đang chạy", kèm note; không ghi thành `issue` — thiếu cửa là trạng thái sản phẩm (ở REL-021:
+  `qlkh.server` của compose chưa mount `/auth/login`, handler nằm sau cờ `login_argon2`), không phải cửa hở.
+- Cái giá: hai bản contract lệch nhau thì DAST tin bản trong repo; blackboard lệch là việc của `product` (pha spec
+  ghi lại), máy chỉ ghi `contract_source`. Repo có nhiều OpenAPI (microservice) thì bản nhiều `paths` nhất thắng —
+  chưa có cách chọn theo service.
+
 ## Phương án đã loại
 
 - **OWASP ZAP baseline qua docker.** Máy trực không có docker (đo ở trên); thêm phụ thuộc hạ tầng cho một bằng chứng
