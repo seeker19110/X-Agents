@@ -994,7 +994,8 @@ def test_cli_decide_change_voi_by_khong_phai_nguoi_bao_loi_va_cr_van_cho(tmp_pat
                                                       "description": "đổi phạm vi", "decision": "pending"})
     bus.close()
     assert orch_main(["--db", str(db), "decide-change", "CR-1", "accepted", "--by", by]) == 2
-    assert "phải là người" in capsys.readouterr().err
+    # ADR gốc 0035: `reviewer:*` bị từ chối vì cờ/phạm vi (không bật trong test này), vai khác vì không phải người
+    assert ("phải là người" if by != "reviewer:x" else "chưa bật") in capsys.readouterr().err
     bus = SQLiteBus(db)
     try:
         assert [e.payload["decision"] for e in bus.replay(topic="change-requests", key="CR-1")] == ["pending"]

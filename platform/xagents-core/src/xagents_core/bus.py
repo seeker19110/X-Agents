@@ -50,7 +50,9 @@ def producer_allowed(acl: TopicACL, topic: str, actor: str) -> bool:
     """Actor này có được phát topic kia không. Hàm thuần, không đụng bus — để test được một mình."""
     if topic in acl.open_topics: return True
     if is_human(actor): return topic in acl.human_topics
-    return actor in acl.producers.get(topic, frozenset())
+    allowed = acl.producers.get(topic, frozenset())
+    # Mục đuôi `:*` là một HỌ actor (`reviewer:*`, ADR gốc 0035) — cùng quy ước `human:*`; so tiền tố kể cả dấu hai chấm.
+    return actor in allowed or any(p.endswith(":*") and actor.startswith(p[:-1]) for p in allowed)
 
 
 class InMemoryBus(Generic[E]):

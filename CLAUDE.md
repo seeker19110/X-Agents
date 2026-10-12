@@ -79,6 +79,10 @@ Hai nguồn chọn lọc nằm thẳng trong `.claude/`, mỗi nguồn một ti�
   `gate_cli list` (hoặc `gate_reviewer holds`) — qua `/gate-review`, ký `reviewer:phien-chinh`. Agent đó tắt hay
   chưa chạm tới thì mới duyệt gate thường.
 - Duyệt gate: lý do = root_cause + decision + hint, ≥ 20 ký tự; "ok" là hint rỗng cho agent.
+- **Change request cũng không cần người** ở phạm vi `toan-bo` (ADR gốc 0035): nộp bằng `orchestrator publish
+  change-requests <json> --actor reviewer:phien-chinh` (`requested_by` là chính reviewer, nêu lệnh của chủ dự án trong
+  `description`), quyết bằng `decide-change <cid> accepted|rejected --by reviewer:phien-chinh --reason …`. Cờ hub phải
+  bật trong env của lệnh, không thì CLI từ chối và orchestrator cũng không tin.
 - Trước khi tin dashboard: hỏi *"chạy cho tôi xem"*. Số xanh có thể xanh vì rỗng.
 - Sửa tay trong worktree của ticket: commit + takeover **trước**, duyệt gate **sau** (duyệt trước là bị reset).
 - Muốn đổi hành vi agent: đổi tài liệu nó đọc qua đúng vai (CR → `product` pha spec ghi prd), không ghi tay blackboard.

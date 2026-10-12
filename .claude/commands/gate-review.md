@@ -63,6 +63,12 @@ Mọi điều của `rong` **cộng** gate `spec`. Chủ dự án giao luôn vi�
 khai đủ → `approve`; thiếu thứ chặn tiêu chí nghiệm thu hay ruling tự quyết đổi phạm vi khách đã nêu → `reject` với
 hint cụ thể. Ghi trong `root_cause` những ruling tự quyết đáng kể nhất mà bạn đã chấp nhận thay khách.
 
+**Cộng change request** (ADR gốc 0035): ở phạm vi này bạn nộp và quyết change request thay khách — `orchestrator
+publish change-requests <json> --actor reviewer:<id>` (`requested_by` là chính bạn, `description` nêu lệnh của chủ dự
+án) và `decide-change <cid> accepted|rejected --by reviewer:<id> --reason "root_cause…; decision…; hint…"`. Cần
+`COMPANY_GATE_REVIEWER=1` và `COMPANY_GATE_REVIEWER_SCOPE=toan-bo` trong env của lệnh. Replan bạn `accepted` thì gate
+escalation của ticket cũ **còn chờ**: ký tiếp `gate_reviewer decide <ticket> --decision reject` (CLI in sẵn lệnh).
+
 ## Khi agent duyệt tự động đang chạy (ADR gốc 0034) — phiên chính là lớp sau
 
 Hub có unit `xagents-reviewer` (`python -m company.gate_reviewer run --id tu-dong --watch 60`): mỗi gate chờ được
