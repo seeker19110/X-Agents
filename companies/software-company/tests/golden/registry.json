@@ -23,7 +23,7 @@
       "security"
     ],
     "timeout_minutes": 180,
-    "version": 1,
+    "version": 2,
     "writes": [
       "pull-requests"
     ]
@@ -89,7 +89,7 @@
       "customer-acceptance"
     ],
     "timeout_minutes": 120,
-    "version": 3,
+    "version": 4,
     "writes": [
       "research-findings",
       "requirements-draft",
