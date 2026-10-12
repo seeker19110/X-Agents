@@ -17,12 +17,13 @@ from company.core import REVIEWER_FAMILY, TOPIC_PRODUCERS
 from company.events import Envelope
 from company.gate_reviewer import FLAG_ENV, SCOPE_ENV, SCOPE_RONG, SCOPE_TOAN_BO, cr_actor_refusal, cr_trusted
 from company.llm import FakeClient
-from company.orch.guards import _cr_accepted_direct, _cr_accepted_needs_research
+from company.orch.guards import _cr_accepted_when
 from company.orchestrator import Orchestrator
 from company.orchestrator import main as orch_main
 from company.sqlite_bus import SQLiteBus
 from test_replan_adr0051 import _crs, _drive_to_blocked, _planner_blocks_t1
 
+_cr_accepted_direct, _cr_accepted_needs_research = _cr_accepted_when(False), _cr_accepted_when(True)
 CR = {"change_id": "CR-1", "project_id": "P1", "requested_by": "reviewer:phien-chinh", "description": "thêm compose"}
 REASON = "root_cause: app cần PostgreSQL; decision: accepted; hint: compose postgres + app"
 
@@ -157,3 +158,33 @@ def test_cr_replan_cua_reviewer_khi_khong_co_co_thi_orchestrator_bo_qua(tmp_path
     assert orch.lead.state["T1"] == "blocked" and "T1" not in orch.lead.abandoned and "PLAN-P1-2" not in orch.plans
     why = [json.loads(e.payload["evidence"]) for e in bus.replay(topic="audit-log") if e.payload["action"] == "change.untrusted"]
     assert len(why) == 1 and why[0]["change_id"] == "REPLAN-T1-1" and why[0]["actor"] == "reviewer:ai-do"
+
+
+# ---------- CR không ghi `decision`: schema nói mặc định `pending`, route phải hiểu như vậy ----------
+
+
+def test_cr_khong_co_truong_decision_van_duoc_uoc_luong_impact(tmp_path, toan_bo):
+    """Đo hub thật 2026-10-12: `publish change-requests` một JSON không có `decision` (schema/`ChangeRequest` mặc định
+    `pending`) → orchestrator `orchestrated actions: []`, CR nằm im không ai ước lượng, không lỗi, không audit. Route
+    "pending" so `payload.get("decision") in ("pending",)` nên thiếu trường = không khớp. Thiếu trường phải là `pending`,
+    như `DeliveryLead` (`replan_open`) đã đọc."""
+    from company.orch.guards import _cr_pending
+    from test_orchestrator import _agent_of, _inp, handler
+
+    def _uoc_luong(system: str, user: str) -> dict:
+        # fake `product` của test_orchestrator cũng chỉ ước lượng khi payload có `decision: pending`; ở đây CR không có
+        p = _inp(user)
+        if _agent_of(system) == "product" and "change_id" in p and "decision" not in p:
+            return {"actor": "delivery-lead", "action": "change.impact", "project_id": p["project_id"],
+                    "evidence": json.dumps({"change_id": p["change_id"], "impact": {"estimate_days": 1}})}
+        return handler(system, user)
+
+    db = tmp_path / "c.sqlite"
+    bus = SQLiteBus(db)
+    orch = Orchestrator(bus, FakeClient(handler=_uoc_luong))
+    f = _cr_file(tmp_path)  # CR không có `decision`
+    assert orch_main(["--db", str(db), "publish", "change-requests", str(f), "--actor", "reviewer:phien-chinh"]) == 0
+    orch.tick()
+    impact = [e for e in bus.replay(topic="audit-log") if e.payload["action"] == "change.impact"]
+    assert impact and impact[0].actor == "product", "CR thiếu `decision` vẫn là CR đang chờ → product ước lượng"
+    assert _cr_pending(_env("human:po", "pending"), None) and not _cr_pending(_env("human:po", "accepted"), None)

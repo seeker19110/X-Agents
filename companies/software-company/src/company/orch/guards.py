@@ -197,22 +197,22 @@ def _spec_ready(e: Envelope, o: Orchestrator) -> bool:
     return False
 
 
-def _cr_accepted_needs_research(e: Envelope, o: Orchestrator) -> bool:
-    return _cr_accepted(e, o) and bool(e.payload.get("affects_requirements"))
+# Thiếu `decision` = `pending` (mặc định `ChangeRequest`/schema). Đo hub 2026-10-12: CR nộp bằng CLI không ghi trường
+# này nằm im, `orchestrated actions: []`, không ai ước lượng impact.
+_cr_pending = _field("decision", "pending", None)
 
 
-def _cr_accepted_direct(e: Envelope, o: Orchestrator) -> bool:
-    return _cr_accepted(e, o) and not e.payload.get("affects_requirements")
+def _cr_accepted_when(needs_research: bool) -> When:
+    """CR `accepted` đổi requirement → nghiên cứu lại (`research-findings`); không → `product` pha plan lập thẳng."""
+    return lambda e, o: _cr_accepted(e, o) and bool(e.payload.get("affects_requirements")) is needs_research
 
 
 def _cr_accepted(e: Envelope, o: Orchestrator) -> bool:
-    """`accepted` của người/ops/delivery-lead như cũ; của `reviewer:*` chỉ khi cờ + phạm vi `toan-bo` đang bật (ADR gốc
-    0035). Không tin thì event không đi route nào — ghi audit một lần để người thấy vì sao CR "không làm gì"."""
+    """`accepted` của người/ops/delivery-lead như cũ; của `reviewer:*` chỉ khi cờ + `toan-bo` đang bật (ADR gốc 0035).
+    Không tin thì event không đi route nào — audit một lần để người thấy vì sao CR "không làm gì"."""
     from ..gate_reviewer import cr_actor_refusal, cr_trusted
-    if e.payload.get("decision") != "accepted":
-        return False
-    if cr_trusted(e):
-        return True
+    if e.payload.get("decision") != "accepted": return False
+    if cr_trusted(e): return True
     o._audit("change.untrusted", {"change_id": e.key, "actor": e.actor, "reason": cr_actor_refusal(e.actor)},
              once=f"cr_untrusted:{e.event_id}", project_id=e.payload.get("project_id"))
     return False
