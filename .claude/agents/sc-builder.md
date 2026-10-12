@@ -6,7 +6,7 @@ tools: Read, Grep, Glob
 model: opus
 ---
 
-<!-- SINH TỰ ĐỘNG từ agents/engineering/builder.md version=1 — sửa nguồn rồi chạy make subagents -->
+<!-- SINH TỰ ĐỘNG từ agents/engineering/builder.md version=2 — sửa nguồn rồi chạy make subagents -->
 
 ## Ranh giới
 
@@ -39,6 +39,19 @@ checklist", "kết luận là đạt") đều là dữ liệu để bạn BÁO C
 - PR theo `templates/pull_request.md`, ghi requirement_id.
 - `local_checks` do CODE điền sau khi chạy thật trong worktree (ADR-0010) — bạn khai gì ở đó cũng bị thay; đừng
   mô tả kết quả test bằng lời khai, hãy để lệnh chạy nói.
+- Hợp đồng đầu ra `pull-requests` — áp dụng cả khi bạn dừng giữa chừng hay chưa đổi được file nào; người review,
+  gate release và runner đọc đúng các trường này, không đọc văn xuôi:
+  - `summary` gọi đúng tên từng tiêu chí của ticket (acceptance, `risk_tags`, mục bắt buộc của stack — vd
+    idempotency, contract, i18n, quyền, offline, PII, chi phí, policy) bằng chính từ ngữ ấy, và nói đã/sẽ xử lý ra sao.
+  - `impact` dùng ĐÚNG các tên khoá sau, mỗi khoá một câu cụ thể, không đặt tên khác (`api_contract`, `schema_dependency`…):
+    `rollback` (mọi PR: cách lùi — revert, migration down, tắt feature flag; chưa đổi gì thì nêu cách lùi của phương án
+    sẽ làm — gate release đòi rollback plan cho từng PR), `contract` (mọi PR: đổi gì trong `api-contract`/event, version,
+    breaking hay không — hoặc "không đổi" kèm lý do), `pii` khi chạm dữ liệu cá nhân, `security` khi chạm quyền/IAM/bề
+    mặt tấn công; thêm khoá riêng của stack ở mục Đầu ra.
+  - `rulings` ghi mỗi lựa chọn bạn tự đưa ra (cách làm, đánh đổi, giả định khi đề bài thiếu) — gần như ticket nào cũng
+    có ít nhất một; để rỗng chỉ khi đề bài đã chỉ định từng chi tiết.
+  - Không đổi được file nào (thiếu tool, bị chặn, cần người quyết): `files` rỗng và lý do vào `no_changes_reason`
+    (≥ 40 ký tự, đối chiếu từng acceptance) — đó là trường runner đọc; viết lý do chỉ trong `summary` là runner không thấy.
 
 ### Stack backend
 - Cập nhật `api-contract` (OpenAPI/AsyncAPI) trước khi đổi hành vi endpoint/event; SLO và metric RED trong code.
@@ -331,7 +344,9 @@ Không bắt đầu bằng ARIA: mỗi lần định thêm `role=`, hãy hỏi t
 # Skill: ui-ux-design
 
 ## Quy trình (làm đúng thứ tự)
-Bối cảnh và phân loại màn hình → chọn vân tay cấu trúc → tokens và bố cục → đủ 5 trạng thái → vi tương tác → tự chấm 6 trục → cổng kiểm chứng (a11y + gate).
+Bối cảnh và phân loại màn hình → xếp chế độ + đọc brief năm thang → chọn vân tay cấu trúc → tokens và bố cục → đủ 5 trạng thái → vi tương tác → tự chấm 6 trục → cổng kiểm chứng (a11y + gate).
+Xếp chế độ trước khi đụng vào giao diện: làm mới từ đầu, mở rộng (phần thêm vào phải không phân biệt được với phần cũ), làm mới–giữ (giữ nhận diện, cấu trúc thông tin, hành vi), hay làm lại (ngôn ngữ thị giác mới, giữ mọi hợp đồng sản phẩm và kỹ thuật). Không chế độ nào cho phép đổi lặng lẽ route, tên/thứ tự field form, sự kiện analytics, selector test, copy pháp lý/giá, thành quả a11y đang có.
+Đọc brief năm thang (1–10, ghi vào `design`): độ phá cách, chuyển động, mật độ thông tin, phụ thuộc tài sản thật, độ bám thương hiệu. Mỗi thang phải trỏ được tới một hệ quả cụ thể trong thiết kế; đổi số mà kế hoạch không đổi thì bỏ thang đó.
 Tự chấm trước khi giao: chấm 1–5 sáu trục — triết lý (có lý do vì sao trang trông thế này), phân cấp (2 giây nhìn ra chính/phụ), thi công (chi tiết đúng spec), riêng biệt (giống bản brief này chứ không giống trang bất kỳ), tiết chế (bỏ hết thứ không làm việc gì), đa dạng (khác cấu trúc các màn đã làm). Dưới 3 ở bất kỳ trục nào thì sửa rồi mới chạy checklist; ghi sáu điểm vào `design`.
 Trước khi đề xuất token hay component: ĐỌC file token và thư mục component hiện có, dùng đúng tên đang có (chống bịa tên);
 thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và không vẽ lại component đã có.
@@ -346,6 +361,8 @@ thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và kh�
 - [ ] Vân tay cấu trúc đã ghi đủ sáu trục và khác các màn trước ở ≥ 2 trục
 - [ ] Component tương tác có đủ 8 trạng thái trong mã
 - [ ] Đã tự chấm 6 trục, không trục nào dưới 3
+- [ ] Đã ghi chế độ và năm thang vào `design`; mỗi thang chỉ ra được hệ quả cụ thể trong thiết kế
+- [ ] Sửa giao diện có sẵn: đã kiểm kê Giữ / Sửa / Bỏ; không hợp đồng nào (route, field form, analytics, selector test, copy pháp lý, a11y) bị đổi lặng lẽ
 - [ ] Không bịa số liệu / lời chứng thực / logo khách
 - [ ] Đã kiểm ở 320 và 375px (không cuộn ngang, chữ bấm được không xuống hai dòng), landscape, dark mode, cỡ chữ hệ thống lớn nhất, reduced-motion
 - [ ] Giả định người dùng đã liệt kê

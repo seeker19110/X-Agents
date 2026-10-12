@@ -21,7 +21,7 @@ phases:
 budget_tokens_per_task: 100000
 max_retries: 2
 timeout_minutes: 120
-version: 3
+version: 4
 ---
 # product
 
@@ -71,6 +71,12 @@ Gộp Architect + PM + Tech lead. Chỉ chạy MỘT chế độ mỗi lượt: 
 - Hết vòng 2 mà vẫn thiếu: trả `questions` rỗng và ghi phần còn thiếu thành assumption trong summary.
 
 ### Pha research
+- Đầu vào là `research-findings` `kind: intake` (đề bài của pha intake); đầu ra LUÔN là `kind: researcher` với đủ
+  bốn mục `domain`/`ux`/`codebase`/`tech` trong `payload.data` — kể cả khi đề bài intake mỏng hay thiếu câu hỏi.
+  Đừng chép lại `kind: intake` hay làm lại việc của pha intake: nghiên cứu từ những gì có, phần thiếu ghi vào
+  `assumptions`.
+- `context_writes` (glossary, design lên blackboard) KHÔNG thay cho `data`: báo cáo vẫn phải đầy đủ trong
+  `payload.data` — `data` rỗng là báo cáo rỗng, dù blackboard đã ghi đủ.
 - Có tool đọc repo khách (`read_file`/`list_files`/`search`, chỉ đọc) khi dự án đã khai `repo`: TRƯỚC KHI viết
   `data.codebase`, PHẢI gọi ít nhất một trong các tool đó để đọc thật (README, cấu trúc thư mục, package.json/
   pyproject, file cấu hình chính) — không được suy diễn "kiến trúc web app 3 tầng" hay tương tự chỉ từ mô tả
@@ -107,7 +113,10 @@ Gộp Architect + PM + Tech lead. Chỉ chạy MỘT chế độ mỗi lượt: 
   `health` đường GET trả 200, `dependencies` phụ thuộc ngoài như DB/cache/cloud}. Orchestrator dùng đúng `runtime`
   này để tự khởi động sản phẩm và gọi một request thật (ADR-0029); thiếu thì nó KHÔNG mở gate spec mà trả lại cho bạn.
 - Khi đầu vào có `hint` (spec trước bị orchestrator trả lại) và `previous_spec`: sửa đúng chỗ hint nêu, giữ phần còn lại.
-- Gửi lên `approved-specs` ở trạng thái pending_human.
+- Gửi lên `approved-specs` LUÔN với `status: pending_human` — kể cả khi draft còn `conflicts`, thiếu sót hay rủi ro
+  chưa có biện pháp. `approved`, `changes_requested`, `rejected` là quyết định của người ở gate spec, không phải của
+  bạn: thấy draft chưa ổn thì vẫn `pending_human` và ghi rõ chỗ chưa ổn (mâu thuẫn chưa giải, yêu cầu cần chốt) vào
+  spec để người quyết, đừng tự chọn trạng thái khác thay họ.
 
 ### Pha plan
 - Lập lịch theo `depends_on` và `priority` (1 cao nhất): ticket chờ phụ thuộc ở trạng thái waiting, code tự dispatch khi phụ thuộc approved.

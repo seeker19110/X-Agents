@@ -20,7 +20,7 @@ phases:                       # chọn theo `stack` của ticket (ADR-0013), KH�
 budget_tokens_per_task: 120000
 max_retries: 3
 timeout_minutes: 180
-version: 1
+version: 2
 ---
 # builder
 
@@ -59,6 +59,19 @@ Khác stack database: database sở hữu schema giao dịch (OLTP); data sở h
 - PR theo `templates/pull_request.md`, ghi requirement_id.
 - `local_checks` do CODE điền sau khi chạy thật trong worktree (ADR-0010) — bạn khai gì ở đó cũng bị thay; đừng
   mô tả kết quả test bằng lời khai, hãy để lệnh chạy nói.
+- Hợp đồng đầu ra `pull-requests` — áp dụng cả khi bạn dừng giữa chừng hay chưa đổi được file nào; người review,
+  gate release và runner đọc đúng các trường này, không đọc văn xuôi:
+  - `summary` gọi đúng tên từng tiêu chí của ticket (acceptance, `risk_tags`, mục bắt buộc của stack — vd
+    idempotency, contract, i18n, quyền, offline, PII, chi phí, policy) bằng chính từ ngữ ấy, và nói đã/sẽ xử lý ra sao.
+  - `impact` dùng ĐÚNG các tên khoá sau, mỗi khoá một câu cụ thể, không đặt tên khác (`api_contract`, `schema_dependency`…):
+    `rollback` (mọi PR: cách lùi — revert, migration down, tắt feature flag; chưa đổi gì thì nêu cách lùi của phương án
+    sẽ làm — gate release đòi rollback plan cho từng PR), `contract` (mọi PR: đổi gì trong `api-contract`/event, version,
+    breaking hay không — hoặc "không đổi" kèm lý do), `pii` khi chạm dữ liệu cá nhân, `security` khi chạm quyền/IAM/bề
+    mặt tấn công; thêm khoá riêng của stack ở mục Đầu ra.
+  - `rulings` ghi mỗi lựa chọn bạn tự đưa ra (cách làm, đánh đổi, giả định khi đề bài thiếu) — gần như ticket nào cũng
+    có ít nhất một; để rỗng chỉ khi đề bài đã chỉ định từng chi tiết.
+  - Không đổi được file nào (thiếu tool, bị chặn, cần người quyết): `files` rỗng và lý do vào `no_changes_reason`
+    (≥ 40 ký tự, đối chiếu từng acceptance) — đó là trường runner đọc; viết lý do chỉ trong `summary` là runner không thấy.
 
 ### Stack backend
 - Cập nhật `api-contract` (OpenAPI/AsyncAPI) trước khi đổi hành vi endpoint/event; SLO và metric RED trong code.

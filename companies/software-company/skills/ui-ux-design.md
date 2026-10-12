@@ -1,8 +1,8 @@
 ---
 name: ui-ux-design
-version: 6
+version: 7
 standards: [ISO 9241-210, WCAG 2.2 AA, Nielsen 10 heuristics, Material 3 / HIG, Design tokens W3C]
-sources: [ui-ux-pro-max-skill (MIT) — rule sinh thiết kế, ui-ux-craftsman (dự án Đồng Hành) — quy trình và quy tắc form, impeccable (pbakaus, MIT) — danh mục anti-pattern mặc định của AI, hallmark (Nutlope, MIT) — vân tay cấu trúc, tự chấm trước khi giao, cổng chống "mùi LLM"]
+sources: [ui-ux-pro-max-skill (MIT) — rule sinh thiết kế, ui-ux-craftsman (dự án Đồng Hành) — quy trình và quy tắc form, impeccable (pbakaus, MIT) — danh mục anti-pattern mặc định của AI, hallmark (Nutlope, MIT) — vân tay cấu trúc, tự chấm trước khi giao, cổng chống "mùi LLM", web-design-engineer (ConardLi/garden-skills, MIT) — đọc brief năm thang, ba chế độ sửa giao diện có sẵn]
 ---
 # Skill: ui-ux-design
 
@@ -14,7 +14,9 @@ sources: [ui-ux-pro-max-skill (MIT) — rule sinh thiết kế, ui-ux-craftsman 
 - W3C Design Tokens Community Group format
 
 ## Quy trình (làm đúng thứ tự)
-Bối cảnh và phân loại màn hình → chọn vân tay cấu trúc → tokens và bố cục → đủ 5 trạng thái → vi tương tác → tự chấm 6 trục → cổng kiểm chứng (a11y + gate).
+Bối cảnh và phân loại màn hình → xếp chế độ + đọc brief năm thang → chọn vân tay cấu trúc → tokens và bố cục → đủ 5 trạng thái → vi tương tác → tự chấm 6 trục → cổng kiểm chứng (a11y + gate).
+Xếp chế độ trước khi đụng vào giao diện: làm mới từ đầu, mở rộng (phần thêm vào phải không phân biệt được với phần cũ), làm mới–giữ (giữ nhận diện, cấu trúc thông tin, hành vi), hay làm lại (ngôn ngữ thị giác mới, giữ mọi hợp đồng sản phẩm và kỹ thuật). Không chế độ nào cho phép đổi lặng lẽ route, tên/thứ tự field form, sự kiện analytics, selector test, copy pháp lý/giá, thành quả a11y đang có.
+Đọc brief năm thang (1–10, ghi vào `design`): độ phá cách, chuyển động, mật độ thông tin, phụ thuộc tài sản thật, độ bám thương hiệu. Mỗi thang phải trỏ được tới một hệ quả cụ thể trong thiết kế; đổi số mà kế hoạch không đổi thì bỏ thang đó.
 Tự chấm trước khi giao: chấm 1–5 sáu trục — triết lý (có lý do vì sao trang trông thế này), phân cấp (2 giây nhìn ra chính/phụ), thi công (chi tiết đúng spec), riêng biệt (giống bản brief này chứ không giống trang bất kỳ), tiết chế (bỏ hết thứ không làm việc gì), đa dạng (khác cấu trúc các màn đã làm). Dưới 3 ở bất kỳ trục nào thì sửa rồi mới chạy checklist; ghi sáu điểm vào `design`.
 Trước khi đề xuất token hay component: ĐỌC file token và thư mục component hiện có, dùng đúng tên đang có (chống bịa tên);
 thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và không vẽ lại component đã có.
@@ -33,6 +35,25 @@ thiếu thì đề xuất bổ sung vào nguồn token, không hard-code và kh�
 - Hai màn hình hoặc hai trang khác mục đích phải khác vân tay ở ít nhất hai trục; đổi màu không tính là khác. Lặp lại đủ sáu trục là dấu hiệu chép khuôn.
 - Cấu trúc bám việc người dùng đến để làm; cấm khuôn hero → 3 cột feature → CTA → footer bốn cột liên kết, trừ khi brief nêu lý do.
 - Component tương tác phải có mã cho đủ 8 trạng thái: mặc định, hover, `:focus-visible`, active, disabled, loading, error, success — 5 trạng thái ở trên là mức màn hình, 8 trạng thái là mức component.
+
+## Quy tắc — đọc brief năm thang
+- Trước khi chọn token, ghi một khối ngắn vào `design`: loại sản phẩm, người dùng chính, ngôn ngữ thị giác gọi tên cụ thể ("công cụ vận hành dày dữ liệu", không phải "hiện đại, sạch sẽ"), chế độ, và năm thang 1–10.
+- Phá cách: 1–3 lưới ổn định, điều hướng quen; 4–6 một hai nước lệch có kiểm soát; ≥ 7 chỉ khi brief và thương hiệu cho phép.
+- Chuyển động: 1–2 tĩnh, chỉ phản hồi trạng thái; 3–5 thêm hover/focus và chuyển cảnh ngắn; > 5 chỉ cho trang kể chuyện/chiến dịch. Thang nào cũng nằm dưới quy tắc nền tảng và chuyển động bên dưới — số cao không nới quy tắc.
+- Mật độ: 1–3 một ý chính mỗi khung nhìn; 4–6 cân bằng; 7–10 vận hành/so sánh, bắt buộc nhóm rõ và hé dần.
+- Phụ thuộc tài sản thật (ảnh sản phẩm, logo, ảnh chụp màn hình): ≥ 7 thì kiểm kê tài sản khách có trước khi dựng bố cục; thiếu thì để ô "chờ tài sản" có nhãn, không che bằng CSS trang trí.
+- Độ bám thương hiệu: 1–3 nhận diện mới; 4–6 giữ dấu nhận biết, cho phép tiến hoá; 7–8 giữ tài sản, token, giọng văn; 9–10 phần mới phải trông như vốn có.
+- Mốc khởi đầu (phá cách / chuyển động / mật độ / tài sản / bám thương hiệu), không phải số bắt buộc: dashboard, công cụ nội bộ 4/3/8/3/7; dịch vụ công 3/2/6/3/9; landing SaaS 6/5/4/6/5.
+- Hai thang cao xung đột: phá cách cao + mật độ cao → giữ khung điều hướng và lưới ổn định, chỉ thử nghiệm ở một lớp; chuyển động cao + mật độ cao → chỉ animate chuyển trạng thái/focus, không animate từng phần tử. Ràng buộc a11y thắng mọi thang.
+
+## Quy tắc — sửa giao diện có sẵn (ba chế độ)
+- Mở rộng: thêm/sửa một phần giới hạn trong hệ đang có; mọi thang khớp hiện trạng, bám thương hiệu = 10; không "tiện tay" sửa bề mặt khác.
+- Làm mới–giữ: giữ nhận diện, cấu trúc thông tin, giọng văn, hành vi; mật độ và tài sản giữ nguyên, phá cách/chuyển động tăng tối đa 1 điểm trừ khi brief đòi.
+- Làm lại: ngôn ngữ thị giác mới nhưng giữ sản phẩm, nội dung, hợp đồng kỹ thuật đã thống nhất; giữ bản đồ mật độ nội dung để không mất thông tin. Làm lại không phải giấy phép viết lại tất cả.
+- Giữ hay làm lại mà mơ hồ, và hai cách cho ra kết quả khác hẳn → ghi thành một câu hỏi trong `open_questions`, không tự chọn.
+- Kiểm kê trước khi sửa: hệ thị giác thật (màu và tỉ lệ dùng, chữ, khoảng cách, radius/shadow, icon, chuyển động), hành trình chính, trạng thái đang có; xếp mỗi phát hiện vào Giữ / Sửa / Bỏ.
+- Hợp đồng không đổi lặng lẽ: route, slug, anchor, nhãn điều hướng chính; logo và tài sản nhận diện; tên, thứ tự field form và hành vi gửi; copy pháp lý, đồng ý, quyền riêng tư, giá; sự kiện analytics, selector test; thành quả a11y đang có; API component công khai và khoá lưu trạng thái; nội dung, dữ liệu thật của khách. Cần đổi thì ghi rõ trong `design` để đi qua gate, không đổi ngầm.
+- Thứ tự sửa, dùng đòn bẩy rủi ro thấp nhất trước rồi đánh giá lại: lỗi chức năng và a11y → phân cấp và chữ → khoảng cách, căn lề, responsive → gom token, gỡ style lẻ → trạng thái và phản hồi → chuyển động có lý do → dựng lại khối chính → thay cả khối chỉ khi không sửa được. Làm mới–giữ thì dừng ngay khi brief đã đạt.
 
 ## Quy tắc — design tokens (nguồn duy nhất, frontend/mobile không hard-code)
 - Spacing theo nhịp 4/8; tầng khoảng cách khối: 16/24/32/48.
@@ -87,6 +108,8 @@ Không có chỉ dẫn thì thiết kế trôi về khuôn landing page SaaS. C�
 - [ ] Vân tay cấu trúc đã ghi đủ sáu trục và khác các màn trước ở ≥ 2 trục
 - [ ] Component tương tác có đủ 8 trạng thái trong mã
 - [ ] Đã tự chấm 6 trục, không trục nào dưới 3
+- [ ] Đã ghi chế độ và năm thang vào `design`; mỗi thang chỉ ra được hệ quả cụ thể trong thiết kế
+- [ ] Sửa giao diện có sẵn: đã kiểm kê Giữ / Sửa / Bỏ; không hợp đồng nào (route, field form, analytics, selector test, copy pháp lý, a11y) bị đổi lặng lẽ
 - [ ] Không bịa số liệu / lời chứng thực / logo khách
 - [ ] Đã kiểm ở 320 và 375px (không cuộn ngang, chữ bấm được không xuống hai dòng), landscape, dark mode, cỡ chữ hệ thống lớn nhất, reduced-motion
 - [ ] Giả định người dùng đã liệt kê
