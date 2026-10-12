@@ -30,6 +30,9 @@ from .roles import ENGINEERING, LEAD_ACTOR, ROLE, SOURCE
 # phát topic mình khai `writes`. `audit-log` ai cũng ghi; `shared-context` kiểm theo `namespace_owners`. Bus là chốt
 # chặn cuối: runner đã kiểm `writes`, nhưng CLI `publish` hay code gọi thẳng `bus.publish` cũng không được vượt quyền.
 ENGINEERING_ACTORS = frozenset(ENGINEERING)
+# ADR gốc 0035: họ actor reviewer có chữ ký (`reviewer:<id>`, `bus.REVIEWER_PREFIX`) được NỘP và QUYẾT change request
+# thay người ở phạm vi `toan-bo`. Bus chỉ cho ghi; tin hay không là `gate_reviewer.cr_trusted` lúc orchestrator áp.
+REVIEWER_FAMILY = "reviewer:*"
 REVIEW_PRODUCERS = frozenset({ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
 TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "research-requests": frozenset({ROLE.OPS}),
@@ -53,7 +56,7 @@ TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "external-feedback": frozenset(),
     # ADR-0051: `LEAD_ACTOR` là CODE (`DeliveryLead._request_replan`) nộp CR `REPLAN-<ticket>-<thế hệ>` khi ticket hết
     # retry — coordinator leo thang retry → replan → người. Người vẫn quyết (`decide-change`), bảng này chỉ nói ai được nộp.
-    "change-requests": frozenset({ROLE.OPS, LEAD_ACTOR}),
+    "change-requests": frozenset({ROLE.OPS, LEAD_ACTOR, REVIEWER_FAMILY}),
     "acceptance-results": frozenset({ROLE.OPS}),
     "supervisor-actions": frozenset({ROLE.SUPERVISOR}),
 }

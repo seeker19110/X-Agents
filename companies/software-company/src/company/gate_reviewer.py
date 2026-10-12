@@ -36,7 +36,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
-from .bus import REVIEWER_PREFIX
+from .bus import REVIEWER_PREFIX, is_human
 from .events import AuditLog, Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR
 from .gates import GateRequest
@@ -85,6 +85,26 @@ def scope_rong() -> bool:
 def scope_toan_bo() -> bool:
     """ADR gốc 0033: `rong` cộng gate `spec`. Đọc lại mỗi lần, về `rong` là spec reviewer đã duyệt thôi được tin."""
     return os.environ.get(SCOPE_ENV, "").strip().lower() == SCOPE_TOAN_BO
+
+
+def cr_actor_refusal(actor: str) -> str:
+    """ADR gốc 0035: vì sao `actor` KHÔNG được nộp/quyết change request qua CLI; "" = được. Người luôn được; reviewer
+    chỉ khi cờ bật và phạm vi `toan-bo` — đọc lại mỗi lần như `refusal()`, một chỗ cho cả chiều ghi và chiều tin."""
+    if is_human(actor):
+        return ""
+    if not actor.startswith(PREFIX):
+        return f"phải là người (human:<tên>) hoặc reviewer ({PREFIX}<id>, ADR gốc 0035), không phải {actor!r}"
+    if not enabled():
+        return f"{FLAG_ENV} chưa bật — reviewer không được nộp/quyết change request (ADR gốc 0035)"
+    if not scope_toan_bo():
+        return f"{SCOPE_ENV} phải là {SCOPE_TOAN_BO!r} (ADR gốc 0035) — reviewer mới được nộp/quyết change request"
+    return ""
+
+
+def cr_trusted(env: Envelope) -> bool:
+    """Chiều tin: change request do `reviewer:*` ghi chỉ được orchestrator áp khi cờ + phạm vi đang bật; actor khác
+    (người, ops, delivery-lead) giữ như cũ — ACL bus lúc publish là chốt."""
+    return not env.actor.startswith(PREFIX) or cr_actor_refusal(env.actor) == ""
 
 
 def machine_acceptor(actor: str) -> bool:

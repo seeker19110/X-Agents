@@ -49,8 +49,13 @@ FILE_CMDS: dict[str, Callable[[Path, Any], int]] = {"backup": backup}
 # ---------- nhóm bus: chưa cần Orchestrator ----------
 
 def publish(bus: SQLiteBus, ns: argparse.Namespace) -> int:
-    if not is_human(ns.actor):  # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus
-        print(f"--actor phải là người (human:<tên>), không phải {ns.actor!r}", file=sys.stderr); return 2
+    from ..gate_reviewer import cr_actor_refusal
+    # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus. Ngoại lệ duy nhất:
+    # change-requests nhận cả reviewer ở phạm vi `toan-bo` (ADR gốc 0035).
+    why = cr_actor_refusal(ns.actor) if ns.topic == "change-requests" else (
+        "" if is_human(ns.actor) else f"phải là người (human:<tên>), không phải {ns.actor!r}")
+    if why:
+        print(f"--actor {why}", file=sys.stderr); return 2
     payload = json.loads(ns.file.read_text(encoding="utf-8"))
     key = ns.key or payload.get("ticket_id") or payload.get("release_id") or payload.get("change_id") or payload.get("project_id")
     if not key: print("cần --key", file=sys.stderr); return 2
@@ -59,9 +64,13 @@ def publish(bus: SQLiteBus, ns: argparse.Namespace) -> int:
 
 
 def decide_change(bus: SQLiteBus, ns: argparse.Namespace) -> int:
+    from ..gate_reviewer import PREFIX as REVIEWER
+    from ..gate_reviewer import cr_actor_refusal
     from ..orchestrator import _evidence
-    if not is_human(ns.by):  # quyết định của khách (audit 2026-09-27 F-A): `--by ops` lọt ACL bus, vai khác nổ traceback
-        print(f"--by phải là người (human:<tên>), không phải {ns.by!r}", file=sys.stderr); return 2
+    # Quyết định của khách (audit 2026-09-27 F-A): `--by ops` lọt ACL bus, vai khác nổ traceback. Reviewer ở phạm vi
+    # `toan-bo` quyết thay khách (ADR gốc 0035).
+    if why := cr_actor_refusal(ns.by):
+        print(f"--by {why}", file=sys.stderr); return 2
     cr = next(reversed(list(bus.replay(topic="change-requests", key=ns.change_id))), None)
     if cr is None: print(f"không có change-request {ns.change_id}", file=sys.stderr); return 2
     impact = next((_evidence(e.payload) for e in reversed(list(bus.replay(topic="audit-log")))
@@ -77,8 +86,13 @@ def decide_change(bus: SQLiteBus, ns: argparse.Namespace) -> int:
         from ..gate_cli import PersistentGate, gate_approvers
         gate = PersistentGate(bus, approvers=gate_approvers()); tid = str(imp.get("ticket_id"))
         if (g := gate.pending.get(tid)) is not None and g.kind == "escalation":
-            gate.decide(tid, "reject", by=ns.by, reason=f"replan {ns.change_id} accepted: {ns.reason or 'ticket thay bằng kế hoạch mới'}"[:300])
-            print(f"gate escalation {tid}: reject by {ns.by} (replan {ns.change_id})")
+            if is_human(ns.by):
+                gate.decide(tid, "reject", by=ns.by, reason=f"replan {ns.change_id} accepted: {ns.reason or 'ticket thay bằng kế hoạch mới'}"[:300])
+                print(f"gate escalation {tid}: reject by {ns.by} (replan {ns.change_id})")
+            else:
+                # Reviewer: `gate.decide` trần dưới tên `reviewer:*` không ai tin (ADR gốc 0024) — gate để lại cho chữ ký.
+                print(f"gate escalation {tid} còn chờ: ký bằng `gate_reviewer decide {tid} --decision reject "
+                      f"--id {ns.by.removeprefix(REVIEWER)} --brief <hồ sơ> --reason ...` (replan {ns.change_id})")
     return 0
 
 

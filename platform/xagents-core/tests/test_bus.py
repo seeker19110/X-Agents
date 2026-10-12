@@ -36,6 +36,20 @@ def test_producer_allowed_ba_nhanh(cfg):
     assert not producer_allowed(acl, "topic-khong-trong-bang", "bien-tap")  # ô thiếu = chặn, không phải mở
 
 
+def test_producer_allowed_muc_duoi_hai_cham_sao_la_mot_ho_actor():
+    """ADR gốc 0035: công ty liệt kê một HỌ actor (`reviewer:*`) làm producer của một topic, cùng quy ước `human:*`
+    mà company đã dùng ở `rehydrate.TRUSTED_WRITERS`. Chỉ mục có đuôi `:*` mới so tiền tố; tên thường vẫn so bằng."""
+    from xagents_core.config import TopicACL
+    acl = TopicACL(producers={"doi-pham-vi": frozenset({"ops", "reviewer:*"}),
+                              "ban-tin": frozenset({"reviewer:phien-chinh"})})
+    assert producer_allowed(acl, "doi-pham-vi", "reviewer:phien-chinh")
+    assert producer_allowed(acl, "doi-pham-vi", "reviewer:tu-dong") and producer_allowed(acl, "doi-pham-vi", "ops")
+    assert not producer_allowed(acl, "doi-pham-vi", "reviewer")      # thiếu dấu hai chấm: không thuộc họ
+    assert not producer_allowed(acl, "doi-pham-vi", "reviewerx:a")
+    assert producer_allowed(acl, "ban-tin", "reviewer:phien-chinh")
+    assert not producer_allowed(acl, "ban-tin", "reviewer:tu-dong"), "tên thường không phải tiền tố"
+
+
 # ---------- validate ----------
 
 def test_topic_khong_co_schema_bi_tu_choi_chu_khong_lot_qua(cfg):

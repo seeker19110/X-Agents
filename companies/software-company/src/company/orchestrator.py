@@ -8,7 +8,8 @@ Phần xác định (DeliveryLead, Supervisor, PersistentGate) subscribe bus nh�
 - Human gate: `approved-specs` chờ gate `spec`; production chờ gate `release`; ticket blocked/escalate chờ gate
   `escalation`. Kế hoạch của delivery-lead KHÔNG chờ ai (ADR-0037): `_check_plan` kiểm bằng code rồi giao ngay.
 - Supervisor: ticket bị pause/budget_cut/escalate thì mọi event của ticket đó bị hoãn đến khi `resume`.
-- Khách: `clarification-answers`, `acceptance-results`, quyết định `change-requests` do người publish (CLI).
+- Khách: `clarification-answers`, `acceptance-results`, quyết định `change-requests` do người publish (CLI) — hoặc
+  `reviewer:*` ở phạm vi `toan-bo` (ADR gốc 0035, `gate_reviewer.cr_actor_refusal`/`cr_trusted`).
 
 Nhánh tích hợp (ADR-0011): có `repo` thì ticket rẽ từ `company/integration`; khi release-candidate xuất hiện (mọi review
 pass) orchestrator merge --no-ff từng branch ticket vào đó rồi mới cho release-engineer chạy. Xung đột → RC bị huỷ
