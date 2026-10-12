@@ -76,6 +76,7 @@ from .orch import (
     verify,
     worktree_flow,
 )
+from .orch.clarify_round import enforce_round as enforce_round
 from .orch.cli import main, source_fingerprint
 from .orch.enrich import _with_chan_doan as _with_chan_doan
 from .orch.enrich import _with_diff as _with_diff
@@ -414,7 +415,7 @@ class Orchestrator:
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},
                                 actor=agent, ticket_id=inp.payload.get("ticket_id"), project_id=self.project_for(env))
                 p = g.payloads[0]
-                p = enforce_source(self, r, p, env, agent)  # nhãn `source` từ ROUTE, không từ lời khai model
+                p = enforce_round(self, r, enforce_source(self, r, p, env, agent), env, agent)  # identity, không khai
                 if r.topic_out == "audit-log" and (p.get("action") != CR_IMPACT_ACTION or p.get("actor") != agent):
                     # Đầu ra `audit-log` của model chỉ được là ước lượng impact của change request: `action` và
                     # `actor` là identity của lượt, không phải lời khai — `audit-log` là topic mở và `_rehydrate`

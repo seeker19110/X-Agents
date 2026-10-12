@@ -37,7 +37,8 @@ ORCH = SRC / "orch"
 # 28 → 30 (2026-09-27, ADR-0046): `verify.evidence_after` nhận và trả `payload` của `review-results` — payload của
 # bus, kiểu ĐÚNG theo docstring trên. Cùng PR gom bằng chứng máy trước/sau lượt chấm (QA hồi quy + security)
 # từ `orchestrator.py` vào `verify.py`, nên thân hàm của orchestrator giảm 6 dòng thay vì tăng.
-TRAN_DICT_ANY = 31  # +1 (ADR-0050): `_with_debate` ở enrich.py trả payload bus như năm enrich kia
+TRAN_DICT_ANY = 32  # +1 (ADR-0050): `_with_debate` ở enrich.py trả payload bus như năm enrich kia
+# +1 (2026-10-12): `clarify_round.enforce_round` trả payload bus đã đóng `round`, cùng khuôn `enforce_source`
 
 
 def test_k63_ba_kieu_o_ranh_gioi_van_la_dataclass_co_truong_co_kieu() -> None:
