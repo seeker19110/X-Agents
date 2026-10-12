@@ -155,8 +155,8 @@ ai được hỏi, loại duy nhất sẽ không tự kêu) đứng trên bảng
 
 Bấm vào một gate mở ngăn kéo: hồ sơ, checklist phải tick hết mới duyệt được, **hậu quả cả hai chiều** (duyệt thì
 agent nào chạy lại, từ chối thì ticket về trạng thái nào), nút **Dựng hồ sơ bằng chứng** (`gate_brief` — cùng một
-văn bản với `/gate-brief` của CLI, `GET`, không cần `--allow-decide`), ô ghi tên người duyệt và lý do (bắt buộc với
-mọi quyết định không phải `approve`; escalation cần ≥ 20 ký tự vì lý do đi thẳng cho agent làm hint — có nút chèn
+văn bản với `/gate-brief` của CLI, `GET`, không cần `--allow-decide`), ô ghi tên người duyệt và lý do (bắt buộc
+≥ 20 ký tự với mọi gate và mọi quyết định, kể cả `approve` — server từ chối lý do rỗng, và lý do đi thẳng cho agent làm hint — có nút chèn
 mẫu `root_cause` / `decision` / `hint`, và ô xem trước **nguyên văn** chuỗi agent sẽ nhận).
 
 Trang tự làm mới **10 giây một lần**, có nút tạm dừng, và tự ngưng làm mới khi ngăn kéo đang mở.

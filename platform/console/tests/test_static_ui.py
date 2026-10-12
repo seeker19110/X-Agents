@@ -112,13 +112,21 @@ def test_mau_trong_giao_dien_va_mau_tren_dia_cung_mot_bo_khung(page: str) -> Non
         assert phan.lower() in in_ui["description"].lower() or phan in in_ui["description"]
 
 
-def test_escalation_khong_duyet_duoc_bang_ly_do_qua_ngan(page: str) -> None:
+def test_moi_gate_khong_duyet_duoc_bang_ly_do_qua_ngan(page: str) -> None:
     """Lý do duyệt escalation là hint gửi thẳng cho agent; "ok" làm agent hiểu không có gì để sửa rồi lặp. Nút Duyệt
-    phải bị khoá khi lý do dưới 20 ký tự, không chỉ cảnh báo."""
+    phải bị khoá khi lý do dưới 20 ký tự, không chỉ cảnh báo — với MỌI loại gate, không riêng escalation.
+
+    Đo 2026-10-12 (SPEC-QLKH-DD-CSV): khoá chỉ áp cho escalation và lượt `approve` không kiểm lý do, nên gate `spec`
+    hiện "Đủ điều kiện duyệt." rồi gửi `reason` rỗng; server (`_api_decide`) bắt buộc trường này nên người duyệt
+    chỉ thấy "Không ghi được quyết định: thiếu hoặc sai trường 'reason'". Luật repo: lý do ≥ 20 ký tự mọi gate."""
     sync = page[page.index("const sync=()=>{"):page.index("boxes.forEach(b=>b.addEventListener(\"change\",sync))")]
-    assert 'g.kind==="escalation"' in sync and ".length<20" in sync
+    assert ".length<20" in sync
+    assert 'g.kind==="escalation"&&' not in sync, "khoá lý do ngắn áp cho mọi loại gate, không riêng escalation"
     assert "disabled=READONLY||left>0||thin" in sync, "thin phải khoá nút Duyệt"
     assert '$("#reason").addEventListener("input",sync)' in page, "gõ lý do phải tính lại trạng thái nút"
+    assert 'd!=="approve"&&!reason' not in page, "lượt Duyệt cũng phải có lý do — server từ chối `reason` rỗng"
+    verb_ing = page[page.index("export const VERB_ING={"):].split("};", 1)[0]
+    assert 'approve:"duyệt"' in verb_ing, "toast 'Cần ghi lý do trước khi …' của lượt Duyệt không được ra 'undefined'"
 
 
 def test_o_thong_bao_co_tren_truc_ban_va_ve_dung_muc_tu_du_lieu(page: str) -> None:
