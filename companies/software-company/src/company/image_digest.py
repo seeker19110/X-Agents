@@ -96,7 +96,22 @@ def references(root: Path, *, pinned: bool = False) -> list[str]:
     return out
 
 
+def tags(root: Path) -> list[str]:
+    """Mọi image của Dockerfile/compose, bỏ `@sha256:` — hỏi digest HIỆN TẠI của tag, không trùng.
+
+    ADR-0055 bổ sung (hub 2026-10-13, CR-DDCSV-SEC-001): nâng image đã ghim lên bản vá cũng cần digest mới; bản đầu
+    chỉ hỏi image chưa ghim nên repo ghim hết thì builder không có lệnh nào và chỉ còn sửa tay (cấm) hay dừng. Ref chỉ
+    có digest, không tag, thành tên trần — script hỏi `latest` như `docker pull`."""
+    out: list[str] = []
+    for r in references(root, pinned=True):
+        t = r.split("@", 1)[0]
+        if t not in out:
+            out.append(t)
+    return out
+
+
 def argv(root: Path) -> list[str] | None:
-    """argv của `run image_digest`; None = không có image nào cần ghim ⇒ không có lệnh trong allowlist."""
-    refs = references(root)
+    """argv của `run image_digest`; None = repo không có image nào ⇒ không có lệnh trong allowlist. `WorkspaceTools.run`
+    gọi lại hàm này lúc chạy: builder sửa tag giữa lượt thì argv theo file hiện tại."""
+    refs = tags(root)
     return [sys.executable, "-c", SCRIPT, *refs] if refs else None

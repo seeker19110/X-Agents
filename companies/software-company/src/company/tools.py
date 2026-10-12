@@ -86,7 +86,8 @@ class WorkspaceTools:
         # Thư mục thường mà được phép chạy (QA hồi quy trên worktree tích hợp) thì nhận stack theo file dấu hiệu ở gốc.
         self.stack = self.ws.stack() if self.ws is not None else detect(self.root)
         stack_cmds = self.stack.commands() if allow_run else {}
-        # ADR-0055: image trong Dockerfile/compose chưa ghim digest ⇒ lệnh `image_digest` (argv do code ghép từ repo).
+        # ADR-0055: repo có image trong Dockerfile/compose (kể cả đã ghim — bổ sung 2026-10-13) ⇒ lệnh `image_digest`;
+        # argv do code ghép từ repo, và `run` ghép lại lúc chạy theo file hiện tại.
         if allow_run and (dg := image_digest.argv(self.root)):
             stack_cmds = {**stack_cmds, "image_digest": dg}
         self.COMMANDS: dict[str, list[str]] = {**stack_cmds, **self.GIT_COMMANDS}
@@ -213,6 +214,9 @@ class WorkspaceTools:
         if argv is None: raise ToolError(f"lệnh không trong allowlist: {command} (có: {sorted(self.COMMANDS)})")
         if command in ("lock", "image_digest") and paths:  # ADR-0054/0055: đối số do code ghép từ repo khách
             raise ToolError(f"{command} không nhận paths: đối số do code ghép từ repo khách (ADR-0054, ADR-0055)")
+        if command == "image_digest":  # ADR-0055 bổ sung: theo Dockerfile/compose LÚC CHẠY, không lúc dựng toolbox
+            argv = image_digest.argv(self.root)
+            if argv is None: raise ToolError("không còn image nào trong Dockerfile/compose để hỏi digest (ADR-0055)")
         for x in paths or []:  # "-x"/"--flag" là cờ, không phải đường dẫn: model không được thêm tuỳ chọn cho lệnh
             if not isinstance(x, str) or x.startswith("-"):
                 raise ToolError(f"paths chỉ nhận đường dẫn, không nhận tuỳ chọn: {x!r}")
@@ -260,8 +264,9 @@ class WorkspaceTools:
         if self.allow_run:
             lock_note = (" `lock` sinh lại lockfile bằng uv (có mạng PyPI qua egress, ADR-0054) — chạy sau khi đổi phụ thuộc, "
                          "không nhận `paths`." if "lock" in self.COMMANDS else "")
-            digest_note = (" `image_digest` in `image@sha256:…` cho mọi image chưa ghim trong Dockerfile/compose (Docker Hub "
-                           "qua egress, ADR-0055) — đọc rồi tự ghim vào file, không nhận `paths`."
+            digest_note = (" `image_digest` in `tag@sha256:…` HIỆN TẠI trên Docker Hub cho mọi image trong Dockerfile/compose, "
+                           "kể cả đã ghim (qua egress, ADR-0055) — sửa tag trước rồi gọi, đọc rồi tự ghim vào file, không "
+                           "nhận `paths`."
                            if "image_digest" in self.COMMANDS else "")
             tb.add(ToolSpec("run", f"Chạy một lệnh trong allowlist: {sorted(self.COMMANDS)}. `paths` giới hạn phạm vi (tuỳ chọn).{lock_note}{digest_note}",
                             {"type": "object", "properties": {"command": {"type": "string", "enum": sorted(self.COMMANDS)},

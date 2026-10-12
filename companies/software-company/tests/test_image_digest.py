@@ -123,14 +123,48 @@ def test_run_image_digest_khong_nhan_paths(tmp_path):
         WorkspaceTools(root, sandbox=SpySandbox()).run("image_digest", paths=["Dockerfile"])
 
 
-def test_bang_tool_chi_co_image_digest_khi_repo_co_image_can_ghim(tmp_path):
+PIN = "@sha256:" + "a" * 64
+
+
+def test_bang_tool_co_image_digest_khi_repo_co_image_ke_ca_da_ghim(tmp_path):
+    """ADR-0055 bổ sung (hub 2026-10-13, CR-DDCSV-SEC-001 / DDCSV-22): nâng image ĐÃ ghim lên bản vá mới cần digest
+    mới — trước đây repo ghim hết thì không có lệnh, builder chỉ còn đường sửa digest bằng tay (cấm) hay dừng."""
     root = _repo(tmp_path, Dockerfile="FROM python:3.12-slim\n")
     spec = next(t for t in WorkspaceTools(root, sandbox=SpySandbox()).toolbox().specs() if t.name == "run")
     assert "image_digest" in spec.parameters["properties"]["command"]["enum"] and "image_digest" in spec.description
-    root2 = _repo(tmp_path / "b", Dockerfile="FROM python:3.12-slim@sha256:aa\n")
+    root2 = _repo(tmp_path / "b", Dockerfile=f"FROM python:3.12-slim{PIN}\n")
     spec2 = next(t for t in WorkspaceTools(root2, sandbox=SpySandbox()).toolbox().specs() if t.name == "run")
-    assert "image_digest" not in spec2.parameters["properties"]["command"]["enum"], "đã ghim hết thì không có lệnh"
+    assert "image_digest" in spec2.parameters["properties"]["command"]["enum"], "đã ghim vẫn có lệnh để nâng bản"
+    root3 = _repo(tmp_path / "c", **{"pyproject.toml": "[project]\nname='x'\nversion='0'\n"})
+    assert "image_digest" not in WorkspaceTools(root3, sandbox=SpySandbox()).COMMANDS, (
+        "không có image thì không có lệnh"
+    )
     assert "image_digest" not in WorkspaceTools(root, sandbox=SpySandbox(), allow_run=False).COMMANDS
+
+
+def test_argv_hoi_digest_hien_tai_cua_tag_ke_ca_ref_da_ghim(tmp_path):
+    root = _repo(
+        tmp_path,
+        Dockerfile=f"FROM python:3.12.11-slim{PIN}\nFROM postgres:16\n",
+        **{"docker-compose.yml": f"services:\n  db:\n    image: postgres:16{PIN}\n  x:\n    image: redis{PIN}\n"},
+    )
+    got = argv(root)
+    assert got is not None and got[3:] == ["python:3.12.11-slim", "postgres:16", "redis"], (
+        "bỏ @sha256 để hỏi digest HIỆN TẠI của tag; trùng thì một; không có tag thì hỏi `latest` như docker pull"
+    )
+
+
+def test_run_image_digest_doc_lai_repo_luc_chay_khong_dung_bang_luc_dung_toolbox(tmp_path):
+    """Builder sửa tag trong Dockerfile giữa lượt rồi gọi `image_digest`: argv phải theo file HIỆN TẠI."""
+    root = _repo(tmp_path, Dockerfile=f"FROM python:3.12.11-slim{PIN}\n")
+    spy = SpySandbox(name="container:x", stdout="python:3.12.12-slim@sha256:bb\n")
+    tools = WorkspaceTools(root, sandbox=spy)
+    (root / "Dockerfile").write_text("FROM python:3.12.12-slim\n", encoding="utf-8")
+    tools.run("image_digest")
+    assert spy.specs[-1].argv[3:] == ["python:3.12.12-slim"]
+    (root / "Dockerfile").unlink()
+    with pytest.raises(ToolError, match="không còn image"):
+        tools.run("image_digest")
 
 
 # ---------- script chạy trong sandbox: Docker Hub token + HEAD manifest; registry khác và lỗi mạng nói rõ ----------

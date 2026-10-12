@@ -40,3 +40,25 @@ hai digest", qa chặn lần hai cùng lý do. Hai lượt model, một thông t
 (container có domain, subprocess không), không `paths`, enum tool chỉ có lệnh khi còn image chưa ghim, script với
 `urlopen` giả (token → HEAD đúng URL/Accept; registry lạ và lỗi mạng ⇒ `LOI` + exit 1). Đo thật: bản sao nhánh
 `ticket/DDCSV-20` qua `ContainerSandbox("docker", "xagents-qlkh:py3.12")` trả hai dòng digest (xem PR).
+
+## Bổ sung 2026-10-13 — hỏi cả image đã ghim, argv ghép lúc chạy
+
+Đo hub thật 2026-10-13 (QLKH-DD-CSV, `CR-DDCSV-SEC-001`): trivy (ADR-0056) báo image nền của RC có 9 + 20 CRITICAL, phần
+lớn đã có bản vá; ticket đề xuất DDCSV-22 phải nâng `python:3.12.11-slim-bookworm@sha256:…` và `postgres:16.10-bookworm@sha256:…`
+lên bản vá mới và ghim lại. `product` tự ghi trong `change.impact`: "nếu allowlist chưa thêm lệnh này thì DDCSV-22 bị
+chặn, vì không được sửa digest bằng tay". Đúng thế, vì hai lỗ của bản đầu:
+
+1. Lệnh chỉ có khi repo **còn** image chưa ghim. Repo ghim hết (đúng trạng thái sau DDCSV-20) thì không có lệnh.
+2. argv ghép một lần lúc dựng toolbox. Builder sửa tag giữa lượt rồi gọi lệnh thì vẫn hỏi tag cũ.
+
+Quyết định:
+
+- `image_digest.tags(root)`: mọi image (`references(root, pinned=True)`), bỏ `@sha256:…`, không trùng. Ref chỉ có digest
+  không tag thành tên trần — script hỏi `latest` như `docker pull`. Lệnh có khi repo có **bất kỳ** image nào.
+- `WorkspaceTools.run("image_digest")` ghép lại argv từ file **lúc chạy**; không còn image thì `ToolError` nói rõ.
+- Mô tả tool: in `tag@sha256:…` hiện tại của mọi image kể cả đã ghim; sửa tag trước rồi gọi.
+- Không đổi domain, script, sandbox. Builder so digest in ra với digest đang ghim — khác nghĩa là tag đã trôi.
+
+Đo hai chiều: `test_bang_tool_co_image_digest_khi_repo_co_image_ke_ca_da_ghim`,
+`test_argv_hoi_digest_hien_tai_cua_tag_ke_ca_ref_da_ghim`, `test_run_image_digest_doc_lai_repo_luc_chay_khong_dung_bang_luc_dung_toolbox`
+đỏ trước (enum chỉ có git; argv chỉ có ref chưa ghim; `ToolError` allowlist), xanh sau.
