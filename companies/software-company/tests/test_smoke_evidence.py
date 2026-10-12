@@ -242,7 +242,7 @@ def test_phu_thuoc_ngoai_va_repo_co_compose_thi_smoke_tran_nhuong_deploy(tmp_pat
     ai dựng DB. Repo khách đã có compose file thì `deploy()` sẽ dò ra nó (ADR-0039 §1) và đó là bằng chứng thật;
     smoke trần chạy trước nó chỉ sinh một `failed` chắc chắn.
 
-    Đo hai chiều: bỏ vế `dependencies + compose_file` trong `verify._deploy_thay_smoke` → test đỏ (status `failed`,
+    Đo hai chiều: bỏ vế `dependencies + compose_file` trong `deploy.deploy_thay_smoke` → test đỏ (status `failed`,
     `release.smoke_failed`)."""
     monkeypatch.setenv("COMPANY_DEPLOY", "off")   # CI ubuntu có docker: test này đo smoke, không dựng compose thật
     repo = _repo(tmp_path, SERVER_DIE)
@@ -292,6 +292,30 @@ def test_hoi_quy_phu_thuoc_ngoai_va_compose_khong_chay_smoke_tran(tmp_path, monk
     ev = next(e for e in bus.replay(topic="release-events") if e.payload.get("env") == "staging")
     run = ov.regression_run(orch, ev)
     assert run["unverified"] is True and run["deploy_declared"] is True
+
+
+def test_hoi_quy_do_moi_truong_deploy_dang_chay_thay_smoke_tran(tmp_path, monkeypatch):
+    """`deploy()` đã dựng staging (release-events `evidence.deploy.ok`) thì `evidence.run` của QA hồi quy là probe
+    thật vào cổng đã map, không phải `unverified` + `deploy_declared`. Đo hub 2026-10-12 (QLKH-DD-CSV REL-021):
+    deploy ok, smoke 200 mà QA phải "chấm pass dù evidence.run unverified" — máy có số lại bắt model tự biện."""
+    from company.orch import verify as ov
+    from test_deploy_release_fsm import _fake_deploy
+    from test_deploy_release_fsm import _orch as _orch_fsm
+    from test_deploy_release_fsm import _repo as _repo_fsm
+
+    fn, _ = _fake_deploy(monkeypatch)
+    bus, orch = _orch_fsm(tmp_path, _repo_fsm(tmp_path), deploy_fn=fn,
+                          runtime={"command": "python serve.py", "port": 8080, "health": "/", "dependencies": ["PostgreSQL"]})
+    orch.run()
+    ev = next(e for e in bus.replay(topic="release-events") if e.payload.get("env") == "staging")
+    assert ev.payload["evidence"]["deploy"]["ok"] is True
+    monkeypatch.setattr(ov, "run_smoke", lambda *a, **k: (_ for _ in ()).throw(AssertionError("smoke trần chạy")))
+    run = ov.regression_run(orch, ev)
+    assert run["ok"] is True and run["http_status"] == 200 and run["url"] == "http://127.0.0.1:8080/"
+    assert run["verified_by"] == "orchestrator" and "deploy_declared" not in run and run["sha"]
+    assert run["deploy"]["container_ids"] == ["abcdef012345"]
+    qa = [e.payload for e in bus.replay(topic="review-results") if e.payload.get("source") == "qa"][-1]
+    assert qa["evidence"]["run"]["ok"] is True and qa["evidence"]["run"]["deploy"]["container_ids"], "cùng số vào lượt QA"
 
 
 def test_smoke_fail_lan_hai_gate_da_pending_khong_mo_gate_trung(tmp_path):

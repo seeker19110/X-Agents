@@ -62,8 +62,29 @@ REL-007 muốn được chấm bằng bằng chứng mới thì không có đư�
   sha tách khỏi worktree tích hợp; dữ liệu đó là của lượt quét.
 - Không crawl, không fuzz, không quét lỗ hổng theo chữ ký như ZAP; không có `api-contract` OpenAPI thì không thử cửa
   đăng nhập (ghi `login.skipped`).
-- Sản phẩm `runtime.deploy` (compose) ra `unverified`.
+- Sản phẩm `runtime.deploy` (compose) ra `unverified` — **đã đóng** ở bổ sung 2026-10-13 dưới đây.
 - Recheck với RC đã waived: verdict mới `block` không mở lại escalation (đã duyệt) — nó hiện ở Gate 3.
+
+## Bổ sung 2026-10-13 — quét môi trường `deploy()` thay vì lệnh trần
+
+Đo hub thật 2026-10-12 (QLKH-DD-CSV REL-021): spec khai dependencies ngoài, repo có compose (ADR-0053), `deploy()`
+dựng staging xong (`evidence.deploy.ok`, smoke 200, cổng 8000) — nhưng `evidence.dast` vẫn `unverified` vì quyết định 4
+ở trên dừng ở "spec khai `runtime.deploy` thì chưa làm", và QA hồi quy cũng `unverified` + `deploy_declared`. Security
+chặn release-check vì thiếu DAST; gate escalation bị giữ. Bằng chứng đã có sẵn trên bus, chỉ không ai đưa nó tới chỗ quét.
+
+- `dast.evidence(..., deployed=)` nhận `release-events.evidence.deploy` của **cùng RC** (`verify.evidence_before` lấy
+  release-event staging mới nhất của `release_id`; ops dựng staging **trước** security trong cùng lượt RC vì
+  `STAGING_ROUTE` đứng trước `RELEASE_CHECK_ROUTE`). Spec cần `deploy()` (`deploy.deploy_thay_smoke` — một chỗ cho
+  `smoke()`, `regression_run()` và DAST) → `scan_deployed`: probe lại health trên `127.0.0.1:<port đã map>` **ngay lúc
+  quét** (container có thể đã bị RC sau thay), rồi `scan` như cũ. `evidence.dast.deploy` ghi `project`/`env`/
+  `container_ids`/`started_at` — quét cái gì, không chép lại smoke.
+- Không có `evidence.deploy` → `unverified` nói rõ thiếu nó; `ok=False`/`skipped` hay cổng không trả lời → `unverified`
+  kèm `deploy` để gate thấy đã dựng cái gì.
+- Cùng họ: `regression_run` dùng `deploy._smoke_running` trên cổng đó làm `evidence.run` (`ok`, `http_status`, `url`,
+  `deploy`) thay vì `unverified` + `deploy_declared` — QA không còn phải "chấm pass dù evidence.run unverified".
+  `deploy_declared` chỉ còn khi chưa deploy được (`skipped`/`deploy_failed`).
+- Không dựng thêm môi trường nào cho DAST: burst 24 lần đăng nhập sai đi vào DB của staging compose — đó là dữ liệu
+  giả của staging (DD-C6), không phải production.
 
 ## Phương án đã loại
 

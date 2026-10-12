@@ -22,7 +22,9 @@ from typing import Any
 
 import yaml
 
+from .deploy import deploy_thay_smoke
 from .smoke import _LOOPBACK, VERIFIED_BY, Runtime, free_port, parse_runtime, run_smoke, unverified
+from .smoke import _probe as http_probe  # cùng probe với smoke/deploy: "đang chạy" đo bằng một thước
 
 BURST = 12  # vượt ngưỡng 10 lần/15 phút thường gặp (CAMPUS-UNI NFR-009)
 TIMEOUT_S = 5
@@ -213,14 +215,60 @@ def run_dast(root: Path, rt: Runtime, sandbox: Any, contract: str | None) -> dic
     }
 
 
-def evidence(root: Path, spec: dict[str, Any] | None, sandbox: Any, contract: str | None, sha: str) -> dict[str, Any]:
-    """Bằng chứng `evidence.dast` của cây RC `root` (ADR-0047 §1, §4)."""
+def deploy_of(evidence: Any) -> dict[str, Any] | None:
+    """`evidence.deploy` (bản ghi `DeployRecord.record()`) trong `release-events.payload.evidence`; None khi chưa deploy
+    (ADR-0039) hay payload không phải dict. Ở đây chứ không ở `orch/` để `verify.py` không thêm `dict[str, Any]`."""
+    rec = evidence.get("deploy") if isinstance(evidence, dict) else None
+    return rec if isinstance(rec, dict) and rec else None
+
+
+def deploy_ref(deployed: dict[str, Any]) -> dict[str, Any]:
+    """Phần của `release-events.evidence.deploy` nói quét/đo CÁI GÌ — không chép lại smoke của lần deploy."""
+    return {k: deployed[k] for k in ("project", "env", "container_ids", "started_at") if k in deployed}
+
+
+def scan_deployed(rt: Runtime, deployed: dict[str, Any], contract: str | None) -> dict[str, Any]:
+    """Quét môi trường `deploy()` ĐÃ dựng (ADR-0039/0053): không khởi động, không giết gì — probe health trên cổng đã
+    map của chính RC rồi `scan`. `deployed` là `release-events.evidence.deploy` (ba hình của `DeployRecord`: chỉ
+    `ok=True` là có gì để quét; container có thể đã bị RC sau thay nên vẫn phải probe lại ngay lúc quét)."""
+    ref = deploy_ref(deployed)
+    if not deployed.get("ok") or not deployed.get("port"):
+        why = deployed.get("error") or deployed.get("skipped") or "không có cổng"
+        return {
+            **unverified(
+                f"bằng chứng deploy staging không phải 'đang chạy' (ok={deployed.get('ok')}: {why}) "
+                "— không có gì để quét"
+            ),
+            "deploy": ref,
+        }
+    base = f"http://127.0.0.1:{deployed['port']}"
+    st = http_probe(base + rt.path)
+    if st != rt.expect_status:
+        return {
+            **unverified(
+                f"môi trường deploy không trả lời {base}{rt.path} (http_status={st}, chờ "
+                f"{rt.expect_status}) — container có thể đã bị RC sau thay"
+            ),
+            "deploy": ref,
+        }
+    return {"verified_by": VERIFIED_BY, "base_url": base, "deploy": ref, **scan(base, rt.path, contract)}
+
+
+def evidence(
+    root: Path,
+    spec: dict[str, Any] | None,
+    sandbox: Any,
+    contract: str | None,
+    sha: str,
+    deployed: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Bằng chứng `evidence.dast` của cây RC `root` (ADR-0047 §1, §4). Spec cần `deploy()` (ADR-0039/0053) thì quét
+    môi trường staging đã dựng — `deployed` là `evidence.deploy` của release-events cùng RC — thay vì lệnh trần."""
     rt = parse_runtime(spec)
     if rt is None:
         return unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health) — không có gì để quét")
-    if rt.deploy:
-        return unverified(
-            "spec khai `runtime.deploy` (ADR-0041): sản phẩm cần môi trường dựng riêng, lệnh trần không "
-            "đại diện — DAST trên môi trường đó chưa làm"
-        )
+    if why := deploy_thay_smoke(rt, root):
+        if deployed is None:
+            return unverified(f"{why}; chưa có `evidence.deploy` của staging cho RC này — chưa quét được")
+        return {**scan_deployed(rt, deployed, contract), "sha": sha}
     return {**run_dast(root, rt, sandbox, contract), "sha": sha}

@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .. import dast, supply_chain
-from ..deploy import DeployError, compose_file, project_name
+from ..deploy import DeployError, _smoke_running, deploy_thay_smoke, project_name
 from ..events import Envelope
 from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..roles import ROLE
-from ..smoke import VERIFIED_BY, Runtime, parse_runtime, run_smoke, unverified
+from ..smoke import VERIFIED_BY, parse_runtime, run_smoke, unverified
 from ..workspace import Integration
 from .guards import _dict_of
 
@@ -29,9 +29,13 @@ if TYPE_CHECKING:
 DEPLOY_FAILED = "deploy_failed"
 
 
+def _staging_event(o: Orchestrator, rid: str) -> Envelope | None:
+    return next((e for e in reversed(list(o.bus.replay(topic="release-events", key=rid)))
+                 if e.payload.get("env") == "staging"), None)
+
+
 def release_evidence(o: Orchestrator, rid: str) -> dict[str, Any]:
-    staging = next((e for e in reversed(list(o.bus.replay(topic="release-events", key=rid)))
-                    if e.payload.get("env") == "staging"), None)
+    staging = _staging_event(o, rid)
     reviews = {s: {"verdict": x.verdict, "findings": len(x.findings)} for s, x in o.lead.release_reviews.get(rid, {}).items()}
     gate = next((g for g in reversed(o.gate.history) if g.subject_id == rid and g.kind == "release"), None)
     return {"staging": ({"status": staging.payload.get("status"), "version": staging.payload.get("version"),
@@ -50,20 +54,6 @@ def _du_an_legacy(o: Orchestrator, pid: str | None) -> bool:
     if pid is None: return False
     rr = o.latest("research-requests", pid)
     return rr is not None and rr.payload.get("legacy") is True
-
-
-def _deploy_thay_smoke(rt: Runtime, root: Path) -> str:
-    """Lý do bằng chứng chạy phải đến từ `deploy()` thay cho smoke trần, "" khi smoke trần vẫn là bằng chứng.
-
-    ADR-0041: spec khai `runtime.deploy`. ADR-0053: spec khai phụ thuộc ngoài (duyệt trước khi Gate 1 đòi
-    `runtime.deploy`) và repo có compose file mà `deploy()` sẽ dò ra — smoke trần không dựng được phụ thuộc nên chạy
-    nó chỉ sinh một `failed` chắc chắn. Một chỗ cho cả `smoke()` lẫn `regression_run()`."""
-    if rt.deploy:
-        return "runtime.deploy đã khai (ADR-0039/0040) — bằng chứng thật do deploy() cung cấp, không chạy smoke trần"
-    if rt.dependencies and (cfile := compose_file(root, rt)):
-        return (f"spec khai dependencies ngoài và repo có {cfile} (ADR-0053) — bằng chứng thật do deploy() cung cấp, "
-                "không chạy smoke trần")
-    return ""
 
 
 def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any], integ: Integration | None) -> dict[str, Any]:
@@ -97,7 +87,7 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
             request_gate(o.gate, GateRequest(kind="escalation", subject_id=rid, created_by=ROLE.OPS,
                                           checklist=["root_cause", "decision:redeploy|close", "hint"]))
         return {**p, "status": "failed", "smoke": smoke}
-    if why := _deploy_thay_smoke(rt, integ.path):
+    if why := deploy_thay_smoke(rt, integ.path):
         # ADR-0041: `runtime.command` chạy TRẦN bằng subprocess của chính orchestrator — không hợp với app cần
         # cài dependency riêng (venv/bắc cầu WSL) trước khi chạy được, đo thật trên QLKH: mọi lệnh đều fail cùng
         # lý do bất kể nội dung. Spec đã khai `runtime.deploy` (ADR-0039/0040) thì bằng chứng thật đến từ
@@ -212,11 +202,18 @@ def regression_run(o: Orchestrator, env: Envelope) -> dict[str, Any]:
         run = {**unverified("spec không khai `runtime` (lệnh khởi động, cổng, đường health)"), "spec_kind": kind}
     elif integ is None or not integ.path.exists():
         run = {**unverified("không có worktree tích hợp (dự án chạy không repo)"), "spec_kind": kind}
-    elif why := _deploy_thay_smoke(rt, _release_root(o, rid, integ)):
+    elif why := deploy_thay_smoke(rt, _release_root(o, rid, integ)):
         # ADR-0041: cùng lý do với `smoke()` — `runtime.command` chạy trần không hợp với app cần cài dependency
-        # riêng; spec đã khai `runtime.deploy` thì bằng chứng thật đến từ `deploy_release()`, không phải hồi quy
-        # smoke trần ở đây. `deploy_declared=True` để `verdict_with_run` không hạ verdict QA xuống `fail` vì lý
-        # do không liên quan tới chất lượng PR.
+        # riêng; spec đã khai `runtime.deploy` thì bằng chứng thật đến từ `deploy_release()`. `env` chính là
+        # release-event staging: `evidence.deploy.ok` → probe lại cổng đã map ngay bây giờ (ADR-0053 bổ sung — REL-021
+        # deploy ok mà QA phải tự biện "pass dù evidence.run unverified"). Chưa deploy được → `deploy_declared=True`
+        # để `verdict_with_run` không hạ verdict QA xuống `fail` vì lý do không liên quan tới chất lượng PR.
+        d = dast.deploy_of(env.payload.get("evidence")) or {}
+        if d.get("ok") and d.get("port"):
+            run = {**_smoke_running(rt, int(d["port"])), "sha": o.release_sha.get(rid) or integ.sha(), "spec_kind": kind,
+                   "deploy": dast.deploy_ref(d)}
+            o._audit("regression.run", {"release_id": rid, **run}, project_id=pid)
+            return run
         run = {**unverified(why), "spec_kind": kind, "deploy_declared": True}
     else:
         run = {**run_smoke(_release_root(o, rid, integ), rt, sandbox=o.sandbox), "sha": o.release_sha.get(rid) or integ.sha(),
@@ -275,10 +272,12 @@ def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope,
             ev = dict.fromkeys(("supply_chain", "dast"), unverified("không có worktree tích hợp (dự án chạy không repo)"))
         else:
             root, sha = _release_root(o, rid, integ), o.release_sha.get(rid) or integ.sha()
+            st = _staging_event(o, rid)
             spec = o.latest("approved-specs", pid) if pid else None
             ev = {"supply_chain": supply_chain.evidence(root, o.sandbox, sha=sha),
                   "dast": dast.evidence(root, spec.payload if spec is not None else None, o.sandbox,
-                                        o.blackboard.content("api-contract", pid), sha)}
+                                        o.blackboard.content("api-contract", pid), sha,
+                                        deployed=dast.deploy_of(st.payload.get("evidence") if st is not None else None))}
         # audit không kèm toàn văn SBOM / checks: chúng đi trong `review-results`
         for action, ev1, big in (("supply_chain.run", ev["supply_chain"], "sbom"), ("dast.run", ev["dast"], "checks")):
             o._audit(action, {"release_id": rid, **{k: v for k, v in ev1.items() if k != big}}, project_id=pid)

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from company.dast import BURST, evidence, login_op, run_dast, scan
+from company.dast import BURST, deploy_of, evidence, login_op, run_dast, scan
 from company.smoke import Runtime, run_smoke
 
 # Sản phẩm mẫu hai chế độ: `kin` (làm đúng) và `ho` (hở). Chạy được cả trong tiến trình test lẫn làm tiến trình con.
@@ -328,6 +328,57 @@ def test_evidence_theo_runtime_cua_spec(tmp_path):
     assert json.loads(json.dumps(ev)) == ev, "bằng chứng đi trên bus: phải là JSON"
 
 
+def test_evidence_quet_moi_truong_deploy_dang_chay_khi_spec_can_deploy(tmp_path, app):
+    """Spec cần `deploy()` (`runtime.deploy` ADR-0039, hay dependencies + compose ADR-0053) thì DAST quét môi trường
+    staging ĐÃ dựng — `release-events.evidence.deploy` của chính RC — không dựng lại bằng lệnh trần. Đo hub thật
+    2026-10-12 (QLKH-DD-CSV REL-021): compose lên, smoke 200, nhưng DAST `unverified` → security chặn release."""
+    base = app("kin")
+    rec = {
+        "ok": True,
+        "port": int(base.rsplit(":", 1)[1]),
+        "project": "company-p-staging",
+        "env": "staging",
+        "container_ids": ["c1", "c2"],
+        "started_at": "2026-10-12T16:58:01+00:00",
+        "smoke": {"ok": True},
+        "compose_file": "compose.yml",
+    }
+    spec = {"runtime": {"command": ["app"], "health": "/healthz", "deploy": "compose.yml"}}
+    ev = evidence(tmp_path, spec, None, CONTRACT, sha="abc", deployed=rec)
+    assert ev["verified_by"] == "orchestrator" and ev["base_url"] == base and ev["sha"] == "abc"
+    assert ev["checks"]["login"]["operation_id"] == "createSession" and "command" not in ev
+    assert ev["deploy"] == {
+        "project": "company-p-staging",
+        "env": "staging",
+        "container_ids": ["c1", "c2"],
+        "started_at": "2026-10-12T16:58:01+00:00",
+    }, "ghi quét CÁI GÌ, không chép lại smoke"
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    dep = {"runtime": {"command": ["app"], "health": "/healthz", "dependencies": ["PostgreSQL"]}}
+    assert evidence(tmp_path, dep, None, CONTRACT, sha="s", deployed=rec)["base_url"] == base, "ADR-0053 cùng đường"
+    assert json.loads(json.dumps(ev)) == ev
+
+
+def test_evidence_can_deploy_ma_thieu_hay_khong_tra_loi_thi_unverified_noi_ro(tmp_path):
+    from company.smoke import free_port
+
+    assert deploy_of(None) is None and deploy_of({"deploy": {}}) is None and deploy_of("x") is None
+    assert deploy_of({"deploy": {"ok": True}}) == {"ok": True}, "đọc evidence.deploy của release-events"
+    spec = {"runtime": {"command": ["app"], "health": "/healthz", "deploy": "compose.yml"}}
+    none = evidence(tmp_path, spec, None, CONTRACT, sha="s", deployed=None)
+    assert none["unverified"] is True and "runtime.deploy" in none["reason"] and "evidence.deploy" in none["reason"]
+    hong = evidence(
+        tmp_path, spec, None, CONTRACT, sha="s", deployed={"ok": False, "env": "staging", "error": "up thoát 1"}
+    )
+    assert hong["unverified"] is True and "up thoát 1" in hong["reason"] and hong["deploy"] == {"env": "staging"}
+    chet = evidence(
+        tmp_path, spec, None, CONTRACT, sha="s", deployed={"ok": True, "port": free_port(), "container_ids": ["c1"]}
+    )
+    assert (
+        chet["unverified"] is True and "không trả lời" in chet["reason"] and chet["deploy"] == {"container_ids": ["c1"]}
+    )
+
+
 # ---------- orchestrator: evidence.dast trước release-check của security ----------
 
 
@@ -385,6 +436,39 @@ def test_dast_quet_dung_cay_rc_voi_contract_tu_blackboard(tmp_path, monkeypatch)
     ev = _sec(bus)["evidence"]["dast"]
     assert calls and calls[0][2] == CONTRACT and calls[0][1].path == "/healthz"
     assert ev["issues"] == ["i"] and calls[0][0].name == ev["sha"], "quét trên checkout ĐÚNG sha đã staged"
+
+
+def test_dast_quet_staging_da_deploy_truoc_release_check(tmp_path, monkeypatch):
+    """Dây: ops dựng staging TRƯỚC security trong cùng lượt RC (`STAGING_ROUTE` đứng trước `RELEASE_CHECK_ROUTE`),
+    `evidence_before` lấy `evidence.deploy` của release-events staging đưa cho `dast.evidence` — cùng RC, cùng cổng."""
+    import company.dast as dast
+    from company.events import Task
+    from test_deploy_release_fsm import RUNTIME, _fake_deploy, _orch, _repo
+    from test_supply_chain import _fake_licenses
+
+    _fake_licenses(monkeypatch)
+    fn, _ = _fake_deploy(monkeypatch)
+    bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime={**RUNTIME, "deploy": "compose.yaml"})
+    orch.lead.tickets["T1"] = Task(
+        ticket_id="T1",
+        project_id="P",
+        requirement_id="R1",
+        assignee="builder",
+        title="T1",
+        acceptance=["a"],
+        risk_tags=["auth"],
+    )
+    seen: list[str] = []
+    monkeypatch.setattr(dast, "http_probe", lambda url: 200)
+    monkeypatch.setattr(
+        dast, "scan", lambda base, health, contract: seen.append(base) or {"checks": {}, "issues": [], "notes": []}
+    )
+    monkeypatch.setattr(dast, "run_dast", lambda *a: (_ for _ in ()).throw(AssertionError("dựng lại bằng lệnh trần")))
+    orch.run()
+    ev = _sec(bus)["evidence"]["dast"]
+    assert seen == ["http://127.0.0.1:8080"] and ev["base_url"] == "http://127.0.0.1:8080"
+    assert ev["verified_by"] == "orchestrator" and ev["deploy"]["container_ids"] == ["abcdef012345"]
+    assert _audits(bus, "dast.run")[-1]["deploy"]["container_ids"] == ["abcdef012345"]
 
 
 def test_loi_khai_dast_cua_model_bi_bo_dast_summary_giu(tmp_path, monkeypatch):

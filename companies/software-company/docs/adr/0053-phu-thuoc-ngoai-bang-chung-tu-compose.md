@@ -71,8 +71,16 @@ Hai lỗ:
 ## Đo hai chiều
 
 - Bỏ nhánh mới của `spec_runtime_gap` ⇒ `test_gap_phu_thuoc_ngoai_ma_khong_khai_deploy` đỏ.
-- Bỏ vế `dependencies + compose_file` của `_deploy_thay_smoke` ⇒ hai test sau đỏ (`failed`, `run_smoke` chạy):
+- Bỏ vế `dependencies + compose_file` của `deploy.deploy_thay_smoke` (dời từ `orch/verify.py` sang `deploy.py`
+  2026-10-13 để `dast.evidence` dùng chung) ⇒ hai test sau đỏ (`failed`, `run_smoke` chạy):
   - `test_phu_thuoc_ngoai_va_repo_co_compose_thi_smoke_tran_nhuong_deploy`;
   - `test_hoi_quy_phu_thuoc_ngoai_va_compose_khong_chay_smoke_tran`.
 - Hai chiều ngược phải giữ xanh: `test_compose_ma_khong_khai_phu_thuoc_thi_van_smoke_tran` và
   `test_phu_thuoc_ngoai_khong_co_compose_thi_van_smoke_tran`.
+
+## Bổ sung 2026-10-13 — bằng chứng của `deploy()` đi tới QA hồi quy và DAST
+
+REL-021 (QLKH-DD-CSV): compose lên, smoke 200, nhưng `evidence.run` của QA và `evidence.dast` của security vẫn
+`unverified` → security chặn. Đóng ở ADR-0047 "Bổ sung 2026-10-13": `regression_run` probe lại cổng đã map của
+`evidence.deploy` (`_smoke_running`), `dast.evidence(..., deployed=)` quét ngay trên môi trường đó. Lỗ "deploy `skipped`
+thì RC không có bằng chứng chạy" ở Hệ quả vẫn còn nguyên — khi đó `deploy_declared` và `unverified` nói đúng như trước.
