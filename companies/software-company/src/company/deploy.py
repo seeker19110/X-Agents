@@ -129,6 +129,21 @@ def compose_file(repo_root: Path, rt: Runtime) -> str:
     return next((n for n in COMPOSE_NAMES if (repo_root / n).is_file()), "")
 
 
+def deploy_thay_smoke(rt: Runtime, repo_root: Path) -> str:
+    """Lý do bằng chứng chạy phải đến từ `deploy()` thay cho smoke trần, "" khi smoke trần vẫn là bằng chứng.
+
+    ADR-0041: spec khai `runtime.deploy`. ADR-0053: spec khai phụ thuộc ngoài (duyệt trước khi Gate 1 đòi
+    `runtime.deploy`) và repo có compose file mà `deploy()` sẽ dò ra — smoke trần không dựng được phụ thuộc nên chạy
+    nó chỉ sinh một `failed` chắc chắn. Một chỗ cho `smoke()`, `regression_run()` lẫn `dast.evidence()`: ba bản là
+    sớm muộn lệch nhau."""
+    if rt.deploy:
+        return "runtime.deploy đã khai (ADR-0039/0040) — bằng chứng thật do deploy() cung cấp, không chạy smoke trần"
+    if rt.dependencies and (cfile := compose_file(repo_root, rt)):
+        return (f"spec khai dependencies ngoài và repo có {cfile} (ADR-0053) — bằng chứng thật do deploy() cung cấp, "
+                "không chạy smoke trần")
+    return ""
+
+
 def deploy_script(repo_root: Path, rt: Runtime) -> str:
     """Đường dẫn script deploy `process` tương đối trong repo khách, "" nếu không có (ADR-0040 §1). Khác
     `compose_file`: không dò tên mặc định — mỗi khách viết script khác nhau, đoán tên là đoán thay khách."""
