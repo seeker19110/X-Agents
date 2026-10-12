@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -25,9 +26,11 @@ class Stack:
     # Thư mục/tên file được coi là TEST của stack này (ADR-0028). Dùng để phân vùng quyền ghi giữa
     # `test-author` (chỉ test) và agent viết code (mọi thứ trừ test). Rỗng = không phân vùng được ⇒ fail closed.
     test_globs: tuple[str, ...] = ()
+    # ADR-0054: công thức sinh lại lockfile (`lock_command`); None = không có lệnh `lock` trong allowlist.
+    lock: list[str] | None = None
 
     def commands(self) -> dict[str, list[str]]:
-        return {k: v for k, v in (("lint", self.lint), ("test", self.test)) if v}
+        return {k: v for k, v in (("lint", self.lint), ("test", self.test), ("lock", self.lock)) if v}
 
     def is_test_path(self, rel: str) -> bool:
         """`rel` (POSIX, tương đối gốc worktree) có nằm trong vùng test của stack không.
@@ -116,7 +119,67 @@ def _py_stack(root: Path) -> Stack:
         ruff if "ruff" in deps else PY.lint,
         [*prefix, "pytest", "-q", "-p", "no:cacheprovider"] if "pytest" in deps else PY.test,
         PY_TEST_GLOBS,
+        lock=lock_command(root),
     )
+
+
+# ADR-0054: công thức sinh lại lockfile do CODE suy từ repo khách. Header là dữ liệu của khách (builder sửa được), nên
+# chỉ nhận cờ trong allowlist, token sạch, file vào có thật, file ra trong gốc — lệch là không có công thức.
+LOCK_FILES = ("requirements.lock", "requirements.txt")
+_LOCK_HEADER = re.compile(r"uv pip compile\s+(.*)$")
+_LOCK_FLAGS = frozenset({"--generate-hashes", "--all-extras", "--universal", "--strip-extras", "--no-deps", "--upgrade",
+                         "-U", "--no-header", "--no-annotate"})
+_LOCK_FLAGS_VAL = frozenset({"-o", "--output-file", "--python-version", "-p", "--python", "--extra", "--group", "-c",
+                             "--constraint"})
+_LOCK_PATH_FLAGS = frozenset({"-o", "--output-file", "-c", "--constraint"})
+_LOCK_TOKEN = re.compile(r"^[A-Za-z0-9_.=@+-][A-Za-z0-9_./=@+-]*$")
+
+
+def lock_command(root: Path) -> list[str] | None:
+    """`uv.lock` ⇒ `uv lock`; `requirements.lock|txt` có header `uv pip compile …` ⇒ argv từ header đã kiểm; else None."""
+    if (root / "uv.lock").is_file():
+        return ["uv", "lock"]
+    for name in LOCK_FILES:
+        p = root / name
+        if not p.is_file():
+            continue
+        try:
+            head = p.read_text(encoding="utf-8").splitlines()[:10]
+        except (OSError, UnicodeDecodeError):
+            return None
+        for line in head:
+            if line.startswith("#") and (m := _LOCK_HEADER.search(line)):
+                return _uv_pip_compile(root, m.group(1))
+    return None
+
+
+def _trong_goc(root: Path, rel: str) -> bool:
+    """`rel` (đã qua `_LOCK_TOKEN`, không có ký tự lạ) nằm trong gốc sau khi giải `..`/symlink."""
+    return (root / rel).resolve().is_relative_to(root.resolve())
+
+
+def _uv_pip_compile(root: Path, rest: str) -> list[str] | None:
+    try:
+        toks = shlex.split(rest, posix=True)
+    except ValueError:
+        return None
+    if not toks or any(not _LOCK_TOKEN.match(t) for t in toks):
+        return None
+    out = ["uv", "pip", "compile"]
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t in _LOCK_FLAGS:
+            out.append(t); i += 1
+        elif t in _LOCK_FLAGS_VAL:
+            if i + 1 >= len(toks) or (t in _LOCK_PATH_FLAGS and not _trong_goc(root, toks[i + 1])):
+                return None
+            out += [t, toks[i + 1]]; i += 2
+        elif t.startswith("-") or not _trong_goc(root, t) or not (root / t).is_file():
+            return None   # cờ lạ, hay file vào không có thật
+        else:
+            out.append(t); i += 1
+    return out
 
 
 def _requirements(root: Path) -> tuple[list[str], frozenset[str]]:
