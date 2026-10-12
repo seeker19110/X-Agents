@@ -34,7 +34,7 @@ claude-code). Thiếu một dòng là dự án đầu tiên kẹt ở gate escal
 scripts/systemd.sh install
 ```
 
-Script sinh 4 unit vào `~/.config/systemd/user/` (đường dẫn repo và `uv` điền sẵn) và, **chỉ lần đầu**, tạo
+Script sinh 5 unit vào `~/.config/systemd/user/` (đường dẫn repo và `uv` điền sẵn) và, **chỉ lần đầu**, tạo
 `~/.config/x-agents/hub.env` quyền `0600` từ [`deploy/systemd/hub.env.example`](../deploy/systemd/hub.env.example).
 Cài lại (sau `git pull`) không đè `hub.env`.
 
@@ -48,14 +48,14 @@ CONSOLE_ARGS=--allow-decide --notify-ntfy https://ntfy.sh/<topic-khó-đoán>
 Bật và cho chạy cả khi không ai đăng nhập, tự bật lại sau reboot:
 
 ```bash
-systemctl --user enable --now xagents-gateway xagents-orchestrator xagents-console
+systemctl --user enable --now xagents-gateway xagents-orchestrator xagents-console xagents-reviewer
 ```
 
 ```bash
 loginctl enable-linger "$USER"
 ```
 
-Keeper là tùy chọn: `systemctl --user enable --now xagents-keeper`.
+Keeper là tùy chọn: `systemctl --user enable --now xagents-keeper`. `xagents-reviewer` (agent duyệt tự động, ADR gốc 0034) chỉ ký khi hub.env có `COMPANY_GATE_REVIEWER=1` và khoá `reviewer:tu-dong` đã sinh (`cd companies/software-company && uv run python -m company.gate_reviewer init-key --id tu-dong`); thiếu một trong hai thì mọi gate thành `máy giữ` kèm lý do, không ký.
 
 | Unit | Chạy | Thư mục |
 |---|---|---|
@@ -63,6 +63,7 @@ Keeper là tùy chọn: `systemctl --user enable --now xagents-keeper`.
 | `xagents-orchestrator` | `company.orchestrator $ORCHESTRATOR_ARGS run --watch 10` | `companies/software-company` |
 | `xagents-console` | `console $CONSOLE_ARGS` (127.0.0.1:8200) | `platform/console` |
 | `xagents-keeper` | `keeper.cli watch --db keeper.sqlite --repo <repo này> --interval 600` | `companies/keeper` |
+| `xagents-reviewer` | `company.gate_reviewer run --id tu-dong --watch 60 $REVIEWER_ARGS` — agent duyệt gate tự động (ADR gốc 0034); cần `COMPANY_GATE_REVIEWER=1` trong hub.env và khoá `init-key --id tu-dong` do người sinh | `companies/software-company` |
 
 Ba quy tắc cứng (có test canh ở `platform/console/tests/test_trien_khai_systemd.py`):
 
@@ -125,7 +126,7 @@ cd companies/software-company && uv run python -m company.orchestrator status
 
 | Phép đo | Kết quả |
 |---|---|
-| `scripts/systemd.sh install` | 4 unit, `hub.env` quyền `600` |
+| `scripts/systemd.sh install` | 5 unit, `hub.env` quyền `600` |
 | `systemctl --user start` gateway + orchestrator + console | cả ba `active`; `GET /` console → 200, `GET /health` gateway → 200 |
 | Log trong `journalctl` | có (sau khi thêm `PYTHONUNBUFFERED=1` — trước đó **0 dòng**) |
 | `systemctl --user stop xagents-orchestrator` | `company.sqlite.lock` được xoá — lease trả sạch |

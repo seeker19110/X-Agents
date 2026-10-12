@@ -63,6 +63,19 @@ Mọi điều của `rong` **cộng** gate `spec`. Chủ dự án giao luôn vi�
 khai đủ → `approve`; thiếu thứ chặn tiêu chí nghiệm thu hay ruling tự quyết đổi phạm vi khách đã nêu → `reject` với
 hint cụ thể. Ghi trong `root_cause` những ruling tự quyết đáng kể nhất mà bạn đã chấp nhận thay khách.
 
+## Khi agent duyệt tự động đang chạy (ADR gốc 0034) — phiên chính là lớp sau
+
+Hub có unit `xagents-reviewer` (`python -m company.gate_reviewer run --id tu-dong --watch 60`): mỗi gate chờ được
+`reviewer:tu-dong` đọc hồ sơ và ký TRƯỚC, đúng một lượt mỗi thế hệ gate. Khi đó:
+
+1. Chạy `uv run python -m company.gate_reviewer holds` (hoặc nhìn cờ `máy giữ:` trong `gate_cli list`). **Chỉ xét
+   những gate đó** — lý do giữ là điểm bắt đầu của bạn (model lỗi, đầu ra hỏng, ngoài phạm vi, hay "chưa đủ bằng
+   chứng" kèm hint).
+2. Gate không có `máy giữ` và không có chữ ký chờ áp: agent chưa tới lượt (trần mỗi vòng, vừa mở) hoặc unit tắt —
+   kiểm `systemctl --user status xagents-reviewer` trước khi tự duyệt thay nó.
+3. Quyết như các mục trên, ký `--id phien-chinh`. Hai chữ ký khác principal trên cùng gate là bình thường: hold
+   không ghi gì vào gate, chỉ ghi `reviewer.hold` ở audit-log.
+
 ## Không bao giờ
 
 - Ký bằng `human:*`, hay gõ `gate_cli approve` (đó là cửa của người).

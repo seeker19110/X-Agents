@@ -25,6 +25,7 @@ from . import gate_risk
 from .bus import InMemoryBus
 from .events import AuditLog, Envelope
 from .gate_reviewer import enabled as reviewer_enabled
+from .gate_reviewer import held as reviewer_held
 from .gate_reviewer import trusted_reviewer
 from .gate_risk import AUTOAPPROVE_ACTOR, AUTOAPPROVE_REASON_PREFIX
 from .gates import GateKind, GateRequest, HumanGate, gate_approvers, gate_autoapprove_enabled
@@ -218,9 +219,11 @@ def main(argv: list[str] | None = None) -> int:
     if ns.cmd == "list":
         remind, overdue = gate.due()
         signed = gate.reviewer_signed_pending()
+        giu = reviewer_held(gate)   # ADR gốc 0034: agent duyệt đã xem và giữ — việc của phiên chính
         for sid, r in gate.pending.items():
             flag = (f" đã ký bởi {signed[sid]['by']}; cờ tắt, chưa áp" if sid in signed else
                     " OVERDUE" if sid in overdue else " remind" if sid in remind else "")
+            if sid in giu: flag += f" máy giữ: {str(giu[sid].get('reason', ''))[:120]}"
             print(f"{sid:<12} {r.kind:<10} by={r.created_by or '-':<16} checklist={','.join(r.checklist)}{flag}")
         if not gate.pending: print("(không có gate chờ)")
         return 0
