@@ -34,6 +34,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -256,7 +257,11 @@ class ContainerSandbox:
                 base += ["-e", f"{k}={v}"]
         base += ["--network", network]
         if network != "none": base += ["--dns", "127.0.0.1"]
-        return [*base, self.image, *spec.argv]
+        # Trình thông dịch của tiến trình GỌI (venv máy chủ) không tồn tại trong container — chỉ worktree được mount
+        # ở `/w`. Nơi gọi ghép `sys.executable` cho đúng chế độ subprocess (stack Python, smoke `python …`); ở đây nó
+        # là `python` của image. Đo 2026-10-12: thiếu đổi này mọi lint/test Python trong container trả exit 127.
+        argv = ["python", *spec.argv[1:]] if spec.argv and spec.argv[0] == sys.executable else list(spec.argv)
+        return [*base, self.image, *argv]
 
     def _input(self, spec: RunSpec) -> str:
         # `/dev/stdin` đọc từng dòng KEY=VALUE trên stdin; giá trị nhiều dòng không hợp lệ nên bỏ.
