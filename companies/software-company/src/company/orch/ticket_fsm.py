@@ -24,6 +24,7 @@ from .fsm import Transition
 from .gates_flow import _retire_replanned
 from .guards import pending_clarifications
 from .routes import ACTIVE_STATES, PLAN_INPUTS, PLAN_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
+from .scheduler import moc_reset
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -112,9 +113,9 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     try:
         g = o.runner.generate(ROLE.PRODUCT, inp, "tasks", many=True, phase=PHASE.PLAN)
     except TransientError as e:
-        res.actions.append(f"transient:{ROLE.PRODUCT}:{str(e)[:120]}")
+        res.actions.append(f"transient:{ROLE.PRODUCT}:{str(e)[:120]}"); res.reset_s = moc_reset(e)
         with o._lock: o.stats["transient"] += 1
-        return o._defer(env, res, f"transient:{ROLE.PRODUCT}")
+        return o._defer_transient(env, res)
     except (RunnerError, LLMError) as e:
         res.actions.append(f"error:{ROLE.PRODUCT}:{str(e)[:120]}")
         with o._lock: o.stats["errors"] += 1
