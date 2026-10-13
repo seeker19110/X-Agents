@@ -294,6 +294,10 @@ def build_notifier(*, ntfy, telegram_chat, public_url, env) -> Notifier   # Noti
   — không URL, không token.
 - `failing` = kênh mà LẦN GỬI GẦN NHẤT qua nó hỏng (gửi lại được thì rời danh sách); `failed` = tổng từ khi console
   chạy. `watch_error` = `collect()` ném trong `NotifyWatcher.step` (xoá khi đọc lại được) — tách khỏi `last_error`.
+- Ô "Luồng công việc" (`static/js/flow.js`, `#flow` đầu màn Trực ban): bậc = tổng `product_funnel[].stages[]` theo
+  `PRODUCT_STAGES` (bậc rỗng khi MỌI sản phẩm `empty`), điểm dừng = `gates` của xưởng phần mềm theo `GATE_AT`
+  (`clarification`/`spec` → trước *Đặc tả*, `release` → trước *Production*, `acceptance` → trước *Nghiệm thu*;
+  `escalation` ô riêng). Bấm điểm dừng = `openGate` gate chờ lâu nhất; bấm bậc = cuộn tới bảng của bậc đó.
 - Ô "Thông báo" (`static/js/notify.js`, `#notify` dưới `#engine`) chỉ tra `PILL[verdict.level]` và in `verdict.say`;
   mọi so sánh nằm ở `verdict()`. `test_static_ui.py` đối chiếu khoá `PILL` với `VERDICT_LEVELS`.
 - Tin thử (`send_test`): tiêu đề cố định `TEST_TITLE`, thân "Bấm bởi <by> lúc <UTC>…", link `<public_url>/#/truc-ban`.
@@ -330,7 +334,7 @@ Một file, không framework, không bước build. Phần dữ liệu:
 - `sources[x].ok === false`: phần của xưởng đó hiện trạng thái rỗng có lý do, không hiện số 0 giả.
 - Nút quyết định gate gọi `POST /api/gate/decide`; `readonly` thì nút bị khoá kèm giải thích
   cách bật `--allow-decide`.
-- Khối **Giao việc** ở đầu màn Xưởng phần mềm: form yêu cầu phần mềm (kèm nơi lưu dự án `repo`/`base`,
+- Khối **Giao việc** (gập mặc định, bấm tiêu đề để mở) ở đầu màn Xưởng phần mềm: form yêu cầu phần mềm (kèm nơi lưu dự án `repo`/`base`,
   ADR-0025 của công ty) và trả lời câu hỏi làm rõ. Hai form = hai topic trong `submit.FORMS`. Trang chỉ gom
   trường thành payload đúng hình schema (danh sách: mỗi dòng một mục; trả lời: `question_id: nội dung`), gọi
   `POST /api/request`; `can_submit` false thì nút khoá kèm cách bật `--allow-submit`. Gửi xong hiện key + event id.
@@ -344,7 +348,8 @@ Chỉ icon được cache. Icon sinh lại bằng `uv run python tools/make_icon
 Điều hướng — địa chỉ là trạng thái (ADR-0011 §5 giai đoạn 5/5: sáu màn "thông tin" — `truc-ban`, `phieu`,
 `phan-mem`, `bao-tri`, `chi-phi`, `nhat-ky` — nay LUÔN hiển thị cùng lúc trên một trang cuộn dài; `<màn>` chỉ
 còn quyết định nav cuộn tới đâu và tiêu đề nào hiện ở đầu trang, KHÔNG còn ẩn/hiện section. `cai-dat` và
-`huong-dan` không đổi):
+`huong-dan` không đổi. Cuộn tay thì `router.spy` đổi mục nav đang sáng và tiêu đề theo màn đang ở 40% trên của
+khung — chỉ đánh dấu, không đổi địa chỉ):
 
 ```
 #/<màn>                     truc-ban | phieu | phan-mem | bao-tri | chi-phi | nhat-ky | cai-dat | huong-dan
