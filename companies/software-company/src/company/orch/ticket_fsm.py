@@ -23,14 +23,14 @@ from ..runner import RunnerError
 from .fsm import Transition
 from .gates_flow import _retire_replanned
 from .guards import pending_clarifications
-from .routes import PLAN_INPUTS, PLAN_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
+from .routes import ACTIVE_STATES, PLAN_INPUTS, PLAN_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
 
 
 def _superseded(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
-    """Event `tasks`/`pull-requests` còn trong hàng đợi (hoãn vì paused/transient, hoặc mở lại bus) mà ticket đã
+    """Event `tasks`/`pull-requests`/`test-suites` còn trong hàng đợi (hoãn vì paused/transient, hoặc mở lại bus) mà ticket đã
     đi tiếp thì là hàng cũ: bỏ, audit `<topic>.superseded`, không giao agent.
 
     - `tasks` chỉ còn giá trị khi ticket vẫn `dispatched` — trạng thái mà chính event đó đặt. Người tiếp quản
@@ -39,6 +39,9 @@ def _superseded(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
       người bị bỏ vì ticket không còn `in_review`.
     - `pull-requests` chỉ còn giá trị khi là PR MỚI NHẤT của ticket: `_on_pr` đã đặt lại vòng review theo PR
       sau, review PR trước là chấm commit cũ rồi ghi verdict vào vòng của PR mới.
+    - `test-suites` chỉ còn giá trị khi ticket còn đang làm (`ACTIVE_STATES`): lượt tranh chấp (PR mang
+      `test_dispute` → qa pha `author`) chạy song song với review của chính PR đó; review pass trước thì ticket đã
+      approved/merged, giao builder là PR thừa → `_on_pr` ném "không thể approved → in_review" (DDCSV-22, 2026-10-13).
     Đo được (2026-09-04/05): QLKH-004 mở lại 7 lần, 13 lần review block, 10.7M token; sau khi mở lại bus,
     PR tiếp quản 04:10 (đã có 2/3 verdict, hoãn vì qa transient) vẫn nằm hàng đợi cạnh PR tiếp quản mới."""
     tid = str(env.payload.get("ticket_id") or env.key)
@@ -47,6 +50,9 @@ def _superseded(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
     if env.topic == "tasks":
         if st == "dispatched": return False
         why = {"state": st, "retry": env.payload.get("retry", 0)}
+    elif env.topic == "test-suites":
+        if st in ACTIVE_STATES: return False
+        why = {"state": st}
     else:
         newest = o.latest("pull-requests", tid)
         if newest is None or newest.event_id == env.event_id: return False
@@ -331,7 +337,7 @@ def _act_clarification_fallback(o: Orchestrator, env: Envelope, res: StepResult)
 
 
 TICKET_TRANSITIONS: list[Transition] = [
-    Transition("superseded", frozenset({"tasks", "pull-requests"}), _act_superseded),
+    Transition("superseded", frozenset({"tasks", "pull-requests", "test-suites"}), _act_superseded),
     Transition("learn_repo", frozenset({"research-requests"}), _act_learn_repo),
     Transition("plan", frozenset(PLAN_INPUTS), _act_plan,
                guard=lambda env, o: PLAN_INPUTS[env.topic](env, o)),
