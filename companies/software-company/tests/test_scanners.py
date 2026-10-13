@@ -155,7 +155,13 @@ def test_vuln_evidence_tom_tat_trivy_fs_va_image_theo_muc_do(tmp_path, tools):
         and img["total"] == 4
         and img["fixable"] == 1
     )
-    assert "findings" not in img, "image: chỉ số đếm — 421 CVE Debian không đi lên bus"
+    # ADR-0056 bổ sung (hub 2026-10-13, REL-022): security chặn vì "RC không có danh sách CVE" của image — chỉ số đếm
+    # thì không viết được hồ sơ ngoại lệ hay chọn CVE để vá. Danh sách CRITICAL + HIGH, CRITICAL trước, có bản sửa
+    # trước; MEDIUM/LOW vẫn chỉ đếm (421 CVE Debian không đi lên bus).
+    assert img["findings"] == [
+        {"package": "zlib1g", "version": None, "id": "CVE-2026-9", "severity": "CRITICAL", "fixed": "1:1.2.13-2"},
+        {"package": "libc6", "version": None, "id": "CVE-2026-8", "severity": "HIGH", "fixed": None},
+    ]
     fs = tools.calls[1]
     assert fs[1:] == [
         "fs",
@@ -339,6 +345,8 @@ def test_release_check_mang_vuln_va_secrets_cua_may(tmp_path, monkeypatch, tools
     acts = [e.payload["action"] for e in bus.replay(topic="audit-log")]
     assert "vuln.claimed_ignored" in acts and "secrets.claimed_ignored" in acts
     assert "targets" not in _audits(bus, "vuln.run")[-1] and "findings" not in _audits(bus, "secrets.run")[-1]
+    assert all("findings" not in i for i in _audits(bus, "vuln.run")[-1]["images"]), "audit chỉ đếm, danh sách ở review"
+    assert ev["vuln"]["images"][0]["findings"], "review-results vẫn mang danh sách CVE của image"
     assert _audits(bus, "vuln.run")[-1]["by_severity"]["HIGH"] == 2
 
 
@@ -351,3 +359,18 @@ def test_khong_co_repo_thi_vuln_va_secrets_unverified(tmp_path):
     assert (
         ev["vuln"]["unverified"] is True and ev["secrets"]["unverified"] is True and "worktree" in ev["vuln"]["reason"]
     )
+
+
+def test_vuln_evidence_image_findings_critical_truoc_co_ban_sua_truoc_va_co_tran(tmp_path, monkeypatch):
+    vulns = [{"VulnerabilityID": f"H-{i}", "PkgName": "p", "Severity": "HIGH"} for i in range(60)]
+    vulns += [
+        {"VulnerabilityID": "H-fix", "PkgName": "q", "Severity": "HIGH", "FixedVersion": "2"},
+        {"VulnerabilityID": "C-1", "PkgName": "r", "Severity": "CRITICAL"},
+        {"VulnerabilityID": "M-1", "PkgName": "s", "Severity": "MEDIUM", "FixedVersion": "1"},
+    ]
+    t = FakeTools(img={"Results": [{"Target": "x", "Vulnerabilities": vulns}]})
+    monkeypatch.setattr(sc, "which", t.which)
+    monkeypatch.setattr(sc, "run", t.run)
+    f = vuln_evidence(tmp_path, "s", ["a:1"])["images"][0]["findings"]
+    assert [x["id"] for x in f[:2]] == ["C-1", "H-fix"] and len(f) == sc.MAX_FINDINGS
+    assert all(x["severity"] in ("CRITICAL", "HIGH") for x in f), "MEDIUM/LOW chỉ đếm"
