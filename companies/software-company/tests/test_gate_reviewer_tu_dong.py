@@ -71,6 +71,16 @@ def test_prompt_reviewer_co_version_va_hop_dong_dau_ra():
         assert tu in body, f"prompt phải nêu `{tu}`"
 
 
+def test_prompt_reviewer_duoc_uy_quyen_ky_mien_cve_va_dpia_du_lieu_gia():
+    """ADR gốc 0036 (chủ repo chọn 2026-10-13): reviewer ký miễn CVE KHÔNG có bản sửa (danh sách + hạn xem lại trong
+    root_cause) và DD-C6/DPIA CHỈ cho dữ liệu giả; mọi finding block khác vẫn `reject`/`hold`. Trước đó prompt cấm
+    tuyệt đối "đổi chính sách bảo mật của khách" nên REL-022…035 kẹt chờ người dù chủ repo đã ủy quyền."""
+    version, body = gr.load_prompt()
+    assert version >= 2, "đổi luật ký là đổi prompt — tăng version"
+    for tu in ("ADR gốc 0036", "không có bản sửa", "hạn xem lại", "dữ liệu giả", "dữ liệu thật"):
+        assert tu in body, f"prompt phải nêu `{tu}`"
+
+
 # ---------- review_one: hai chiều ----------
 
 

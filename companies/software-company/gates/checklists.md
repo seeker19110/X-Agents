@@ -126,7 +126,8 @@ audit `debt.escalated` mang cả bảng (`status.architecture_debt`). Dự án K
 và người ký; `reject` = chấp nhận treo — cả hai chỉ ghi `debt.decided`. Nợ nhắc tiếp tới bội số kế của N → gate mới.
 
 ## Chỉ người được ký
-- Chấp nhận rủi ro bảo mật (threat accepted)
+- Chấp nhận rủi ro bảo mật (threat accepted) — trừ hai loại miễn reviewer được ký theo ADR gốc 0036:
+  CVE không có bản sửa (kèm danh sách CVE + hạn xem lại) và DD-C6/DPIA chỉ cho dữ liệu giả
 - Ngoại lệ license (copyleft)
 - Chuyển dữ liệu cá nhân ra nước ngoài
 - Bật A/B test chạm PII

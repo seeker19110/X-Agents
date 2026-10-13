@@ -55,6 +55,11 @@ Chủ dự án giao phiên chính quyết mọi gate trừ duyệt spec. Khi bi�
   `reject` với hint cụ thể; không đủ bằng chứng để quyết bên nào → để nguyên, báo người.
 - Lý do vẫn phải có `root_cause`/`decision`/`hint`. Chấp nhận rủi ro (license, finding security) thì ghi rõ rủi ro
   gì đã được chấp nhận trong `root_cause` — người đọc sau phải thấy máy đã chấp nhận cái gì.
+- Ủy quyền ký miễn (ADR gốc 0036, chủ repo chọn 2026-10-13), cùng luật với `reviewer:tu-dong`: approve escalation
+  `REL-*` chỉ khi **mọi** finding `block` của security là (a) CVE không có bản sửa (`fixed` rỗng trong
+  `evidence.vuln`) — `root_cause` liệt kê mã CVE và hạn xem lại ≤ 90 ngày; hoặc (b) DD-C6/DPIA với dữ liệu giả —
+  `root_cause` ghi "chỉ dữ liệu giả; dữ liệu thật cần DPIA thật do chủ dự án ký". Còn CVE có bản sửa hay finding
+  khác → `reject` với hint. Copyleft, chuyển dữ liệu ra nước ngoài, A/B chạm PII vẫn của người.
 
 ## Phạm vi `toan-bo` (ADR gốc 0033) — khi `COMPANY_GATE_REVIEWER_SCOPE=toan-bo`
 

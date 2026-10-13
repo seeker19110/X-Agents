@@ -502,3 +502,12 @@ def test_dependabot_docker_chi_nang_digest_va_patch() -> None:
         bo = {t for i in u.get("ignore") or [] if i.get("dependency-name") == "*" for t in i.get("update-types") or []}
         assert {"version-update:semver-major", "version-update:semver-minor"} <= bo, (
             f"Dependabot docker {u['directory']} còn nâng major/minor của tag image: {sorted(bo)}")
+
+
+def test_gate_review_theo_luat_uy_quyen_ky_mien_adr_0036() -> None:
+    """ADR gốc 0036: `/gate-review` (phiên chính) theo cùng luật ký miễn với prompt `reviewer:tu-dong` — CVE không có
+    bản sửa, DD-C6/DPIA chỉ dữ liệu giả. Prompt được canh ở `test_gate_reviewer_tu_dong.py`; lệnh nằm ngoài mọi gói nên
+    canh ở đây (console luôn chạy)."""
+    cmd = (ROOT / ".claude" / "commands" / "gate-review.md").read_text(encoding="utf-8")
+    for tu in ("ADR gốc 0036", "không có bản sửa", "hạn xem lại", "chỉ dữ liệu giả"):
+        assert tu in cmd, f"/gate-review phải nêu `{tu}`"
