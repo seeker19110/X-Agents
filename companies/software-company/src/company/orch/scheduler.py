@@ -324,6 +324,12 @@ def record_sandbox_mode(o: Orchestrator) -> None:
     o._sandbox_mode_recorded = True
 
 
+def record_delivery_mode(o: Orchestrator) -> None:
+    """`run` ghi `--deliver`/`--push-remote` của CHÍNH tiến trình này: hồ sơ gate dựng ở tiến trình khác
+    (`xagents-reviewer`, `gate_brief`) không thấy cờ CLI, chỉ thấy log (sự cố 2026-10-13, REL-037/038)."""
+    o._audit("delivery.mode", {"deliver": o.deliver, "push_remote": o.push_remote})
+
+
 def sandbox_mode(o: Orchestrator) -> Any:
     """Status đọc lần khởi động ghi nhận gần nhất, chỉ tin actor orchestrator."""
     from ..orchestrator import _evidence
