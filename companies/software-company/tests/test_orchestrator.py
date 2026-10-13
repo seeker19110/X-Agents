@@ -893,6 +893,56 @@ def test_ton_trong_thoi_gian_cho_backend_da_hen():
     assert goi["n"] == 2, "hết thời gian hẹn thì phải thử lại"
 
 
+# Thông điệp THẬT của `claude -p` khi gói hết phiên (hub QLKH-DD-CSV 2026-10-13 07:35) — dài hơn 120 ký tự, mốc
+# giờ nằm ở cuối: cắt `str(e)[:120]` là mất đúng phần "6:30pm (Asia/Bangkok)".
+HET_PHIEN = ("hết 3 lần thử lại: claude -p thoát mã 1 (subtype=success, api_error_status=429): "
+             "You've hit your session limit · resets 6:30pm (Asia/Bangkok)")
+
+
+def _orch_het_phien():
+    from company.llm import TransientError
+    goi = {"n": 0}
+
+    def het_phien(system, user):
+        if _agent_of(system) == "product" and _product_phase(system) == "intake":
+            goi["n"] += 1
+            raise TransientError(HET_PHIEN)
+        return handler(system, user)
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=het_phien))
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    return bus, orch, goi
+
+
+def test_het_phien_claude_hen_theo_moc_reset_khong_hoi_lai_moi_nhip():
+    """Sự cố 2026-10-13 (hub QLKH-DD-CSV): `claude -p` báo "resets 6:30pm (Asia/Bangkok)" — mốc giờ đồng hồ, không
+    phải "thử lại sau Ns". `_defer_transient` chỉ hiểu dạng sau, lại đọc chuỗi action đã cắt 120 ký tự, nên không hẹn
+    giờ: mỗi nhịp ~26 s thử lại 3 lần `claude -p` suốt 4 giờ. Mốc reset phải thành hẹn bền (`defer.until`)."""
+    bus, orch, goi = _orch_het_phien()
+    orch.run()
+    assert goi["n"] == 1 and orch.deferred, "lần đầu gọi rồi hoãn"
+    assert orch.defer_until, "mốc 'resets 6:30pm' phải thành hẹn giờ"
+    hen = [e for e in bus.replay(topic="audit-log") if e.payload.get("action") == "defer.until"]
+    assert hen and json.loads(hen[-1].payload["evidence"])["wait_s"] >= 60
+    for _ in range(5):
+        orch.tick()
+    assert goi["n"] == 1, f"đã hẹn tới mốc reset thì không hỏi lại ở tick kế (đã gọi {goi['n']} lần)"
+
+
+def test_het_phien_claude_tran_hoan_tinh_tu_sau_moc_reset(monkeypatch):
+    """Trần hoãn `transient:` (`COMPANY_TRANSIENT_MAX_H`, mặc định 2 giờ) ngắn hơn khoảng chờ reset phiên (tới 5 giờ):
+    đếm từ lần hoãn đầu thì DDCSV-40/41/43 thành escalation giả lúc backend vẫn đang trong hẹn. Mốc reset là hẹn chắc
+    của backend → trần đếm từ SAU mốc đó."""
+    monkeypatch.setenv("COMPANY_TRANSIENT_MAX_H", "0.00001")   # 0,036 s — mọi lần thử lại đều đã quá trần
+    _bus, orch, goi = _orch_het_phien()
+    orch.run()
+    time.sleep(0.05)
+    for k in orch.defer_until: orch.defer_until[k] = 0.0   # tua tới lúc thử lại
+    orch.tick()
+    assert goi["n"] == 2, "hết hẹn thì phải thử lại"
+    assert orch.deferred and not orch.gate.pending, "vẫn trong hẹn reset của backend: hoãn tiếp, không mở escalation"
+
+
 def test_ops_khong_tu_khai_duoc_env_production():
     """Model khai `env: production` ở lượt STAGING không được thành deploy production: `env`/`release_id` là của
     ROUTE và của RC, code ghi đè (cùng nguyên tắc với `version`) và ghi audit `release.env_overridden`.
