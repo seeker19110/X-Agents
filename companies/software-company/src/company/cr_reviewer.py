@@ -44,10 +44,11 @@ def _latest(bus: Any) -> dict[str, Envelope]:
     return out
 
 
-def _impact(bus: Any, cid: str) -> dict[str, Any] | None:
-    """Impact product đã ghi cho đúng mã CR (audit-log khoá bằng `change_id`, actor `product`), hoặc None."""
+def _impact(bus: Any, cid: str) -> str | None:
+    """Impact product đã ghi cho đúng mã CR (audit-log khoá bằng `change_id`, actor `product`), NGUYÊN VĂN, hoặc None.
+    Product ghi evidence bằng văn xuôi chứ không phải JSON (hub 2026-10-13): đọc qua `_ev` là thành `{}` rỗng."""
     found = [
-        _ev(e)
+        str(e.payload.get("evidence") or "")
         for e in bus.replay(topic="audit-log", key=cid)
         if e.actor == ROLE.PRODUCT and e.payload.get("action") == "change.impact"
     ]
@@ -125,7 +126,7 @@ def brief(bus: Any, cid: str) -> str:
             json.dumps(p.get("impact", {}), ensure_ascii=False),
             "",
             "## Impact product ước lượng",
-            json.dumps(_impact(bus, cid), ensure_ascii=False),
+            _impact(bus, cid) or "(trống)",
             "",
             "## Ruling của product",
             *(f"- {r}" for r in rulings),
