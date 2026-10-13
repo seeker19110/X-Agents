@@ -218,7 +218,7 @@ def recheck(o: Orchestrator, release_id: str, by: str) -> StepResult:
     if release_id in o.void_releases: raise ValueError(f"{release_id}: RC đã bị huỷ, không chấm lại")
     if release_id in o.delivered: raise ValueError(f"{release_id}: RC đã giao, chấm lại không đổi được gì")
     if not o.lead.release_needs_security(release_id):
-        raise ValueError(f"{release_id}: RC không cần security (không ticket nào có risk_tags)")
+        raise ValueError(f"{release_id}: RC không cần security (không ticket nào của RC hay RC trước cùng dự án có risk_tags)")
     o._audit("release.recheck", {"release_id": release_id, "by": by}, actor=by, project_id=o.project_for(rc))
     res = StepResult(rc.event_id, rc.topic, rc.key)
     o._recall(ROLE.SECURITY, rc)
