@@ -121,6 +121,11 @@ class Supervisor(SupervisorBase):
                 self._check_unpriced(a)
             if a.ticket_id and a.action == "budget.extended":  # người cấp thêm ngân sách: ngưỡng được báo lại từ đầu
                 self.ticket_warned.discard(a.ticket_id); self.ticket_cut.discard(a.ticket_id)
+                # Trần mới dựng lại từ audit: chỉ giữ trong RAM thì mở lại bus là về `budget_tokens` gốc, ticket vừa
+                # được duyệt lại vượt trần ngay.
+                if (b := self.budgets.get(a.ticket_id)) is not None:
+                    try: b.limit = max(b.limit, int(json.loads(a.evidence or "{}").get("limit") or 0))
+                    except (ValueError, TypeError, AttributeError): pass
             if a.ticket_id and a.ticket_id in self.budgets:
                 b = self.budgets[a.ticket_id]; b.cost_usd += a.cost_usd
                 if a.actor in REVIEW_ACTORS: b.review_used += a.tokens

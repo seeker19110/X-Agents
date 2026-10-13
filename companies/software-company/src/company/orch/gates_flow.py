@@ -227,7 +227,9 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
         # `dispatched` + event `tasks` bị bỏ (`_mark_unhandled`, vd transient quá trần) → chạy lại đúng event đó (TCK-012, 2026-09-26)
         retry = o.lead.state.get(tid) == "dispatched" and tid in o.unhandled; b = o.supervisor.budgets.get(tid); t = o.lead.tickets.get(tid)
         if b and t:
-            b.limit = max(b.limit, b.used) + t.budget_tokens
+            # Trần so ĐẦU RA (`Budget.ratio`): nới theo `output_used`. `used` là tổng kể cả input cache — hub 2026-10-14
+            # DDCSV-43 được nới lên 918 814 token, trần coi như tắt sau một lần duyệt.
+            b.limit = max(b.limit, b.output_used) + t.budget_tokens
             o._audit("budget.extended", {"ticket_id": tid, "limit": b.limit, "by": by}, ticket_id=tid)
         if tid in o.integrated and o.lead.state.get(tid) in {"blocked", "escalated", "changes_requested"}:
             # Code của ticket ĐÃ ở trong nhánh tích hợp: giao lại chỉ tổ bắt agent làm lại việc đã merge, nó
