@@ -2,7 +2,7 @@
 # từ ngoài (xem docker-compose.yml). docker-cli ở đây chỉ là CLIENT — orchestrator gọi `docker compose` cho
 # khách qua socket passthrough (/var/run/docker.sock mount từ host), không có dockerd trong image này
 # (ADR-0039 quyết định 7: nhốt daemon-client vào container là vô nghĩa, nó gọi ra quyền cao nhất của host).
-FROM python:3.13-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 
 # git: orchestrator tạo/merge worktree cho ticket khách (workspace.py). gh: mở PR thật lên repo khách
 # (github_pr.py). docker-cli (không có dockerd): gọi `docker compose` cho khách (deploy.py, ADR-0039).
