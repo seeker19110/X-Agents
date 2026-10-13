@@ -491,3 +491,14 @@ def test_dependabot_docker_phu_moi_thu_muc_co_dockerfile() -> None:
     co = {"/" + u["directory"].strip("/") for u in cfg["updates"] if u["package-ecosystem"] == "docker"}
     can = {"/" + p.parent.relative_to(ROOT).as_posix().strip(".").strip("/") for p in _dockerfiles()}
     assert can <= co, f"thư mục có Dockerfile mà Dependabot `docker` không theo dõi: {sorted(can - co)}"
+
+
+def test_dependabot_docker_chi_nang_digest_va_patch() -> None:
+    """Tag image là PHIÊN BẢN RUNTIME, không phải thư viện: `python:3.12-slim` của image khách phải khớp python của dự
+    án khách, `uv:0.9.9` khớp `test_cong_docker`. Đo được 2026-10-13 (#462–#464, ngay sau khi bật mục `docker`):
+    Dependabot mở PR 3.12→3.14 và uv 0.9.9→0.13.0 — bản sau đỏ `test_cong_docker`. Chỉ digest + patch tự đến."""
+    cfg = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+    for u in (u for u in cfg["updates"] if u["package-ecosystem"] == "docker"):
+        bo = {t for i in u.get("ignore") or [] if i.get("dependency-name") == "*" for t in i.get("update-types") or []}
+        assert {"version-update:semver-major", "version-update:semver-minor"} <= bo, (
+            f"Dependabot docker {u['directory']} còn nâng major/minor của tag image: {sorted(bo)}")

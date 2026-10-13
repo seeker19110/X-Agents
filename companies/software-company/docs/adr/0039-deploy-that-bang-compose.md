@@ -95,3 +95,16 @@ Nên chia làm hai mức, đúng cách repo đã làm với `Sandbox` và với 
 - Bỏ smoke khỏi điều kiện → ca "container up nhưng health 500" phải ĐỎ.
 - Bỏ `compose down` ở nhánh hỏng → ca "deploy hỏng không bỏ lại container" phải ĐỎ.
 - `COMPANY_DEPLOY=compose` mà `which` trả `None` → phải raise, không trả `skipped`.
+
+## Bổ sung 2026-10-13 — `up -d --build`: container phải chạy code của đúng sha RC
+
+Đo hub thật 2026-10-13 (QLKH-DD-CSV): REL-022 → REL-034 cùng `container_ids` `48ef5cef466d`/`58bb1578c860` qua năm sha
+tích hợp (4ef9665 → 2660f02 → 93bf08b → 849f67a → 4b53291). Project compose cố định theo env (§2) nên image của service
+`build:` mang tên project; `up -d` trần thấy image đã có thì dùng lại, container cũ chạy tiếp. DDCSV-26 (mount
+`POST /auth/login`) đã merge mà DAST vẫn 404 ba RC liền — bằng chứng `verified_by=orchestrator` ghi sha mới nhưng đo
+code cũ, đúng loại lời khai ADR này sinh ra để chặn.
+
+- `deploy()` chạy `up -d --build` trên cây RC (`_release_root`, checkout riêng theo sha): image dựng lại từ đúng sha, image
+  đổi thì compose tự tạo lại container. Service chỉ có `image:` (vd `db`) không bị đụng.
+- Chế độ `process` (ADR-0040) không đổi: script của khách tự dựng.
+- Đo hai chiều: bỏ `--build` ⇒ `test_up_dung_lai_image_tu_cay_rc_moi_lan_deploy` đỏ.

@@ -185,7 +185,7 @@ def test_container_exited_ngay_sau_up_thi_deploy_failed(tmp_path, monkeypatch):
     bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime=RUNTIME)
     orch.run()
     st = _rel(bus, "staging")[-1]
-    assert fake.calls[0][6:] == ["up", "-d"] and st["status"] == "deploy_failed"
+    assert fake.calls[0][6:] == ["up", "-d", "--build"] and st["status"] == "deploy_failed"
     assert "exited" in st["evidence"]["deploy"]["error"]
 
 

@@ -88,9 +88,19 @@ def test_duong_hanh_phuc_ok_co_container_id_va_khong_goi_down(tmp_path, monkeypa
     assert r.port == 8080 and r.smoke["http_status"] == 200 and r.started_at
     assert fake.subs == ["up", "ps"], f"deploy xong KHÔNG được `down` (sản phẩm phải còn sống): {fake.subs}"
     assert fake.calls[0][:6] == ["docker", "compose", "--project-name", "company-p1-staging", "-f", "compose.yaml"]
-    assert fake.calls[0][6:] == ["up", "-d"]
+    assert fake.calls[0][6:] == ["up", "-d", "--build"]
     env = fake.kwargs[0]["env"]
     assert "PATH" in env and not [k for k in env if k.startswith(("GH_", "GITHUB_"))], "env phải qua clean_env"
+
+
+def test_up_dung_lai_image_tu_cay_rc_moi_lan_deploy(tmp_path, monkeypatch):
+    """Compose project cố định theo env, image service `build:` mang tên project — `up -d` trần dùng lại image đã
+    dựng lần đầu, container cũ chạy tiếp dù cây RC đã sang sha khác. Đo được hub thật 2026-10-13 (QLKH-DD-CSV):
+    REL-022→REL-034 cùng container `48ef5cef466d` qua 5 sha; DDCSV-26 mount `/auth/login` đã merge nhưng DAST vẫn 404
+    — bằng chứng `verified_by=orchestrator` mang sha mới mà đo code cũ."""
+    _probe_tra(monkeypatch, 200)
+    _, fake = _deploy(tmp_path)
+    assert "--build" in fake.calls[0][6:], f"`up` phải dựng lại image từ cây RC: {fake.calls[0][6:]}"
 
 
 def test_up_thoat_khac_0_thi_khong_ok_va_co_down(tmp_path, monkeypatch):
