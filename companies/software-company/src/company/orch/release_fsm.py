@@ -7,6 +7,7 @@ Mỗi hàm nhận `o: Orchestrator` làm tham số đầu, gán làm method trê
 """
 from __future__ import annotations
 
+from itertools import takewhile
 from typing import TYPE_CHECKING, Any
 
 from ..bus import REVIEWER_PREFIX
@@ -15,7 +16,7 @@ from ..events import Envelope
 from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..github_pr import PrRecord, open_pr
-from ..roles import ROLE
+from ..roles import ROLE, SOURCE
 from ..workspace import Integration, WorkspaceError
 from .fsm import Transition
 from .routes import PROD_ROUTE, RELEASE_CHECK_ROUTE, STAGING_ROUTE, Route
@@ -295,9 +296,29 @@ def _rerun_release(o: Orchestrator, rid: str, by: str, reason: str, res: StepRes
 # ---------- bảng chuyển giao (K1.7, orch/fsm.py) — dùng bởi Orchestrator.process() ----------
 # phase="pre": chạy TRƯỚC vòng lặp ROUTES trong process(); "post": chạy SAU.
 
+def _blocked_same_sha(o: Orchestrator, rid: str, integ: Integration | None) -> str | None:
+    """ADR-0057 §2: RC TRƯỚC có cùng sha đầu nhánh tích hợp mà security `block` (chưa miễn) — cùng code, cùng image,
+    cùng bằng chứng máy theo sha, chạy lại chỉ nghe lại cùng một câu. Đo được REL-031…035 cùng 4b53291."""
+    full = integ.rev(integ.branch) if integ is not None else None
+    def blocked(prev: str) -> bool:
+        sec = o.lead.release_reviews.get(prev, {}).get(SOURCE.SECURITY)
+        return (bool(full) and o.release_sha.get(prev) == full and sec is not None and sec.verdict == "block"
+                and SOURCE.SECURITY not in o.lead.release_waived.get(prev, set()))
+    return next((prev for prev in takewhile(lambda r: r != rid, o.lead.releases) if blocked(prev)), None)
+
 def _act_integrate_rc(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
-    if o._integrate(env, res): return False  # mọi ticket của RC đã ở nhánh tích hợp: đi tiếp bình thường
-    o._mark(env, res); return True  # RC huỷ vì xung đột: ticket đã được giao lại, không deploy — dừng ngay
+    if not o._integrate(env, res):
+        o._mark(env, res); return True  # RC huỷ vì xung đột: ticket đã được giao lại, không deploy — dừng ngay
+    rid = env.payload["release_id"]
+    if (prev := _blocked_same_sha(o, rid, o._integration_of_release(env))) is None:
+        return False  # mọi ticket của RC đã ở nhánh tích hợp: đi tiếp bình thường
+    o._audit("release.duplicate_sha", {"release_id": rid, "sha": o.release_sha[prev], "same_as": prev},
+             project_id=o.project_for(env))
+    o._void(rid)  # escalation của `prev` vẫn là nơi quyết; ticket về merged để flush_releases không sinh RC trùng
+    for tid in o.lead.release_tickets.get(rid, []):
+        if o.lead.state.get(tid) == "approved": o.lead.mark_done_already_integrated(tid)
+    res.actions.append(f"duplicate_sha:{rid}")
+    o._mark(env, res); return True
 
 
 def _act_integrate_approved(o: Orchestrator, env: Envelope, res: StepResult) -> bool:

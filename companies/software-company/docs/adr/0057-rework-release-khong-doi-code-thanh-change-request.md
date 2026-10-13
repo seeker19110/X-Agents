@@ -47,21 +47,21 @@ Hai thứ code đã biết mà không dùng:
    CR đi đúng đường CR thường: `product[plan]` ước lượng impact → reviewer/người `decide-change` → kế hoạch ticket mới.
 2. **RC trùng sha với một RC đã bị security chặn → không chạy lại.** Sau `release.staged`, nếu một RC **trước** của cùng
    dự án có cùng `release_sha` và `review-results` của security mang `verdict=block`, thì RC mới không giao ops/security/qa.
-   Thay vào đó: audit `release.duplicate_sha` (`release_id`, `sha`, `same_as`), huỷ RC (`_void`) và đưa ticket của nó về
+   Thay vào đó (trong `_act_integrate_rc`, dòng `integrate_rc` có sẵn — không thêm dòng chuyển): audit `release.duplicate_sha` (`release_id`, `sha`, `same_as`), huỷ RC (`_void`) và đưa ticket của nó về
    `merged` (`mark_done_already_integrated`, cùng lý do như nhánh `_superseded_release`: không thì `flush_releases`
    tạo RC trùng ngay nhịp sau). Escalation của RC trước vẫn là nơi quyết. Đây là lưới thứ hai: quyết định 1 chặn vòng
    ở gốc; quyết định 2 bắt các đường khác cùng sinh ra RC không đổi gì (approve rồi chạy lại, mở lại bus…).
 3. **Không đổi `rework_release_tickets`.** Từ chối escalation release vẫn đá ticket về làm lại: khi finding đúng là lỗi
    trong code của ticket, builder sửa, nhánh đi trước, và quyết định 1 không khớp. Máy không đoán finding thuộc ticket
    nào. Nó đo kết quả: có commit mới hay không.
-4. **Máy trạng thái ticket/release không thêm trạng thái.** Chỉ thêm hai dòng chuyển (`rework_no_change` ở
-   `TICKET_TRANSITIONS`, `duplicate_sha` ở `RELEASE_TRANSITIONS`). Các dòng này dùng chuyển đã có
-   (`in_review→approved→merged`, `_void`).
+4. **Máy trạng thái ticket/release không thêm trạng thái.** Thêm một dòng chuyển (`rework_no_change` ở
+   `TICKET_TRANSITIONS`) và một nhánh trong `_act_integrate_rc` (dòng `integrate_rc` có sẵn). Cả hai dùng chuyển đã
+   có (`in_review→approved→merged`, `_void`).
 
-## Cài đặt — hai PR
+## Cài đặt
 
-- PR-1: quyết định 1 + 3 (ticket FSM, `delivery.py`).
-- PR-2: quyết định 2 (release FSM).
+Một PR, hai commit: quyết định 1 + 3 (`orch/ticket_fsm.py`, `delivery.py`), rồi quyết định 2
+(`orch/release_fsm.py::_blocked_same_sha`, gọi trong `_act_integrate_rc` ngay sau `_integrate`).
 
 ## Cái giá đã biết
 
@@ -87,4 +87,5 @@ Hai thứ code đã biết mà không dùng:
 - Bỏ dòng `rework_no_change` ⇒ test "rework release không đổi code thành CR, không review lại" đỏ (reviewer bị gọi, RC
   mới sinh ra).
 - Nhánh có commit mới sau rework ⇒ review chạy như cũ (chiều ngược, cùng test file).
-- Bỏ dòng `duplicate_sha` ⇒ test "RC trùng sha đã bị chặn không chạy lại" đỏ (PR-2).
+- Bỏ nhánh `_blocked_same_sha` ⇒ `test_rc_trung_sha_voi_rc_da_bi_security_chan_thi_khong_chay_lai` đỏ; RC trước cùng
+  sha mà security pass ⇒ RC mới chạy như cũ (`test_rc_trung_sha_voi_rc_da_qua_thi_chay_binh_thuong`).

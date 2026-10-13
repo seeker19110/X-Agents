@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from company.events import ReviewResult
 from company.llm import FakeClient
 from company.orchestrator import Orchestrator
 from company.sqlite_bus import SQLiteBus
@@ -82,3 +83,32 @@ def test_rework_release_co_commit_moi_thi_review_nhu_cu(tmp_path, monkeypatch):
     orch.run()
     assert _review_calls(client, "T1") > n_review, "có commit mới thì vòng review chạy như cũ"
     assert not [e for e in bus.replay(topic="change-requests") if e.key.startswith("REWORK-")]
+
+
+def test_rc_trung_sha_voi_rc_da_bi_security_chan_thi_khong_chay_lai(tmp_path, monkeypatch):
+    """ADR-0057 §2: RC mới cùng `release_sha` với một RC trước đã bị security `block` → không giao ops/security/qa
+    (cùng code, cùng image, cùng bằng chứng máy theo sha), huỷ RC, ticket về `merged` để `flush_releases` không sinh
+    lại RC trùng. Đo được REL-031…035 cùng sha 4b53291, security chặn y hệt năm lần."""
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    bus, client, orch, rid = _merged_t1(tmp_path, {"t1": "def t1():\n    return 1\n"})
+    assert orch.release_sha.get(rid), "tiền đề: RC đầu đã staged"
+    orch.lead.release_reviews[rid]["security"] = ReviewResult(
+        ticket_id=rid, source="security", verdict="block", findings=[{"level": "block", "text": "image nền 2C/55H"}])
+    rid2 = orch.lead._create_release_candidate(["T1"])
+    results = orch.run()
+    assert any(a == f"duplicate_sha:{rid2}" for r in results for a in r.actions)
+    calls = [c for c in client.calls if _inp(c["user"]).get("release_id") == rid2]
+    assert not calls, "RC trùng sha đã bị chặn: không gọi ops/security/qa"
+    assert rid2 in orch.void_releases and orch.lead.state["T1"] == "merged"
+    dup = [e.payload for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.duplicate_sha"]
+    assert len(dup) == 1 and rid in dup[0]["evidence"] and rid2 in dup[0]["evidence"]
+
+
+def test_rc_trung_sha_voi_rc_da_qua_thi_chay_binh_thuong(tmp_path, monkeypatch):
+    """Chiều ngược: RC trước cùng sha KHÔNG bị security chặn → RC mới chạy như cũ (không đoán thay security)."""
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    _bus, client, orch, _rid = _merged_t1(tmp_path, {"t1": "def t1():\n    return 1\n"})
+    rid2 = orch.lead._create_release_candidate(["T1"])
+    orch.run()
+    assert [c for c in client.calls if _inp(c["user"]).get("release_id") == rid2], "RC mới vẫn được deploy/kiểm"
+    assert rid2 not in orch.void_releases
