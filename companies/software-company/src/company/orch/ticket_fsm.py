@@ -318,6 +318,25 @@ def _act_superseded(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
     return o._superseded(env, res)  # True: event cũ đã bị vượt, _superseded tự _mark — process() dừng ngay
 
 
+def _rework_no_change(env: Envelope, o: Orchestrator) -> bool:
+    """ADR-0057 §1: PR của ticket ĐÃ tích hợp mà nhánh không đi trước nhánh tích hợp = lượt làm lại không đổi code."""
+    tid = str(env.payload.get("ticket_id") or env.key)
+    return o.lead.state.get(tid) == "in_review" and tid in o.integrated and not o._branch_ahead(tid)
+
+
+def _act_rework_no_change(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
+    """Không review lại commit đã tích hợp, không về `approved` (sẽ sinh RC trùng sha): ticket về `merged`, việc lý do
+    từ chối đòi thành change request cho planner. Đo được QLKH-DD-CSV 2026-10-13: REL-022…025 cùng sha 4ef9665."""
+    tid = str(env.payload.get("ticket_id") or env.key)
+    o.lead.mark_done_already_integrated(tid)
+    cid = o.lead.request_change_after_noop_rework(tid)
+    o._audit("rework.no_change", {"ticket_id": tid, "pr_ref": env.payload.get("pr_ref"), "change_id": cid},
+             ticket_id=tid, project_id=o.project_for(env))
+    res.actions.append(f"rework_no_change:{tid}")
+    o._mark(env, res)
+    return True
+
+
 def _act_learn_repo(o: Orchestrator, env: Envelope, res: StepResult) -> bool:
     o._learn_repo(env)  # repo riêng của dự án (ADR-0025), trước khi intake chạy — không dừng process()
     return False
@@ -338,6 +357,7 @@ def _act_clarification_fallback(o: Orchestrator, env: Envelope, res: StepResult)
 
 TICKET_TRANSITIONS: list[Transition] = [
     Transition("superseded", frozenset({"tasks", "pull-requests", "test-suites"}), _act_superseded),
+    Transition("rework_no_change", frozenset({"pull-requests"}), _act_rework_no_change, guard=_rework_no_change),
     Transition("learn_repo", frozenset({"research-requests"}), _act_learn_repo),
     Transition("plan", frozenset(PLAN_INPUTS), _act_plan,
                guard=lambda env, o: PLAN_INPUTS[env.topic](env, o)),

@@ -278,6 +278,22 @@ class DeliveryLead:
                                    "hint": (hint or "")[:500], "dependents": deps, "stops": dict(self.stops[t.ticket_id])})
         self._emit(Envelope(topic="change-requests", key=cid, actor=LEAD_ACTOR, payload=cr.model_dump()))
 
+    def request_change_after_noop_rework(self, tid: str) -> str:
+        """ADR-0057 §1: ticket bị trả về làm lại (thường sau reject escalation release) mà lượt làm lại KHÔNG đổi code —
+        việc lý do từ chối đòi nằm ngoài ticket. Nộp CR `REWORK-<ticket>-<retry>` cho planner thay vì review lại commit
+        cũ rồi sinh RC trùng sha. Đi đường CR thường (`affects_requirements=[]`), người/reviewer quyết."""
+        t = self.tickets[tid]; cid = f"REWORK-{tid}-{t.retry}"
+        releases = [rid for rid, tids in self.release_tickets.items() if tid in tids]
+        hint = t.hint or ""
+        desc = (f"Ticket {tid} ({t.title}) bị trả về làm lại (release {', '.join(releases) or '?'}) nhưng lượt làm lại "
+                f"không đổi code: nhánh không có commit mới so với nhánh tích hợp, việc cần làm nằm NGOÀI ticket này. "
+                f"Lập kế hoạch ticket MỚI (requirement {t.requirement_id}) cho: {hint}")
+        cr = ChangeRequest(change_id=cid, project_id=t.project_id, requested_by=LEAD_ACTOR, description=desc[:1000],
+                           impact={"kind": "rework_no_change", "ticket_id": tid, "retry": t.retry,
+                                   "releases": releases, "hint": hint[:500]})
+        self._emit(Envelope(topic="change-requests", key=cid, actor=LEAD_ACTOR, payload=cr.model_dump()))
+        return cid
+
     def _on_review(self, env: Envelope) -> None:
         r = ReviewResult.model_validate(env.payload)
         if r.ticket_id in self.release_tickets:
