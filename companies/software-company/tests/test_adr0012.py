@@ -794,6 +794,34 @@ def test_pr_cu_trong_hang_doi_bi_vuot_khi_co_pr_moi_hon(tmp_path, monkeypatch):
     assert orch.lead.state["T1"] == "merged"
 
 
+def test_test_suites_cu_trong_hang_doi_bi_vuot_khi_ticket_da_qua_review(tmp_path, monkeypatch):
+    """`test-suites` của lượt tranh chấp (PR mang `test_dispute` → qa pha `author`) chạy SONG SONG với review của
+    chính PR đó. Review pass trước → ticket đã đi tiếp; bộ test mới tới sau thì KHÔNG giao builder nữa. Nếu giao:
+    builder viết lại trên worktree đã tích hợp rồi publish PR → `_on_pr` ném "không thể approved → in_review" →
+    supervisor escalate. Đo được hub thật 2026-10-13 (QLKH-DD-CSV, DDCSV-22: pass 02:00, PR thừa 02:11)."""
+    monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
+    repo = _init_repo(tmp_path / "repo"); db = tmp_path / "c5.sqlite"
+    bus = SQLiteBus(db); client = FakeClient(handler=handler, tool_handler=lambda m, t: [])
+    orch = Orchestrator(bus, client, repo=repo, base="main")
+    orch._rework_after_error = lambda *a, **k: True  # type: ignore[method-assign]
+    _drive_to_plan(bus, orch); orch.run()
+    ws = orch.workspace("T1"); (ws.path / "f_t1.py").write_text("def t1():\n    return 1\n", encoding="utf-8")
+    orch.takeover("T1", "human:lead"); orch.run()
+    assert orch.lead.state["T1"] == "merged", "tiền đề: ticket đã qua review và tích hợp"
+    def builder_t1() -> int:
+        return len([c for c in client.calls if _agent_of(c["system"]) == "builder" and _inp(c["user"])["ticket_id"] == "T1"])
+    n_builder = builder_t1()
+    bus.publish(Envelope(topic="test-suites", key="T1", actor="qa",
+                         payload={"ticket_id": "T1", "project_id": "P1", "assignee": "builder", "files": ["tests/test_t1.py"],
+                                  "acceptance_covered": [], "branch": "ticket/T1", "blind": False}))
+    results = orch.run()
+    assert builder_t1() == n_builder, "builder không được gọi lại cho ticket đã qua review"
+    assert any(a == "superseded:T1:test-suites" for r in results for a in r.actions)
+    acts = [e.payload["action"] for e in bus.replay(topic="audit-log") if e.payload.get("ticket_id") == "T1"]
+    assert "test-suites.superseded" in acts and "handler_error" not in acts
+    assert orch.lead.state["T1"] == "merged"
+
+
 def test_cli_comment_va_takeover_thanh_cong_in_ket_qua(tmp_path, capsys, monkeypatch):
     """CLI `comment`/`takeover` đường thành công phải in đúng dòng tóm tắt (orchestrator.py dòng 1142, 1145-1146)."""
     monkeypatch.setenv("COMPANY_LLM_PROVIDER", "fake")
