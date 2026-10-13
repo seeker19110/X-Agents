@@ -404,6 +404,29 @@ def review_one(gate: PersistentGate, subject_id: str, brief_md: str, brief_json:
     return decision
 
 
+def _replan_cua(bus: Any, req: GateRequest) -> tuple[str, str] | None:
+    """(mã CR, quyết định mới nhất) của lựa chọn `replan:<cid>` trên checklist gate, hoặc None khi gate không có nó."""
+    cid = next((c.split(":", 1)[1] for c in req.checklist if c.startswith("replan:")), None)
+    if cid is None:
+        return None
+    last = None
+    for e in bus.replay(topic="change-requests", key=cid):
+        last = e
+    return cid, str(last.payload.get("decision", "pending")) if last is not None else "pending"
+
+
+def _dong_vi_replan(gate: PersistentGate, sid: str, cid: str, brief_json: Path, principal: str, key: Path) -> str:
+    """CR replan đã `accepted`: ticket cũ thay bằng kế hoạch mới — ký `reject` đóng gate (điều `decide-change` dặn
+    reviewer), không hỏi model. Code từ chối thì giữ, như `review_one`."""
+    reason = (f"root_cause: {cid} đã accepted — ticket thay bằng kế hoạch mới; decision: reject; "
+              f"hint: không mở lại {sid}, làm theo ticket của {cid}")
+    try:
+        decide(gate, sid, principal, reason, key, brief_json, "reject")
+    except (KeyError, PermissionError, ValueError, OSError) as e:
+        return _hold(gate, gate.pending[sid], principal, f"code từ chối reject theo {cid}: {e}", {})
+    return "reject"
+
+
 def _brief_cua(db: Path, repo: Path | None) -> Any:
     """`brief_fn(orch, sid) -> (md, json_path)` mặc định: dựng hồ sơ thật và ghi ra đĩa như người đọc."""
     from .gate_brief import build, default_out, render_md, write
@@ -431,12 +454,18 @@ def run_tick(db: Path, principal: str, key: Path, client: Any, *, repo: Path | N
     try:
         gate = PersistentGate(bus)
         skip = set(held(gate)) | set(gate.reviewer_signed_pending())
-        todo = [sid for sid in sorted(gate.pending) if sid not in skip][:cap]
+        cr = {sid: d for sid in gate.pending if (d := _replan_cua(bus, gate.pending[sid])) is not None}
+        # ADR-0051 + 0037: gate có lựa chọn `replan:<cid>` thì đường CR quyết trước — CR còn chờ thì bỏ qua (duyệt
+        # mở lại trước là chạy đua: hub 2026-10-14 DDCSV-35 mở lại 17:33, replan chấp nhận 17:37, việc làm đôi).
+        todo = [sid for sid in sorted(gate.pending) if sid not in skip and cr.get(sid, ("", ""))[1] != "pending"][:cap]
         if todo:
             orch = load_state(db, repo=repo) if brief_fn is None else None
             brief = brief_fn or _brief_cua(db, repo)
             for sid in todo:
                 md, pj = brief(orch, sid)
+                if sid in cr and cr[sid][1] == "accepted":
+                    done.append((sid, _dong_vi_replan(gate, sid, cr[sid][0], pj, principal, key)))
+                    continue
                 done.append((sid, review_one(gate, sid, md, pj, client, principal, key)))
         if scope_toan_bo():
             from . import cr_reviewer
