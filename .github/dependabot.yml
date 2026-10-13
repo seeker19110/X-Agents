@@ -26,10 +26,29 @@ updates:
       dev:
         dependency-type: development
 
+  # Action ghim SHA 40 ký tự kèm comment `# vX.Y.Z` (rà soát 2026-10-13): dependabot nâng cả SHA lẫn comment.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     commit-message:
       prefix: "ci(deps)"
+    labels: ["dependencies", "no-changelog"]
+
+  # Base image ghim `@sha256:` (rà soát 2026-10-13): dependabot mở PR nâng digest khi tag có bản mới. Một mục cho
+  # mỗi thư mục có Dockerfile — `test_cong_repo.py::test_dependabot_docker_phu_moi_thu_muc_co_dockerfile` canh.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"
+    labels: ["dependencies", "no-changelog"]
+
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"
     labels: ["dependencies", "no-changelog"]

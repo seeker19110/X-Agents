@@ -12,6 +12,7 @@ phép canh cấp gốc (chạy trong job `console-unit` trên cả ba nền).
 from __future__ import annotations
 
 import re
+import subprocess
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
@@ -402,3 +403,91 @@ def test_protection_guard_so_ca_tham_so_review_cua_ruleset(tham_so: str) -> None
     steps = _ci()["jobs"]["protection-guard"]["steps"]
     run = "\n".join(s.get("run", "") for s in steps)
     assert tham_so in run, f"protection-guard chưa so `{tham_so}` giữa file và ruleset thật"
+
+
+# ---------- chuỗi cung ứng của chính CI (rà soát chéo 2026-10-13, docs/reports/2026-10-13-goi-y-nang-cap.md) ----------
+
+WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+_USES = re.compile(r"^\s*-?\s*uses:\s*(\S+)(.*)$")
+_SHA40 = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
+
+
+def _uses() -> list[tuple[str, str, str]]:
+    """(file:dòng, tham chiếu, phần sau tham chiếu) của mọi `uses:`; bỏ action cục bộ `./…`."""
+    out = []
+    for wf in WORKFLOWS:
+        for i, ln in enumerate(wf.read_text(encoding="utf-8").splitlines(), 1):
+            if (m := _USES.match(ln)) and not m.group(1).startswith("./"):
+                out.append((f"{wf.name}:{i}", m.group(1), m.group(2)))
+    return out
+
+
+def test_moi_action_ghim_sha_40_ky_tu_kem_tag() -> None:
+    """Tag `@v7` trôi: ai chiếm được tag là chạy code của họ trong CI với quyền của job (họ lỗi tj-actions 2025).
+    Đo 2026-10-13: 42/42 `uses:` chưa ghim. Ghim SHA 40 ký tự, comment `# vX.Y.Z` để người đọc và Dependabot
+    `github-actions` (đã bật) nâng SHA theo tag."""
+    uses = _uses()
+    assert uses, "không đọc được `uses:` nào — cổng rỗng là cổng chết"
+    chua = [f"{at} {ref}" for at, ref, _ in uses if not _SHA40.match(ref)]
+    assert not chua, "action chưa ghim SHA 40 ký tự:\n" + "\n".join(chua)
+    thieu_tag = [f"{at} {ref}" for at, ref, sau in uses if not re.search(r"#\s*v\d", sau)]
+    assert not thieu_tag, "ghim SHA phải kèm comment `# vX.Y.Z`:\n" + "\n".join(thieu_tag)
+
+
+def test_moi_workflow_co_permissions_cap_dau() -> None:
+    """Job thêm sau mà quên khai `permissions:` sẽ thừa hưởng quyền mặc định của repo. Cấp đầu `contents: read`
+    là sàn; job cần hơn thì tự khai ở cấp job (như hiện nay cả 21 job đều khai)."""
+    thieu = [wf.name for wf in WORKFLOWS if "permissions" not in (yaml.safe_load(wf.read_text(encoding="utf-8")) or {})]
+    assert WORKFLOWS and not thieu, f"workflow thiếu `permissions:` cấp đầu: {thieu}"
+
+
+def _dockerfiles() -> list[Path]:
+    """Dockerfile do git theo dõi — không quét worktree tạm, `.venv` hay dữ liệu khách chưa track."""
+    ra = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*Dockerfile", "*.Dockerfile"],
+                        capture_output=True, text=True, check=True).stdout.split()
+    return [ROOT / p for p in ra]
+
+
+def _from_refs(text: str) -> list[str]:
+    """Image của các dòng `FROM` và `COPY --from=<image>`, bỏ alias stage, `${ARG}` và `scratch`."""
+    refs: list[str] = []
+    alias: set[str] = set()
+    for ln in text.splitlines():
+        if (c := re.match(r"^\s*COPY\s.*--from=(\S+)", ln, re.IGNORECASE)) and c.group(1) not in alias:
+            refs.append(c.group(1))
+            continue
+        if not (m := re.match(r"^\s*FROM\s+(.*)$", ln, re.IGNORECASE)):
+            continue
+        toks = [t for t in m.group(1).split() if not t.startswith("--")]
+        if len(toks) >= 3 and toks[1].upper() == "AS":
+            alias.add(toks[2])
+        if toks and toks[0] not in alias and toks[0] != "scratch" and "$" not in toks[0]:
+            refs.append(toks[0])
+    return refs
+
+
+def test_moi_from_cua_dockerfile_ghim_digest() -> None:
+    """Base image theo tag (`python:3.13-slim`) đổi nội dung không báo trước; ghim `@sha256:` để build tái lập được
+    và để Dependabot `docker` mở PR nâng digest có diff để đọc."""
+    files = _dockerfiles()
+    assert files, "không tìm thấy Dockerfile nào được git theo dõi — cổng rỗng là cổng chết"
+    chua = [f"{p.relative_to(ROOT)}: {r}" for p in files for r in _from_refs(p.read_text(encoding="utf-8"))
+            if not re.search(r"@sha256:[0-9a-f]{64}$", r)]
+    assert not chua, "FROM chưa ghim digest:\n" + "\n".join(chua)
+
+
+def test_from_refs_bo_alias_arg_scratch() -> None:
+    """Chiều ngược của bộ đọc: alias stage, `${ARG}`, `scratch` không phải image cần ghim."""
+    txt = "FROM --platform=x a:1 AS b\nFROM b\nFROM ${X}\nFROM scratch\nfrom c@sha256:" + "0" * 64 + "\n"
+    assert _from_refs(txt) == ["a:1", "c@sha256:" + "0" * 64]
+    # `COPY --from=<image>` kéo image y như FROM (Dockerfile gốc: `COPY --from=ghcr.io/astral-sh/uv:0.9.9`);
+    # `COPY --from=<stage>` thì không.
+    txt2 = "FROM a:1 AS b\nCOPY --from=b /x /y\nCOPY --from=ghcr.io/o/uv:0.9 /uv /bin/\nCOPY --chown=1 --from=d:2 /a /b\n"
+    assert _from_refs(txt2) == ["a:1", "ghcr.io/o/uv:0.9", "d:2"]
+
+
+def test_dependabot_docker_phu_moi_thu_muc_co_dockerfile() -> None:
+    cfg = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8"))
+    co = {"/" + u["directory"].strip("/") for u in cfg["updates"] if u["package-ecosystem"] == "docker"}
+    can = {"/" + p.parent.relative_to(ROOT).as_posix().strip(".").strip("/") for p in _dockerfiles()}
+    assert can <= co, f"thư mục có Dockerfile mà Dependabot `docker` không theo dõi: {sorted(can - co)}"

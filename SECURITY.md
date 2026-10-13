@@ -88,6 +88,10 @@ provider trước**, rồi mới dọn lịch sử. Đổi khóa quan trọng h�
   audit-log ghi token thật và quy ra USD.
 - **Trần quyền theo agent**: mỗi agent chỉ được đọc/ghi những topic đã khai trong registry; ghi sai topic là lỗi
   chạy, không phải cảnh báo.
+- **Chuỗi cung ứng của chính CI** (rà soát 2026-10-13): mọi `uses:` ghim SHA 40 ký tự kèm `# vX.Y.Z`, mọi workflow
+  có `permissions: contents: read` cấp đầu (job cần hơn tự khai), mọi `FROM`/`COPY --from=<image>` ghim `@sha256:`;
+  Dependabot `github-actions` và `docker` nâng SHA/digest qua PR có diff để đọc. Cổng canh:
+  `platform/console/tests/test_cong_repo.py` (tag trôi hay workflow thiếu quyền cấp đầu là đỏ).
 
 Danh tính `--by` khi duyệt gate hay publish (`gate_cli`, lệnh publish) chỉ là **chuỗi gõ tay trên CLI, không được
 xác thực**: ai có shell trên máy đó đều ghi được tên người khác. Quy tắc "bốn mắt" (người duyệt khác người tạo) vì vậy
