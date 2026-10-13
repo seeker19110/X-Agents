@@ -155,8 +155,9 @@ def _hold(bus: Any, cid: str, principal: str, reason: str, usage: dict[str, Any]
 
 
 def review_cr(bus: Any, cid: str, client: Any, principal: str, prompt: str) -> str:
-    """Một lượt cho một CR: hỏi model, ghi `accepted`/`rejected` qua `publish_decision` hoặc `hold`. Không ném vì model."""
-    from .llm import LLMError  # nhập lười: cùng lý do với gate_reviewer.review_one
+    """Một lượt cho một CR: hỏi model, ghi `accepted`/`rejected` qua `publish_decision` hoặc `hold`. Chỉ ném
+    `TransientError` (cùng lý do với `gate_reviewer.review_one`)."""
+    from .llm import LLMError, TransientError  # nhập lười: cùng lý do với gate_reviewer.review_one
 
     user = brief(bus, cid)
     limit = max(200, int(getattr(client, "max_input_chars", 120_000)))
@@ -165,6 +166,8 @@ def review_cr(bus: Any, cid: str, client: Any, principal: str, prompt: str) -> s
         c = client.complete(system=prompt, user=user[:limit], schema=CR_SCHEMA, model_tier="strong")
         usage = {"tokens": c.input_tokens + c.output_tokens, "model": c.model}
         out = c.json()
+    except TransientError:
+        raise
     except LLMError as e:
         return _hold(bus, cid, principal, f"model lỗi: {e}", usage)
     decision, rc, hint = out.get("decision"), out.get("root_cause"), out.get("hint")

@@ -186,6 +186,14 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
                 o._audit("review.reassign_failed", {"ticket_id": tid, "source": src, "error": failed[0][:300]}, ticket_id=tid)
                 o.supervisor.escalate_gate(tid, f"review {src} giao lại vẫn lỗi: {failed[0][:200]}", once_key=f"review.escalate:{key}")
     active = {tid for tid, st in o.lead.state.items() if st in ACTIVE_STATES}
+    # Ticket có event đang trong hẹn `defer_until` của backend (hết phiên tới mốc reset, 429 "thử lại sau Ns") là
+    # đang CHỜ có chủ đích, không phải im lặng: watchdog đếm từ lúc hẹn hết. Đo hub 2026-10-13: DDCSV-43/40 bị
+    # escalate "không hoạt động > 4h" lúc 11:23/11:30 trong khi hẹn reset là 11:31.
+    mono = time.monotonic()
+    for eid, (env, _) in list(o.deferred.items()):
+        cho = env.payload.get("ticket_id") or (env.key if env.topic == "tasks" else None)
+        if cho in active and o.defer_until.get(eid, 0.0) > mono:
+            o.supervisor.last_seen[cho] = now or datetime.now(UTC)
     o.supervisor.check_timeouts(now, active=active)
     results += o._assume_clarifications(now)  # câu hỏi làm rõ quá hạn → giả định theo default, pha spec chạy
     # `flush_releases` (chế độ gom release) trước đây chỉ được gọi ngay lúc MỘT ticket vừa review pass
