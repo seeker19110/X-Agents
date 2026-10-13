@@ -37,6 +37,9 @@ updates:
 
   # Base image ghim `@sha256:` (rà soát 2026-10-13): dependabot mở PR nâng digest khi tag có bản mới. Một mục cho
   # mỗi thư mục có Dockerfile — `test_cong_repo.py::test_dependabot_docker_phu_moi_thu_muc_co_dockerfile` canh.
+  # Tag image là phiên bản RUNTIME (python của image khách phải khớp dự án khách, uv khớp `test_cong_docker`):
+  # chỉ nhận digest + patch, bỏ major/minor. Đo được #462–#464 (3.12→3.14, uv 0.9.9→0.13.0 đỏ cổng) —
+  # `test_cong_repo.py::test_dependabot_docker_chi_nang_digest_va_patch` canh. Nâng runtime là việc có chủ đích, có PR riêng.
   - package-ecosystem: docker
     directory: /
     schedule:
@@ -44,6 +47,9 @@ updates:
     commit-message:
       prefix: "build(deps)"
     labels: ["dependencies", "no-changelog"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: docker
     directory: /docker
@@ -52,3 +58,6 @@ updates:
     commit-message:
       prefix: "build(deps)"
     labels: ["dependencies", "no-changelog"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
