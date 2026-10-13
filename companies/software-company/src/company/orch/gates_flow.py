@@ -160,10 +160,12 @@ def _check_debt(o: Orchestrator) -> None:
 
     Khoá once mang (dự án, mã nợ, lần thứ mấy): restart không mở trùng (`once` dựng lại từ audit), nhưng nợ tăng
     tiếp tới bội số kế của ngưỡng là lần thứ n+1 → gate mới (khuôn 3, TRAPS.md). Gate của dự án đang bận (stall
-    hoặc nợ khác) thì đợi — không `remember`, nhịp sau mở."""
+    hoặc nợ khác) thì đợi — không `remember`, nhịp sau mở. Mốc dồn trong lúc đợi chỉ mở MỐC MỚI NHẤT của mỗi (dự án, mã
+    nợ): hub 2026-10-14 SD-14 dồn ×3..×12 sau một gate chờ 16 giờ, ký xong mốc nào mốc cũ kế tiếp mở ngay."""
+    latest = {(d["project_id"], d["debt_id"]): d["times"] for d in o.supervisor.debt_due}  # `times` tăng dần
     for due in o.supervisor.debt_due:
         pid = due["project_id"]; key = f"debt:{pid}:{due['debt_id']}:{due['times']}"
-        if key in o.once: continue
+        if key in o.once or due["times"] < latest[(pid, due["debt_id"])]: continue
         if pid in o.gate.pending or pid in o.debt_gate: continue
         o._remember(key)
         rec = {**due, "table": o.supervisor.debt_table(pid)}
