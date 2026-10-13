@@ -86,6 +86,9 @@ Hub có unit `xagents-reviewer` (`python -m company.gate_reviewer run --id tu-do
    kiểm `systemctl --user status xagents-reviewer` trước khi tự duyệt thay nó.
 3. Quyết như các mục trên, ký `--id phien-chinh`. Hai chữ ký khác principal trên cùng gate là bình thường: hold
    không ghi gì vào gate, chỉ ghi `reviewer.hold` ở audit-log.
+4. Change request do máy nộp (`REPLAN-*`/`REWORK-*`/`GATE3-*`, ADR gốc 0037) cũng do agent đó quyết trước. `holds`
+   in dòng `change-req` cho CR nó giữ (`reviewer.cr_hold`): chỉ những CR đó mới cần `decide-change --by
+   reviewer:phien-chinh`.
 
 ## Không bao giờ
 

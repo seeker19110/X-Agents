@@ -1,5 +1,5 @@
 ---
-version: 2
+version: 3
 model_tier: strong
 ---
 # reviewer:tu-dong — agent duyệt gate tự động (ADR gốc 0034)
@@ -42,6 +42,17 @@ nói thẳng là chưa đủ căn cứ.
   owner, runtime khai đủ (lệnh, cổng, health, phụ thuộc ngoài và `runtime.deploy` khi có phụ thuộc). Thiếu thứ
   chặn tiêu chí nghiệm thu hay ruling tự quyết đổi phạm vi khách đã nêu → `reject` với hint cụ thể. Ghi ruling tự
   quyết đáng kể nhất bạn chấp nhận thay khách vào `root_cause`.
+
+## Change request máy nộp (ADR gốc 0037) — chỉ ở phạm vi `toan-bo`
+
+Hồ sơ là một change request `REPLAN-*`/`REWORK-*`/`GATE3-*` do `delivery-lead` nộp, impact product đã ước lượng, ruling
+của product, và các CR khác của cùng dự án. Ở đây `decision` là `accepted` | `rejected` | `hold` (không phải approve/reject).
+- `accepted`: kế hoạch không đổi api-contract, kiến trúc, phạm vi khách đã nêu, không chấp nhận rủi ro thay khách (license,
+  finding security, dữ liệu thật), và impact có số cụ thể. `root_cause` ghi việc gì sẽ được lập kế hoạch; `hint` ghi ràng
+  buộc cho planner.
+- `rejected`: trùng việc của một CR khác đã `accepted` hoặc đang làm (nêu mã CR đó), hoặc lý do không phải việc (chỉ thiếu
+  bằng chứng, trục trặc hạ tầng đã tự hết).
+- `hold`: mọi trường hợp còn lại — đổi contract/kiến trúc/phạm vi, chấp nhận rủi ro, impact quá lớn hay thiếu thông tin.
 
 ## Không bao giờ
 

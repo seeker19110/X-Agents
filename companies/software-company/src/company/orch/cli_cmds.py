@@ -64,20 +64,16 @@ def publish(bus: SQLiteBus, ns: argparse.Namespace) -> int:
 
 
 def decide_change(bus: SQLiteBus, ns: argparse.Namespace) -> int:
+    from ..cr_reviewer import publish_decision
     from ..gate_reviewer import PREFIX as REVIEWER
     from ..gate_reviewer import cr_actor_refusal
-    from ..orchestrator import _evidence
     # Quyết định của khách (audit 2026-09-27 F-A): `--by ops` lọt ACL bus, vai khác nổ traceback. Reviewer ở phạm vi
     # `toan-bo` quyết thay khách (ADR gốc 0035).
     if why := cr_actor_refusal(ns.by):
         print(f"--by {why}", file=sys.stderr); return 2
-    cr = next(reversed(list(bus.replay(topic="change-requests", key=ns.change_id))), None)
-    if cr is None: print(f"không có change-request {ns.change_id}", file=sys.stderr); return 2
-    impact = next((_evidence(e.payload) for e in reversed(list(bus.replay(topic="audit-log")))
-                   if e.payload.get("action") == "change.impact" and _evidence(e.payload).get("change_id") == ns.change_id), {})
-    payload = {**cr.payload, "decision": ns.decision, "impact": {**cr.payload.get("impact", {}), **impact.get("impact", {}),
-                                                                   "decided_by": ns.by, "reason": ns.reason}}
-    env = bus.publish(Envelope(topic="change-requests", key=ns.change_id, actor=ns.by, payload=payload))
+    if (ghi := publish_decision(bus, ns.change_id, ns.decision, ns.by, ns.reason)) is None:
+        print(f"không có change-request {ns.change_id}", file=sys.stderr); return 2
+    env, payload = ghi  # ADR gốc 0037: cùng một đường ghi với agent duyệt tự động
     print(f"{ns.change_id}: {ns.decision} by {ns.by} event={env.event_id}")
     imp = payload["impact"]
     if imp.get("kind") == "replan" and ns.decision == "accepted":
