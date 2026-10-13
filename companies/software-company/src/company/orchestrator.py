@@ -295,6 +295,7 @@ class Orchestrator:
     _remember = scheduler._remember
     _audit = scheduler._audit
     record_sandbox_mode = scheduler.record_sandbox_mode
+    record_delivery_mode = scheduler.record_delivery_mode
     _resume_overdue = scheduler._resume_overdue
 
 

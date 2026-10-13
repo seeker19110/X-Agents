@@ -221,7 +221,7 @@ def run(orch: Orchestrator, ns: argparse.Namespace) -> int:
 
     def body() -> int:
         nonlocal reload
-        orch.record_sandbox_mode()
+        orch.record_sandbox_mode(); orch.record_delivery_mode()
         if ns.watch:
             try: orch.watch(interval=ns.watch, reload=not ns.no_reload)
             except KeyboardInterrupt: pass

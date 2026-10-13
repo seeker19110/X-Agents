@@ -234,7 +234,10 @@ def test_release_uoc_luong_unknown_khi_khong_con_ticket_nao(tmp_path):
     assert it["verdict"] == "unknown" and it["facts"][0] == "0/0 ticket có estimate_tokens"
 
 
-def test_release_gap_khi_budget_vuot_tran_agent_hoac_duoi_estimate(tmp_path):
+def test_release_budget_vuot_tran_agent_chi_canh_bao_khong_gap(tmp_path):
+    """Sự cố 2026-10-13 (QLKH-DD-CSV, REL-037/038): ticket đã làm xong mà budget vượt `budget_tokens_per_task` →
+    `gap` → reviewer reject release, nhưng reject không đổi được budget của ticket đã xong nên lặp mãi. Chủ repo
+    chọn: ở gate release đó chỉ là cảnh báo (`unknown`, vẫn ghi fact), không phải `gap`."""
     def h(system, user):
         out = rich_handler(system, user)
         if _agent_of(system) == "product" and "items" in out:
@@ -243,7 +246,7 @@ def test_release_gap_khi_budget_vuot_tran_agent_hoac_duoi_estimate(tmp_path):
     db, _, _ = _scenario(tmp_path, h, to="release")
     b = GB.build(GB.load_state(db), "REL-001")
     it = next(x for x in b["self_check"] if x["id"] == "plan.ngan-sach-token")
-    assert it["verdict"] == "gap" and any("vượt budget_tokens_per_task" in f for f in it["facts"])
+    assert it["verdict"] == "unknown" and any("vượt budget_tokens_per_task" in f for f in it["facts"])
 
 
 def test_release_uoc_luong_ok_khi_co_bai_hoc_cho_moi_assignee(tmp_path):
@@ -290,6 +293,35 @@ def test_release_khai_bao_tien_trinh_co_giao_hang_duoc_khong(tmp_path):
     st.deliver, st.push_remote = True, "origin"
     it = next(x for x in GB.build(st, "REL-001")["self_check"] if x["id"] == "release.giao-hang-duoc")
     assert it["verdict"] == "ok" and any("origin" in f for f in it["facts"])
+
+
+def test_release_giao_hang_doc_che_do_cua_tien_trinh_run_tu_log(tmp_path):
+    """Sự cố 2026-10-13 (QLKH-DD-CSV, REL-037/038): hồ sơ do `xagents-reviewer` dựng trong tiến trình KHÁC
+    (`load_state`, `deliver` mặc định False) nên luôn ghi "`--deliver` TẮT" dù orchestrator đang chạy có
+    `--deliver` — mọi gate release bị reject. Trạng thái giao hàng đọc từ audit `delivery.mode` mà tiến trình
+    `run` ghi; bản ghi mới nhất thắng. `--deliver` không `--push-remote` (giao vào bản clone cục bộ) là `ok`:
+    chủ repo chọn 2026-10-13 vì repo khách của hub chính là bản clone đó."""
+    db, _, orch = _scenario(tmp_path, to="release")
+    orch.deliver, orch.push_remote = True, None
+    orch.record_delivery_mode()
+    it = next(x for x in GB.build(GB.load_state(db), "REL-001")["self_check"] if x["id"] == "release.giao-hang-duoc")
+    assert it["verdict"] == "ok" and any("cục bộ" in f for f in it["facts"])
+    assert any(s.get("key") == "delivery.mode" for s in it["sources"])
+
+    orch.deliver = False
+    orch.record_delivery_mode()
+    it = next(x for x in GB.build(GB.load_state(db), "REL-001")["self_check"] if x["id"] == "release.giao-hang-duoc")
+    assert it["verdict"] == "gap" and any("--deliver" in f for f in it["facts"])
+
+
+def test_cli_run_ghi_audit_delivery_mode(tmp_path, monkeypatch):
+    from company.orchestrator import main as orch_main
+    monkeypatch.setenv("COMPANY_SANDBOX", "subprocess")
+    monkeypatch.setattr("company.llm.make_client", lambda: FakeClient())
+    db = tmp_path / "company.sqlite"
+    assert orch_main(["--db", str(db), "run", "--max-steps", "0"]) == 0
+    rows = [e for e in SQLiteBus(db).replay(topic="audit-log") if e.payload.get("action") == "delivery.mode"]
+    assert [json.loads(e.payload["evidence"]) for e in rows] == [{"deliver": False, "push_remote": None}]
 
 
 def test_release_dashboard_doi_chieu_contract_voi_infra(tmp_path):

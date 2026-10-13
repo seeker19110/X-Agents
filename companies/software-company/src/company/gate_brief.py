@@ -286,7 +286,8 @@ def _brief_estimates(orch: Orchestrator, items: dict[str, SelfItem], pid: str | 
     pb = orch.supervisor.project_budget_usd
     facts.append(f"trần tiền dự án (llm.yaml budget_usd): {pb if pb is not None else 'chưa đặt'}"
                  + (f"; đã dùng {orch.supervisor.project_cost.get(pid or '', 0.0):.2f} USD" if pid else ""))
-    out.append(_item(it, "gap" if (over_cap or under) else "unknown", facts, [plan_src]))
+    # Vượt trần agent chỉ là cảnh báo ở release: ticket đã xong, reject không đổi được budget (chủ repo 2026-10-13).
+    out.append(_item(it, "gap" if under else "unknown", facts, [plan_src]))
     return out
 
 
@@ -313,14 +314,22 @@ def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | 
     tids = orch.lead.release_tickets.get(subject, [])
 
     # Đọc trạng thái TIẾN TRÌNH, không đọc lời khai của agent: `--deliver` tắt thì `_deliver()` không bao giờ
-    # chạy, nên release ký ở đây sẽ không tới repo khách (sự cố 2026-09-10, ADR-0027).
+    # chạy, nên release ký ở đây sẽ không tới repo khách (sự cố 2026-09-10, ADR-0027). Hồ sơ dựng ở tiến trình
+    # khác (`xagents-reviewer`) thì cờ nằm ở audit `delivery.mode` của `run`, bản mới nhất (sự cố 2026-10-13).
     it = items["release.giao-hang-duoc"]
-    d_src = [{"kind": "process", "ref": "orchestrator", "url": None}]
-    if getattr(orch, "deliver", False):
-        remote = getattr(orch, "push_remote", None)
+    d_src: list[dict[str, Any]] = [{"kind": "process", "ref": "orchestrator", "url": None}]
+    deliver, remote = bool(getattr(orch, "deliver", False)), getattr(orch, "push_remote", None)
+    if not deliver:
+        modes = [e for e in orch.bus.replay(topic="audit-log")
+                 if e.actor == "orchestrator" and e.payload.get("action") == "delivery.mode"]
+        if modes:
+            m = _evidence(modes[-1].payload); deliver, remote = bool(m.get("deliver")), m.get("push_remote")
+            d_src.append(_topic_src("audit-log", "delivery.mode", modes[-1:]))
+    if deliver:
+        # Chủ repo 2026-10-13: giao vào bản clone cục bộ (không `--push-remote`) là cấu hình hợp lệ, không phải gap.
         dat = f"`--deliver` bật; push lên remote `{remote}`" if remote else \
-              "`--deliver` bật; KHÔNG `--push-remote` — tag và nhánh release chỉ nằm ở bản sao cục bộ của repo khách"
-        out.append(_item(it, "ok" if remote else "gap", [dat], d_src))
+              "`--deliver` bật, không `--push-remote`: tag và nhánh release nằm ở bản clone cục bộ của repo khách"
+        out.append(_item(it, "ok", [dat], d_src))
     else:
         out.append(_item(it, "gap", [
             "`--deliver` TẮT: ký gate này xong `_deliver()` vẫn không chạy — release sẽ không được tag và không "
