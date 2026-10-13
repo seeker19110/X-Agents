@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING, Any
 from ..delivery import DONE_STATES
 from ..events import AuditLog, Envelope
 from ..roles import resume_actor
-from ..routing import reset_clock_seconds, retry_after_seconds
 from .cli import _fmt, source_fingerprint
 from .guards import clarification_warnings
+from .hen import cho_hen, trong_hen
 from .quality_flow import note_env, sync_quality
 from .routes import ACTIVE_STATES, ACTOR, CONTROL_TOPICS, PAUSING, PLAN_INPUTS, REVIEW_AGENT, review_route
 
@@ -169,16 +169,27 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
         if key in o.once: continue
         o._remember(key)
         o.supervisor.escalate_gate(sid, f"{GATE_OVERDUE} {o.gate.timeout}", once_key=key)
+    hen = trong_hen(o)
     for tid, missing in o.lead.overdue_reviews(now).items():
+        # Lượt review gốc còn trong hẹn của backend (hết phiên tới mốc reset): giao lại chỉ đập thêm vào 429 rồi
+        # escalate giả — hub 2026-10-13 DDCSV-43 lúc 13:58, hẹn reset 16:31.
+        if tid in hen: continue
         pr = o.latest("pull-requests", tid)
         since = o.lead.review_since[tid].isoformat()  # đọc trước: _call bên dưới có thể đóng vòng review và xoá nó
         for src in sorted(missing):
             key = f"review:{tid}:{src}:{since}"
-            if pr is None or key in o.once: continue
-            o._remember(key); o._audit("review.reassign", {"ticket_id": tid, "source": src}, ticket_id=tid)
+            if pr is None or key in o.once or o.defer_until.get(key, 0.0) > time.monotonic(): continue
+            o._audit("review.reassign", {"ticket_id": tid, "source": src}, ticket_id=tid)
             res = StepResult(pr.event_id, pr.topic, pr.key)
             o._call(REVIEW_AGENT[src], pr, review_route(REVIEW_AGENT[src]), res)
             results.append(res)
+            if res.transient:
+                # Backend tạm hết: chưa dùng lượt giao lại duy nhất (`once`), hẹn tới mốc của backend rồi giao lại.
+                wait = cho_hen(res) or 0.0
+                if wait: o.defer_until[key] = time.monotonic() + wait
+                o._audit("review.reassign_deferred", {"ticket_id": tid, "source": src, "wait_s": int(wait)}, ticket_id=tid)
+                continue
+            o._remember(key)
             # Giao lại chỉ một lần (`once`): lượt thứ hai cũng lỗi/quá hạn thì không ai giao nữa và ticket nằm
             # `in_review` mãi. Đưa cho người: supervisor escalate → ticket hoãn, gate `escalation` mở.
             failed = [a for a in res.actions if a.split(":", 1)[0] in {"error", "handler_error", "transient"}]
@@ -189,11 +200,8 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
     # Ticket có event đang trong hẹn `defer_until` của backend (hết phiên tới mốc reset, 429 "thử lại sau Ns") là
     # đang CHỜ có chủ đích, không phải im lặng: watchdog đếm từ lúc hẹn hết. Đo hub 2026-10-13: DDCSV-43/40 bị
     # escalate "không hoạt động > 4h" lúc 11:23/11:30 trong khi hẹn reset là 11:31.
-    mono = time.monotonic()
-    for eid, (env, _) in list(o.deferred.items()):
-        cho = env.payload.get("ticket_id") or (env.key if env.topic == "tasks" else None)
-        if cho in active and o.defer_until.get(eid, 0.0) > mono:
-            o.supervisor.last_seen[cho] = now or datetime.now(UTC)
+    for cho in (hen | trong_hen(o)) & active:
+        o.supervisor.last_seen[cho] = now or datetime.now(UTC)
     o.supervisor.check_timeouts(now, active=active)
     results += o._assume_clarifications(now)  # câu hỏi làm rõ quá hạn → giả định theo default, pha spec chạy
     # `flush_releases` (chế độ gom release) trước đây chỉ được gọi ngay lúc MỘT ticket vừa review pass
@@ -280,29 +288,16 @@ def _defer(o: Orchestrator, env: Envelope, res: StepResult, reason: str, wait_s:
                     ticket_id=env.payload.get("ticket_id"), project_id=env.payload.get("project_id"))
     return res
 
-def moc_reset(e: BaseException) -> float | None:
-    """Số giây tới mốc "resets 6:30pm (Asia/Bangkok)" của `claude -p` hết phiên, đọc trên thông điệp ĐẦY ĐỦ — chuỗi
-    action `transient:` cắt 120 ký tự làm rơi đúng phần mốc giờ (sự cố hub 2026-10-13)."""
-    return reset_clock_seconds(str(e), time.time())
-
-
-def ghi_transient(res: StepResult, agent: str, e: BaseException) -> None:
-    """Một lượt agent hết retry transport: ghi action `transient:` (cắt 120 ký tự cho audit) và mốc reset đọc trên
-    thông điệp đầy đủ — `_defer_transient` hoãn theo đó ở cuối `process()`."""
-    res.actions.append(f"transient:{agent}:{str(e)[:120]}"); res.transient = True; res.reset_s = moc_reset(e)
-
-
 def _defer_transient(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     """Hoãn event vì một lượt agent gặp `TransientError` (`res.transient`), giữ mốc hẹn của backend ("thử lại sau
     1515s", hoặc mốc giờ "resets 6:30pm" ở `res.reset_s`). Một đường cho `process()` và các hành động tự `_mark`
     (`_plan`): bên đó `process()` không thấy `res.transient` vì hành động đã trả True — tự `_mark` thì event bị coi
     là xong và dự án đứng im."""
     stuck = next((a for a in res.actions if a.startswith("transient:")), "transient:?")
-    wait = retry_after_seconds(stuck)
+    wait = cho_hen(res)
     if res.reset_s is not None:
         # Mốc reset phiên là hẹn chắc của backend, có thể xa hơn trần `transient_limit()` (2 giờ vs tới 5 giờ):
         # trần đếm từ SAU mốc, không thì event thành escalation giả lúc backend vẫn trong hẹn.
-        wait = max(wait or 0.0, res.reset_s)
         with o._lock: o.transient_since[env.event_id] = time.monotonic() + res.reset_s
     return _defer(o, env, res, ":".join(stuck.split(":")[:2]), wait_s=wait)
 
