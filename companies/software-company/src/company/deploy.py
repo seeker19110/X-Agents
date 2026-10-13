@@ -331,7 +331,9 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
         _compose(run, binary, repo_root, project, cfile, "down")
         return rec(started_at=started_at, compose_file=cfile, logs_tail=logs[-LOGS_MAX:] if ok_logs else "", **kw)
 
-    ok, out = _compose(run, binary, repo_root, project, cfile, "up", "-d", timeout=UP_TIMEOUT_S)
+    # `--build`: project cố định theo env nên `up -d` trần dùng lại image đã dựng lần đầu — container chạy code của sha
+    # cũ trong khi bằng chứng ghi sha mới (hub thật 2026-10-13: REL-022→034 cùng một container qua 5 sha).
+    ok, out = _compose(run, binary, repo_root, project, cfile, "up", "-d", "--build", timeout=UP_TIMEOUT_S)
     if not ok:
         return teardown(error=f"up -d: {out}")
 
