@@ -29,7 +29,9 @@ supervisor không có tool đọc bus (bẫy "agent không có tool đọc bus",
    T1,T2)` + các mã khác của dự án), `decision:adr|waive`, `hint:…`; audit `debt.escalated` mang cả bảng. Khoá once
    `debt:{project}:{debt}:{times}` — restart không mở trùng (`once` dựng lại từ audit), nợ tăng tới bội số kế tiếp là
    lần mới → gate mới (khuôn 3). Dự án đang có gate escalation khác (stall, mã nợ khác) thì đợi nhịp sau, không
-   `remember` để không nuốt.
+   `remember` để không nuốt. **Sửa 2026-10-14:** mốc dồn trong lúc đợi chỉ mở mốc MỚI NHẤT của mỗi (dự án, mã nợ) —
+   hub QLKH-DD-CSV: SD-14 dồn ×3..×12 sau một gate chờ 16 giờ, mỗi lần ký thì mốc cũ kế tiếp mở ngay (cùng nợ, cùng
+   hồ sơ, mỗi gate một lượt agent duyệt và một chữ ký).
 5. **Không pause dự án.** Khác `_stall`: nợ treo là quyết định bị né, không phải sự cố — việc khác vẫn chạy trong
    lúc người quyết. Người `approve` (đã có ticket ADR + người ký) hay `reject` (chấp nhận treo) đều chỉ sinh audit
    `debt.decided`; không `resume`, không "reopen" ticket ma (`_on_escalation_decided` rẽ nhánh nợ trước mọi nhánh khác).
