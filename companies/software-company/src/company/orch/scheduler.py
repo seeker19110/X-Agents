@@ -19,6 +19,7 @@ from ..delivery import DONE_STATES
 from ..events import AuditLog, Envelope
 from ..roles import resume_actor
 from .cli import _fmt, source_fingerprint
+from .gates_flow import retire_accepted_replans
 from .guards import clarification_warnings
 from .hen import cho_hen, trong_hen
 from .quality_flow import note_env, sync_quality
@@ -152,6 +153,7 @@ def tick(o: Orchestrator, now: datetime | None = None) -> list[StepResult]:
     nhắc gate quá hạn, giao lại review quá hạn, escalate ticket im lặng quá lâu."""
     from ..orchestrator import StepResult  # nhập lười, lý do như trong _integrate_pending
     if hasattr(o.bus, "poll"): o.bus.poll()
+    retire_accepted_replans(o)  # trước `run()`: event cũ của ticket đã bị replan thay thành hàng bị vượt
     o._retry_deferred(only="transient:")
     results = o.run()
     remind, overdue = o.gate.due(now)

@@ -47,6 +47,7 @@ class DeliveryLead:
         # `replan_rounds` là trần THẾ HỆ (ticket sinh từ replan lại hết retry → thế hệ 2), 0 = tắt.
         self.replan_rounds = replan_rounds
         self.replan_open: dict[str, str] = {}  # ticket_id → change_id REPLAN đang chờ người quyết (checklist gate escalation)
+        self.replan_accepted: dict[str, Envelope] = {}  # ticket_id → event CR REPLAN accepted mới nhất (tin hay không: orchestrator)
         self.replans_filed: set[str] = set()   # change_id đã nộp (dựng lại từ bus): block lần hai cùng thế hệ không nộp lại
         # ADR-0052: ticket_id → đếm lần `_retry` theo kiểu dừng (`stop_kind.STOP_KINDS`), để `ticket.blocked` nói được
         # ba retry đã cháy vì gì. Chỉ sống trong RAM; bản chụp nằm trong evidence của `ticket.blocked`.
@@ -583,6 +584,8 @@ class DeliveryLead:
             self.replans_filed.add(cid)
             if p.get("decision", "pending") == "pending": self.replan_open[tid] = cid
             else: self.replan_open.pop(tid, None)
+            if p.get("decision") == "accepted": self.replan_accepted[tid] = env
+            else: self.replan_accepted.pop(tid, None)
             return
         rid = p.get("release_id")
         if p.get("decision", "pending") == "pending" or not rid: return

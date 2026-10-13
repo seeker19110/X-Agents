@@ -166,9 +166,9 @@ def test_replan_song_sot_qua_restart(tmp_path):
 
 
 def test_replan_cua_ticket_da_duoc_nguoi_mo_lai_truoc_do_khong_dong_ticket_dang_chay(tmp_path):
-    """Người duyệt escalation `approve` (mở lại T1) TRƯỚC rồi mới `accepted` CR replan: T1 đang chạy lại, không
-    phải blocked — orchestrator không đóng nó, chỉ ghi nhận và vẫn lập kế hoạch mới (người đã quyết hai lần, lần
-    sau thắng về kế hoạch, nhưng không có ticket nào bị đóng sau lưng)."""
+    """Người duyệt escalation `approve` (mở lại T1) TRƯỚC rồi mới `accepted` CR replan, và T1 chạy lại XONG trước khi
+    CR được áp — orchestrator không đóng nó (code đã có), vẫn lập kế hoạch mới. Ticket mở lại mà CHƯA xong thì đóng:
+    `test_replan_dong_ticket_dang_chay.py` (sửa ADR-0051 §3, 2026-10-14)."""
     db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=_planner_blocks_t1))
     _drive_to_blocked(bus, orch)
     BLOCK_T1["on"] = False  # lần chạy lại qua review
