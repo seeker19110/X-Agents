@@ -60,6 +60,9 @@ def _on_gate_decide(o: Orchestrator, env: Envelope, res: StepResult) -> StepResu
             # ADR-0037: không còn nhánh `sid in o.plans` — kế hoạch được `_check_plan` cho đi thẳng lúc lập, không
             # chờ ai ký. Duyệt gate release vẫn là bước cho phép deploy production.
             _deploy_production(o, sid, res)
+        elif kind == "release":  # ADR-0058: từ chối Gate 3 → CR cho planner, không để lý do nằm im
+            o.lead.request_change_after_release_reject(sid, str(d.get("reason") or ""))
+            res.actions.append(f"change_request:GATE3-{sid}")
         if kind != "escalation" and decision != "hold": o._resume_overdue(g, by, res)  # escalation tự `resume` trong `_on_escalation_decided`
     o._note_closed()
     o._retry_deferred()
