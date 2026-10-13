@@ -399,7 +399,14 @@ class DeliveryLead:
                     self._set(tid, "changes_requested"); self._retry(tid, f"{rid} {p['status']} trên {p['env']}")
 
     def release_needs_security(self, rid: str) -> bool:
-        return any(self.tickets[t].risk_tags for t in self.release_tickets.get(rid, []) if t in self.tickets)
+        """Nhánh tích hợp CỘNG DỒN: RC mang code của mọi RC trước cùng dự án, nên xét `risk_tags` của chúng chứ không chỉ
+        ticket trong RC này. Đo được 2026-10-13 (QLKH-DD-CSV): REL-036 chỉ có ticket vá image (không nhãn) lên thẳng
+        Gate 3 không qua SCA/DAST, dù sha của nó chứa mọi thứ security đã chặn ở REL-035."""
+        own = [t for t in self.release_tickets.get(rid, []) if t in self.tickets]
+        pids = {self.tickets[t].project_id for t in own}
+        upto = self.releases[: self.releases.index(rid) + 1] if rid in self.releases else [rid]
+        return any(self.tickets[t].risk_tags for r in upto for t in self.release_tickets.get(r, [])
+                   if t in self.tickets and self.tickets[t].project_id in pids)
 
     def _gate_kind_approved(self, subject_id: str, kind: str) -> bool:
         """Như `HumanGate.is_approved` nhưng CÓ phân biệt kind: escalation của một release và gate release (Gate 3)
