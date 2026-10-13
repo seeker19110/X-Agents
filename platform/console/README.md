@@ -13,7 +13,7 @@ Console **đọc bus SQLite của công ty ở chế độ chỉ đọc** và kh
 một đề bài web app thật (cùng nội dung với `software-company/examples/yeu-cau-mau-web-app.json`) để sửa lại, thay vì
 nhìn ô trống rồi viết hai dòng mà `product` (pha spec) phải hỏi lại năm lần.
 
-**Giao việc ngay trên trang** (bật `--allow-submit`): đầu màn *Xưởng phần mềm* có form *Yêu cầu phần mềm*
+**Giao việc ngay trên trang** (bật `--allow-submit`): đầu màn *Xưởng phần mềm* có khối gập *Giao việc* (bấm tiêu đề để mở) chứa form *Yêu cầu phần mềm*
 (`research-requests`, kèm **nơi lưu dự án** = repo git của khách cho riêng dự án đó, ADR-0025) và *Trả lời câu hỏi
 làm rõ* (`clarification-answers`). Form chỉ gom trường thành payload; event được publish qua đúng `SQLiteBus` của
 công ty nên vẫn bị kiểm theo JSON Schema của topic y như nạp bằng CLI `publish`. Không cần tạo file JSON tay nữa;
@@ -63,7 +63,7 @@ uv run python -m console --allow-config    # cho phép sửa model/backend của
 uv run python -m console --allow-engine    # cho phép BẬT/TẮT orchestrator của từng xưởng ngay trên trang
 ```
 
-**Bật động cơ ngay trên trang** (`--allow-engine`, ADR-0004). Ô *Động cơ* ở đầu màn Trực ban có một dòng cho mỗi
+**Bật động cơ ngay trên trang** (`--allow-engine`, ADR-0004). Ô *Động cơ* ở cột phải màn Trực ban (cạnh hàng đợi gate) có một dòng cho mỗi
 xưởng: đang chạy hay không, pid, nhịp, ai bật, và đuôi log khi nó chết. Bấm *Bật* là console chạy đúng lệnh mà
 bạn vẫn gõ tay (`orchestrator run --watch`, in nguyên văn vào đầu file log `console/.engine/<xưởng>.log`) trong
 đúng thư mục công ty. Model vẫn là gói thuê bao khai trong `llm.yaml` — console không truyền model, không truyền

@@ -52,13 +52,33 @@ export function showView(v){
   // ADR-0011 giai đoạn 5/5: một trang cuộn dài, không còn ẩn/hiện — nav giờ là mục lục, bấm một mục CUỘN
   // tới đúng section thay vì ẩn mọi section khác (`.view` không còn CSS `display:none`/`class="on"`).
   const el=document.getElementById("v-"+v);
-  if(el) el.scrollIntoView({behavior:"smooth",block:"start"});
+  if(el){ spyLock=Date.now()+900; el.scrollIntoView({behavior:"smooth",block:"start"}); }
   titles();
   if(v==="cai-dat") loadSettings();
   if(v==="phan-mem") renderSubmit(v);
   if(v==="huong-dan") renderGuide();
   if(v==="phieu") renderProductFunnel();
 }
+/* Nav là mục lục của MỘT trang cuộn: cuộn tới màn nào thì mục đó sáng và tiêu đề thanh trên đổi theo — không
+   thì tiêu đề ghi "Trực ban" trong khi người đọc đang ở bảng chi phí. Chỉ đổi đánh dấu: không cuộn (vòng lặp
+   cuộn), không đổi địa chỉ (mỗi lần cuộn qua một màn thành một mục lịch sử của nút Back). Trong lúc trang đang
+   tự cuộn tới mục vừa bấm (`spyLock`) thì bỏ qua các màn nó lướt qua giữa đường. */
+let spyLock=0;
+export function spy(v){
+  if(v===view||Date.now()<spyLock) return;
+  view=v;
+  $$(".nav").forEach(n=>n.setAttribute("aria-current",String(n.dataset.v===v)));
+  titles();
+}
+const inBand=new Set();
+const spyObs=new IntersectionObserver(es=>{
+  es.forEach(e=>e.isIntersecting?inBand.add(e.target):inBand.delete(e.target));
+  // Dải canh là 40% trên của khung (dưới thanh trên): màn cuối cùng (theo thứ tự trang) đã chạm dải là màn đang đọc.
+  const cur=$$("section.view").filter(x=>inBand.has(x)).pop();
+  if(cur) spy(cur.id.slice(2));
+},{rootMargin:"-80px 0px -60% 0px"});
+$$("section.view").forEach(x=>spyObs.observe(x));
+
 export function applyRoute(){
   const r=readHash();
   showView(r.view);
