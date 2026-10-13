@@ -223,10 +223,12 @@ class Supervisor(SupervisorBase):
 
     def calibration(self) -> dict[str, dict]:
         """Hệ số hiệu chỉnh ước lượng theo assignee: median(actual/estimate) và số mẫu, từ bài học đã ghi.
-        Delivery-lead nhận bảng này khi lập kế hoạch để ước lượng lần sau sát hơn (vòng học đóng lại ở đây)."""
+        Delivery-lead nhận bảng này khi lập kế hoạch để ước lượng lần sau sát hơn (vòng học đóng lại ở đây).
+        Chỉ bài học có `output_tokens` (ratio đo đầu ra, cùng thước `budget_cut`): bài học cũ đo tổng token kể cả
+        input cache — hệ số ~11× sai thước, thà "chưa có tham chiếu" còn hơn."""
         by: dict[str, list[float]] = defaultdict(list)
         for d in self.lessons():
-            if d.get("ratio") and d.get("assignee"): by[d["assignee"]].append(float(d["ratio"]))
+            if d.get("ratio") and d.get("assignee") and "output_tokens" in d: by[d["assignee"]].append(float(d["ratio"]))
         return {a: {"ratio_median": round(statistics.median(v), 2), "samples": len(v)} for a, v in sorted(by.items())}
 
     def sprint_report(self) -> dict:

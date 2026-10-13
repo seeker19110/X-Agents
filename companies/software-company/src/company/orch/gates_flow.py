@@ -322,10 +322,12 @@ def _record_lesson(o: Orchestrator, tid: str) -> None:
     if f"lesson:{tid}" in o.once: return
     o._remember(f"lesson:{tid}")
     t = o.lead.tickets[tid]; b = o.supervisor.budgets.get(tid)
-    actual = b.used if b else 0; est = t.estimate_tokens or 0
+    # `ratio` đo ĐẦU RA so với estimate — cùng thước với `budget_cut` (`Budget.ratio`). `used` gồm cả input đọc lại
+    # từ cache qua mọi lượt nội bộ của `claude -p`: hub 2026-10-13 DDCSV-40 ước 110k, đầu ra 31,8k, tổng 1,57M (14×).
+    actual = b.used if b else 0; out = b.output_used if b else 0; est = t.estimate_tokens or 0
     lesson = {"ticket_id": tid, "assignee": t.assignee, "estimate_tokens": est, "actual_tokens": actual,
-              "review_tokens": b.review_used if b else 0,
-              "ratio": round(actual / est, 2) if est else None, "retry": t.retry, "risk_tags": t.risk_tags,
+              "output_tokens": out, "review_tokens": b.review_used if b else 0,
+              "ratio": round(out / est, 2) if est else None, "retry": t.retry, "risk_tags": t.risk_tags,
               "hint": t.human_hint or ""}   # lời NGƯỜI, không phải `hint` máy ghi đè mỗi retry (events.Task)
     o.supervisor.record_lesson(context=f"{t.project_id}/{tid} {t.title}", problem=f"retry={t.retry}",
                               solution=t.hint or "", evidence=json.dumps(lesson, ensure_ascii=False))
