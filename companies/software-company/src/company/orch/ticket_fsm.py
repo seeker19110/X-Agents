@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -71,6 +72,23 @@ def _note_closed(o: Orchestrator) -> None:
         o._audit("ticket.closed", {"ticket_id": tid, "retry": t.retry if t else 0}, once=f"closed:{tid}",
                     ticket_id=tid, project_id=t.project_id if t else None)
 
+def _renumber(o: Orchestrator, tickets: list[Task], project: str) -> None:
+    """Mã ticket trùng ticket đã có (đuôi số) → số kế tiếp còn trống cùng tiền tố, `depends_on` trong kế hoạch đi theo.
+    Hub 2026-10-14: PLAN-QLKH-DD-CSV-9 bị từ chối vì PLAN-8 vừa lấy DDCSV-46..48 — đầu vào `product[plan]` không mang
+    danh sách mã đã cấp nên nó chỉ đoán; cấp mã là việc của code. Kế hoạch tự trùng mã thì để `_check_plan` bắt."""
+    ids = [t.ticket_id for t in tickets]
+    if len(set(ids)) != len(ids): return
+    taken = set(o.lead.tickets) | set(ids)
+    mapping: dict[str, str] = {}
+    for t in tickets:
+        m = re.fullmatch(r"(.*?)(\d+)", t.ticket_id)
+        if t.ticket_id not in o.lead.tickets or m is None: continue
+        nums = [int(x[1]) for s in taken if (x := re.fullmatch(re.escape(m[1]) + r"(\d+)", s))]
+        new = f"{m[1]}{max(nums) + 1:0{len(m[2])}d}"
+        mapping[t.ticket_id] = new; t.ticket_id = new; taken.add(new)
+    for t in tickets: t.depends_on = [mapping.get(d, d) for d in t.depends_on]
+    if mapping: o._audit("plan.renumbered", {"project_id": project, "mapping": mapping}, project_id=project)
+
 def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     project = env.payload.get("project_id") or env.key
     if env.topic == "approved-specs":
@@ -123,6 +141,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     if g.context_writes:  # C4, API contract lên blackboard TRƯỚC `_check_plan` để nó thấy được (ADR-0037)
         o.runner.write_context(ROLE.PRODUCT, env, g.context_writes)
     tickets = [Task.model_validate(p) for p in g.payloads]
+    _renumber(o, tickets, project)
     problems = o._check_plan(tickets, project)
     n = 1 + sum(1 for p in o.plans.values() if p["project_id"] == project)
     plan_id = f"PLAN-{project}-{n}"
