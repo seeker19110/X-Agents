@@ -41,7 +41,8 @@ Máy trực không có `pip-audit`, `trivy`, `gitleaks`, `osv-scanner` sẵn; c�
      `package-lock.json`, `Cargo.lock`…), rồi `trivy image <ref>` cho từng image của Dockerfile/compose —
      `image_digest.references(root, pinned=True)`, tập **mọi** image kể cả đã ghim, khác tập "cần ghim" của ADR-0055.
      Lên bus: `by_severity`/`total` toàn cục, từng `targets[]` (lock file: gói, mức độ, danh sách phát hiện có trần
-     `MAX_FINDINGS=50`), từng `images[]` (chỉ số đếm theo mức độ, `fixable`, `os`, `digest`), `errors[]` cho image không
+     `MAX_FINDINGS=50`), từng `images[]` (số đếm theo mức độ, `fixable`, `os`, `digest`; danh sách CRITICAL/HIGH từ bổ
+     sung 2026-10-13 bên dưới), `errors[]` cho image không
      quét được. Một image lỗi không làm hỏng cả bằng chứng; `trivy fs` lỗi thì cả `vuln` là `unverified` kèm đuôi stderr.
    - `evidence.secrets` = `secret_evidence(root, sha)`: `gitleaks git --no-banner --redact=100 --exit-code 0` trên cây RC
      — worktree `_releases/<sha>` chia sẻ object store với repo khách nên quét được **toàn bộ lịch sử** (123 commit ở số đo).
@@ -60,6 +61,18 @@ Máy trực không có `pip-audit`, `trivy`, `gitleaks`, `osv-scanner` sẵn; c�
 6. **Chạy trên máy trực, không trong sandbox.** `trivy` cần tải DB (ghcr.io) và đọc image qua docker daemon; `gitleaks`
    chỉ đọc git. Cả hai là công cụ đọc, không chạy code của khách — khác `lock`/`image_digest` (ADR-0054/0055) là lệnh
    builder gọi trên cây ticket. Cây RC là checkout riêng theo sha, không phải worktree tích hợp.
+
+## Bổ sung 2026-10-13 — danh sách CVE CRITICAL/HIGH của image
+
+Đo hub thật 2026-10-13 (QLKH-DD-CSV REL-022, sau CR-DDCSV-SEC-001): image nền đã nâng (python 9→2 CRITICAL, postgres
+20→4), lock sạch, gitleaks 0 — nhưng security chặn REL22-01/02 vì "RC không có danh sách CVE, không có bằng chứng
+reachability, chưa có hồ sơ ngoại lệ". Quyết định 1 chỉ đưa số đếm cho image, nên security không có gì để viết hồ sơ
+ngoại lệ hay chọn CVE cần vá.
+
+- `images[].findings`: CRITICAL + HIGH (cùng dạng `targets[].findings`: package, version, id, severity, fixed),
+  CRITICAL trước, có bản sửa trước, trần `MAX_FINDINGS`. MEDIUM/LOW vẫn chỉ đếm.
+- Audit `vuln.run` vẫn chỉ đếm (`scanners.counts_only` bỏ `images[].findings`); danh sách đi trong `review-results`.
+- Reachability, EPSS, KEV vẫn ngoài phạm vi máy — `security` đọc danh sách rồi quyết, như quyết định 3.
 
 ## Cái giá đã biết
 

@@ -284,7 +284,8 @@ def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope,
                   "secrets": scanners.secret_evidence(root, sha)}
         # audit không kèm toàn văn SBOM / checks / danh sách phát hiện: chúng đi trong `review-results`
         for action, ev1, big in (("supply_chain.run", ev["supply_chain"], "sbom"), ("dast.run", ev["dast"], "checks"),
-                                 ("vuln.run", ev["vuln"], "targets"), ("secrets.run", ev["secrets"], "findings")):
+                                 ("vuln.run", scanners.counts_only(ev["vuln"]), "targets"),
+                                 ("secrets.run", ev["secrets"], "findings")):
             o._audit(action, {"release_id": rid, **{k: v for k, v in ev1.items() if k != big}}, project_id=pid)
         kind = "supply_chain"
     return inp.model_copy(update={"payload": {**inp.payload, "evidence": {**_dict_of(inp.payload.get("evidence")), **ev}}}), kind

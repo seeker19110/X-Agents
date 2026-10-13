@@ -5,7 +5,8 @@ và "không có secret trong lịch sử git" chỉ có khi MÁY đưa số. Hai
 
 - `trivy` (aquasecurity): `trivy fs` trên cây RC đọc lock file (kể cả `requirements.lock` của `uv pip compile`, tên mà
   trivy không tự nhận) và `trivy image` cho từng image của Dockerfile/compose (gói Debian của image nền). Lên bus: số
-  theo mức độ + danh sách phát hiện của lock (có trần); image chỉ số đếm — 421 CVE Debian không phải thứ đọc trên bus.
+  theo mức độ + danh sách phát hiện của lock (có trần); image: số đếm + danh sách CRITICAL/HIGH (có trần) — 421 CVE
+  Debian mức MEDIUM/LOW không phải thứ đọc trên bus.
 - `gitleaks`: toàn bộ lịch sử git của cây RC. Lên bus chỉ VỊ TRÍ (rule, file, commit, dòng), không bao giờ giá trị.
 
 Thiếu binary → `unverified` nói rõ cách cài; chạy lỗi/quá giờ → `unverified` kèm đuôi stderr. Có phát hiện KHÔNG phải
@@ -77,9 +78,14 @@ def _finding(v: dict[str, Any]) -> dict[str, Any]:
 
 
 def _image_summary(ref: str, doc: dict[str, Any]) -> dict[str, Any]:
+    """Đếm theo mức độ cho mọi CVE của image; danh sách chỉ CRITICAL + HIGH (CRITICAL trước, có bản sửa trước, trần
+    `MAX_FINDINGS`). ADR-0056 bổ sung (REL-022): chỉ số đếm thì security không viết được hồ sơ ngoại lệ hay chọn CVE
+    để vá; MEDIUM/LOW của image nền là hàng trăm dòng và vẫn chỉ đếm."""
     vulns = [v for r in doc.get("Results") or [] for v in r.get("Vulnerabilities") or []]
     meta = doc.get("Metadata") or {}
     os_ = meta.get("OS") or {}
+    serious = [v for v in vulns if v.get("Severity") in ("CRITICAL", "HIGH")]
+    serious.sort(key=lambda v: (v.get("Severity") != "CRITICAL", not v.get("FixedVersion")))
     return {
         "ref": ref,
         "digest": next(iter(meta.get("RepoDigests") or []), None),
@@ -87,6 +93,7 @@ def _image_summary(ref: str, doc: dict[str, Any]) -> dict[str, Any]:
         "by_severity": _by_severity(vulns),
         "total": len(vulns),
         "fixable": sum(1 for v in vulns if v.get("FixedVersion")),
+        "findings": [_finding(v) for v in serious[:MAX_FINDINGS]],
     }
 
 
@@ -133,6 +140,14 @@ def vuln_evidence(root: Path, sha: str, images: list[str]) -> dict[str, Any]:
         "images": imgs,
         "errors": errors,
     }
+
+
+def counts_only(ev: dict[str, Any]) -> dict[str, Any]:
+    """Bản của `evidence.vuln` cho audit-log: image chỉ giữ số đếm, danh sách CVE đi trong `review-results`."""
+    imgs = ev.get("images")
+    if not isinstance(imgs, list):
+        return ev
+    return {**ev, "images": [{k: v for k, v in i.items() if k != "findings"} for i in imgs]}
 
 
 def secret_evidence(root: Path, sha: str) -> dict[str, Any]:
