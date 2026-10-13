@@ -32,6 +32,9 @@ supervisor không có tool đọc bus (bẫy "agent không có tool đọc bus",
    `remember` để không nuốt. **Sửa 2026-10-14:** mốc dồn trong lúc đợi chỉ mở mốc MỚI NHẤT của mỗi (dự án, mã nợ) —
    hub QLKH-DD-CSV: SD-14 dồn ×3..×12 sau một gate chờ 16 giờ, mỗi lần ký thì mốc cũ kế tiếp mở ngay (cùng nợ, cùng
    hồ sơ, mỗi gate một lượt agent duyệt và một chữ ký).
+   **Sửa 2026-10-14 (giãn dần):** chỉ mở gate ở lần chạm ngưỡng thứ 1, 2, 4, 8… (`times` là luỹ thừa của 2; một nguồn
+   ⇒ ×3, ×6, ×12, ×24). Hub QLKH-DD-CSV: SD-14 là DPIA khách phải ký, được nhắc trong mọi review `qa` ⇒ cứ 3 review một
+   gate, lần nào cũng `reject` (chấp nhận treo) với cùng lý do. Hàm thuần của `times`, không thêm trạng thái.
 5. **Không pause dự án.** Khác `_stall`: nợ treo là quyết định bị né, không phải sự cố — việc khác vẫn chạy trong
    lúc người quyết. Người `approve` (đã có ticket ADR + người ký) hay `reject` (chấp nhận treo) đều chỉ sinh audit
    `debt.decided`; không `resume`, không "reopen" ticket ma (`_on_escalation_decided` rẽ nhánh nợ trước mọi nhánh khác).
