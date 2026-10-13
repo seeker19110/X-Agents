@@ -91,7 +91,7 @@
 | Chọn backend theo tier, xoay khi hết quota, `prefer` | `platform/xagents-core/src/xagents_core/routing.py` (K3.3d — `src/company/routing.py` chỉ còn là shim); cấu hình `llm.yaml` (`llm.example.yaml`, `llm.claude-gateway.yaml`) |
 | Tool của công ty vào `claude -p` qua MCP | `src/company/mcp_bridge.py` (ADR-0024); dò chế độ: `probe.py` |
 | Ngân sách ticket/dự án, watchdog, pause/escalate, chọn ≤5 bài học theo ticket | `src/company/supervisor.py::lessons_for` (kế thừa `xagents_core.supervisor.SupervisorBase` — `sprint_report()` Ở LẠI đây, nó nói về ticket); `runner.py` đưa `related_lessons` vào prompt; `BUDGET_FACTOR` trong `events.py`; đối chiếu ở `tests/test_supervisor.py`, `test_integration_branch.py` |
-| Nợ kiến trúc treo: mã nợ `DEBT_RE`, đếm liên tiếp theo nguồn, bảng `debt_table`; gate cấp dự án `_check_debt` (mốc dồn chỉ mở mốc mới nhất, `tests/test_no_don_gate_cu.py`); ngưỡng `debt_reviews` | `supervisor.py`, `orchestrator.py`, `llm.py` (`LLMConfig.debt_reviews`) — ADR-0032 |
+| Nợ kiến trúc treo: mã nợ `DEBT_RE`, đếm liên tiếp theo nguồn, bảng `debt_table`; gate cấp dự án `_check_debt` (mốc dồn chỉ mở mốc mới nhất, `tests/test_no_don_gate_cu.py`; hỏi lại giãn dần ở lần 1, 2, 4, 8…, `tests/test_no_hoi_lai_gian_dan.py`); ngưỡng `debt_reviews` | `supervisor.py`, `orchestrator.py`, `llm.py` (`LLMConfig.debt_reviews`) — ADR-0032 |
 | Số liệu từ audit-log | `src/company/metrics.py` |
 | Dòng thời gian một ticket/release/dự án (`orchestrator trace <id> [--json]`) | `src/company/trace.py` giữ `resolve`/`_belongs`/`_domain` riêng company; cấu trúc dòng, đọc `audit-log`, tổng kết, cách in ở `platform/xagents-core/src/xagents_core/trace.py` từ 4L-7; test `tests/test_trace.py`, `platform/xagents-core/tests/test_trace.py` |
 

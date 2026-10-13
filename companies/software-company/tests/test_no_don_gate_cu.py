@@ -23,10 +23,10 @@ def test_moc_don_trong_luc_ban_chi_mo_mot_gate_cho_moc_moi_nhat():
     assert [d["times"] for d in o.supervisor.debt_due] == [1, 2, 3], "tiền đề: ba mốc dồn"
     o.gate.decide("P1", "reject", by="human:pm", reason="đóng việc kia")
     o.run()
-    assert o.gate.pending["P1"].checklist[0].startswith("debt:SD-14×9"), "mở thẳng mốc mới nhất"
+    assert o.gate.pending["P1"].checklist[0].startswith("debt:SD-14×6"), "mốc mới nhất trong các lần thứ 1, 2, 4… (×9 là lần 3: giãn dần, test_no_hoi_lai_gian_dan)"
     o.gate.decide("P1", "reject", by="human:cto", reason="chấp nhận treo, DPIA khách ký sau")
     o.run()
-    assert "P1" not in o.gate.pending, "mốc ×3/×6 đã bị ×9 bao trọn: không mở lại"
+    assert "P1" not in o.gate.pending, "×3 đã bị ×6 bao trọn, ×9 không phải lần thứ luỹ thừa 2: không mở"
     assert _debt_audits(bus) == ["debt.escalated", "debt.decided"]
 
 
