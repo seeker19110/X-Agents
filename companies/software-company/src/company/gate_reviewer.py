@@ -370,9 +370,10 @@ def _hold(gate: PersistentGate, req: GateRequest, principal: str, reason: str, u
 def review_one(gate: PersistentGate, subject_id: str, brief_md: str, brief_json: Path, client: Any,
                principal: str, key: Path) -> str:
     """Một lượt duyệt cho một gate: hỏi model trên hồ sơ, rồi `approve`/`reject` qua `decide()` (chữ ký, `refusal()`,
-    hash hồ sơ) hoặc `hold` (ghi `reviewer.hold`). Trả về quyết định đã ghi. Không bao giờ ném vì model: lỗi model,
-    đầu ra hỏng, ngoài phạm vi đều là `hold` kèm lý do — phiên chính đọc lý do đó."""
-    from .llm import LLMError  # nhập lười: module này được gate_cli nhập, llm nặng
+    hash hồ sơ) hoặc `hold` (ghi `reviewer.hold`). Trả về quyết định đã ghi. Lỗi model, đầu ra hỏng, ngoài phạm vi đều
+    là `hold` kèm lý do — phiên chính đọc lý do đó. Riêng `TransientError` (429 hết phiên, quá tải) thì NÉM lên, không
+    ghi gì: hold là vĩnh viễn ở thế hệ gate này, còn lỗi tạm thời tự hết — vòng `run` nghỉ tới mốc reset rồi hỏi lại."""
+    from .llm import LLMError, TransientError  # nhập lười: module này được gate_cli nhập, llm nặng
 
     req = gate.pending[subject_id]
     _, body = load_prompt()
@@ -386,6 +387,8 @@ def review_one(gate: PersistentGate, subject_id: str, brief_md: str, brief_json:
         c = client.complete(system=system, user=user, schema=OUTPUT_SCHEMA, model_tier="strong")
         usage = {"tokens": c.input_tokens + c.output_tokens, "model": c.model}
         out = c.json()
+    except TransientError:
+        raise
     except LLMError as e:
         return _hold(gate, req, principal, f"model lỗi: {e}", usage)
     decision, rc, hint = out.get("decision"), out.get("root_cause"), out.get("hint")
@@ -496,17 +499,27 @@ def main(argv: list[str] | None = None) -> int:
             print("(agent duyệt không giữ gate nào)")
         return 0
     if ns.cmd == "run":
-        from .llm import make_client
+        from xagents_core.routing import reset_clock_seconds, retry_after_seconds
+
+        from .llm import TransientError, make_client
 
         key = ns.key or DEFAULT_KEY_DIR / f"{_principal(ns.id).removeprefix(PREFIX)}.pem"
         client = make_client()
         try:
             while True:
-                for sid, out in run_tick(ns.db, ns.id, key, client, repo=ns.repo):
-                    print(f"{sid}: {out} bởi {_principal(ns.id)}", flush=True)
+                nghi = ns.watch
+                try:
+                    for sid, out in run_tick(ns.db, ns.id, key, client, repo=ns.repo):
+                        print(f"{sid}: {out} bởi {_principal(ns.id)}", flush=True)
+                except TransientError as e:
+                    # Backend tạm hết (429 hết phiên "resets 6:30pm", quá tải): không giữ gate nào, nghỉ tới mốc của
+                    # backend rồi hỏi lại — hỏi mỗi nhịp chỉ tốn thêm một dòng lỗi (hub 2026-10-13).
+                    hen = reset_clock_seconds(str(e), time.time()) or retry_after_seconds(str(e)) or 0.0
+                    nghi = max(hen, ns.watch or 0.0)
+                    print(f"model tạm lỗi, nghỉ {int(nghi)}s: {str(e)[:200]}", flush=True)
                 if ns.once or ns.watch is None:
                     return 0
-                time.sleep(ns.watch)
+                time.sleep(nghi)
         except KeyboardInterrupt:  # unit systemd dừng bằng SIGINT (cùng khuôn `orchestrator run`): thoát sạch, không traceback
             return 0
     bus = SQLiteBus(ns.db)
