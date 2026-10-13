@@ -414,8 +414,9 @@ def _brief_cua(db: Path, repo: Path | None) -> Any:
 
 def run_tick(db: Path, principal: str, key: Path, client: Any, *, repo: Path | None = None,
              brief_fn: Any = None, max_per_tick: int | None = None) -> list[tuple[str, str]]:
-    """Một vòng: mọi gate chờ chưa có lượt ở thế hệ này (chưa `hold`, chưa có chữ ký chờ áp) → `review_one`. Trần
-    `max_per_tick` gate một vòng (`COMPANY_GATE_REVIEWER_MAX_PER_TICK`, mặc định 5) — ngân sách là hard stop."""
+    """Một vòng: mọi gate chờ chưa có lượt ở thế hệ này (chưa `hold`, chưa có chữ ký chờ áp) → `review_one`; rồi ở
+    phạm vi `toan-bo`, change request máy nộp đã có impact (ADR gốc 0037, `cr_reviewer`). Trần `max_per_tick` lượt một
+    vòng, chung cho gate và CR (`COMPANY_GATE_REVIEWER_MAX_PER_TICK`, mặc định 5) — ngân sách là hard stop."""
     from .gate_brief import load_state
     from .gate_cli import PersistentGate
     from .sqlite_bus import SQLiteBus
@@ -428,13 +429,17 @@ def run_tick(db: Path, principal: str, key: Path, client: Any, *, repo: Path | N
         gate = PersistentGate(bus)
         skip = set(held(gate)) | set(gate.reviewer_signed_pending())
         todo = [sid for sid in sorted(gate.pending) if sid not in skip][:cap]
-        if not todo:
-            return done
-        orch = load_state(db, repo=repo) if brief_fn is None else None
-        brief = brief_fn or _brief_cua(db, repo)
-        for sid in todo:
-            md, pj = brief(orch, sid)
-            done.append((sid, review_one(gate, sid, md, pj, client, principal, key)))
+        if todo:
+            orch = load_state(db, repo=repo) if brief_fn is None else None
+            brief = brief_fn or _brief_cua(db, repo)
+            for sid in todo:
+                md, pj = brief(orch, sid)
+                done.append((sid, review_one(gate, sid, md, pj, client, principal, key)))
+        if scope_toan_bo():
+            from . import cr_reviewer
+            prompt = f"{load_prompt()[1]}\n\nĐang xét: change request máy nộp (ADR gốc 0037)."
+            for cid in cr_reviewer.pending_machine(bus)[:cap - len(done)]:
+                done.append((cid, cr_reviewer.review_cr(bus, cid, client, principal, prompt)))
     finally:
         bus.close()
     return done
@@ -475,9 +480,14 @@ def main(argv: list[str] | None = None) -> int:
         print(loi, file=sys.stderr)
         return 2
     if ns.cmd == "holds":
+        from .cr_reviewer import held as cr_held
+        from .cr_reviewer import pending_machine
         bus = SQLiteBus(ns.db)
         try:
             hs = held(PersistentGate(bus))
+            pending_crs = {e.key for e in bus.replay(topic="change-requests")
+                           if e.payload.get("decision", "pending") == "pending"} - set(pending_machine(bus))
+            hs |= {cid: {**h, "kind": "change-req"} for cid, h in cr_held(bus).items() if cid in pending_crs}
         finally:
             bus.close()
         for sid, h in hs.items():

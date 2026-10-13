@@ -83,6 +83,8 @@ Hai nguồn chọn lọc nằm thẳng trong `.claude/`, mỗi nguồn một ti�
   change-requests <json> --actor reviewer:phien-chinh` (`requested_by` là chính reviewer, nêu lệnh của chủ dự án trong
   `description`), quyết bằng `decide-change <cid> accepted|rejected --by reviewer:phien-chinh --reason …`. Cờ hub phải
   bật trong env của lệnh, không thì CLI từ chối và orchestrator cũng không tin.
+- **CR do máy nộp (`REPLAN-*`/`REWORK-*`/`GATE3-*`) do `reviewer:tu-dong` quyết trước** (ADR gốc 0037), sau khi product
+  ước lượng impact. Phiên chính chỉ xét CR nó giữ — dòng `change-req` trong `gate_reviewer holds`.
 - **Reviewer được ký miễn hai loại finding security** (ADR gốc 0036): CVE không có bản sửa (liệt kê mã CVE + hạn xem
   lại ≤ 90 ngày trong `root_cause`) và DD-C6/DPIA chỉ cho dữ liệu giả. Chỉ approve khi MỌI finding `block` thuộc hai
   loại đó; dữ liệu thật vẫn cần DPIA thật của chủ dự án.
