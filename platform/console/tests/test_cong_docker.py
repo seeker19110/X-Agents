@@ -20,6 +20,7 @@ gốc (job `console-unit`, chạy trên cả ba nền).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -119,9 +120,22 @@ def test_o3_git_identity_khong_ghi_vao_config_mount_chi_doc() -> None:
     assert "git config --global" not in entry, "compose mount .gitconfig chỉ đọc; ghi làm hub chết trước khởi động"
     assert "export GIT_COMMITTER_NAME=" in entry and "export GIT_COMMITTER_EMAIL=" in entry
 
+UV_GHIM = re.compile(r"ghcr\.io/astral-sh/uv:(\S+)")
+
+
+def test_image_uv_ghim_ban_va_digest_khong_khoa_so_ban() -> None:
+    """Canh việc GHIM (phiên bản cụ thể + `@sha256`), không canh đúng số bản: #468 (Dependabot uv 0.9.9→0.9.30, bản
+    vá mà `.github/dependabot.yml` cho qua) đỏ cổng console chỉ vì test cũ khoá chuỗi `uv:0.9.9`."""
+    for rel in ("Dockerfile", "docker/customer-python.Dockerfile"):
+        refs = UV_GHIM.findall((ROOT / rel).read_text(encoding="utf-8"))
+        assert refs, f"{rel}: không thấy image uv"
+        for ref in refs:
+            assert re.fullmatch(r"\d+\.\d+\.\d+@sha256:[0-9a-f]{64}", ref), f"{rel}: uv `{ref}` phải ghim bản + digest"
+
+
 def test_s2_image_python_khach_co_uv_va_khong_tu_tai_interpreter():
     doc = (ROOT / 'docker/customer-python.Dockerfile').read_text(encoding='utf-8')
-    assert 'ghcr.io/astral-sh/uv:0.9.9' in doc
+    assert 'COPY --from=uv /uv /usr/local/bin/uv' in doc
     assert 'UV_PYTHON_DOWNLOADS=never' in doc
     assert 'UV_CACHE_DIR=/tmp/uv-cache' in doc
     assert 'UV_PROJECT_ENVIRONMENT=/tmp/xagents-venv' in doc
