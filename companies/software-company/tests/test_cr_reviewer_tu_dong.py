@@ -152,6 +152,26 @@ def test_ho_so_cr_neu_cr_khac_cung_du_an_de_nhan_ra_trung(toan_bo, tmp_path):
     assert "kho phiên là bảng sessions" in user, "ruling của product vào hồ sơ; evidence hỏng thì bỏ qua, không nổ"
 
 
+def test_impact_product_van_xuoi_vao_ho_so_nguyen_van(toan_bo, tmp_path):
+    """Hub thật 2026-10-13: product ghi `change.impact` bằng VĂN XUÔI, không phải JSON — hồ sơ in `{}` và agent duyệt
+    giữ REPLAN-DDCSV-21-1 vì "impact product rỗng" dù product đã ước lượng đủ."""
+    db = _bus(tmp_path, co_impact=False)
+    bus = SQLiteBus(db)
+    van = "Đánh giá tác động REPLAN-T1-1: 2 ticket mới, khoảng 1 ngày, DDCSV-24 chờ ticket B."
+    bus.publish(
+        Envelope(
+            topic="audit-log",
+            key=CID,
+            actor="product",
+            payload=AuditLog(actor="product", action="change.impact", evidence=van).model_dump(),
+        )
+    )
+    bus.close()
+    c = _client(OK)
+    assert gr.run_tick(db, ID, tmp_path / "k.pem", c) == [(CID, "accepted")]
+    assert van in c.calls[0]["user"], "impact văn xuôi của product phải vào hồ sơ nguyên văn"
+
+
 def test_prompt_reviewer_co_muc_change_request_may_nop():
     version, body = gr.load_prompt()
     assert version >= 3, "đổi luật của agent duyệt là đổi prompt — tăng version"
