@@ -18,13 +18,12 @@ from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..llm import LLMError, TransientError
 from ..roles import PHASE, ROLE, SOURCE
-from ..routing import retry_after_seconds
 from ..runner import RunnerError
 from .fsm import Transition
 from .gates_flow import _retire_replanned
 from .guards import pending_clarifications
+from .hen import cho_hen, moc_reset
 from .routes import ACTIVE_STATES, PLAN_INPUTS, PLAN_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
-from .scheduler import moc_reset
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -252,8 +251,7 @@ def _assume_clarifications(o: Orchestrator, now: datetime | None = None) -> list
             # Sổ giả định ghi TRƯỚC lời gọi thì vòng câu hỏi rời `pending_clarifications` mà spec chưa viết: không
             # nhịp nào thử lại, `status` nói không chờ ai — dự án đứng im. Chưa ghi sổ thì nhịp sau thử lại, giữ
             # mốc hẹn của backend như `_defer` (key riêng: `_retry_deferred` chỉ đọc key có trong `deferred`).
-            stuck = next(a for a in res.actions if a.startswith("transient:"))
-            if (wait := retry_after_seconds(stuck)) is not None:
+            if (wait := cho_hen(res)) is not None:  # "thử lại sau Ns" hoặc mốc "resets 6:30pm" (hub 2026-10-13)
                 with o._lock: o.defer_until[f"assume:{pid}"] = time.monotonic() + wait
         else:
             o._audit("clarification.assumed", {"project_id": pid, "event_id": p["event_id"], "round": p["round"],

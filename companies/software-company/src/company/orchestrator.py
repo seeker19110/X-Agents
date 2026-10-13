@@ -69,6 +69,7 @@ from .orch import (
     fsm,
     gates_flow,
     guards,
+    hen,
     rehydrate,
     release_fsm,
     retry_flow,
@@ -127,7 +128,7 @@ class StepResult:
     actions: list[str] = field(default_factory=list)
     deferred: str | None = None  # lý do hoãn (gate:..., paused:..., transient:...)
     transient: bool = False      # một agent gặp lỗi transport sau khi đã retry → event sẽ được thử lại ở nhịp sau
-    reset_s: float | None = None  # "resets 6:30pm (múi)" của backend → số giây tới mốc (scheduler.moc_reset)
+    reset_s: float | None = None  # "resets 6:30pm (múi)" của backend → số giây tới mốc (orch.hen.moc_reset)
 
 
 class ReloadRequested(Exception):
@@ -452,7 +453,7 @@ class Orchestrator:
             with self._lock:
                 self.stats["runs"] += 1; self.partial.setdefault(env.event_id, set()).add(slot)
         except TransientError as e:  # hết retry transport: không phải lỗi agent — hoãn event, nhịp sau thử lại
-            scheduler.ghi_transient(res, agent, e)
+            hen.ghi_transient(res, agent, e)
             with self._lock: self.stats["transient"] += 1
         except (RunnerError, LLMError) as e:  # runner đã ghi audit; không retry lời gọi (ADR-0005)
             if self._autoretry_once(env, agent, e, res): return  # trừ lỗi ép schema của CLI: thử lại một lần
