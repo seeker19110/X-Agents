@@ -45,6 +45,10 @@ concurrency:
   group: eval-record-${{ inputs.package }}-${{ inputs.provider }}
   cancel-in-progress: false
 
+# Sàn quyền cho mọi job (rà soát 2026-10-13): job nào cần hơn tự khai `permissions:` ở cấp job.
+permissions:
+  contents: read
+
 jobs:
   record:
     name: eval-record (${{ inputs.package }} · ${{ inputs.agents }})
@@ -57,8 +61,8 @@ jobs:
       DIR: companies/software-company
       PREFIX: COMPANY
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           python-version: "3.13"
@@ -119,7 +123,7 @@ jobs:
       # (điểm tụt là tín hiệu, không phải lỗi — `docs/sessions` 2026-09-06).
       - name: Mở PR với bản ghi mới
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           add-paths: ${{ env.DIR }}/evals/recordings
           branch: eval-record/${{ inputs.package }}-${{ github.run_id }}

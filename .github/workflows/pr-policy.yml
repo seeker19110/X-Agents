@@ -9,6 +9,10 @@ on:
     # log vẫn in `LABELS: dependencies,python:uv` và vẫn đỏ. Chỉ còn đường đóng/mở lại PR hoặc đẩy commit.
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
+# Sàn quyền cho mọi job (rà soát 2026-10-13): job nào cần hơn tự khai `permissions:` ở cấp job.
+permissions:
+  contents: read
+
 jobs:
   # TÊN `metadata` LÀ BẤT BIẾN (required status check của branch protection `main`).
   metadata:
@@ -29,7 +33,7 @@ jobs:
             echo "Lưu ý: scope chỉ nhận chữ thường." >&2
             exit 1
           fi
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # Script kiểm PR có THÊM ít nhất một dòng vào CHANGELOG.md (AGENTS.md luật bắt buộc 10). Không bắt `(#n)`
