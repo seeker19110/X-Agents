@@ -126,19 +126,32 @@ def _retire_replanned(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """ADR-0051: người `accepted` CR `REPLAN-<ticket>-<n>` → ticket cũ đóng như bị từ chối ở escalation (`close_escalated`:
     ticket phụ thuộc không âm thầm chạy trên nền thiếu). Gate escalation của nó do CHÍNH người ký đóng trong
     `decide-change` (`cli_cmds.decide_change`) — máy không ghi `gate.decide` (bus chặn, `_trusted` không tin khi replay);
-    gate còn treo thì `reject` rơi vào nhánh `closed:already` bên dưới. Ticket không còn `blocked`/`escalated` (người đã
-    reopen trước) thì không đóng sau lưng ai — chỉ lập kế hoạch mới. Gọi từ `_plan` TRƯỚC lượt planner: quyết định thay
+    gate còn treo thì `reject` rơi vào nhánh `closed:already` bên dưới. Gọi từ `_plan` TRƯỚC lượt planner: quyết định thay
     thế được ghi dù planner lỗi."""
     imp = env.payload.get("impact") or {}
     if imp.get("kind") != "replan" or env.payload.get("decision") != "accepted": return
-    tid, cid, by = str(imp.get("ticket_id")), str(env.payload.get("change_id")), str(imp.get("decided_by") or env.actor)
-    if o.lead.state.get(tid) not in {"blocked", "escalated"}:
-        res.actions.append(f"replan:{tid}:not_blocked"); return
+    tid = str(imp.get("ticket_id"))
+    res.actions.append(f"replan:{tid}:{_retire(o, tid, str(env.payload.get('change_id')), str(imp.get('decided_by') or env.actor))}")
+
+def _retire(o: Orchestrator, tid: str, cid: str, by: str) -> str:
+    """Đóng ticket bị replan thay nếu nó CHƯA XONG — kể cả khi đang chạy lại (sửa ADR-0051 §3, hub 2026-10-14: DDCSV-35 được
+    mở lại trước khi CR được quyết, rồi chạy song song DDCSV-51..53 tách từ chính nó). Chấp nhận replan là quyết định sau
+    cùng về ticket. Ticket đã `approved` trở đi thì giữ: code đã có, đóng là bỏ việc thật."""
+    if o.lead.state.get(tid) in DONE_STATES or tid not in o.lead.tickets: return "done"
     blocked = o.lead.close_escalated(tid)
     o._audit("ticket.replanned", {"ticket_id": tid, "change_id": cid, "by": by, "dependents_blocked": blocked},
              ticket_id=tid, project_id=o.lead.tickets[tid].project_id)
-    res.actions.append(f"replan:{tid}:{cid}")
-    if blocked: res.actions.append("blocked:" + ",".join(blocked))
+    return cid + (f":blocked:{','.join(blocked)}" if blocked else "")
+
+def retire_accepted_replans(o: Orchestrator) -> None:
+    """Đầu mỗi `tick()`: đối soát sổ CR replan đã accepted (dựng lại từ bus) — ticket bản cũ bỏ sót (`not_blocked`) đóng
+    sau khi deploy, không đợi event kế của nó; ticket đã đóng/đã xong thì bỏ qua nên không ghi lặp. Sổ ghi MỌI event
+    accepted (bus cho `reviewer:*` ghi) — tin hay không vẫn qua `cr_trusted` như route `_cr_accepted` (ADR gốc 0035)."""
+    from ..gate_reviewer import cr_trusted
+    for tid, env in list(o.lead.replan_accepted.items()):
+        if o.lead.state.get(tid) in DONE_STATES or not cr_trusted(env): continue
+        imp = env.payload.get("impact") or {}
+        _retire(o, tid, str(env.payload.get("change_id")), str(imp.get("decided_by") or env.actor))
 
 def _check_debt(o: Orchestrator) -> None:
     """ADR-0032: mã nợ kiến trúc chạm ngưỡng (supervisor đếm từ bus, xác định) → gate `escalation` cấp DỰ ÁN với

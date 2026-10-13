@@ -32,8 +32,15 @@ một việc không làm được; người chỉ có nút "làm lại" và "b�
 3. **Chấp nhận = ticket cũ đóng như bị từ chối ở escalation.** `orch/gates_flow.py::_retire_replanned` (gọi từ `_plan`
    TRƯỚC lượt planner): ticket còn `blocked`/`escalated` → `close_escalated` (ticket phụ thuộc không âm thầm chạy trên
    nền thiếu — chúng `blocked` và có gate riêng), audit `ticket.replanned {ticket_id, change_id, by, dependents_blocked}`;
-   ticket đã được người `reopen` trước đó và đang chạy → **không đóng sau lưng ai**, chỉ lập kế hoạch mới
-   (`replan:<tid>:not_blocked`). `rehydrate` dựng `ticket.replanned` như `ticket.abandoned`.
+   ~~ticket đã được người `reopen` trước đó và đang chạy → **không đóng sau lưng ai**, chỉ lập kế hoạch mới
+   (`replan:<tid>:not_blocked`)~~. `rehydrate` dựng `ticket.replanned` như `ticket.abandoned`.
+   **Sửa 2026-10-14** (đo hub QLKH-DD-CSV): DDCSV-35 được `reviewer:tu-dong` mở lại trước khi CR được quyết, rồi CR
+   được chấp nhận → `not_blocked`, ticket cũ chạy song song DDCSV-51..53 tách từ chính nó (cùng một middleware, hai lần
+   ngân sách). Chấp nhận replan là quyết định **sau cùng** về ticket: ticket **chưa xong** (mọi trạng thái trước
+   `approved`, kể cả đang chạy lại) → đóng như trên; ticket đã `approved`/`merged`/`released`/`closed` → giữ (code đã có,
+   đóng là bỏ việc thật), action `replan:<tid>:done`. Sổ `DeliveryLead.replan_accepted` (dựng lại từ bus) +
+   `retire_accepted_replans` ở đầu mỗi `tick()` đối soát lại, nên ticket bản cũ bỏ sót cũng đóng sau khi deploy; sổ ghi mọi event `accepted` nhưng đối soát
+   chỉ tin event qua `cr_trusted` (cùng luật route `_cr_accepted`, ADR gốc 0035).
 4. **Gate escalation đóng dưới chữ ký người, ngay trong `decide-change`.** Máy không ghi `gate.decide` được (bus chặn,
    `_trusted` không tin khi replay — cố ý, ADR-0043); nên `cli_cmds.decide_change` khi CR là replan và `accepted` ký
    `reject` gate escalation của ticket cũ **dưới tên người vừa gõ lệnh**, reason mang `cid`. Nhánh `reject` của
