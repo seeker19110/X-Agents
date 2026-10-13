@@ -83,6 +83,9 @@ Hai nguồn chọn lọc nằm thẳng trong `.claude/`, mỗi nguồn một ti�
   change-requests <json> --actor reviewer:phien-chinh` (`requested_by` là chính reviewer, nêu lệnh của chủ dự án trong
   `description`), quyết bằng `decide-change <cid> accepted|rejected --by reviewer:phien-chinh --reason …`. Cờ hub phải
   bật trong env của lệnh, không thì CLI từ chối và orchestrator cũng không tin.
+- **Reviewer được ký miễn hai loại finding security** (ADR gốc 0036): CVE không có bản sửa (liệt kê mã CVE + hạn xem
+  lại ≤ 90 ngày trong `root_cause`) và DD-C6/DPIA chỉ cho dữ liệu giả. Chỉ approve khi MỌI finding `block` thuộc hai
+  loại đó; dữ liệu thật vẫn cần DPIA thật của chủ dự án.
 - Trước khi tin dashboard: hỏi *"chạy cho tôi xem"*. Số xanh có thể xanh vì rỗng.
 - Sửa tay trong worktree của ticket: commit + takeover **trước**, duyệt gate **sau** (duyệt trước là bị reset).
 - Muốn đổi hành vi agent: đổi tài liệu nó đọc qua đúng vai (CR → `product` pha spec ghi prd), không ghi tay blackboard.
