@@ -74,6 +74,27 @@ ngoại lệ hay chọn CVE cần vá.
 - Audit `vuln.run` vẫn chỉ đếm (`scanners.counts_only` bỏ `images[].findings`); danh sách đi trong `review-results`.
 - Reachability, EPSS, KEV vẫn ngoài phạm vi máy — `security` đọc danh sách rồi quyết, như quyết định 3.
 
+## Bổ sung 2026-10-14 — image ĐÃ DỰNG mà staging đang chạy
+
+Đo hub thật 2026-10-14 (QLKH-DD-CSV REL-068 → REL-072): repo khách đổi service db từ `image: postgres:16.15-trixie@…`
+sang `build: infra/db/Dockerfile` (image dẫn xuất gỡ gosu, CVE-2025-68121, CR-DDCSV-INFRA-002/004). Từ đó
+`evidence.vuln.images` chỉ còn image nền của app: `infra/db/Dockerfile` sâu hai cấp nên nằm ngoài
+`image_digest.DOCKERFILES`, và kể cả có quét thì image nền `postgres:16.15-trixie` vẫn còn gosu mà Dockerfile đã gỡ.
+`security` chặn mọi RC, đúng luật: "RC không có bằng chứng về image db dẫn xuất (DD-CR2-03/04/26)". Đo tay trên máy
+trực: `trivy image sha256:c5aabbe2…` (image id của container db staging, build tại 0f6637f) → không còn
+CVE-2025-68121, 1 CRITICAL + 61 HIGH, 0 có bản sửa. Tức sản phẩm đã đạt; chỉ thiếu bằng chứng máy.
+
+- `deploy()` (compose) ghi `image_ids` vào `evidence.deploy`, thẳng hàng `services`: image id đọc từ nhãn
+  `com.docker.compose.image` của `compose ps --format json` (chuỗi `k=v,…` hay dict); thiếu nhãn là `""`, không đoán.
+- `evidence_before` đưa cặp (service, image id) của `evidence.deploy` staging cùng RC cho
+  `vuln_evidence(..., deployed=…)` — cùng bản ghi mà DAST đã dùng (ADR-0053). Quét **theo id**, không theo tên
+  `company-<dự án>-staging-<service>`: tên bị gắn lại khi RC sau dựng lại staging, id thì không.
+- Mỗi image đang chạy là một `images[]` có thêm `service` (gộp bằng dấu phẩy khi nhiều service chung id), `deployed:
+  true`, `image_id` — cùng số đếm/`fixable`/`findings` như image nền. Image nền giữ nguyên hình cũ.
+- Không đổi `image_digest.DOCKERFILES`: đó là tập "cần ghim" của ADR-0055 (khớp job `image-pin` của khách); thêm
+  `**/Dockerfile` chỉ đưa thêm image nền mà chính Dockerfile dẫn xuất đã sửa.
+- Process mode và `COMPANY_DEPLOY=off` không có `image_ids` → không thêm image nào, như trước.
+
 ## Cái giá đã biết
 
 - Hai binary ngoài repo, phiên bản do máy trực quyết; `tool` ghi "trivy 0.75.0"/"gitleaks 8.30.1" vào bằng chứng để

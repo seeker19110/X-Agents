@@ -85,6 +85,7 @@ class DeployRecord:
     ok: bool = False
     services: tuple[str, ...] = ()
     container_ids: tuple[str, ...] = ()
+    image_ids: tuple[str, ...] = ()  # thẳng hàng `services`; "" = compose không gắn nhãn image (ADR-0056 bổ sung 10-14)
     port: int | None = None
     started_at: str = ""
     smoke: dict[str, Any] = field(default_factory=dict)
@@ -96,7 +97,7 @@ class DeployRecord:
     def record(self) -> dict[str, Any]:
         out: dict[str, Any] = {"project": self.project, "env": self.env, "ok": self.ok,
                                "verified_by": VERIFIED_BY}
-        for k in ("services", "container_ids", "port", "started_at", "smoke", "compose_file", "skipped",
+        for k in ("services", "container_ids", "image_ids", "port", "started_at", "smoke", "compose_file", "skipped",
                   "error", "logs_tail"):
             v = getattr(self, k)
             if v:
@@ -236,6 +237,20 @@ def _services(out: str) -> list[dict[str, Any]]:
     return [r for r in data if isinstance(r, dict)] if isinstance(data, list) else []
 
 
+_IMAGE_LABEL = re.compile(r"(?:^|,)com\.docker\.compose\.image=(sha256:[0-9a-f]{64})")
+
+
+def _image_id(row: dict[str, Any]) -> str:
+    """Image id của container, đọc từ nhãn `com.docker.compose.image` của `ps` — image ĐÃ DỰNG đang chạy, thứ
+    release-check quét (ADR-0056 bổ sung 2026-10-14). `Labels` là chuỗi `k=v,…` (giá trị có thể chứa dấu phẩy) hay dict."""
+    labels = row.get("Labels")
+    if isinstance(labels, dict):
+        v = str(labels.get("com.docker.compose.image") or "")
+        return v if _IMAGE_LABEL.search(f"com.docker.compose.image={v}") else ""
+    m = _IMAGE_LABEL.search(str(labels or ""))
+    return m.group(1) if m else ""
+
+
 def _published_port(rows: list[dict[str, Any]]) -> int | None:
     """Cổng đã map ra máy chủ, đọc từ `ps` — orchestrator KHÔNG tự chọn cổng và không sửa compose (ADR-0039 §2)."""
     for row in rows:
@@ -358,5 +373,5 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
     if not smoke["ok"]:
         return teardown(services=services, container_ids=ids, port=port, smoke=smoke,
                         error="smoke: cổng đã map không trả đúng `expect_status`")
-    return rec(ok=True, services=services, container_ids=ids, port=port, started_at=started_at,
-               smoke=smoke, compose_file=cfile)
+    return rec(ok=True, services=services, container_ids=ids, image_ids=tuple(_image_id(r) for r in rows), port=port,
+               started_at=started_at, smoke=smoke, compose_file=cfile)
