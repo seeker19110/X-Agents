@@ -352,6 +352,9 @@ def test_submit_thieu_registry_bi_tu_choi_va_ke_hoach_cr_khong_vao_run(tmp_path)
     _pin(o, tmp_path / "c.sqlite")
     o.plans["PLAN-P1-1"] = {**PLAN, "source_topic": "change-requests"}
     assert quality_flow._plan_for(o, "P1") is None
+    # spec của CR đổi requirement (key chuỗi = mã CR, hub 2026-10-14) cũng là `approved-specs` nhưng không phải của run
+    o.plans["PLAN-P1-9"] = {**PLAN, "plan_id": "PLAN-P1-9", "source_key": "CR-1"}
+    assert quality_flow._plan_for(o, "P1") is None
     o.plans["PLAN-P1-2"] = {**PLAN, "plan_id": "PLAN-P1-2"}
     assert quality_flow._plan_for(o, "P1") == "PLAN-P1-2"
     with pytest.raises(ValueError, match="registry"):
