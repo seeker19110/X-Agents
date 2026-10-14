@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from ..bus import REVIEWER_PREFIX
 from ..delivery import DONE_STATES
 from ..events import Envelope
 from ..gate_reviewer import machine_acceptor
@@ -120,6 +121,14 @@ def _check_escalations(o: Orchestrator) -> None:
             request_gate(o.gate, GateRequest(kind="escalation", subject_id=tid, created_by=ROLE.SUPERVISOR,
                                           checklist=["root_cause", "decision:reopen|close", "hint", *extra]))
     o._check_debt()
+
+
+def spec_changes_asked(last: GateRequest) -> bool:
+    """Quyết định ở gate spec có nghĩa "sửa rồi trình lại" không: `request_changes` (ADR-0031 §3), hoặc `reject` do
+    `reviewer:*` ký — reviewer chỉ được approve/reject (`gate_reviewer.refusal`) và ADR gốc 0033 dặn reject KÈM hint.
+    Hub 2026-10-14: `reviewer:tu-dong` reject SPEC-CR-DDCSV-INFRA-002 với hint cụ thể, CR kẹt vĩnh viễn vì `reject` là
+    ngõ cụt. `reject` của người giữ nghĩa cũ: dừng."""
+    return last.decision == "request_changes" or (last.decision == "reject" and (last.decided_by or "").startswith(REVIEWER_PREFIX))
 
 
 def _retire_replanned(o: Orchestrator, env: Envelope, res: StepResult) -> None:
