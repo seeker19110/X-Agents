@@ -669,3 +669,36 @@ def test_escalation_release_co_lich_su_smoke_fail_va_du_an(tmp_path):
     assert ex["release"]["version"] == "0.1.0" and ex["release"]["tickets"] == ["T1"]
     md = GB.render_md(b)
     assert "release.smoke_failed" in md and "(trống)" not in md
+
+
+def test_escalation_ticket_bi_chan_vi_phu_thuoc_bi_bo_neu_ly_do_trong_lich_su(tmp_path):
+    """Hub thật 2026-10-14 (QLKH-DD-CSV): DDCSV-65/66 bị đóng vì CR-DDCSV-INFRA-002 thay → DDCSV-64 (phụ thuộc) sang
+    `blocked`, gate escalation mở. Hồ sơ in "Lịch sử thất bại: (trống)" — ticket chưa hỏng lần nào — nên
+    `reviewer:tu-dong` giữ ("không thể approve: lịch sử thất bại trống"). Lần thứ 5 họ lỗi này rơi về phiên chính.
+    Hồ sơ phải nói ticket bị chặn vì phụ thuộc nào bị đóng, ai đóng, lý do gì."""
+    from test_replan_adr0051 import _drive_to_blocked, _planner_blocks_t1
+
+    db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=_planner_blocks_t1))
+    _drive_to_blocked(bus, orch)
+    orch.gate.decide("T1", "reject", by="human:pm", reason="bị CR-X thay; T2 vẫn cần làm"); orch.run()
+    assert orch.lead.state["T2"] == "blocked" and "T2" in orch.gate.pending
+    b = GB.build(GB.load_state(db), "T2")
+    hist = [f"{h['action']} {h['detail']}" for h in b["extra"]["history"]]
+    assert any("T1" in h and "bị CR-X thay" in h and "human:pm" in h for h in hist), hist
+    assert b["extra"]["ticket"]["depends_on"] == [{"ticket_id": "T1", "state": "closed", "abandoned": True}]
+
+
+def test_escalation_ticket_bi_chan_vi_phu_thuoc_bi_replan_neu_ly_do_cua_cr(tmp_path):
+    """Cùng họ: phụ thuộc bị đóng vì CR replan được chấp nhận (`ticket.replanned`) — lý do nằm ở CR, không ở gate."""
+    from company.orchestrator import main as orch_main
+    from test_replan_adr0051 import _drive_to_blocked, _planner_blocks_t1
+
+    db = tmp_path / "c.sqlite"; bus = SQLiteBus(db); orch = Orchestrator(bus, FakeClient(handler=_planner_blocks_t1))
+    _drive_to_blocked(bus, orch)
+    assert orch_main(["--db", str(db), "decide-change", "REPLAN-T1-1", "accepted", "--by", "human:po",
+                      "--reason", "ticket cắt sai, lập lại"]) == 0
+    orch.tick()
+    assert orch.lead.state["T2"] == "blocked"
+    b = GB.build(GB.load_state(db), "T2", closed=True)
+    hist = [f"{h['action']} {h['detail']}" for h in b["extra"]["history"]]
+    assert any("T1" in h and "ticket.replanned" in h and "ticket cắt sai" in h for h in hist), hist
