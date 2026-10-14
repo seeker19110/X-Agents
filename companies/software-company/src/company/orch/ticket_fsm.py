@@ -21,7 +21,7 @@ from ..llm import LLMError, TransientError
 from ..roles import PHASE, ROLE, SOURCE
 from ..runner import RunnerError
 from .fsm import Transition
-from .gates_flow import _retire_replanned
+from .gates_flow import _retire_replanned, spec_changes_asked
 from .guards import pending_clarifications
 from .hen import cho_hen, moc_reset
 from .routes import ACTIVE_STATES, PLAN_INPUTS, PLAN_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
@@ -111,7 +111,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             # ADR-0031 §3: `request_changes` của người = spec-writer viết lại trên event nguồn với lý do làm `hint`.
             # Khoá theo THẾ HỆ gate (`seq`, khuôn 3): event đầu tới sau quyết định (spec cũ đang hoãn) gọi viết lại
             # và ghi khoá; bản viết lại tới sau, thấy khoá, được trình lại gate như một spec mới.
-            changes = f"spec.changes:{sid}:{last.seq}" if last is not None and last.decision == "request_changes" else None
+            changes = f"spec.changes:{sid}:{last.seq}" if last is not None and spec_changes_asked(last) else None
             if sid not in o.gate.pending:
                 if last is None or (changes is not None and changes in o.once):
                     if (gap := spec_runtime_gap(env.payload)) is not None:

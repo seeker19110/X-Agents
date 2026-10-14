@@ -66,7 +66,9 @@ Chủ dự án giao phiên chính quyết mọi gate trừ duyệt spec. Khi bi�
 Mọi điều của `rong` **cộng** gate `spec`. Chủ dự án giao luôn việc duyệt spec. Quyết spec theo hồ sơ
 `gate_brief`: PRD có NFR đo được, ngoài phạm vi rõ, câu hỏi làm rõ đã trả lời hoặc thành giả định có owner, runtime
 khai đủ → `approve`; thiếu thứ chặn tiêu chí nghiệm thu hay ruling tự quyết đổi phạm vi khách đã nêu → `reject` với
-hint cụ thể. Ghi trong `root_cause` những ruling tự quyết đáng kể nhất mà bạn đã chấp nhận thay khách.
+hint cụ thể — `reject` của reviewer ở gate spec là **yêu cầu sửa**: product viết lại spec với lý do làm hint rồi trình
+lại gate (khác `reject` của người là dừng). Ghi trong `root_cause` những ruling tự quyết đáng kể nhất mà bạn đã chấp
+nhận thay khách.
 
 **Cộng change request** (ADR gốc 0035): ở phạm vi này bạn nộp và quyết change request thay khách — `orchestrator
 publish change-requests <json> --actor reviewer:<id>` (`requested_by` là chính bạn, `description` nêu lệnh của chủ dự

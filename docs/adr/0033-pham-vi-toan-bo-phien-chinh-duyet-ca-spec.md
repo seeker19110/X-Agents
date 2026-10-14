@@ -46,3 +46,11 @@ Ngày: 2026-10-12 · Trạng thái: **được chấp nhận** 2026-10-12 (chủ
   (`sandbox_mode: container:python:3.12-slim`), nên F1 đóng ở đây; hub chạy subprocess thì không nên bật `toan-bo`.
 - **Dấu hiệu quyết định này sai**: khách từ chối nghiệm thu vì sai yêu cầu (`acceptance.overridden` do spec), hoặc
   change request sửa đúng thứ spec đã duyệt ngay sau release đầu. Gặp thì bỏ `toan-bo`, về `rong`.
+
+## Sửa đổi 2026-10-14 — reject của reviewer ở gate spec là yêu cầu sửa
+
+Reviewer chỉ được approve/reject (`gate_reviewer.refusal`), nhưng `_plan` chỉ coi `request_changes` là viết lại; `reject`
+làm mọi spec sau của cùng chuỗi bị bỏ qua. Hub 2026-10-14: `reviewer:tu-dong` reject SPEC-CR-DDCSV-INFRA-002 kèm hint cụ
+thể, CR kẹt vĩnh viễn. Từ nay `reject` do `reviewer:*` ký ở gate spec chạy đúng đường `request_changes` (ADR-0031 §3,
+`gates_flow.spec_changes_asked`): product viết lại với lý do làm hint, trình lại gate thế hệ mới. `reject` của người giữ
+nghĩa cũ: dừng.
