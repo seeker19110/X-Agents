@@ -95,7 +95,7 @@ def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
     sau (vd. sau khi `security` nêu thêm câu hỏi mở) không phải gửi lại toàn bộ câu cũ. Trước đây chỉ
     đọc `e.payload`, nên lượt bổ sung luôn bị coi là "thiếu hết các câu trước" và pha `spec` không bao giờ
     chạy lại — câu trả lời nằm im trong bus, không audit, không báo ai (đo được khi chạy thật 2026-09-04)."""
-    pid = str(e.payload.get("project_id") or e.key)
+    pid = str(e.key)  # key của chuỗi (dự án, hoặc mã CR — hub 2026-10-14 CR-DDCSV-INFRA-002)
     # Vòng mà câu trả lời NÀY đáp lại: câu hỏi đăng TRƯỚC nó, không phải `latest`. Cùng một event chạy qua hai route
     # liền nhau — route hỏi lại vừa đăng vòng 2 thì `latest` là vòng 2 và `_spec_ready` coi là "hết vòng", viết
     # spec ngay khi người chưa thấy câu hỏi lại (đo 2026-10-12, lộ ra khi `round` thôi là lời khai cố định của model).
@@ -110,7 +110,7 @@ def _answers_complete(e: Envelope, o: Orchestrator) -> bool:
 def unanswered_questions(bus: Any, q: Envelope) -> list[str]:
     """Id câu hỏi của vòng `q` chưa có câu trả lời TÍCH LUỸ trên bus — chỉ tính `clarification-answers` từ
     `q.ts` trở đi: id có thể trùng giữa các vòng, câu cũ không được vô tình thoả mãn câu hỏi mới."""
-    pid = str(q.payload.get("project_id") or q.key)
+    pid = str(q.key)
     answered: set[str] = set()
     for prev in bus.replay(topic="clarification-answers", key=pid):
         if prev.ts >= q.ts and trusted(prev):  # ADR gốc 0038: reviewer chỉ tính khi cờ + `toan-bo`
@@ -142,7 +142,7 @@ def pending_clarifications(bus: Any) -> dict[str, ClarificationPending]:
     không còn chờ; chưa có câu trả lời nào thì vẫn chờ, kể cả ở vòng cuối."""
     latest: dict[str, Envelope] = {}
     for q in bus.replay(topic="clarification-questions"):
-        latest[str(q.payload.get("project_id") or q.key)] = q
+        latest[str(q.key)] = q  # key của chuỗi: CR đổi requirement chờ trả lời riêng
     assumed = assumed_clarifications(bus)
     out: dict[str, ClarificationPending] = {}
     for pid, q in latest.items():
@@ -181,7 +181,7 @@ def _spec_ready(e: Envelope, o: Orchestrator) -> bool:
     """Pha `spec` chỉ chạy khi đã trả lời hết câu hỏi VÀ dự án có `requirements-draft`. Trước đây câu trả lời gửi cho
     một dự án chưa có bản nháp (chuỗi nghiên cứu chết, hoặc gửi nhầm dự án) vẫn sinh PRD từ đầu vào trống."""
     if not answers_trusted(e, o) or not _answers_complete(e, o): return False
-    pid = str(e.payload.get("project_id") or e.key)
+    pid = str(e.key)  # key của chuỗi (dự án, hoặc mã CR — hub 2026-10-14 CR-DDCSV-INFRA-002)
     if o.latest("requirements-draft", pid) is not None:
         return True
     o._audit(

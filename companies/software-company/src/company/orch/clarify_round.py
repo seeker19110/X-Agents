@@ -27,7 +27,8 @@ def enforce_round(o: Orchestrator, r: Route, p: Mapping[str, Any], env: Envelope
     if r.topic_out != "clarification-questions":
         return dict(p)
     pid = str(p.get("project_id") or env.key)
-    da_hoi = sum(1 for _ in o.bus.replay(topic="clarification-questions", key=pid))
+    # đếm theo key của CHUỖI (đầu ra giữ key event nguồn): CR đổi requirement có chuỗi riêng, khoá bằng mã CR
+    da_hoi = sum(1 for _ in o.bus.replay(topic="clarification-questions", key=env.key))
     vong = min(da_hoi + 1, MAX_CLARIFY_ROUNDS)
     if p.get("round") == vong:
         return dict(p)
