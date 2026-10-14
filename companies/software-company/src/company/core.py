@@ -31,7 +31,8 @@ from .roles import ENGINEERING, LEAD_ACTOR, ROLE, SOURCE
 # chặn cuối: runner đã kiểm `writes`, nhưng CLI `publish` hay code gọi thẳng `bus.publish` cũng không được vượt quyền.
 ENGINEERING_ACTORS = frozenset(ENGINEERING)
 # ADR gốc 0035: họ actor reviewer có chữ ký (`reviewer:<id>`, `bus.REVIEWER_PREFIX`) được NỘP và QUYẾT change request
-# thay người ở phạm vi `toan-bo`. Bus chỉ cho ghi; tin hay không là `gate_reviewer.cr_trusted` lúc orchestrator áp.
+# thay người ở phạm vi `toan-bo`; ADR gốc 0038: cũng TRẢ LỜI câu hỏi làm rõ thay khách (agent đại diện khách).
+# Bus chỉ cho ghi; tin hay không là `gate_reviewer.cr_trusted` lúc orchestrator áp.
 REVIEWER_FAMILY = "reviewer:*"
 REVIEW_PRODUCERS = frozenset({ROLE.QA, ROLE.SECURITY, SOURCE.QA, SOURCE.SECURITY})  # tên agent hoặc `source`
 TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
@@ -39,7 +40,7 @@ TOPIC_PRODUCERS: dict[str, frozenset[str]] = {
     "research-findings": frozenset({ROLE.PRODUCT}),
     "requirements-draft": frozenset({ROLE.PRODUCT}),
     "clarification-questions": frozenset({ROLE.PRODUCT}),
-    "clarification-answers": frozenset(),
+    "clarification-answers": frozenset({REVIEWER_FAMILY}),
     "approved-specs": frozenset({ROLE.PRODUCT}),
     # ADR-0037 PR-5e: HAI producer, hai vai khác nhau — `LEAD_ACTOR` là CODE (`delivery.py`) đóng vòng dispatch
     # sau `_check_plan`, `product` là AGENT sinh danh sách ticket (front matter `writes: tasks`, và `runner`

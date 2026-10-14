@@ -88,6 +88,10 @@ Hai nguồn chọn lọc nằm thẳng trong `.claude/`, mỗi nguồn một ti�
 - **Reviewer được ký miễn hai loại finding security** (ADR gốc 0036): CVE không có bản sửa (liệt kê mã CVE + hạn xem
   lại ≤ 90 ngày trong `root_cause`) và DD-C6/DPIA chỉ cho dữ liệu giả. Chỉ approve khi MỌI finding `block` thuộc hai
   loại đó; dữ liệu thật vẫn cần DPIA thật của chủ dự án.
+- **Agent đại diện khách** (ADR gốc 0038) là hai reviewer: trả lời câu hỏi làm rõ bằng `orchestrator publish
+  clarification-answers <json> --actor reviewer:phien-chinh` (nêu nguồn: lệnh chủ dự án hoặc quyết định trên bus) và
+  đứng tên ký văn bản khách (T5b CVE không bản sửa, ADR ghi quyết định chủ dự án đã đưa). DPIA dữ liệu thật,
+  copyleft, dữ liệu ra nước ngoài, A/B chạm PII, đẩy registry vẫn hỏi chủ dự án.
 - Trước khi tin dashboard: hỏi *"chạy cho tôi xem"*. Số xanh có thể xanh vì rỗng.
 - Sửa tay trong worktree của ticket: commit + takeover **trước**, duyệt gate **sau** (duyệt trước là bị reset).
 - Muốn đổi hành vi agent: đổi tài liệu nó đọc qua đúng vai (CR → `product` pha spec ghi prd), không ghi tay blackboard.

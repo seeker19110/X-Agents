@@ -615,6 +615,10 @@ uv run python -m company.orchestrator comment  T-12 --by human:lead --text "dùn
 uv run python -m company.orchestrator takeover T-12 --by human:lead      # đã sửa tay trong worktree: chạy lint/test, thay PR của agent
 ```
 
+Ở phạm vi `toan-bo` (ADR gốc 0033), agent đại diện khách (ADR gốc 0038) trả lời thay bằng `--actor
+reviewer:phien-chinh` — cờ `COMPANY_GATE_REVIEWER=1` và `COMPANY_GATE_REVIEWER_SCOPE=toan-bo` phải có trong env của
+lệnh lẫn của orchestrator, không thì CLI từ chối và orchestrator không tính câu trả lời đó.
+
 Ticket hết `max_retries` thì ngoài gate `escalation` (reopen/close) còn một **change request `REPLAN-<ticket>-<thế hệ>`** do
 `delivery-lead` nộp (ADR-0051): planner ước lượng impact như CR thường, checklist gate escalation có mục `replan:<cid>`.
 `decide-change REPLAN-T-12-1 accepted --by human:po --reason "cắt sai, lập lại"` → ticket cũ đóng (ticket phụ thuộc

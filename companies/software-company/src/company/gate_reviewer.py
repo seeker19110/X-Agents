@@ -93,11 +93,13 @@ def cr_actor_refusal(actor: str) -> str:
     if is_human(actor):
         return ""
     if not actor.startswith(PREFIX):
-        return f"phải là người (human:<tên>) hoặc reviewer ({PREFIX}<id>, ADR gốc 0035), không phải {actor!r}"
+        return f"phải là người (human:<tên>) hoặc reviewer ({PREFIX}<id>, ADR gốc 0035, ADR gốc 0038), không phải {actor!r}"
     if not enabled():
-        return f"{FLAG_ENV} chưa bật — reviewer không được nộp/quyết change request (ADR gốc 0035)"
+        return (f"{FLAG_ENV} chưa bật — reviewer không được nộp/quyết change request hay trả lời câu hỏi làm rõ "
+                "(ADR gốc 0035, ADR gốc 0038)")
     if not scope_toan_bo():
-        return f"{SCOPE_ENV} phải là {SCOPE_TOAN_BO!r} (ADR gốc 0035) — reviewer mới được nộp/quyết change request"
+        return (f"{SCOPE_ENV} phải là {SCOPE_TOAN_BO!r} (ADR gốc 0035, ADR gốc 0038) — reviewer mới được nộp/quyết "
+                "change request hay trả lời câu hỏi làm rõ")
     return ""
 
 

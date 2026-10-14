@@ -55,7 +55,8 @@ def _cr_file(tmp_path):
 
 def test_bus_cho_ho_reviewer_phat_change_requests_khong_phat_topic_nguoi_khac():
     assert REVIEWER_FAMILY == REVIEWER_PREFIX + "*" and REVIEWER_FAMILY in TOPIC_PRODUCERS["change-requests"]
-    assert all(REVIEWER_FAMILY not in v for t, v in TOPIC_PRODUCERS.items() if t != "change-requests")
+    # ADR gốc 0038: thêm đúng một topic — `clarification-answers` (agent đại diện khách trả lời câu hỏi làm rõ)
+    assert {t for t, v in TOPIC_PRODUCERS.items() if REVIEWER_FAMILY in v} == {"change-requests", "clarification-answers"}
     bus = InMemoryBus()
     bus.publish(_env("reviewer:phien-chinh", "pending"))
     with pytest.raises(PermissionDenied):
