@@ -97,8 +97,12 @@ def _image_summary(ref: str, doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def vuln_evidence(root: Path, sha: str, images: list[str]) -> dict[str, Any]:
-    """`evidence.vuln` của cây RC `root`: lock file (trivy fs) + image nền (trivy image từng `ref`)."""
+def vuln_evidence(
+    root: Path, sha: str, images: list[str], deployed: list[tuple[str, str]] | None = None
+) -> dict[str, Any]:
+    """`evidence.vuln` của cây RC `root`: lock file (trivy fs) + image nền (trivy image từng `ref`) + image ĐÃ DỰNG
+    của staging (`deployed` = cặp service, image id từ `evidence.deploy`; ADR-0056 bổ sung 2026-10-14). Image dẫn xuất
+    (`build:`) không có image nền nào nói đúng về nó — gói đã gỡ trong Dockerfile vẫn nằm trong image nền."""
     t = _tool("trivy", "cài aquasecurity/trivy (một binary) để có SCA cho release-check")
     if isinstance(t, str):
         return unverified(t)
@@ -123,13 +127,19 @@ def vuln_evidence(root: Path, sha: str, images: list[str]) -> dict[str, Any]:
                 "findings": [_finding(v) for v in vulns[:MAX_FINDINGS]],
             }
         )
+    by_id: dict[str, list[str]] = {}
+    for service, image_id in deployed or []:
+        if image_id:
+            by_id.setdefault(image_id, []).append(service)
+    jobs: list[tuple[str, dict[str, Any]]] = [(ref, {}) for ref in images]
+    jobs += [(i, {"service": ",".join(s), "deployed": True, "image_id": i}) for i, s in by_id.items()]
     imgs, errors = [], []
-    for ref in images:
+    for ref, extra in jobs:
         ri = _exec([exe, *TRIVY_IMAGE, ref])
         if isinstance(ri, str) or ri.returncode != 0:
             errors.append({"image": ref, "error": ri if isinstance(ri, str) else _tail(ri.stderr)})
             continue
-        imgs.append(_image_summary(ref, json.loads(ri.stdout or "{}")))
+        imgs.append({**_image_summary(ref, json.loads(ri.stdout or "{}")), **extra})
     return {
         "verified_by": VERIFIED_BY,
         "tool": tool,

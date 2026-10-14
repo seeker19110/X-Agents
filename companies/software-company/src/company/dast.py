@@ -298,6 +298,17 @@ def deploy_of(evidence: Any) -> dict[str, Any] | None:
     return rec if isinstance(rec, dict) and rec else None
 
 
+def deployed_images(deployed: dict[str, Any] | None) -> list[tuple[str, str]]:
+    """Cặp (service, image id) của staging đã deploy cho `scanners.vuln_evidence` (ADR-0056 bổ sung 2026-10-14). Ở
+    đây cùng `deploy_of` để `verify.py` không thêm `dict[str, Any]`; bản ghi hỏng hình thì rỗng, không đoán."""
+    if not deployed:
+        return []
+    services, ids = deployed.get("services"), deployed.get("image_ids")
+    if not isinstance(services, list) or not isinstance(ids, list) or len(services) != len(ids):
+        return []
+    return [(str(s), str(i)) for s, i in zip(services, ids, strict=True)]
+
+
 def deploy_ref(deployed: dict[str, Any]) -> dict[str, Any]:
     """Phần của `release-events.evidence.deploy` nói quét/đo CÁI GÌ — không chép lại smoke của lần deploy."""
     return {k: deployed[k] for k in ("project", "env", "container_ids", "started_at") if k in deployed}
