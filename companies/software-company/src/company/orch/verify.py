@@ -29,6 +29,15 @@ if TYPE_CHECKING:
 DEPLOY_FAILED = "deploy_failed"
 
 
+def project_spec(o: Orchestrator, pid: str) -> Envelope | None:
+    """Spec hiệu lực của dự án cho smoke/deploy/DAST: bản mới nhất trong các chuỗi `approved-specs` của dự án có gate
+    `SPEC-<key>` đã duyệt — change request đổi requirement (key = mã CR, hub 2026-10-14) thay được runtime. Chưa
+    chuỗi nào duyệt (dự án trước gate spec, test) thì như cũ: bản key = project_id."""
+    hl = [e for e in o.bus.replay(topic="approved-specs")
+          if (e.payload.get("project_id") or e.key) == pid and o.gate.is_approved(f"SPEC-{e.key}")]
+    return hl[-1] if hl else o.latest("approved-specs", pid)
+
+
 def _staging_event(o: Orchestrator, rid: str) -> Envelope | None:
     return next((e for e in reversed(list(o.bus.replay(topic="release-events", key=rid)))
                  if e.payload.get("env") == "staging"), None)
@@ -70,7 +79,7 @@ def smoke(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[str, Any]
     dự án được duyệt trước ADR-0031, hay `integ` biến mất giữa chừng, vẫn tới được đây; và "không kiểm được"
     của một sản phẩm-phải-chạy-được không phải là một trạng thái trung lập để đi tiếp."""
     pid = o.project_for(rc)
-    spec = o.latest("approved-specs", pid) if pid else None
+    spec = project_spec(o, pid) if pid else None
     kind = (spec.payload.get("kind") if spec is not None else None) or "application"
     rt = parse_runtime(spec.payload if spec is not None else None)
     if rt is None or integ is None or not integ.path.exists():
@@ -146,7 +155,7 @@ def deploy_release(o: Orchestrator, agent: str, rc: Envelope, rid: str, p: dict[
     được đây qua `PROD_ROUTE` sau Gate 3 — ADR-0039 quyết định 5 không thêm cổng nào.
     """
     pid = o.project_for(rc)
-    spec = o.latest("approved-specs", pid) if pid else None
+    spec = project_spec(o, pid) if pid else None
     rt = parse_runtime(spec.payload if spec is not None else None)
     ev = _dict_of(p.get("evidence"))
     # Bản ghi tối thiểu khi CHƯA gọi được `deploy()`: hình dạng phải giống `DeployRecord.record()` để chỗ đọc
@@ -194,7 +203,7 @@ def regression_run(o: Orchestrator, env: Envelope) -> dict[str, Any]:
     lượt deployed nên RC redeploy (lần hợp lệ thứ hai) vẫn được ghi lại."""
     rid = str(env.payload.get("release_id") or env.key)
     pid = o.project_for(env)
-    spec = o.latest("approved-specs", pid) if pid else None
+    spec = project_spec(o, pid) if pid else None
     kind = (spec.payload.get("kind") if spec is not None else None) or None
     rt = parse_runtime(spec.payload if spec is not None else None)
     integ = o._integration_of_release(env)
@@ -274,7 +283,7 @@ def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope,
         else:
             root, sha = _release_root(o, rid, integ), o.release_sha.get(rid) or integ.sha()
             st = _staging_event(o, rid)
-            spec = o.latest("approved-specs", pid) if pid else None
+            spec = project_spec(o, pid) if pid else None
             ev = {"supply_chain": supply_chain.evidence(root, o.sandbox, sha=sha),
                   "dast": dast.evidence(root, spec.payload if spec is not None else None, o.sandbox,
                                         o.blackboard.content("api-contract", pid), sha,
