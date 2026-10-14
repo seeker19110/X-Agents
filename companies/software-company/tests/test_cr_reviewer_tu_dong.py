@@ -152,6 +152,46 @@ def test_ho_so_cr_neu_cr_khac_cung_du_an_de_nhan_ra_trung(toan_bo, tmp_path):
     assert "kho phiên là bảng sessions" in user, "ruling của product vào hồ sơ; evidence hỏng thì bỏ qua, không nổ"
 
 
+def test_ho_so_cr_neu_ly_do_quyet_cua_cr_khac_de_nhan_ra_trung_goc(toan_bo, tmp_path):
+    """Hub thật 2026-10-14 (QLKH-DD-CSV): REWORK-DDCSV-56-2 accepted 04:40 với lý do "lập 3 ticket vá image postgres/app";
+    REWORK-DDCSV-61-2 tới 04:42 cùng gốc (CVE image) cũng được accepted → hai kế hoạch trùng (DDCSV-65/66/64 và
+    67/68/69). Hồ sơ chỉ in 200 ký tự đầu mô tả — phần "Ticket X bị trả về làm lại…" — nên gốc chung và lý do quyết của
+    CR kia không bao giờ tới mắt agent duyệt."""
+    db = _bus(tmp_path)
+    bus = SQLiteBus(db)
+    dau = "Ticket DDCSV-56 (P2: migration chạy sạch trên image trixie) bị trả về làm lại nhưng lượt làm lại không đổi code. " * 2
+    bus.publish(
+        Envelope(
+            topic="change-requests",
+            key="REWORK-DDCSV-56-2",
+            actor="reviewer:tu-dong",
+            payload={
+                **CR,
+                "change_id": "REWORK-DDCSV-56-2",
+                "decision": "accepted",
+                "description": dau + "root_cause: image postgres còn CVE-2025-68121 có bản sửa",
+                "impact": {"kind": "rework_no_change", "decided_by": "reviewer:tu-dong",
+                           "reason": "root_cause: việc ngoài ticket; decision: accepted; hint: lập 3 ticket vá image postgres"},
+            },
+        )
+    )
+    bus.publish(
+        Envelope(
+            topic="change-requests",
+            key="REWORK-DDCSV-40-1",
+            actor="reviewer:phien-chinh",
+            payload={**CR, "change_id": "REWORK-DDCSV-40-1", "decision": "rejected", "description": dau + "đuôi-đã-bác"},
+        )
+    )
+    bus.close()
+    c = _client(OK)
+    gr.run_tick(db, ID, tmp_path / "k.pem", c)
+    user = c.calls[0]["user"]
+    assert "REWORK-DDCSV-40-1 [rejected]" in user and "đuôi-đã-bác" not in user, "CR đã bác chỉ giữ một dòng"
+    assert "CVE-2025-68121" in user, "gốc chung nằm sau 200 ký tự đầu của mô tả"
+    assert "lập 3 ticket vá image postgres" in user, "lý do quyết của CR kia cho biết việc đã được lập kế hoạch"
+
+
 def test_impact_product_van_xuoi_vao_ho_so_nguyen_van(toan_bo, tmp_path):
     """Hub thật 2026-10-13: product ghi `change.impact` bằng VĂN XUÔI, không phải JSON — hồ sơ in `{}` và agent duyệt
     giữ REPLAN-DDCSV-21-1 vì "impact product rỗng" dù product đã ước lượng đủ."""
