@@ -36,6 +36,7 @@ from .gate_checklists import load as load_gates
 from .gate_reviewer import RELEASE_PREFIX
 from .gates import GateRequest
 from .llm import FakeClient
+from .orch.verify import project_spec
 from .orchestrator import Orchestrator, _evidence, spec_runtime_gap
 from .runner import artifact_store
 from .smoke import parse_runtime, run_smoke
@@ -410,7 +411,7 @@ def _smoke_for_brief(orch: Orchestrator, pid: str | None, rid: str) -> dict[str,
     (cùng chỗ orchestrator chạy smoke lúc deploy staging) và gọi một request thật. Khách ký trên thứ vừa chạy, không
     trên lời khai `deployed`. Không có `runtime` hay không có worktree → nói thẳng `unverified` kèm lý do — không im lặng.
     Tiến trình bị giết khi xong; không ghi bus, không ghi repo (I3 vẫn giữ: lệnh chỉ đọc bus, chạy sản phẩm chỉ để đo)."""
-    spec = orch.latest("approved-specs", pid) if pid else None
+    spec = project_spec(orch, pid) if pid else None
     rt = parse_runtime(spec.payload if spec is not None else None)
     if rt is None:
         return {"unverified": True, "reason": "spec không có `runtime` (lệnh khởi động, cổng, đường health), không thể chạy",
