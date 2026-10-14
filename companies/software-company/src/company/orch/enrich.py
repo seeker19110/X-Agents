@@ -22,7 +22,7 @@ BLIND_STRIP = frozenset({"hint", "retry", "test_suite", "diff", "chan_doan"})
 
 
 def _with_draft(e: Envelope, o: Orchestrator) -> dict[str, Any]:
-    d = o.latest("requirements-draft", e.payload.get("project_id") or e.key)
+    d = o.latest("requirements-draft", e.key)  # key của CHUỖI: dự án, hoặc mã CR khi CR đổi requirement
     return {"requirements_draft": d.payload} if d else {}
 
 
@@ -30,7 +30,7 @@ def _with_intake(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     """Pha `spec` cần CẢ báo cáo của pha `intake` lẫn báo cáo 4 mục của pha `research` (ADR-0006), nhưng nó chỉ được
     đánh thức bởi báo cáo của pha `research`. Không đính kèm đề bài của pha `intake` thì tiêu chí bắt đầu không bao
     giờ đủ và draft luôn rỗng."""
-    key = e.payload.get("project_id") or e.key
+    key = e.key  # chuỗi của CR khoá bằng mã CR — tra theo project_id là lấy intake CŨ của cả dự án (hub 2026-10-14)
     found = [x for x in o.bus.replay("research-findings", key) if x.payload.get("kind") == FINDING_KIND.INTAKE]
     return {FINDING_KIND.INTAKE: found[-1].payload.get("data")} if found and found[-1].payload.get("data") else {}
 
