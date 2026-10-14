@@ -237,24 +237,34 @@ class DeliveryLead:
             raise ValueError(f"{tid}: stop_kind {kind!r} không có trong bảng STOP_POLICY (ADR-0052)")
         t = self.tickets[tid]; self.stops[tid][kind] += 1
         if t.retry + 1 >= self.max_retries:
-            self._set(tid, "blocked")
-            # `blocked` phải BỀN, không chỉ nằm trong RAM: nó suy ra từ số lần retry chứ không từ event nào, nên
-            # mở lại bus là mất. Khi đó ticket quay về `dispatched` (theo event `tasks` cuối), và người duyệt
-            # escalation bấm approve thì `_on_escalation_decided` thấy state không phải blocked nên KHÔNG gọi
-            # `reopen()` — không có task mới, không ai làm, mà `status` vẫn báo mọi chỉ số xanh.
-            # Đo được khi chạy thật (2026-09-04): ticket QLKH-001 blocked lúc 11:17, orchestrator restart lúc
-            # 11:29, gate được duyệt cùng lúc đó → `budget.extended` có ghi nhưng không có event `tasks` nào nữa;
-            # dự án đứng im 8 phút với `stalled: -`, `blocked: -`, `queue: 0`.
-            self._emit(Envelope(topic="audit-log", key=LEAD_ACTOR, actor=LEAD_ACTOR,
-                                payload=AuditLog(actor=LEAD_ACTOR, action="ticket.blocked", ticket_id=tid,
-                                                 evidence=json.dumps({"ticket_id": tid, "retry": t.retry + 1,
-                                                                      "max_retries": self.max_retries,
-                                                                      "stop_kind": kind, "stops": dict(self.stops[tid])},
-                                                                     ensure_ascii=False)).model_dump()))
-            self._request_replan(t, hint)
+            self._block(t, hint, kind)
             return
         nt = t.model_copy(update={"retry": t.retry + 1, "hint": hint})
         self.tickets[tid] = nt; self._publish_task(nt)
+
+    def block_empty_pr(self, tid: str, reason: str) -> None:
+        """PR 0 file của ticket CHƯA từng tích hợp: builder dừng vì bị chặn/cần quyết định, không phải việc xong. Không
+        retry (lượt sau gặp đúng chỗ chặn đó) — `blocked` ngay và nộp REPLAN mang lý do của builder (DDCSV-73, 2026-10-14)."""
+        self._set(tid, "changes_requested"); self.stops[tid]["needs_human"] += 1
+        self._block(self.tickets[tid], reason, "needs_human", why="nộp PR rỗng ở lượt đầu (builder dừng, chưa làm gì)")
+
+    def _block(self, t: Task, hint: str | None, kind: str, why: str | None = None) -> None:
+        tid = t.ticket_id
+        self._set(tid, "blocked")
+        # `blocked` phải BỀN, không chỉ nằm trong RAM: nó suy ra từ số lần retry chứ không từ event nào, nên
+        # mở lại bus là mất. Khi đó ticket quay về `dispatched` (theo event `tasks` cuối), và người duyệt
+        # escalation bấm approve thì `_on_escalation_decided` thấy state không phải blocked nên KHÔNG gọi
+        # `reopen()` — không có task mới, không ai làm, mà `status` vẫn báo mọi chỉ số xanh.
+        # Đo được khi chạy thật (2026-09-04): ticket QLKH-001 blocked lúc 11:17, orchestrator restart lúc
+        # 11:29, gate được duyệt cùng lúc đó → `budget.extended` có ghi nhưng không có event `tasks` nào nữa;
+        # dự án đứng im 8 phút với `stalled: -`, `blocked: -`, `queue: 0`.
+        self._emit(Envelope(topic="audit-log", key=LEAD_ACTOR, actor=LEAD_ACTOR,
+                            payload=AuditLog(actor=LEAD_ACTOR, action="ticket.blocked", ticket_id=tid,
+                                             evidence=json.dumps({"ticket_id": tid, "retry": t.retry + 1,
+                                                                  "max_retries": self.max_retries,
+                                                                  "stop_kind": kind, "stops": dict(self.stops[tid])},
+                                                                 ensure_ascii=False)).model_dump()))
+        self._request_replan(t, hint, why)
 
     def replan_generation(self, tid: str) -> int:
         """Thế hệ replan của ticket theo chuỗi nhân quả: ticket giao từ kế hoạch của một CR `REPLAN-*` là thế hệ
@@ -263,7 +273,7 @@ class DeliveryLead:
         imp = c.payload.get("impact") or {} if c is not None and c.topic == "change-requests" else {}
         return int(imp.get("generation", 0)) + 1 if imp.get("kind") == "replan" else 1
 
-    def _request_replan(self, t: Task, hint: str | None) -> None:
+    def _request_replan(self, t: Task, hint: str | None, why: str | None = None) -> None:
         """ADR-0051: coordinator không tự lập kế hoạch — nó nộp một change request cho planner (`product[plan]`) và
         người quyết qua `decide-change`. Gate escalation vẫn mở song song (reopen/close); đây là lựa chọn thứ ba.
         Một CR cho mỗi (ticket, thế hệ): người mở lại rồi ticket block lần nữa thì không nộp lại cùng mã."""
@@ -271,7 +281,7 @@ class DeliveryLead:
         if gen > self.replan_rounds or cid in self.replans_filed: return
         deps = [x.ticket_id for x in self.tickets.values()
                 if t.ticket_id in x.depends_on and self.state.get(x.ticket_id) == "waiting"]
-        desc = (f"Ticket {t.ticket_id} ({t.title}) hết {self.max_retries} lần retry; lỗi cuối: {hint or '?'}. "
+        desc = (f"Ticket {t.ticket_id} ({t.title}) {why or f'hết {self.max_retries} lần retry'}; lỗi cuối: {hint or '?'}. "
                 f"Lập lại kế hoạch cho phần việc này (requirement {t.requirement_id}): cắt ticket khác, id MỚI, "
                 f"không dùng lại {t.ticket_id}. Ticket đang chờ nó: {deps or 'không'}.")
         cr = ChangeRequest(change_id=cid, project_id=t.project_id, requested_by=LEAD_ACTOR, description=desc[:1000],

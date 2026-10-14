@@ -24,6 +24,7 @@ from .fsm import Transition
 from .gates_flow import _retire_replanned, spec_changes_asked
 from .guards import pending_clarifications
 from .hen import cho_hen, moc_reset
+from .pr_rong import EMPTY_PR
 from .routes import ACTIVE_STATES, PLAN_INPUTS, PLAN_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
 
 if TYPE_CHECKING:
@@ -392,9 +393,8 @@ def _act_clarification_fallback(o: Orchestrator, env: Envelope, res: StepResult)
 TICKET_TRANSITIONS: list[Transition] = [
     Transition("superseded", frozenset({"tasks", "pull-requests", "test-suites"}), _act_superseded),
     Transition("rework_no_change", frozenset({"pull-requests"}), _act_rework_no_change, guard=_rework_no_change),
+    EMPTY_PR,  # PR 0 file của ticket chưa từng tích hợp → blocked + REPLAN, không review (orch/pr_rong.py)
     Transition("learn_repo", frozenset({"research-requests"}), _act_learn_repo),
-    Transition("plan", frozenset(PLAN_INPUTS), _act_plan,
-               guard=lambda env, o: PLAN_INPUTS[env.topic](env, o)),
-    Transition("clarification_fallback", frozenset({"clarification-questions"}), _act_clarification_fallback,
-               guard=lambda env, o: not env.payload.get("questions")),
+    Transition("plan", frozenset(PLAN_INPUTS), _act_plan, guard=lambda env, o: PLAN_INPUTS[env.topic](env, o)),
+    Transition("clarification_fallback", frozenset({"clarification-questions"}), _act_clarification_fallback, guard=lambda env, o: not env.payload.get("questions")),
 ]
