@@ -38,6 +38,7 @@ from .gates import GateRequest
 from .llm import FakeClient
 from .orch.verify import project_spec
 from .orchestrator import Orchestrator, _evidence, spec_runtime_gap
+from .roles import SOURCE
 from .runner import artifact_store
 from .smoke import parse_runtime, run_smoke
 from .workspace import NO_HOOKS, RAW_PATHS, TicketWorkspace, clean_env
@@ -583,7 +584,32 @@ def _brief_escalation_release(orch: Orchestrator, it: Any, subject: str, pid: st
                  [_topic_src("release-events", subject, list(orch.bus.replay(topic="release-events", key=subject)))])
     extra = {"scope": "release", "release": release, "history": history[-40:], "hints_used": hints, "duplicate_hints": dup,
              "budget": {"cost_usd": round(cost, 4), "project_budget_usd": pb}}
+    if (vuln := _release_vuln(orch, subject)) is not None: extra["vuln"] = vuln
     return [item], [], extra
+
+
+def _release_vuln(orch: Orchestrator, subject: str) -> dict[str, Any] | None:
+    """`evidence.vuln` (máy quét, ADR-0056) của review security mới nhất của release, gọn cho người/agent duyệt đối chiếu
+    điều kiện ký miễn của ADR gốc 0036. Hub 2026-10-14 REL-074: hồ sơ chỉ có câu chữ đã cắt của finding → tu-dong giữ.
+    Evidence cũ không có `serious_ids` thì rút từ `findings` (có trần) và nói rõ `complete=False`."""
+    sec = next((e for e in reversed(list(orch.bus.replay(topic="review-results", key=subject)))
+                if e.payload.get("source") == SOURCE.SECURITY), None)
+    ev = (sec.payload.get("evidence") or {}) if sec is not None else {}
+    v = ev.get("vuln") if isinstance(ev, dict) else None
+    if not isinstance(v, dict): return None
+    if v.get("unverified"): return {"unverified": str(v.get("reason") or "")}
+    items: list[dict[str, Any]] = []
+    for kind, rows in (("target", v.get("targets")), ("image", v.get("images"))):
+        for r in rows if isinstance(rows, list) else []:
+            if not isinstance(r, dict): continue
+            serious = [f for f in r.get("findings") or [] if isinstance(f, dict) and f.get("severity") in ("CRITICAL", "HIGH")]
+            complete = "serious_ids" in r
+            items.append({"kind": kind, "name": r.get("target") or r.get("ref"), "service": r.get("service"),
+                          "deployed": bool(r.get("deployed")), "by_severity": r.get("by_severity") or {},
+                          "serious_fixable": r["serious_fixable"] if complete else sum(1 for f in serious if f.get("fixed")),
+                          "serious_ids": list(r["serious_ids"]) if complete else sorted({str(f.get("id")) for f in serious}),
+                          "complete": complete})
+    return {"tool": v.get("tool"), "sha": v.get("sha"), "items": items, "errors": v.get("errors") or []}
 
 
 #: Ticket bị đóng làm ticket `waiting` phụ thuộc nó sang `blocked` (`DeliveryLead.abandon`, evidence `dependents_blocked`).
@@ -724,6 +750,20 @@ def build(orch: Orchestrator, subject: str, *, closed: bool = False, now: dateti
 TAG = {"ok": "[ok]     ", "gap": "[gap]    ", "unknown": "[unknown]"}
 
 
+def _vuln_md(v: dict[str, Any]) -> list[str]:
+    if "unverified" in v: return [f"- unverified: {v['unverified']}"]
+    out = [f"- {v.get('tool')} @ {v.get('sha')}"]
+    for it in v["items"]:
+        who = f"{it['service']} (deployed) " if it.get("deployed") else ""
+        sev = ", ".join(f"{k} {n}" for k, n in it["by_severity"].items()) or "0"
+        ids = ", ".join(it["serious_ids"]) or "—"
+        out.append(f"- {it['kind']} {who}`{it['name']}` — {sev}; CRITICAL/HIGH có bản sửa: {it['serious_fixable']}; "
+                   f"mã CRITICAL/HIGH ({len(it['serious_ids'])}): {ids}"
+                   + ("" if it["complete"] else " — danh sách có trần, có thể thiếu (evidence cũ)"))
+    out += [f"- lỗi quét `{e.get('image')}`: {e.get('error')}" for e in v["errors"] if isinstance(e, dict)]
+    return out
+
+
 def render_md(b: dict[str, Any]) -> str:
     lines = [f"# GATE {b['subject_id']} ({b['kind']}) — hồ sơ bằng chứng, không phải khuyến nghị", "",
              f"- dự án: `{b['project_id'] or '?'}` · tạo bởi `{b['created_by']}` lúc {b['created_at']} · "
@@ -747,6 +787,7 @@ def render_md(b: dict[str, Any]) -> str:
         if ex.get("ticket"): lines += ["", "## Ticket", "", "- " + ", ".join(f"{k}={v}" for k, v in ex["ticket"].items())]
         if ex.get("stalled"): lines += ["", "## Dự án kẹt", "", f"- {excerpt(json.dumps(ex['stalled'], ensure_ascii=False), 400)}"]
         if ex.get("release"): lines += ["", "## Release", "", "- " + ", ".join(f"{k}={v}" for k, v in ex["release"].items())]
+        if ex.get("vuln"): lines += ["", "## Lỗ hổng — `evidence.vuln` của release-check (máy quét, ADR-0056)", "", *_vuln_md(ex["vuln"])]
         lines += ["", "## Lịch sử thất bại", ""] + ([f"- {h['at']} — {h['action']}: {h['detail']}" for h in ex.get("history", [])] or ["- (trống)"])
         lines += ["", "## Hint đã dùng", ""] + ([f"- {h['at']} — {h['by']} {h['decision']}: {h['reason']}" for h in ex.get("hints_used", [])] or ["- (chưa có)"])
         if ex.get("duplicate_hints"): lines.append("- hint lặp lại y hệt: " + " | ".join(ex["duplicate_hints"]))
