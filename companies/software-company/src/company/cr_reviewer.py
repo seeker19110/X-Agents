@@ -100,6 +100,18 @@ def publish_decision(bus: Any, cid: str, decision: str, by: str, reason: str) ->
     return bus.publish(Envelope(topic="change-requests", key=cid, actor=by, payload=payload)), payload
 
 
+def _cr_khac(cid: str, e: Envelope) -> str:
+    """Một CR khác của dự án trong hồ sơ. CR còn sống (không `rejected`) in đủ mô tả và lý do quyết: hub 2026-10-14,
+    REWORK-DDCSV-56-2 và 61-2 cùng gốc CVE image đều được accepted vì 200 ký tự đầu chỉ là "Ticket X bị trả về làm
+    lại…" — gốc chung và "đã lập 3 ticket vá image" của CR kia không tới mắt agent duyệt. CR đã bác giữ một dòng."""
+    decision = e.payload.get("decision", "pending")
+    desc = str(e.payload.get("description", ""))
+    if decision == "rejected":
+        return f"- {cid} [{decision}] {desc[:200]}"
+    reason = str((e.payload.get("impact") or {}).get("reason", ""))
+    return f"- {cid} [{decision}] {desc[:1500]}" + (f"\n  lý do quyết: {reason[:800]}" if reason else "")
+
+
 def brief(bus: Any, cid: str) -> str:
     """Hồ sơ cho model: CR, impact + ruling của product, và các CR khác của cùng dự án (để nhận ra CR trùng)."""
     latest = _latest(bus)
@@ -110,11 +122,7 @@ def brief(bus: Any, cid: str) -> str:
         for e in bus.replay(topic="audit-log")
         if e.actor == ROLE.PRODUCT and e.payload.get("action") == "ruling" and _ev(e).get("key") == cid
     ]
-    khac = [
-        f"- {k} [{e.payload.get('decision', 'pending')}] {str(e.payload.get('description', ''))[:200]}"
-        for k, e in sorted(latest.items())
-        if k != cid and e.payload.get("project_id") == pid
-    ]
+    khac = [_cr_khac(k, e) for k, e in sorted(latest.items()) if k != cid and e.payload.get("project_id") == pid]
     return "\n".join(
         [
             f"# CHANGE REQUEST {cid} (dự án {pid}, nộp bởi {latest[cid].actor})",
