@@ -95,6 +95,21 @@ CVE-2025-68121, 1 CRITICAL + 61 HIGH, 0 có bản sửa. Tức sản phẩm đã
   `**/Dockerfile` chỉ đưa thêm image nền mà chính Dockerfile dẫn xuất đã sửa.
 - Process mode và `COMPANY_DEPLOY=off` không có `image_ids` → không thêm image nào, như trước.
 
+## Bổ sung 2026-10-14 (2) — số đo cho điều kiện ký miễn, và hồ sơ gate mang nó
+
+Đo hub thật 2026-10-14 (QLKH-DD-CSV REL-074, sau mục trên): ba finding block đều thuộc diện ký miễn của ADR gốc 0036
+(CVE không có bản sửa ở image db và app, DPIA chỉ dữ liệu giả), nhưng `reviewer:tu-dong` giữ: hồ sơ `gate_brief` của
+escalation `REL-*` chỉ chép câu chữ (đã cắt) của finding, không có `evidence.vuln`; và kể cả có, `images[].findings`
+dừng ở `MAX_FINDINGS=50` trong khi image db có 62 CRITICAL/HIGH — không đối chiếu được "mọi CRITICAL/HIGH không có bản
+sửa", không liệt kê đủ mã CVE.
+
+- `images[]` thêm `serious_fixable` (số CRITICAL/HIGH có `FixedVersion`) và `serious_ids` (mã CVE CRITICAL/HIGH duy
+  nhất, có thứ tự) — đếm trên **toàn bộ** kết quả trivy, không theo trần. `findings` giữ trần như cũ.
+- `gate_brief` của escalation `REL-*` thêm mục "Lỗ hổng": `evidence.vuln` của review security mới nhất của chính RC đó,
+  mỗi lock file/image một dòng (service nếu là image đang chạy, số theo mức độ, CRITICAL/HIGH có bản sửa, mã CVE).
+  Evidence cũ không có `serious_ids` thì rút từ `findings` và ghi rõ "danh sách có trần, có thể thiếu"; `unverified`
+  thì in lý do. Không có review security thì không có mục — không bịa.
+
 ## Cái giá đã biết
 
 - Hai binary ngoài repo, phiên bản do máy trực quyết; `tool` ghi "trivy 0.75.0"/"gitleaks 8.30.1" vào bằng chứng để
