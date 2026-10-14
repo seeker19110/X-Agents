@@ -514,12 +514,14 @@ def main(argv: list[str] | None = None) -> int:
         print(loi, file=sys.stderr)
         return 2
     if ns.cmd == "holds":
+        from .cr_reviewer import _latest as latest_crs
         from .cr_reviewer import held as cr_held
         from .cr_reviewer import pending_machine
         bus = SQLiteBus(ns.db)
         try:
             hs = held(PersistentGate(bus))
-            pending_crs = {e.key for e in bus.replay(topic="change-requests")
+            # Bản MỚI NHẤT của từng CR: event nộp ban đầu luôn `pending`, nên lọc mọi event sẽ giữ cả CR đã quyết.
+            pending_crs = {cid for cid, e in latest_crs(bus).items()
                            if e.payload.get("decision", "pending") == "pending"} - set(pending_machine(bus))
             hs |= {cid: {**h, "kind": "change-req"} for cid, h in cr_held(bus).items() if cid in pending_crs}
         finally:
