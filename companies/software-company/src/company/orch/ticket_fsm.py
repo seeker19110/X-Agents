@@ -89,6 +89,19 @@ def _renumber(o: Orchestrator, tickets: list[Task], project: str) -> None:
     for t in tickets: t.depends_on = [mapping.get(d, d) for d in t.depends_on]
     if mapping: o._audit("plan.renumbered", {"project_id": project, "mapping": mapping}, project_id=project)
 
+TICKET_DA_CO_NOTE = ("Ticket đã có của dự án (chưa closed). Việc đã có ticket đang mở hoặc đã merge thì đừng lập lại — "
+                     "nêu mã ticket đó trong ghi chú; mã ticket mới do orchestrator cấp nếu trùng.")
+
+
+def _ticket_da_co(o: Orchestrator, project: str) -> list[dict[str, str | None]]:
+    """Ticket chưa `closed` của dự án cho lượt `product[plan]`. Hub 2026-10-14: PLAN-15 lập lại đúng ba việc PLAN-14
+    vừa lập năm phút trước (DDCSV-67/68/69 ≡ 65/66/64) và đoán mã trùng — đầu vào chỉ có change request."""
+    # no-ky-thuat: liệt kê mọi ticket chưa closed, ~150 ký tự mỗi dòng, quay lại khi dự án vượt ~300 ticket mở
+    return [{"ticket_id": tid, "title": t.title[:140], "state": o.lead.state.get(tid)}
+            for tid, t in o.lead.tickets.items()
+            if t.project_id == project and o.lead.state.get(tid) != "closed"]
+
+
 def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     project = env.payload.get("project_id") or env.key
     if env.topic == "approved-specs":
@@ -126,7 +139,10 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             res.actions.append(f"plan_skipped:{','.join(live)}"); o._mark(env, res); return res
     if env.topic == "change-requests": _retire_replanned(o, env, res)  # ADR-0051: CR replan → đóng ticket cũ trước
     cal = o.supervisor.calibration()  # vòng học: bài học estimate-vs-actual quay lại người ước lượng
-    inp = env.model_copy(update={"payload": {**env.payload, "estimate_calibration": cal}}) if cal else env
+    extra: dict[str, object] = {"estimate_calibration": cal} if cal else {}
+    if (da_co := _ticket_da_co(o, project)):
+        extra["ticket_da_co"] = {"ghi_chu": TICKET_DA_CO_NOTE, "items": da_co}
+    inp = env.model_copy(update={"payload": {**env.payload, **extra}}) if extra else env
     try:
         g = o.runner.generate(ROLE.PRODUCT, inp, "tasks", many=True, phase=PHASE.PLAN)
     except TransientError as e:
