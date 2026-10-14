@@ -209,21 +209,23 @@ def _brief_spec(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
     out.append(_item(it, "unknown", facts, pii_src))
 
     it = items["spec.cau-hoi-mo"]
-    qs = [e for e in orch.bus.replay(topic="clarification-questions") if (e.payload.get("project_id") or e.key) == pid]
-    ans = [e for e in orch.bus.replay(topic="clarification-answers") if (e.payload.get("project_id") or e.key) == pid]
+    # Chuỗi theo key (`SPEC-<key>`): spec của CR có câu hỏi, đáp án và runtime riêng — không lấy của dự án gốc.
+    key = subject[5:] if subject.startswith("SPEC-") else pid
+    qs = [e for e in orch.bus.replay(topic="clarification-questions") if e.key == key]
+    ans = [e for e in orch.bus.replay(topic="clarification-answers") if e.key == key]
     asked = {str(q.get("id")) for e in qs for q in e.payload.get("questions", []) if isinstance(q, dict)}
     answered = {str(a.get("question_id")) for e in ans for a in e.payload.get("answers", []) if isinstance(a, dict)}
     open_q = sorted(asked - answered)
     facts = [f"{len(asked)} câu hỏi làm rõ qua {len(qs)} vòng, {len(answered)} đã trả lời, {len(open_q)} chưa"]
     if open_q: facts.append("chưa trả lời: " + ", ".join(open_q[:10]))
     out.append(_item(it, "gap" if open_q else "ok", facts,
-                     [_topic_src("clarification-questions", pid or "", qs), _topic_src("clarification-answers", pid or "", ans)]))
+                     [_topic_src("clarification-questions", key or "", qs), _topic_src("clarification-answers", key or "", ans)]))
 
     # ADR-0031: câu "chạy cho tôi xem" hỏi ở Gate 1. Code đã chặn spec application thiếu runtime trước khi gate mở;
     # ở đây người ký thấy đúng lệnh/cổng/health/phụ thuộc mà orchestrator sẽ dùng để smoke (ADR-0029).
     it = items["spec.runtime"]
-    spec = orch.latest("approved-specs", pid) if pid else None
-    rt_src: list[dict[str, Any]] = ([_topic_src("approved-specs", pid or "", [spec])] if spec is not None else []) + srcs
+    spec = orch.latest("approved-specs", key) if key else None
+    rt_src: list[dict[str, Any]] = ([_topic_src("approved-specs", key or "", [spec])] if spec is not None else []) + srcs
     if spec is None:
         out.append(_item(it, "unknown", ["chưa có approved-specs cho dự án"], rt_src))
     else:

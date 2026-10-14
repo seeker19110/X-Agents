@@ -60,3 +60,32 @@ def test_ho_so_gate_spec_cua_cr_tim_ra_du_an():
     _spec_cr(bus)
     orch.run()
     assert GB.build(orch, "SPEC-CR-1")["project_id"] == "P1", "PRD/threat model nằm ở namespace của dự án, không của mã CR"
+
+
+def _muc(b, mid):
+    return next(x for x in b["self_check"] if x["id"] == mid)
+
+
+def test_ho_so_gate_spec_cua_cr_doc_runtime_va_cau_hoi_cua_chinh_chuoi():
+    """Hub thật 2026-10-14: product khai `runtime.deploy` trong cả bốn spec của CR-DDCSV-INFRA-002 (key = mã CR), nhưng
+    hồ sơ đọc `approved-specs` key = project_id — spec gốc 2026-10-12, không có deploy — nên `reviewer:tu-dong` reject
+    ba lần vì "thiếu runtime" mà product không thể sửa."""
+    from company import gate_brief as GB
+
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    base = dict(bus.latest("approved-specs", "P1").payload)
+    rt = {"command": "python -m cr.server --port {port}", "port": 0, "health": "/healthz", "expect_status": 200,
+          "timeout_s": 60, "deploy": "docker-compose.yml"}
+    _pub(bus, "clarification-questions", "CR-1", "product",
+         {"project_id": "P1", "round": 1, "questions": [{"id": "CQ-CR-1", "text": "image db build ở đâu?",
+                                                          "options": ["cục bộ", "registry"], "default": "cục bộ"}]})
+    _pub(bus, "approved-specs", "CR-1", "product", {**base, "change_id": "CR-1", "runtime": rt, "status": "pending_human"})
+    orch.run()
+    b = GB.build(orch, "SPEC-CR-1")
+    run = _muc(b, "spec.runtime")
+    assert any("cr.server" in f for f in run["facts"]), "runtime đọc từ spec của chuỗi CR, không từ spec gốc của dự án"
+    assert run["sources"][0]["key"] == "CR-1"
+    hoi = _muc(b, "spec.cau-hoi-mo")
+    assert hoi["verdict"] == "gap" and "CQ-CR-1" in " ".join(hoi["facts"]), "câu hỏi của chuỗi CR, không của dự án"
+    assert hoi["facts"][0].startswith("1 câu hỏi"), "câu hỏi của dự án gốc không lẫn vào chuỗi CR"
