@@ -151,7 +151,7 @@ def _plan_for(o: Orchestrator, pid: str) -> str | None:
     """Kế hoạch approved-specs ĐẦU TIÊN dự án nhận sau khi ghim (ADR gốc 0021 §a). CR/incident không vào run này."""
     plans = [p for p in o.plans.values() if p.get("project_id") == pid]
     for p in plans[o.quality_profiles[pid]["plans_before"]:]:
-        if p.get("source_topic") != "approved-specs": continue
+        if p.get("source_topic") != "approved-specs" or p.get("source_key", pid) != pid: continue  # spec của CR: không
         if not p.get("plan_id"): raise ExecutionJournalError(f"kế hoạch approved-specs của {pid} thiếu plan_id")
         return str(p["plan_id"])
     return None

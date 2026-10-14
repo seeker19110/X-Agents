@@ -135,7 +135,10 @@ def _by_id(g: GateSection) -> dict[str, SelfItem]:
 
 
 def _project_of(orch: Orchestrator, kind: str, subject: str) -> str | None:
-    if kind == "spec" and subject.startswith("SPEC-"): return subject[5:]
+    if kind == "spec" and subject.startswith("SPEC-"):
+        # `SPEC-<mã CR>`: spec của change request đổi requirement (key của chuỗi) — PRD/threat model ở namespace dự án
+        spec = orch.latest("approved-specs", subject[5:])
+        return str(spec.payload.get("project_id") or subject[5:]) if spec is not None else subject[5:]
     if kind == "release":
         tids = orch.lead.release_tickets.get(subject, [])
         t = orch.lead.tickets.get(tids[0]) if tids else None

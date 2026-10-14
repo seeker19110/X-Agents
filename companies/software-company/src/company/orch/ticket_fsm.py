@@ -105,7 +105,7 @@ def _ticket_da_co(o: Orchestrator, project: str) -> list[dict[str, str | None]]:
 def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     project = env.payload.get("project_id") or env.key
     if env.topic == "approved-specs":
-        sid = f"SPEC-{project}"
+        sid = f"SPEC-{env.key}"  # key của CHUỖI: dự án, hoặc mã CR đổi requirement (gate + kế hoạch riêng, hub 2026-10-14)
         if not o.gate.is_approved(sid):
             last = next((g for g in reversed(o.gate.history) if g.subject_id == sid), None)
             # ADR-0031 §3: `request_changes` của người = spec-writer viết lại trên event nguồn với lý do làm `hint`.
@@ -130,7 +130,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
             return o._defer(env, res, f"gate:{sid}")
         if not o._threat_model(env, sid, res):
             o._mark(env, res); return res
-        live = [pid for pid, p in o.plans.items() if p["project_id"] == project and p["source_topic"] == "approved-specs"]
+        live = [pid for pid, p in o.plans.items() if p.get("source_key", p["project_id"]) == env.key and p["source_topic"] == "approved-specs"]
         if live:
             # Spec publish lặp (pha `spec` chạy lại, người publish hai lần) không được sinh plan thứ hai cho cùng
             # dự án: ticket trùng, hai lần giao cho một việc. ADR-0037 bỏ gate plan nên `o.plans` chỉ chứa kế hoạch
@@ -161,7 +161,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     problems = o._check_plan(tickets, project)
     n = 1 + sum(1 for p in o.plans.values() if p["project_id"] == project)
     plan_id = f"PLAN-{project}-{n}"
-    plan = {"plan_id": plan_id, "project_id": project, "source_event": env.event_id, "source_topic": env.topic,
+    plan = {"plan_id": plan_id, "project_id": project, "source_event": env.event_id, "source_topic": env.topic, "source_key": env.key,
             "tickets": [t.model_dump() for t in tickets], "problems": problems,
             "threat_model": "missing" if f"SPEC-{project}" in o.missing_threat_model else "ok"}
     if problems:
