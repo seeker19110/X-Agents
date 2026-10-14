@@ -580,6 +580,20 @@ def _brief_escalation_release(orch: Orchestrator, it: Any, subject: str, pid: st
     return [item], [], extra
 
 
+#: Ticket bị đóng làm ticket `waiting` phụ thuộc nó sang `blocked` (`DeliveryLead.abandon`, evidence `dependents_blocked`).
+DEP_CLOSED_ACTIONS = frozenset({"ticket.abandoned", "ticket.replanned"})
+
+
+def _dep_close_reason(orch: Orchestrator, d: dict[str, Any]) -> str:
+    """Lý do đóng phụ thuộc: lý do của CR replan (`ticket.replanned`), không thì của quyết định gate mới nhất của nó.
+    Hub 2026-10-14: DDCSV-64 bị chặn vì DDCSV-65/66 bị đóng, hồ sơ in lịch sử trống → `reviewer:tu-dong` giữ."""
+    if cid := d.get("change_id"):
+        return next((str((e.payload.get("impact") or {}).get("reason", ""))
+                     for e in reversed(list(orch.bus.replay(topic="change-requests", key=cid)))), "")
+    tid = d.get("ticket_id")
+    return next((g.reason for g in reversed(orch.gate.history) if g.subject_id == tid and g.decision != "pending"), "")
+
+
 def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str | None,
                       repo: Path | None) -> tuple[list[dict], list[dict], dict]:
     items = _by_id(g); it = items["escalation.ngan-sach"]
@@ -618,6 +632,10 @@ def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str
             history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"review {p.get('source')} {p.get('verdict')}", "detail": excerpt(detail)})
     for e in orch.bus.replay(topic="audit-log"):
         p = e.payload
+        if p.get("action") in DEP_CLOSED_ACTIONS and subject in (d := _evidence(p)).get("dependents_blocked", []):
+            history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(),
+                            "action": f"phụ thuộc {d.get('ticket_id')} bị đóng ({p.get('action')}, {d.get('by')})",
+                            "detail": excerpt(_dep_close_reason(orch, d))})
         if p.get("ticket_id") == subject and p.get("action") in ERROR_ACTIONS:
             d = _evidence(p)
             history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"{p.get('actor')}: {p.get('action')}",
@@ -661,7 +679,9 @@ def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str
     stops = next((_evidence(e.payload).get("stops") or {} for e in reversed(list(orch.bus.replay(topic="audit-log")))
                   if e.payload.get("action") == "ticket.blocked" and _evidence(e.payload).get("ticket_id") == subject), {})
     extra = {"scope": "ticket", "ticket": {"title": excerpt(t.title), "assignee": t.assignee, "retry": t.retry, "risk_tags": t.risk_tags,
-                                            "state": orch.lead.state.get(subject), "hint": excerpt(t.hint), "stops": stops},
+                                            "state": orch.lead.state.get(subject), "hint": excerpt(t.hint), "stops": stops,
+                                            "depends_on": [{"ticket_id": d, "state": orch.lead.state.get(d),
+                                                            "abandoned": d in orch.lead.abandoned} for d in t.depends_on]},
              "history": history[-40:], "hints_used": hints, "duplicate_hints": dup, "budget": budget, "worktree": worktree,
              "diagnose": vong}
     return [item], unavailable, extra

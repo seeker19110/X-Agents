@@ -66,6 +66,7 @@
     "scope": "ticket",
     "ticket": {
       "assignee": "builder",
+      "depends_on": [],
       "hint": "lần trước lỗi: builder: đầu ra không hợp lệ cho pull-requests: payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id…",
       "retry": 2,
       "risk_tags": [],
