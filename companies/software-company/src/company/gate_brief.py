@@ -400,11 +400,23 @@ def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | 
     out += _brief_estimates(orch, items, pid, rel_tickets, plan_ids)
 
     reviews = [e for e in orch.bus.replay(topic="review-results") if e.payload.get("ticket_id") == subject]
+    waived = _waiver(orch, subject)
     extra = {"tickets": tids, "version": next((e.payload.get("version") for e in orch.bus.replay(topic="release-candidates", key=subject)), None),
              "staging_reviews": [{"source": e.payload.get("source"), "verdict": e.payload.get("verdict"),
                                   "metrics": excerpt(json.dumps(e.payload.get("metrics") or {}, ensure_ascii=False)),
-                                  "run": _run_summary(e.payload)} for e in reviews]}
+                                  "run": _run_summary(e.payload),
+                                  **({"waived": waived} if waived and e.payload.get("source") in orch.lead.release_waived.get(subject, set()) else {})}
+                                 for e in reviews]}
     return out, unavailable, extra
+
+
+def _waiver(orch: Orchestrator, rid: str) -> dict[str, str] | None:
+    """Ai đã chấp nhận finding của RC này ở gate escalation, lý do gì (`release_waived`, `waive_release_findings`).
+    Hub 2026-10-14 REL-074: hồ sơ Gate 3 chỉ in "review staging security: block" → tu-dong reject, đòi chứng minh lại
+    đúng các finding phiên chính đã ký miễn theo ADR gốc 0036."""
+    g = next((g for g in reversed(orch.gate.history)
+              if g.subject_id == rid and g.kind == "escalation" and g.decision == "approve"), None)
+    return {"by": str(g.decided_by), "reason": g.reason or ""} if g is not None else None
 
 
 def _smoke_for_brief(orch: Orchestrator, pid: str | None, rid: str) -> dict[str, Any]:
@@ -798,7 +810,9 @@ def render_md(b: dict[str, Any]) -> str:
         lines += ["", "## Ticket trong phạm vi", ""]
         lines += [f"- {json.dumps(t, ensure_ascii=False)}" if isinstance(t, dict) else f"- {t}" for t in ex["tickets"]]
         if ex.get("version"): lines.append(f"- phiên bản: {ex['version']}")
-        for r in ex.get("staging_reviews", []): lines.append(f"- review staging {r['source']}: {r['verdict']} — {r['metrics']} — chạy: {r.get('run') or 'không có evidence.run'}")
+        for r in ex.get("staging_reviews", []):
+            lines.append(f"- review staging {r['source']}: {r['verdict']} — {r['metrics']} — chạy: {r.get('run') or 'không có evidence.run'}"
+                         + (f" — ĐÃ CHẤP NHẬN ở escalation bởi {r['waived']['by']}: {r['waived']['reason']}" if r.get("waived") else ""))
     if b["kind"] == "acceptance":
         sm = ex.get("smoke") or {}
         lines += ["", "## Đã chạy — hồ sơ tự khởi động sản phẩm theo `runtime` của spec (ADR-0029, B4)", ""]
