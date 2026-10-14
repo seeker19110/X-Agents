@@ -89,3 +89,26 @@ Một PR, hai commit: quyết định 1 + 3 (`orch/ticket_fsm.py`, `delivery.py`
 - Nhánh có commit mới sau rework ⇒ review chạy như cũ (chiều ngược, cùng test file).
 - Bỏ nhánh `_blocked_same_sha` ⇒ `test_rc_trung_sha_voi_rc_da_bi_security_chan_thi_khong_chay_lai` đỏ; RC trước cùng
   sha mà security pass ⇒ RC mới chạy như cũ (`test_rc_trung_sha_voi_rc_da_qua_thi_chay_binh_thuong`).
+
+## Sửa đổi 2026-10-14 — PR rỗng ở lượt đầu (ticket chưa từng tích hợp)
+
+Hub thật (QLKH-DD-CSV): builder của DDCSV-73 dừng ngay lượt đầu vì đầu vào mâu thuẫn. Spec ghi cổng 8080, compose
+publish 8000, và ticket cấm sửa compose. Builder ghi lý do vào `no_changes_reason`, đúng như prompt dặn cho trường hợp
+"bị chặn, cần người quyết". Runner ra PR 0 file ở sha nền. QA chấm `pass` kèm warn "ticket chưa làm, không được tính là
+xong". Orchestrator chạy `integration.noop` rồi tạo REL-062 chỉ chứa đúng ticket chưa làm đó.
+
+Đây là ca đối xứng với §1. §1 xử lý ticket **đã** tích hợp mà làm lại không đổi code. Ca này là ticket **chưa** từng
+tích hợp mà PR không đổi file nào: không có việc gì đã xong để review hay đem giao.
+
+- Transition `empty_pr` (`orch/pr_rong.py`) đứng ngay sau `rework_no_change`. Guard: ticket `in_review`, không có trong
+  `integrated`, `impact.files` rỗng.
+- Hành động: ghi audit `pr.empty`, rồi `DeliveryLead.block_empty_pr`. Ticket đi `changes_requested` → `blocked`, tính
+  stop `needs_human`, và nộp CR `REPLAN-*` (ADR-0051) mang lý do của builder.
+- Không thử lại builder, vì lượt sau sẽ gặp đúng chỗ chặn đó. Không review, không RC.
+
+Đã loại phương án chặn ở runner (nhánh trống so với điểm rẽ thì không chấp nhận `no_changes_reason`). Đo được ca §1:
+khi làm lại, base của worktree là nhánh tích hợp đã chứa commit của ticket, nên nhánh cũng "trống". Runner không phân
+biệt được hai ca, còn orchestrator biết qua `integrated`.
+
+Đo hai chiều: bỏ `EMPTY_PR` khỏi `TICKET_TRANSITIONS` thì `tests/test_pr_rong_khong_thanh_viec_xong.py` đỏ cả 2 ca
+(QA được gọi, ticket thành `merged`); bật lại thì xanh.
