@@ -243,3 +243,30 @@ def test_baseline_du_dieu_kien_khong_co_problem():
     o = _orch()
     tickets = _baseline_ok(o)
     assert o._check_plan(tickets, "P1") == []
+
+
+# ---------- phụ thuộc ticket đã bị bỏ / đang bị thay (hub 2026-10-14) ----------
+
+
+def test_phu_thuoc_ticket_bi_bo_hoac_dang_bi_thay_bi_tu_choi():
+    """Hub thật 2026-10-14 (QLKH-DD-CSV): PLAN-QLKH-DD-CSV-19 cho DDCSV-89/90 `depends_on` DDCSV-73 — ticket đang
+    `blocked` với REPLAN-DDCSV-73-1 đã `accepted` (sắp bị đóng). 13:36 nó bị đóng, 89/90 thành `blocked` + escalation.
+    Ticket đóng vì đã XONG thì vẫn phụ thuộc được."""
+    o = _orch()
+    tasks = _baseline_ok(o)
+    for tid in ("BO", "THAY", "XONG"):
+        o.lead.tickets[tid] = _task(ticket_id=tid)
+    o.lead.abandoned.add("BO")
+    o.lead.state["BO"] = "closed"
+    o.lead.state["THAY"] = "blocked"
+    o.lead.replan_accepted["THAY"] = Envelope(
+        topic="change-requests",
+        key="REPLAN-THAY-1",
+        actor="reviewer:tu-dong",
+        payload={"change_id": "REPLAN-THAY-1", "decision": "accepted"},
+    )
+    o.lead.state["XONG"] = "closed"
+    tasks[0].depends_on = ["BO", "THAY", "XONG"]
+    problems = guards._check_plan(o, tasks, "P1")
+    assert any("BO" in p and "THAY" in p and "bị bỏ" in p for p in problems), problems
+    assert not any("XONG" in p for p in problems), "ticket đã xong vẫn là phụ thuộc hợp lệ"

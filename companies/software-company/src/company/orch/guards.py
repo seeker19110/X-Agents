@@ -357,6 +357,7 @@ def _check_plan(o: Orchestrator, tickets: list[Task], project: str) -> list[str]
         if not t.stack: problems.append(f"{t.ticket_id} thiếu stack")
         unknown = [d for d in t.depends_on if d not in known]
         if unknown or t.ticket_id in t.depends_on: problems.append(f"{t.ticket_id} depends_on sai {unknown or 'chính nó'}")
+        if bo := [d for d in t.depends_on if d in o.lead.abandoned or d in o.lead.replan_accepted]: problems.append(f"{t.ticket_id} depends_on ticket bị bỏ/đang bị thay {bo}: không bao giờ xong — trỏ tới ticket thay thế, hoặc bỏ phụ thuộc nếu việc đã có ở ticket khác")
         if t.estimate_days > 1 or (t.estimate_tokens is not None and t.estimate_tokens > MAX_TICKET_TOKENS):
             problems.append(f"{t.ticket_id} quá 1 ngày/200k token: chia nhỏ")
         text = " ".join((t.title, " ".join(t.scope), " ".join(t.acceptance))).lower()
@@ -381,8 +382,7 @@ def _check_plan(o: Orchestrator, tickets: list[Task], project: str) -> list[str]
         have = o.blackboard.snapshot(project)
         for ns in ("architecture", "api-contract"):
             if ns not in have: problems.append(f"blackboard thiếu {ns}")
-    cyc = _cycle({t.ticket_id: [d for d in t.depends_on if d in ids] for t in tickets})
-    if cyc: problems.append("depends_on vòng: " + " → ".join(cyc))
+    if cyc := _cycle({t.ticket_id: [d for d in t.depends_on if d in ids] for t in tickets}): problems.append("depends_on vòng: " + " → ".join(cyc))
     return problems
 
 
