@@ -48,11 +48,14 @@ FILE_CMDS: dict[str, Callable[[Path, Any], int]] = {"backup": backup}
 
 # ---------- nhóm bus: chưa cần Orchestrator ----------
 
+REVIEWER_TOPICS = frozenset({"change-requests", "clarification-answers"})
+
+
 def publish(bus: SQLiteBus, ns: argparse.Namespace) -> int:
     from ..gate_reviewer import cr_actor_refusal
-    # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus. Ngoại lệ duy nhất:
-    # change-requests nhận cả reviewer ở phạm vi `toan-bo` (ADR gốc 0035).
-    why = cr_actor_refusal(ns.actor) if ns.topic == "change-requests" else (
+    # CLI là cửa của người; giả danh agent/orchestrator từ đây là vượt quyền producer của bus. Ngoại lệ:
+    # change-requests (ADR gốc 0035) và clarification-answers (ADR gốc 0038) nhận cả reviewer ở phạm vi `toan-bo`.
+    why = cr_actor_refusal(ns.actor) if ns.topic in REVIEWER_TOPICS else (
         "" if is_human(ns.actor) else f"phải là người (human:<tên>), không phải {ns.actor!r}")
     if why:
         print(f"--actor {why}", file=sys.stderr); return 2

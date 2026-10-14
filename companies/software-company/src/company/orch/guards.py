@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from ..events import BUDGET_FACTOR, HINT_TO_TAG, MAX_TICKET_TOKENS, RISK_HINTS, Envelope, Task
 from ..roles import SOURCE
 from ..smoke import parse_runtime
+from .tin_tra_loi import answers_trusted, trusted
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator
@@ -112,7 +113,7 @@ def unanswered_questions(bus: Any, q: Envelope) -> list[str]:
     pid = str(q.payload.get("project_id") or q.key)
     answered: set[str] = set()
     for prev in bus.replay(topic="clarification-answers", key=pid):
-        if prev.ts >= q.ts:
+        if prev.ts >= q.ts and trusted(prev):  # ADR gốc 0038: reviewer chỉ tính khi cờ + `toan-bo`
             answered |= {str(a.get("question_id")) for a in prev.payload.get("answers", [])}
     return [str(x.get("id")) for x in q.payload.get("questions", []) if str(x.get("id")) not in answered]
 
@@ -173,14 +174,13 @@ def pending_clarifications(bus: Any) -> dict[str, ClarificationPending]:
 
 
 def _answers_incomplete(e: Envelope, o: Orchestrator) -> bool:
-    return not _answers_complete(e, o)
+    return answers_trusted(e, o) and not _answers_complete(e, o)
 
 
 def _spec_ready(e: Envelope, o: Orchestrator) -> bool:
     """Pha `spec` chỉ chạy khi đã trả lời hết câu hỏi VÀ dự án có `requirements-draft`. Trước đây câu trả lời gửi cho
     một dự án chưa có bản nháp (chuỗi nghiên cứu chết, hoặc gửi nhầm dự án) vẫn sinh PRD từ đầu vào trống."""
-    if not _answers_complete(e, o):
-        return False
+    if not answers_trusted(e, o) or not _answers_complete(e, o): return False
     pid = str(e.payload.get("project_id") or e.key)
     if o.latest("requirements-draft", pid) is not None:
         return True
