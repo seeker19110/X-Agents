@@ -97,6 +97,20 @@ def test_cr_hold_ghi_audit_va_khong_hoi_lai(toan_bo, tmp_path, capsys):
     assert CID in capsys.readouterr().out, "phiên chính thấy CR bị giữ trong `gate_reviewer holds`"
 
 
+def test_cr_bi_giu_roi_da_quyet_thi_khong_con_trong_holds(toan_bo, tmp_path, capsys):
+    """Hub thật 2026-10-14: `holds` liệt kê REWORK-DDCSV-42-1, REPLAN-DDCSV-66-1, REPLAN-DDCSV-21-1… dù phiên chính đã
+    `rejected` từ trước — "đang chờ" được tính từ BẤT KỲ event nào mang `pending`, mà event nộp ban đầu luôn pending."""
+    db = _bus(tmp_path)
+    c = _client({"decision": "hold", "root_cause": "kế hoạch đổi api-contract", "hint": "phiên chính xem"})
+    assert gr.run_tick(db, ID, tmp_path / "k.pem", c) == [(CID, "hold")]
+    bus = SQLiteBus(db)
+    bus.publish(Envelope(topic="change-requests", key=CID, actor="reviewer:phien-chinh",
+                         payload={**CR, "decision": "rejected"}))
+    bus.close()
+    assert gr.main(["--db", str(db), "holds"]) == 0
+    assert CID not in capsys.readouterr().out, "CR đã quyết không còn là việc của phiên chính"
+
+
 @pytest.mark.parametrize("out", [{"decision": "approve", "root_cause": "x", "hint": ""}, {"decision": "accepted"}])
 def test_cr_dau_ra_hong_thanh_hold(toan_bo, tmp_path, out):
     db = _bus(tmp_path)
