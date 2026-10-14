@@ -882,7 +882,22 @@ TAM_THOI = [
     '{"error":{"code":"insufficient_quota"}}',
     "quota_exceeded",
     "upstream request_timeout",
+    # Lỗi mạng (hub thật 2026-10-14: mất DNS vài phút → `product[plan]` thành escalation "cần người" thay vì hoãn).
+    "API Error: Can't reach the API server — check your internet or DNS (EAI_AGAIN)",
+    "getaddrinfo ENOTFOUND api.anthropic.com",
+    "read ECONNRESET",
+    "connect ECONNREFUSED 127.0.0.1:443",
+    "connect ETIMEDOUT 160.79.104.10:443",
+    "connect ENETUNREACH 2607:6bc0::10:443",
+    "API Error: Connection error.",
 ]
+
+
+def test_mat_dns_cua_claude_p_la_tam_thoi():
+    """Đúng thông điệp hub thật 2026-10-14 11:12: `claude -p` thoát 1 với subtype=success, api_error_status=None."""
+    out = json.dumps({"subtype": "success", "is_error": True, "api_error_status": None,
+                      "result": "API Error: Can't reach the API server — check your internet or DNS (EAI_AGAIN)"})
+    assert isinstance(cli_exit_error(1, out, ""), TransientError)
 
 
 @pytest.mark.parametrize("msg", VINH_VIEN)
