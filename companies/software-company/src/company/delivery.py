@@ -52,6 +52,10 @@ class DeliveryLead:
         self.replan_open: dict[str, str] = {}  # ticket_id → change_id REPLAN đang chờ người quyết (checklist gate escalation)
         self.replan_accepted: dict[str, Envelope] = {}  # ticket_id → event CR REPLAN accepted mới nhất (tin hay không: orchestrator)
         self.replans_filed: set[str] = set()   # change_id đã nộp (dựng lại từ bus): block lần hai cùng thế hệ không nộp lại
+        # ADR-0051 bổ sung 2026-10-16: change_id REPLAN → ticket nó thay (không xoá khi quyết), và ticket bị thay → ticket
+        # của kế hoạch thay thế (`note_replacement`, ghi lúc giao kế hoạch) — `reopen` trỏ phụ thuộc sang đó.
+        self.replan_of: dict[str, str] = {}
+        self.replaced_by: dict[str, list[str]] = {}
         # ADR-0052: ticket_id → đếm lần `_retry` theo kiểu dừng (`stop_kind.STOP_KINDS`), để `ticket.blocked` nói được
         # ba retry đã cháy vì gì. Chỉ sống trong RAM; bản chụp nằm trong evidence của `ticket.blocked`.
         self.stops: dict[str, Counter[str]] = defaultdict(Counter)
@@ -523,13 +527,27 @@ class DeliveryLead:
     def blocked(self) -> list[str]:
         return [tid for tid, st in self.state.items() if st == "blocked"]
 
+    def note_replacement(self, old: str, new: list[str]) -> None:
+        """Kế hoạch của CR REPLAN thay `old` đã được giao: ticket của nó là chỗ phụ thuộc vào `old` trỏ sang khi mở lại."""
+        self.replaced_by[old] = list(new)
+
     def reopen(self, tid: str, hint: str) -> Task:
-        """Người duyệt escalation: mở lại ticket blocked/escalated với hint, đếm retry lại từ 0."""
+        """Người duyệt escalation: mở lại ticket blocked/escalated với hint, đếm retry lại từ 0.
+
+        ADR-0051 bổ sung 2026-10-16 (hub QLKH-DD-CSV, DDCSV-112/115 phụ thuộc DDCSV-106 đã bị REPLAN thay): phụ thuộc vào
+        ticket bị bỏ trỏ sang ticket thay thế (`replaced_by`); bị bỏ mà không có thay thế thì gỡ (người `approve` = chạy
+        không cần nó, như trước). Phụ thuộc còn lại chưa xong → `waiting`, không giao trên nền thiếu code."""
         if self.state.get(tid) not in {"blocked", "escalated"}:
             raise ValueError(f"{tid}: chỉ mở lại ticket blocked/escalated (đang {self.state.get(tid)})")
-        nt = self.tickets[tid].model_copy(update={"retry": 0, "hint": hint, "human_hint": hint}); self.tickets[tid] = nt
+        deps = [r for d in self.tickets[tid].depends_on
+                for r in (self.replaced_by.get(d, []) if d in self.abandoned else [d])]
+        nt = self.tickets[tid].model_copy(update={"retry": 0, "hint": hint, "human_hint": hint,
+                                                  "depends_on": list(dict.fromkeys(deps))})
+        self.tickets[tid] = nt
         self.stops.pop(tid, None)  # ADR-0052: đếm theo kiểu về 0 cùng `retry`
-        self._publish_task(nt); return nt
+        if self._deps_done(nt): self._publish_task(nt)
+        else: self._set(tid, "waiting")
+        return nt
 
     def mark_done_already_integrated(self, tid: str) -> None:
         """Ticket mà code ĐÃ nằm trong nhánh tích hợp (orchestrator có `tid` trong `integrated`) nhưng sổ sách còn kẹt
@@ -594,7 +612,7 @@ class DeliveryLead:
         imp = p.get("impact") or {}
         if imp.get("kind") == "replan":  # ADR-0051: sổ CR replan — ai đóng ticket cũ là orchestrator (`_retire_replanned`)
             cid, tid = str(p.get("change_id")), str(imp.get("ticket_id"))
-            self.replans_filed.add(cid)
+            self.replans_filed.add(cid); self.replan_of[cid] = tid
             if p.get("decision", "pending") == "pending": self.replan_open[tid] = cid
             else: self.replan_open.pop(tid, None)
             if p.get("decision") == "accepted": self.replan_accepted[tid] = env

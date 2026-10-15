@@ -72,3 +72,26 @@ một việc không làm được; người chỉ có nút "làm lại" và "b�
   nói rõ yêu cầu id mới. Nếu đo thấy planner hay dùng lại id cũ thì sửa prompt ở PR riêng theo 7 bước.
 - Test: `tests/test_replan_adr0051.py` (10 ca, hai chiều); golden `tests/golden/gate_brief/escalation.json` đổi đúng
   một mục checklist.
+
+## Bổ sung 2026-10-16 — mở lại ticket phụ thuộc ticket đã bị thay
+
+**Đo được** (hub QLKH-DD-CSV, 2026-10-15): `REPLAN-DDCSV-106-1` được chấp nhận, kế hoạch thay thế chỉ có DDCSV-117 — planner
+không lập lại DDCSV-112 (phụ thuộc 110, 106) và DDCSV-115 (106, 111) dù `description` có danh sách. Hai ticket `blocked`
+với gate escalation riêng, và cả hai lựa chọn của gate đều sai: `reopen` cũ giao ngay, bỏ qua mọi `depends_on` (110, 111
+còn chưa xong, 117 chưa làm); `close` bỏ việc thật của một CR đã accepted. `reviewer:tu-dong` giữ cả hai gate với đúng
+hint "sửa depends_on: bỏ 106, thêm ticket thay thế, rồi mới reopen" — mà không đường nào làm được việc đó.
+
+**Quyết định** (đóng điểm "còn mở" ở mục Hệ quả):
+
+1. Lead ghi `replan_of` (change_id → ticket bị thay, không xoá khi quyết). Giao kế hoạch có `source_topic=change-requests`
+   và `source_key` là một CR replan đã biết → `replaced_by[ticket cũ] = mọi ticket của kế hoạch đó`
+   (`ticket_fsm._dispatch_plan`, chạy cả khi dựng lại nên không cần audit mới).
+2. `DeliveryLead.reopen`: phụ thuộc vào ticket bị bỏ (`abandoned`) đổi thành ticket thay thế; bị bỏ mà không có thay
+   thế thì gỡ (người `approve` = chạy không cần nó — giữ hành vi cũ). Phụ thuộc còn lại chưa xong → `waiting` (bảng
+   chuyển trạng thái thêm `blocked|escalated → waiting`), xong rồi mới giao như mọi ticket chờ.
+3. Audit `ticket.reopened` mang thêm `depends_on`, `state`; `rehydrate` dựng lại `waiting` + phụ thuộc mới từ dòng này
+   (mở lại vào `waiting` không sinh event `tasks` nào).
+
+Không tự mở lại ticket phụ thuộc khi kế hoạch thay thế ra: vẫn là người/reviewer quyết ở gate escalation của nó (máy
+không ký `gate.decide`, mục "Phương án đã loại"). Gate đó nay có một lựa chọn đúng. Test:
+`tests/test_reopen_phu_thuoc_replan.py` (4 ca, hai chiều).

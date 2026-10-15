@@ -237,8 +237,8 @@ TRANSITIONS: dict[str, set[str]] = {
     "draft": {"dispatched", "waiting"}, "waiting": {"dispatched"}, "dispatched": {"in_progress"},
     "in_progress": {"in_review"}, "in_review": {"changes_requested", "approved"}, "changes_requested": {"dispatched"},
     "approved": {"merged", "changes_requested"}, "merged": {"released", "changes_requested"}, "released": {"closed", "changes_requested"},
-    "blocked": {"dispatched", "escalated"},
-    "escalated": {"dispatched", "closed"}, "closed": set(),
+    "blocked": {"dispatched", "escalated", "waiting"},
+    "escalated": {"dispatched", "closed", "waiting"}, "closed": set(),
 }
 def can_transition(src: str, dst: str) -> bool:
     """Bảng `TRANSITIONS` là của công ty này; cơ chế ở `xagents_core.events`."""
