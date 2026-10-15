@@ -53,6 +53,9 @@ from .tools import ArtifactTools, ToolBox, ToolError, WorkspaceTools, dump_calls
 from .workspace import TicketWorkspace, WorkspaceError
 
 DEFAULT_MAX_INPUT_CHARS = 120_000
+# Khoá payload là LỜI NGƯỜI DUYỆT: `fit` chỉ cắt chúng khi không còn chuỗi nào khác (hub 2026-10-15: hint reject
+# gate spec ~3.000 ký tự là chuỗi dài nhất payload product, bị cắt giữa nên PRD viết lại chỉ sửa mục đầu và cuối).
+PROTECTED_PAYLOAD_KEYS = frozenset({"hint", "human_hint"})
 
 # 4L-3: trần lặp KHÔNG TIẾN BỘ trong vòng tool. Đo được khi chạy thật (2026-09-04): 956.637 token đầu ra cho MỘT
 # ticket, phần lớn là cùng một lời gọi tool lặp lại với y nguyên tham số và y nguyên kết quả — `max_turns` và
@@ -492,7 +495,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         self._usage_extra = dict.fromkeys(USAGE_EXTRA, 0)
         payload, context, budget_ = fit(spec.system_prompt(phase), inp.payload, raw_ctx,
                                         min(spec.max_input_chars or self.max_input_chars, self.max_input_chars),
-                                        paths=paths, context_cutter=cut_prd_sections)
+                                        paths=paths, context_cutter=cut_prd_sections, protect=PROTECTED_PAYLOAD_KEYS)
         if budget_.trimmed:
             self._audit(spec, "context_trimmed", inp, evidence=json.dumps(budget_.report(), ensure_ascii=False))
             inp = inp.model_copy(update={"payload": payload})

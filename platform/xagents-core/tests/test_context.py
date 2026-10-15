@@ -170,6 +170,35 @@ def test_trim_payload_dung_sau_64_vong_khi_khong_the_nho_hon():
 
     assert removed > 0
     assert sum(1 for v in data.values() if len(v) > MIN_KEEP) > 0   # còn ứng viên ⇒ đã hết 64 vòng
+
+
+def test_trim_payload_cat_truong_bao_ve_sau_cung():
+    """Hub thật 2026-10-15 (QLKH-DD-CSV): lý do reject gate spec ~3.000 ký tự đi vào `payload.hint`; payload product
+    ~47k bị tỉa 4–5k, `trim_payload` cắt chuỗi DÀI NHẤT trước nên hint mất 2.900 ký tự giữa, product chỉ đọc được
+    mục đầu và mục cuối. Trường trong `protect` chỉ bị cắt khi không còn chuỗi nào khác để cắt."""
+    hint = "đầu " + "h" * 3000 + " ĐUÔI"
+    payload = {"hint": hint, "draft": "d" * 2500, "previous_spec": {"prd": "p" * 2500}}
+    limit = len(json.dumps(payload, ensure_ascii=False, indent=2)) - 2000
+    data, removed = trim_payload(payload, limit, protect=frozenset({"hint"}))
+    assert data["hint"] == hint and removed >= 2000, "hint nguyên vẹn khi còn draft/previous_spec để cắt"
+    old, _ = trim_payload(payload, limit)   # không truyền protect: hành vi cũ, chuỗi dài nhất (hint) bị cắt trước
+    assert old["hint"] != hint
+
+
+def test_trim_payload_truong_bao_ve_van_bi_cat_khi_het_cho_khac():
+    payload = {"hint": "h" * (MIN_KEEP * 10), "ngan": "x"}
+    data, removed = trim_payload(payload, MIN_KEEP * 3, protect=frozenset({"hint"}))
+    assert removed > 0 and len(data["hint"]) < MIN_KEEP * 10, "trần vẫn là trần: hết chỗ khác thì cắt cả hint"
+
+
+def test_fit_chuyen_protect_xuong_trim_payload():
+    hint = "h" * 3000 + "ĐUÔI"   # chuỗi DÀI NHẤT: không chuyển `protect` xuống thì nó bị cắt trước
+    payload = {"hint": hint, "draft": "d" * 2500, "notes": "n" * 2500}
+    system = "s" * 100
+    # `fit` dành 1 500 ký tự cho khung prompt; không có blackboard thì payload được cả phần còn lại
+    max_chars = len(json.dumps(payload, ensure_ascii=False, indent=2)) + len(system) + 1_500 - 2_000
+    out, _ctx, b = fit(system, payload, {}, max_chars, protect=frozenset({"hint"}))
+    assert out["hint"] == hint and b.trimmed_payload >= 2_000
 # ---------- p3.2a: đo bằng token thật thay vì len(str) ----------
 
 def _golden_case():
