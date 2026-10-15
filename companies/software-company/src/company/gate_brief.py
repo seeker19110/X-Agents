@@ -25,6 +25,7 @@ import sqlite3
 import statistics
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -101,7 +102,7 @@ def excerpt(text: Any, n: int = EXCERPT) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def _section(content: str, head: re.Pattern[str]) -> str | None:
+def _section(content: str, head: re.Pattern[str], score: Callable[[str], Any] = len) -> str | None:
     """Thân DÀI NHẤT trong các heading markdown khớp `head` (tới heading cùng cấp hoặc cao hơn); None nếu không có.
     Hub 2026-10-15: PRD có "### 0.2 Lỗi của hint: NFR thiếu số đo" (2 dòng) trước "## 5. NFR" (11 dòng); lấy heading
     khớp đầu tiên thì đếm nhầm mục ghi lỗi, reviewer reject vì "bằng chứng máy nói khác ruling"."""
@@ -112,7 +113,14 @@ def _section(content: str, head: re.Pattern[str]) -> str | None:
         level = len(m.group(1))
         end = next((x.start() for x in marks[i + 1:] if len(x.group(1)) <= level), len(content))
         bodies.append(content[m.end():end])
-    return max(bodies, key=len) if bodies else None
+    return max(bodies, key=score) if bodies else None
+
+
+def _nfr_section(prd: str) -> str | None:
+    """Mục NFR có NHIỀU dòng có số đo nhất (hoà thì dài nhất). Hub 2026-10-15 (SPEC-CR-DDCSV-DPIA-001): "### 6.5 NFR và
+    ràng buộc Must" là Gherkin, dài hơn "### 5.2 Yêu cầu phi chức năng (NFR)"; lấy thân dài nhất thì hồ sơ ghi "1/35 dòng có
+    ngưỡng" dù 7/7 NFR có số đo, và product bắt đầu đặt tên heading để chiều bộ đếm."""
+    return _section(prd, _NFR_HEAD, lambda b: (sum(1 for ln in b.splitlines() if _MEASURE.search(ln)), len(b)))
 
 
 def _ns(orch: Orchestrator, namespace: str, pid: str | None) -> tuple[str | None, dict[str, Any] | None]:
@@ -193,7 +201,7 @@ def _brief_spec(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
     if prd is None:
         out.append(_item(it, "unknown", ["chưa có prd trên blackboard (hoặc chỉ có con trỏ, không có toàn văn)"], srcs))
     else:
-        sec = _section(prd, _NFR_HEAD)
+        sec = _nfr_section(prd)
         if sec is None:
             hits = [ln for ln in prd.splitlines() if _MEASURE.search(ln)]
             out.append(_item(it, "unknown", ["prd không có mục NFR/phi chức năng riêng",
