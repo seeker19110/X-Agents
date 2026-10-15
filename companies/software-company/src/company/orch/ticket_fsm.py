@@ -21,6 +21,7 @@ from ..gates import GateRequest
 from ..llm import LLMError, TransientError
 from ..roles import PHASE, ROLE, SOURCE
 from ..runner import RunnerError
+from . import spec_security
 from .fsm import Transition
 from .gates_flow import _retire_replanned, spec_changes_asked
 from .guards import pending_clarifications
@@ -109,7 +110,9 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
     project = env.payload.get("project_id") or env.key
     if env.topic == "approved-specs":
         sid = f"SPEC-{env.key}"  # key của CHUỖI: dự án, hoặc mã CR đổi requirement (gate + kế hoạch riêng, hub 2026-10-14)
-        if not o.gate.is_approved(sid):
+        if sid in o.spec_regate:  # ADR-0059 §2: bản viết lại sau khi security chặn → trình lại gate
+            spec_security.regate(o, env, sid)
+        if not spec_security.spec_approved_now(o, sid):
             last = next((g for g in reversed(o.gate.history) if g.subject_id == sid), None)
             # ADR-0031 §3: `request_changes` của người = spec-writer viết lại trên event nguồn với lý do làm `hint`.
             # Khoá theo THẾ HỆ gate (`seq`, khuôn 3): event đầu tới sau quyết định (spec cũ đang hoãn) gọi viết lại
@@ -132,6 +135,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
                     res.actions.append(f"gate:{sid}:{last.decision}"); o._mark(env, res); return res
             return o._defer(env, res, f"gate:{sid}")
         if not o._threat_model(env, sid, res):
+            if res.transient: return o._defer_transient(env, res)  # lượt viết lại (ADR-0059) chưa chạy được
             o._mark(env, res); return res
         live = [pid for pid, p in o.plans.items() if p.get("source_key", p["project_id"]) == env.key and p["source_topic"] == "approved-specs"]
         if live:
@@ -274,7 +278,9 @@ def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> 
     if p["verdict"] == "block":
         o._audit("spec_blocked_by_security", {"subject_id": sid, "findings": p.get("findings", [])}, project_id=env.payload.get("project_id"))
         res.actions.append(f"spec_blocked:{sid}")
-        # Hỏi người qua gate thay vì chỉ audit: duyệt escalation = chạy lại event spec (threat model chấm lại).
+        if spec_security.rework_after_block(o, env, sid, p, res):  # ADR-0059: trả về product, trình lại gate
+            return False
+        # Quá trần / không có event nguồn → hỏi người qua gate: duyệt escalation = chạy lại event spec.
         o._mark_unhandled(env, ROLE.SECURITY, f"security chặn spec: {json.dumps(p.get('findings', []), ensure_ascii=False)[:200]}", res)
         return False
     res.actions.append(f"threat-model:{sid}:{p['verdict']}"); return True

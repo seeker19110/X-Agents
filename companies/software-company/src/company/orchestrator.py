@@ -153,6 +153,8 @@ class Orchestrator:
         turn_continuations: Counter[str]
         missing_threat_model: set[str]
         spec_runtime_reworks: Counter[str]
+        spec_security_reworks: Counter[str]
+        spec_regate: set[str]
         plan_reworks: Counter[str]
         release_sha: dict[str, str]
         delivered: dict[str, dict[str, Any]]

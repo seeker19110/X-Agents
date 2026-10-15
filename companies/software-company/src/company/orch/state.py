@@ -79,6 +79,11 @@ class OrchState:
     # Về 0 khi người duyệt escalation cho chạy lại (`event.retried`).
     spec_runtime_reworks: Counter[str] = field(default_factory=Counter,
                                                metadata=_src("audit:spec.runtime_missing"))
+    # ADR-0059: key chuỗi spec → số lần security chặn spec ở threat model và spec được trả về product; về 0 khi người
+    # duyệt escalation cho chạy lại (`event.retried`).
+    spec_security_reworks: Counter[str] = field(default_factory=Counter, metadata=_src("audit:spec.security_rework"))
+    # ADR-0059: gate `SPEC-<key>` có bản viết lại đang chờ trình lại gate (gỡ ở audit `spec.regate`)
+    spec_regate: set[str] = field(default_factory=set, metadata=_src("audit:spec.security_rework"))
     # event nguồn (approved-specs/change-requests) → số lượt `product[plan]` đã chạy cho nó; quá `PLAN_REWORKS` mới
     # hỏi người. Về 0 khi người duyệt escalation cho chạy lại (`event.retried`).
     plan_reworks: Counter[str] = field(default_factory=Counter, metadata=_src("audit:plan.rework"))

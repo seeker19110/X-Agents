@@ -73,6 +73,7 @@ def _retry_unhandled(o: Orchestrator, subject: str, by: str, reason: str) -> boo
     if env is None: return False
     with o._lock:
         o.processed.discard(env.event_id); o.partial.pop(env.event_id, None); o.unhandled.pop(subject, None)
+        o.spec_security_reworks.pop(str(rec.get("chain") or subject), None)
         o.spec_runtime_reworks.pop(str(rec.get("chain") or subject), None)  # người cho chạy lại → chuỗi spec được thêm một lượt sửa
         o.plan_reworks.pop(str(rec["event_id"]), None)  # ... và `product[plan]` được thêm `PLAN_REWORKS` lượt
     o._audit("event.retried", {**rec, "subject": subject, "by": by, "reason": reason[:300]}, project_id=o.project_for(env))
