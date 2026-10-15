@@ -37,6 +37,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 from .bus import REVIEWER_PREFIX, is_human
+from .cr_reviewer import HOLD_REASON_MAX
 from .events import AuditLog, Envelope
 from .gate_risk import AUTOAPPROVE_ACTOR
 from .gates import GateRequest
@@ -361,7 +362,7 @@ def held(gate: PersistentGate) -> dict[str, dict[str, Any]]:
 
 
 def _hold(gate: PersistentGate, req: GateRequest, principal: str, reason: str, usage: dict[str, Any]) -> str:
-    data = {"subject_id": req.subject_id, "kind": req.kind, "generation": generation_of(req), "reason": reason[:600],
+    data = {"subject_id": req.subject_id, "kind": req.kind, "generation": generation_of(req), "reason": reason[:HOLD_REASON_MAX],
             **usage}
     gate.bus.publish(Envelope(topic="audit-log", key=principal, actor=principal,
                               payload=AuditLog(actor=principal, action=HOLD_ACTION,
