@@ -138,7 +138,7 @@ def test_escalate_lan_hai_khi_gate_da_pending_khong_mo_gate_trung():
     """ticket_fsm.py 173->176: dự án đã escalate vì thiếu runtime (gate `P1` đang `pending`), một spec khác lại
     thiếu runtime lần nữa (vd. spec-writer publish tay, không qua vòng rework) → không mở gate `escalation` thứ
     hai cho cùng dự án, chỉ ghi audit + cập nhật sổ `unhandled`."""
-    from company.orch.ticket_fsm import _spec_runtime_missing
+    from company.orch.spec_runtime import _spec_runtime_missing
     from company.orchestrator import StepResult
 
     h, _seen = _handler_with(lambda p, n: _spec(p.get("project_id", "P1"), kind="application"))

@@ -126,15 +126,16 @@ def rehydrate(o: Orchestrator) -> None:
                 o.plan_reworks[str(d["source_event"])] += 1
                 o.unhandled[str(d["project_id"])] = {"agent": ROLE.PRODUCT, "topic": d.get("source_topic"),
                                                         "event_id": d["source_event"], "subject": str(d["project_id"])}
-            elif a["action"] == "spec.runtime_missing": o.spec_runtime_reworks[str(d["project_id"])] += 1
+            elif a["action"] == "spec.runtime_missing": o.spec_runtime_reworks[str(d.get("chain") or d["project_id"])] += 1
             elif a["action"] == "plan.rework" and d.get("source_event"): o.plan_reworks[str(d["source_event"])] += 1
             elif a["action"] == "spec.runtime_escalated" and d.get("source_event"):
                 o.unhandled[str(d["project_id"])] = {"agent": ROLE.PRODUCT, "topic": d.get("source_topic"),
                                                         "event_id": d["source_event"], "subject": str(d["project_id"]),
+                                                        "chain": str(d.get("chain") or d["project_id"]),
                                                         "error": f"spec_runtime_missing: {str(d.get('reason', ''))[:200]}"}
             elif a["action"] in {"event.retried", "event.abandoned"}:
                 o.unhandled.pop(str(d.get("subject")), None)
-                o.spec_runtime_reworks.pop(str(d.get("subject")), None)
+                o.spec_runtime_reworks.pop(str(d.get("chain") or d.get("subject")), None)
                 o.plan_reworks.pop(str(d.get("event_id")), None)
             elif a["action"] == "gate.decide" and env.event_id in o.gate.closers:  # như `_on_gate_decide`: bản trùng không tính
                 if d.get("subject_id"): quyet.append((env.event_id, str(d["subject_id"])))

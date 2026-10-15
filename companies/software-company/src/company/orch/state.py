@@ -75,7 +75,7 @@ class OrchState:
     # spec chưa có threat model vì agent `security` lỗi
     missing_threat_model: set[str] = field(default_factory=set,
                                            metadata=_src("audit:threat_model.missing"))
-    # project_id → số lần spec bị trả về spec-writer vì `kind=application` mà không có `runtime` hợp lệ (ADR-0031).
+    # key chuỗi spec (project_id, hoặc mã CR) → số lần spec bị trả về spec-writer vì `kind=application` mà không có `runtime` hợp lệ (ADR-0031).
     # Về 0 khi người duyệt escalation cho chạy lại (`event.retried`).
     spec_runtime_reworks: Counter[str] = field(default_factory=Counter,
                                                metadata=_src("audit:spec.runtime_missing"))
