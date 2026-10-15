@@ -90,7 +90,9 @@ Hai nguồn chọn lọc nằm thẳng trong `.claude/`, mỗi nguồn một ti�
   loại đó; dữ liệu thật vẫn cần DPIA thật của chủ dự án.
 - **Agent đại diện khách** (ADR gốc 0038) là hai reviewer: trả lời câu hỏi làm rõ bằng `orchestrator publish
   clarification-answers <json> --actor reviewer:phien-chinh` (nêu nguồn: lệnh chủ dự án hoặc quyết định trên bus) và
-  đứng tên ký văn bản khách (T5b CVE không bản sửa, ADR ghi quyết định chủ dự án đã đưa). DPIA dữ liệu thật,
+  đứng tên ký văn bản khách (T5b CVE không bản sửa, ADR ghi quyết định chủ dự án đã đưa). Nhận xét ticket đang chạy
+  (sự thật agent không đọc được, vd định dạng hub) bằng `orchestrator comment <ticket> --by reviewer:phien-chinh
+  --text …`, cùng điều kiện cờ + phạm vi `toan-bo`; audit `reviewer.comment`. DPIA dữ liệu thật,
   copyleft, dữ liệu ra nước ngoài, A/B chạm PII, đẩy registry vẫn hỏi chủ dự án.
 - Trước khi tin dashboard: hỏi *"chạy cho tôi xem"*. Số xanh có thể xanh vì rỗng.
 - Sửa tay trong worktree của ticket: commit + takeover **trước**, duyệt gate **sau** (duyệt trước là bị reset).

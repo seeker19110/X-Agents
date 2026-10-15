@@ -250,11 +250,15 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str |
 
 def comment(o: Orchestrator, ticket_id: str, by: str, text: str) -> Task:
     """Nhận xét của người cho ticket đang chạy: ghi audit `human.comment` và phát lại task với hint = nhận xét
-    (delivery-lead không tính retry). Ticket blocked/escalated dùng gate escalation."""
-    if not by.split(":", 1)[0] == "human": raise ValueError("by phải là human:<tên>")
+    (delivery-lead không tính retry). Ticket blocked/escalated dùng gate escalation. Reviewer đại diện khách ở phạm vi
+    `toan-bo` cũng được (ADR gốc 0035/0038, cùng điều kiện `cr_actor_refusal`), audit `reviewer.comment` đúng tên mình."""
+    from ..gate_reviewer import PREFIX, cr_actor_refusal  # nhập lười: gate_reviewer nhập orchestrator
+    if by.startswith(PREFIX):
+        if (why := cr_actor_refusal(by)): raise ValueError(why)
+    elif not by.split(":", 1)[0] == "human": raise ValueError("by phải là human:<tên>")
     t = o.lead.tickets.get(ticket_id)
     if t is None: raise ValueError(f"không có ticket {ticket_id}")
-    o._audit("human.comment", {"ticket_id": ticket_id, "by": by, "text": text[:2000], "state": o.lead.state.get(ticket_id)},
+    o._audit("reviewer.comment" if by.startswith(PREFIX) else "human.comment", {"ticket_id": ticket_id, "by": by, "text": text[:2000], "state": o.lead.state.get(ticket_id)},
                 actor=by, ticket_id=ticket_id, project_id=t.project_id)
     return o.lead.human_hint(ticket_id, text)
 
