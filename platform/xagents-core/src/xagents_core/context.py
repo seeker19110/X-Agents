@@ -77,12 +77,15 @@ def _set(obj: Any, path: Path, value: str) -> None:
 
 def trim_payload(payload: dict[str, Any], limit: int,
                  counter: TokenCounter | None = None,
-                 protect: frozenset[str] = frozenset()) -> tuple[dict[str, Any], int]:
+                 protect: frozenset[str] = frozenset(),
+                 hard_limit: int | None = None) -> tuple[dict[str, Any], int]:
     """Cắt chuỗi dài nhất trước cho tới khi JSON của payload ≤ limit (đo bằng `counter`, mặc định = ký tự).
 
     `protect`: khoá cấp một của payload (vd `hint` — lời người duyệt) chỉ bị cắt khi không còn chuỗi nào khác để
-    cắt. Hub 2026-10-15: lý do reject gate spec ~3.000 ký tự là chuỗi dài nhất của payload nên bị cắt giữa trước,
-    product chỉ đọc được mục đầu và mục cuối. Rỗng = hành vi cũ từng byte.
+    cắt, VÀ payload còn vượt `hard_limit` (trần cứng; mặc định = `limit`) — và chỉ cắt vừa về trần cứng. Hub
+    2026-10-15: lý do reject gate spec ~3.000 ký tự là chuỗi dài nhất payload product nên bị cắt giữa trước; sau khi
+    bảo vệ, payload vẫn có 52k ký tự draft gồm 604 chuỗi ngắn không cắt được nên vòng lặp quay lại cắt hint dù
+    `room` còn chỗ. Rỗng = hành vi cũ từng byte.
 
     Trả về (payload mới, số KÝ TỰ đã cắt) — `trimmed_*` luôn là ký tự vì đó là thứ người đọc audit đối
     chiếu được với file gốc. `counter` chỉ quyết định NGÂN SÁCH; chọn cắt ở đâu vẫn theo chỉ số ký tự, vì
@@ -95,10 +98,15 @@ def trim_payload(payload: dict[str, Any], limit: int,
         size = measure(json.dumps(data, ensure_ascii=False, indent=2))
         if size <= limit: break
         strs = [(p, s) for p, s in _strings(data) if len(s) > MIN_KEEP]
-        strs = [x for x in strs if not (x[0] and x[0][0] in protect)] or strs
+        free = [x for x in strs if not (x[0] and x[0][0] in protect)]
+        cap = limit
+        if not free and strs and hard_limit is not None:
+            if size <= hard_limit: break   # chỉ còn lời được bảo vệ, payload chưa vượt trần cứng: giữ nguyên
+            cap = hard_limit
+        strs = free or strs
         if not strs: break
         path, s = max(strs, key=lambda x: len(x[1]))
-        target = max(MIN_KEEP, len(s) - (size - limit) - 80)
+        target = max(MIN_KEEP, len(s) - (size - cap) - 80)
         cut = cut_middle(s, target, note=f"trường {'.'.join(map(str, path))}")
         removed += len(s) - len(cut); _set(data, path, cut)
     return data, removed
@@ -164,7 +172,9 @@ def fit(system: str, payload: dict[str, Any], context: dict[str, dict[str, Any]]
     room = max(max_input_chars - measure(system) - 1_500, MIN_KEEP * 4)  # 1 500 cho khung prompt (tiêu đề, yêu cầu)
     ctx_wanted = sum(measure(str(v.get("content") or "")) for v in context.values()) + 200 * len(context)
     payload_limit = max(int(room * payload_share), room - ctx_wanted)  # blackboard nhỏ thì payload được rộng hơn
-    payload, b.trimmed_payload = trim_payload(payload, min(payload_limit, room), counter, protect)
+    # Lời được bảo vệ chỉ bị cắt khi vượt cả `room` (blackboard nhường chỗ — đọc lại được qua tool, ADR-0049).
+    payload, b.trimmed_payload = trim_payload(payload, min(payload_limit, room), counter, protect,
+                                              hard_limit=room if protect else None)
     payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
     b.payload_chars = len(payload_json)
     ctx_room = room - measure(payload_json)
