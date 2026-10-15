@@ -119,7 +119,8 @@ Read/Grep/Glob) đọc hồ sơ và in bản tóm; người ký bằng `gate_cli
   lead cấu hình khác) — không phải hai guardrail cùng bắt một trường hợp.
 - **Ticket bị bỏ** (người `reject` ở gate escalation): `closed` nhưng vào `DeliveryLead.abandoned`, KHÔNG thoả
   `depends_on` của ticket khác; ticket đang `waiting` vì nó chuyển `blocked` (mở gate escalation) thay vì được dispatch
-  trên nền thiếu code. Audit `ticket.abandoned`, dựng lại khi mở lại. RC bị huỷ (`release.void`) không giữ ticket:
+  trên nền thiếu code. Audit `ticket.abandoned`, dựng lại khi mở lại. Người mở lại ticket phụ thuộc đó: phụ thuộc vào
+  ticket đã bị REPLAN thay trỏ sang ticket của kế hoạch thay thế, chưa xong thì `waiting` (ADR-0051 bổ sung 2026-10-16). RC bị huỷ (`release.void`) không giữ ticket:
   khi gom release, ticket approved của RC huỷ vào RC kế tiếp (`DeliveryLead.void_release`).
 - **Bus**: `InMemoryBus` cho test/demo (RLock, an toàn nhiều thread); đổi sang Redis Streams/Kafka bằng cách giữ nguyên
   interface `publish/subscribe/replay`.

@@ -153,6 +153,10 @@ def rehydrate(o: Orchestrator) -> None:
                 o.turn_continuations[str(d["ticket_id"])] += 1
             elif a["action"] == "ticket.reopened":  # người mở lại: đếm lại từ 0 như `retry` (`DeliveryLead.reopen`)
                 o.turn_continuations.pop(str(d["ticket_id"]), None); o.conflict_retries.pop(str(d["ticket_id"]), None)
+                if d.get("state") == "waiting" and (t := o.lead.tickets.get(str(d["ticket_id"]))):
+                    # Mở lại vào `waiting` không có event `tasks` nào: phụ thuộc đã đổi và trạng thái chỉ nằm ở dòng này.
+                    o.lead.tickets[t.ticket_id] = t.model_copy(update={"depends_on": list(d.get("depends_on") or [])})
+                    o.lead.state[t.ticket_id] = "waiting"
             elif a["action"] == "release.finding_waived":
                 o.lead.release_waived[str(d["release_id"])].add(str(d["source"]))
             elif a["action"] == "debt.escalated": o.debt_gate[str(d["project_id"])] = d

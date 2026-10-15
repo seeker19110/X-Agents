@@ -301,6 +301,8 @@ def _dispatch_plan(o: Orchestrator, plan_id: str, replaying: bool = False, cause
                 o.lead.dispatch(t, plan_id, cause); pending.remove(t); done.append(t.ticket_id)
     finally:
         o.lead.replaying = prev
+    if plan.get("source_topic") == "change-requests" and (old := o.lead.replan_of.get(str(plan.get("source_key")))):
+        o.lead.note_replacement(old, [t["ticket_id"] for t in plan["tickets"]])  # ADR-0051 bổ sung 2026-10-16
     return done
 
 
