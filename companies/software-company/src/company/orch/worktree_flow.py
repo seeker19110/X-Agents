@@ -258,9 +258,11 @@ def comment(o: Orchestrator, ticket_id: str, by: str, text: str) -> Task:
     elif not by.split(":", 1)[0] == "human": raise ValueError("by phải là human:<tên>")
     t = o.lead.tickets.get(ticket_id)
     if t is None: raise ValueError(f"không có ticket {ticket_id}")
-    o._audit("reviewer.comment" if by.startswith(PREFIX) else "human.comment", {"ticket_id": ticket_id, "by": by, "text": text[:2000], "state": o.lead.state.get(ticket_id)},
+    st = o.lead.state.get(ticket_id)
+    nt = o.lead.human_hint(ticket_id, text)  # kiểm trạng thái TRƯỚC audit: bị từ chối thì không có nhận xét nào để ghi
+    o._audit("reviewer.comment" if by.startswith(PREFIX) else "human.comment", {"ticket_id": ticket_id, "by": by, "text": text[:2000], "state": st},
                 actor=by, ticket_id=ticket_id, project_id=t.project_id)
-    return o.lead.human_hint(ticket_id, text)
+    return nt
 
 def takeover(o: Orchestrator, ticket_id: str, by: str, message: str | None = None) -> Envelope:
     """Người sửa tay trong worktree `ticket/<id>` rồi giao lại: CODE chạy lint/test thật, commit (nếu còn thay đổi chưa

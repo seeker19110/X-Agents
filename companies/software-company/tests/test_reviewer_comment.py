@@ -49,3 +49,17 @@ def test_reviewer_ngoai_toan_bo_bi_tu_choi(monkeypatch, flag, scope):
     _, orch = _orch()
     with pytest.raises(ValueError, match="reviewer"):
         orch.comment(_dang_chay(orch), "reviewer:phien-chinh", "x")
+
+
+@pytest.mark.parametrize("by,action", [("human:lead", "human.comment"), ("reviewer:phien-chinh", "reviewer.comment")])
+def test_ticket_khong_nhan_xet_duoc_thi_khong_ghi_audit(monkeypatch, by, action):
+    """Hub thật 2026-10-15: nhận xét ticket `waiting` bị từ chối nhưng audit đã ghi TRƯỚC khi kiểm trạng thái — thử lại
+    mỗi 2 phút để lại 182 dòng `reviewer.comment` cho nhận xét chưa từng tới agent."""
+    monkeypatch.setenv(FLAG_ENV, "1")
+    monkeypatch.setenv(SCOPE_ENV, SCOPE_TOAN_BO)
+    bus, orch = _orch()
+    tid = _dang_chay(orch)
+    orch.lead.state[tid] = "waiting"
+    with pytest.raises(ValueError, match="waiting"):
+        orch.comment(tid, by, "x")
+    assert not [e for e in bus.replay(topic="audit-log") if e.payload["action"] == action]
