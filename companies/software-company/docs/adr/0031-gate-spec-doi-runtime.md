@@ -33,6 +33,16 @@ nhất để trả lời và đắt nhất để bỏ qua.
   không đi qua đường tắt mà sản phẩm thật không có.
 - Chưa làm: kiểm `runtime.command` thật sự chạy ngay ở Gate 1 (chưa có code để chạy); ảnh chụp UI (ADR-0033 dự kiến).
 
+## Bổ sung 2026-10-15 — đếm theo chuỗi spec, trả về kèm runtime đã duyệt
+- Bộ đếm `spec_runtime_reworks` (mục 3) tính theo **key của chuỗi spec** (`approved-specs.key`: dự án, hoặc mã CR —
+  cùng key với gate `SPEC-<key>`), không theo dự án. Audit `spec.runtime_missing`/`spec.runtime_escalated` và sổ
+  `unhandled` mang `chain`; `event.retried` trả lượt sửa cho đúng chuỗi đó. Gate `escalation` vẫn ở cấp dự án.
+- `hint` trả về product kèm `runtime` của spec gần nhất cùng dự án đã qua gate `SPEC-*` (chuỗi khác) để chép nguyên
+  văn khi thay đổi không đổi cách chạy.
+- Hub thật (QLKH-DD-CSV): hai CR ra spec cùng phút, cả hai thiếu `runtime.deploy`; lần thiếu đầu của CR thứ hai bị
+  tính là lần 2 của dự án, escalate ngay và tạm dừng luôn bản viết lại của CR kia. Cả hai spec đoán lệnh khởi động
+  vì product không đọc được PRD cũ, trong khi runtime đúng đã qua gate ở CR-DDCSV-INFRA-002.
+
 ## Liên quan
 ADR-0029 (smoke do orchestrator chạy), ADR-0030 (sổ Ruling), ADR-0010/0013 (model khai, code chứng), B1 trong
 `../../../docs/archive/DAC-TA-NANG-CAP-2026-09.md`, báo cáo `2026-09-06-ban-giao-khong-chay-duoc.md`.

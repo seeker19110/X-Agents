@@ -74,6 +74,7 @@ from .orch import (
     release_fsm,
     retry_flow,
     scheduler,
+    spec_runtime,
     ticket_fsm,
     verify,
     worktree_flow,
@@ -336,7 +337,7 @@ class Orchestrator:
     _superseded = ticket_fsm._superseded
     _note_closed = ticket_fsm._note_closed
     _plan = ticket_fsm._plan
-    _spec_runtime_missing = ticket_fsm._spec_runtime_missing
+    _spec_runtime_missing = spec_runtime._spec_runtime_missing
     _threat_model = ticket_fsm._threat_model
     _assume_clarifications = ticket_fsm._assume_clarifications
     _check_plan = guards._check_plan  # tách sang orch/guards.py (2026-09-22): ticket_fsm.py chạm trần 400 dòng
