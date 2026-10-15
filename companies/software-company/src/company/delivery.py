@@ -25,6 +25,9 @@ from .roles import LEAD_ACTOR, SOURCE
 from .stop_kind import STOP_KINDS
 
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
+# Trần lời người duyệt (lý do gate, hint) khi chuyển cho agent: đủ dài để không cắt giữa ý — hub 2026-10-15 cắt ở
+# 500/1000 ký tự làm product chỉ nhận mục đầu của hint 6 mục —, chỉ để chặn payload phình.
+HINT_MAX = 8000
 
 
 class DeliveryLead:
@@ -284,9 +287,9 @@ class DeliveryLead:
         desc = (f"Ticket {t.ticket_id} ({t.title}) {why or f'hết {self.max_retries} lần retry'}; lỗi cuối: {hint or '?'}. "
                 f"Lập lại kế hoạch cho phần việc này (requirement {t.requirement_id}): cắt ticket khác, id MỚI, "
                 f"không dùng lại {t.ticket_id}. Ticket đang chờ nó: {deps or 'không'}.")
-        cr = ChangeRequest(change_id=cid, project_id=t.project_id, requested_by=LEAD_ACTOR, description=desc[:1000],
+        cr = ChangeRequest(change_id=cid, project_id=t.project_id, requested_by=LEAD_ACTOR, description=desc[:HINT_MAX + 1000],
                            impact={"kind": "replan", "ticket_id": t.ticket_id, "generation": gen, "retry": t.retry + 1,
-                                   "hint": (hint or "")[:500], "dependents": deps, "stops": dict(self.stops[t.ticket_id])})
+                                   "hint": (hint or "")[:HINT_MAX], "dependents": deps, "stops": dict(self.stops[t.ticket_id])})
         self._emit(Envelope(topic="change-requests", key=cid, actor=LEAD_ACTOR, payload=cr.model_dump()))
 
     def request_change_after_noop_rework(self, tid: str) -> str:
@@ -299,9 +302,9 @@ class DeliveryLead:
         desc = (f"Ticket {tid} ({t.title}) bị trả về làm lại (release {', '.join(releases) or '?'}) nhưng lượt làm lại "
                 f"không đổi code: nhánh không có commit mới so với nhánh tích hợp, việc cần làm nằm NGOÀI ticket này. "
                 f"Lập kế hoạch ticket MỚI (requirement {t.requirement_id}) cho: {hint}")
-        cr = ChangeRequest(change_id=cid, project_id=t.project_id, requested_by=LEAD_ACTOR, description=desc[:1000],
+        cr = ChangeRequest(change_id=cid, project_id=t.project_id, requested_by=LEAD_ACTOR, description=desc[:HINT_MAX + 1000],
                            impact={"kind": "rework_no_change", "ticket_id": tid, "retry": t.retry,
-                                   "releases": releases, "hint": hint[:500]})
+                                   "releases": releases, "hint": hint[:HINT_MAX]})
         self._emit(Envelope(topic="change-requests", key=cid, actor=LEAD_ACTOR, payload=cr.model_dump()))
         return cid
 

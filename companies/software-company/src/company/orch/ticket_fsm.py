@@ -14,6 +14,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from ..delivery import HINT_MAX
 from ..events import Envelope, Task
 from ..gate_risk import request_gate
 from ..gates import GateRequest
@@ -121,7 +122,7 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
                     request_gate(o.gate, GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
                                                   checklist=["prd", "acceptance-criteria", "ux-flow", "risks"]))
                 elif changes is not None and (cause := _spec_source(o, env, project)) is not None:
-                    _spec_rework(o, env, cause, f"người yêu cầu sửa spec ở gate {sid}: {last.reason}"[:500], res)
+                    _spec_rework(o, env, cause, f"người yêu cầu sửa spec ở gate {sid}: {last.reason}"[:HINT_MAX], res)
                     if res.transient:  # `_act_plan` trả True nên `process()` không tự hoãn: hoãn ở đây, khoá chưa ghi
                         return o._defer_transient(env, res)
                     o._remember(changes)
