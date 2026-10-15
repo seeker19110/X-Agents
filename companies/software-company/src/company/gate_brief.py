@@ -123,6 +123,30 @@ def _ns(orch: Orchestrator, namespace: str, pid: str | None) -> tuple[str | None
     return sc.content, src
 
 
+def _prd_of(orch: Orchestrator, pid: str | None, key: str | None) -> tuple[str | None, dict[str, Any] | None]:
+    """PRD mà gate `SPEC-<key>` phải đối chiếu. Spec của dự án (key = project_id): bản mới nhất. Spec của một chuỗi CR:
+    bản `prd` HIỆN HÀNH ngay sau khi chuỗi đó ra spec mới nhất — gồm bản chính lượt đó ghi kèm (context_writes đi sau
+    event spec), trước khi chuỗi khác ra spec. Hub 2026-10-15: hai CR mở gate spec cùng lúc, hồ sơ CR trước đọc PRD
+    của CR sau."""
+    if pid is None or key is None or key == pid:
+        return _ns(orch, "prd", pid)
+    ck = orch.blackboard.context_key("prd", pid)
+    envs = list(orch.bus.replay())
+    last = max((i for i, e in enumerate(envs) if e.topic == "approved-specs" and e.key == key), default=None)
+    if last is None:
+        return _ns(orch, "prd", pid)
+    cur: Envelope | None = None
+    for i, e in enumerate(envs):
+        if i > last and e.topic == "approved-specs" and e.key != key: break
+        if e.topic == "shared-context" and e.key == ck: cur = e
+    if cur is None:
+        return _ns(orch, "prd", pid)
+    p = cur.payload; content = p.get("content")
+    path = orch.blackboard.path("prd", int(p["version"]), project_id=pid) if content is not None else None
+    return content, {"kind": "namespace", "ref": "prd", "version": p.get("version"), "path": str(path) if path else None,
+                     "content_ref": p.get("content_ref")}
+
+
 def _topic_src(topic: str, key: str, envs: list[Envelope]) -> dict[str, Any]:
     return {"kind": "topic", "ref": topic, "key": key, "event_ids": [e.event_id for e in envs][-20:]}
 
@@ -159,7 +183,7 @@ def _project_of(orch: Orchestrator, kind: str, subject: str) -> str | None:
 
 def _brief_spec(orch: Orchestrator, g: GateSection, subject: str, pid: str | None) -> tuple[list[dict], list[dict], dict]:
     items = _by_id(g); out: list[dict[str, Any]] = []; unavailable: list[dict[str, Any]] = []
-    prd, prd_src = _ns(orch, "prd", pid)
+    prd, prd_src = _prd_of(orch, pid, subject[5:] if subject.startswith("SPEC-") else pid)
     srcs = [prd_src] if prd_src else []
 
     it = items["spec.nfr-co-so-do"]
