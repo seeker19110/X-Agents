@@ -93,11 +93,19 @@ def _image_summary(ref: str, doc: dict[str, Any]) -> dict[str, Any]:
         "by_severity": _by_severity(vulns),
         "total": len(vulns),
         "fixable": sum(1 for v in vulns if v.get("FixedVersion")),
-        # Trên TOÀN BỘ, không theo trần `MAX_FINDINGS` — điều kiện ký miễn của ADR gốc 0036 ("mọi CRITICAL/HIGH không có
-        # bản sửa" + liệt kê mã CVE); hub 2026-10-14 REL-074: image db 62 C/H, `findings` chỉ 50 → reviewer giữ.
+        **_serious(vulns),
+        "findings": [_finding(v) for v in serious[:MAX_FINDINGS]],
+    }
+
+
+def _serious(vulns: list[dict[str, Any]]) -> dict[str, Any]:
+    """CRITICAL/HIGH trên TOÀN BỘ, không theo trần `MAX_FINDINGS` — điều kiện ký miễn của ADR gốc 0036 ("mọi
+    CRITICAL/HIGH không có bản sửa" + liệt kê mã CVE); hub 2026-10-14 REL-074: image db 62 C/H, `findings` chỉ 50 →
+    reviewer giữ. Lock file (trivy fs) cũng cần: hub 2026-10-15 REL-090 mục `requirements.lock` luôn `complete=false`."""
+    serious = [v for v in vulns if v.get("Severity") in ("CRITICAL", "HIGH")]
+    return {
         "serious_fixable": sum(1 for v in serious if v.get("FixedVersion")),
         "serious_ids": sorted({str(v.get("VulnerabilityID")) for v in serious}),
-        "findings": [_finding(v) for v in serious[:MAX_FINDINGS]],
     }
 
 
@@ -128,6 +136,7 @@ def vuln_evidence(
                 "packages": len(res.get("Packages") or []),
                 "by_severity": _by_severity(vulns),
                 "total": len(vulns),
+                **_serious(vulns),
                 "findings": [_finding(v) for v in vulns[:MAX_FINDINGS]],
             }
         )

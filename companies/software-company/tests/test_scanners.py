@@ -227,6 +227,24 @@ def test_vuln_evidence_cat_danh_sach_phat_hien_theo_tran(tmp_path, monkeypatch):
     assert ev["targets"][0]["total"] == 80, "số đầy đủ vẫn còn, chỉ danh sách bị cắt"
 
 
+def test_vuln_evidence_lock_file_co_serious_ids_tren_toan_bo_nhu_image(tmp_path, monkeypatch):
+    """Hub 2026-10-15 (QLKH-DD-CSV REL-090): mục `requirements.lock` trong hồ sơ gate luôn `complete=false` vì chỉ
+    image có `serious_ids`/`serious_fixable` — reviewer không đối chiếu được điều kiện ký miễn ADR gốc 0036 cho lock file.
+    Tính trên TOÀN BỘ CRITICAL/HIGH, không theo trần `findings`."""
+    vulns = [{"VulnerabilityID": f"CVE-L{i}", "PkgName": "p", "Severity": "LOW"} for i in range(60)]
+    vulns += [{"VulnerabilityID": f"CVE-H{i}", "PkgName": "q", "Severity": "HIGH"} for i in range(3)]
+    vulns += [{"VulnerabilityID": "CVE-C1", "PkgName": "r", "Severity": "CRITICAL", "FixedVersion": "2.0"}]
+    vulns += [{"VulnerabilityID": "CVE-H0", "PkgName": "q2", "Severity": "HIGH", "FixedVersion": "1.1"}]
+    t = FakeTools(fs={"Results": [{"Target": "requirements.lock", "Type": "pip", "Vulnerabilities": vulns}]})
+    monkeypatch.setattr(sc, "which", t.which)
+    monkeypatch.setattr(sc, "run", t.run)
+    target = vuln_evidence(tmp_path, "s", [])["targets"][0]
+    assert target["serious_ids"] == ["CVE-C1", "CVE-H0", "CVE-H1", "CVE-H2"], (
+        "mã trùng gộp một, ngoài trần findings vẫn có"
+    )
+    assert target["serious_fixable"] == 2
+
+
 def test_vuln_evidence_timeout_thanh_unverified(tmp_path, monkeypatch):
     def run(argv, **kw):
         if argv[1] == "--version":
