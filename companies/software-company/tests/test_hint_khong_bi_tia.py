@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 
+from company.blackboard import Blackboard
 from company.bus import InMemoryBus
 from company.llm import FakeClient
 from company.runner import PROTECTED_PAYLOAD_KEYS, AgentRunner
@@ -18,10 +19,14 @@ from test_adr0012 import REVIEW, _pr_env
 DUOI = "ĐUÔI-HINT-(f)"
 
 
-def _chay(**extra):
+def _chay(prd: str | None = None, **extra):
     bus = InMemoryBus()
     client = FakeClient(responses=[REVIEW])
-    runner = AgentRunner(bus, client, max_input_chars=200_000)
+    bb = None
+    if prd is not None:
+        bb = Blackboard(bus)
+        bb.write("product", "prd", "docs/prd.md", "PRD", content=prd)
+    runner = AgentRunner(bus, client, max_input_chars=200_000, blackboard=bb)
     spec = runner.agents["qa"]
     spec.max_input_chars = len(spec.system_prompt(None)) + 1_500 + 30_000
     runner.run("qa", _pr_env(**extra), "review-results")
@@ -39,4 +44,17 @@ def test_hint_dai_nhat_van_toi_prompt_nguyen_ven():
 
 
 def test_khoa_duoc_bao_ve():
-    assert {"hint", "human_hint"} <= PROTECTED_PAYLOAD_KEYS
+    assert {"hint", "human_hint", "answers"} <= PROTECTED_PAYLOAD_KEYS
+
+
+def test_hint_va_dap_an_nguyen_ven_khi_phan_con_lai_la_chuoi_ngan():
+    """Hub thật 2026-10-15 (sau #514): `requirements_draft` 52k ký tự gồm 604 chuỗi ngắn không cắt được; hết chuỗi
+    thường để cắt thì vòng lặp quay sang cắt hint (−2.491) và đáp án làm rõ (−522/−479/−108) dù `room` còn chỗ."""
+    hint = "(a) " + "h" * 3_000 + " " + DUOI
+    answers = [{"question_id": f"Q-{i}", "answer": f"đáp án {i} " + "a" * 900 + f" HẾT-{i}"} for i in range(3)]
+    draft = {"requirements": [{"id": f"R-{i:03d}", "text": "t" * 300} for i in range(60)]}  # ~20k chuỗi ngắn
+    # room 30k: payload ~27k vượt phần chia mềm (0.6·room, vì blackboard có PRD 60k) nhưng chưa vượt room
+    _bus, client = _chay(prd="p" * 60_000, hint=hint, answers=answers, requirements_draft=draft)
+    user = client.calls[0]["user"]
+    assert DUOI in user and "h" * 3_000 in user, "hint nguyên vẹn"
+    assert all(f"đáp án {i} " + "a" * 900 + f" HẾT-{i}" in user for i in range(3)), "đáp án của khách nguyên vẹn"

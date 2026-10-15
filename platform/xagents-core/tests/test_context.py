@@ -199,6 +199,31 @@ def test_fit_chuyen_protect_xuong_trim_payload():
     max_chars = len(json.dumps(payload, ensure_ascii=False, indent=2)) + len(system) + 1_500 - 2_000
     out, _ctx, b = fit(system, payload, {}, max_chars, protect=frozenset({"hint"}))
     assert out["hint"] == hint and b.trimmed_payload >= 2_000
+
+
+def test_truong_bao_ve_chi_bi_cat_khi_vuot_tran_cung():
+    """Hub thật 2026-10-15 (sau #514): payload product có `requirements_draft` 52k ký tự gồm 604 chuỗi ngắn (< MIN_KEEP,
+    không cắt được). Hết chuỗi thường để cắt mà vẫn trên `limit` (phần chia mềm của payload) thì vòng lặp quay sang cắt
+    hint — mất 2.491 ký tự. Trường được bảo vệ chỉ bị cắt khi payload vượt `hard_limit` (trần cứng)."""
+    hint = "đầu " + "h" * 3000 + " ĐUÔI"
+    payload = {"hint": hint, "draft": [f"r{i:03d}" * 20 for i in range(100)]}   # 100 chuỗi 80 ký tự: không cắt được
+    size = len(json.dumps(payload, ensure_ascii=False, indent=2))
+    data, removed = trim_payload(payload, size - 2_000, protect=frozenset({"hint"}), hard_limit=size + 10)
+    assert data["hint"] == hint and removed == 0, "dưới trần cứng: không cắt hint dù vượt phần chia mềm"
+    data, removed = trim_payload(payload, size - 2_000, protect=frozenset({"hint"}), hard_limit=size - 1_000)
+    assert data["hint"] != hint and 1_000 <= removed < 2_000, "vượt trần cứng: cắt hint vừa đủ về trần cứng"
+
+
+def test_fit_khong_cat_truong_bao_ve_khi_con_cho_trong_room():
+    hint = "đầu " + "h" * 3000 + " ĐUÔI"
+    payload = {"hint": hint, "draft": [f"r{i:03d}" * 20 for i in range(400)]}   # ~37k ký tự chuỗi ngắn
+    ctx = {"prd": {"version": 1, "content_ref": "docs/prd.md", "summary": "PRD", "content": "p" * 60_000}}
+    system = "s" * 1_000
+    size = len(json.dumps(payload, ensure_ascii=False, indent=2))
+    max_chars = len(system) + 1_500 + size + 5_000   # room đủ cho payload, phần chia mềm 0.6·room thì không
+    out, out_ctx, _b = fit(system, payload, ctx, max_chars, protect=frozenset({"hint"}))
+    assert out["hint"] == hint, "blackboard nhường chỗ (đọc lại được qua tool), lời người không bị cắt"
+    assert len(out_ctx["prd"].get("content") or "") < 60_000
 # ---------- p3.2a: đo bằng token thật thay vì len(str) ----------
 
 def _golden_case():
