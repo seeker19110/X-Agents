@@ -102,14 +102,17 @@ def excerpt(text: Any, n: int = EXCERPT) -> str:
 
 
 def _section(content: str, head: re.Pattern[str]) -> str | None:
-    """Thân của heading markdown đầu tiên khớp `head` (tới heading cùng cấp hoặc cao hơn); None nếu không có."""
+    """Thân DÀI NHẤT trong các heading markdown khớp `head` (tới heading cùng cấp hoặc cao hơn); None nếu không có.
+    Hub 2026-10-15: PRD có "### 0.2 Lỗi của hint: NFR thiếu số đo" (2 dòng) trước "## 5. NFR" (11 dòng); lấy heading
+    khớp đầu tiên thì đếm nhầm mục ghi lỗi, reviewer reject vì "bằng chứng máy nói khác ruling"."""
     marks = list(_HEADING.finditer(content))
+    bodies: list[str] = []
     for i, m in enumerate(marks):
         if not head.search(m.group(2)): continue
         level = len(m.group(1))
         end = next((x.start() for x in marks[i + 1:] if len(x.group(1)) <= level), len(content))
-        return content[m.end():end]
-    return None
+        bodies.append(content[m.end():end])
+    return max(bodies, key=len) if bodies else None
 
 
 def _ns(orch: Orchestrator, namespace: str, pid: str | None) -> tuple[str | None, dict[str, Any] | None]:
