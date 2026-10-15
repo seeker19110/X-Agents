@@ -16,6 +16,9 @@ from .roles import LEAD_ACTOR, ROLE
 
 MACHINE_KINDS = frozenset({"replan", "rework_no_change", "release_gate_reject"})
 CR_HOLD_ACTION = "reviewer.cr_hold"
+#: Trần lý do "máy giữ" ghi vào audit (gate lẫn CR). Lý do giữ là điểm bắt đầu của phiên chính (ADR gốc 0034); trần cũ
+#: 600 cắt giữa câu ở REL-078/082/084 (hub 2026-10-14/15). Vẫn có trần để một đầu ra hỏng không phình audit-log.
+HOLD_REASON_MAX = 8000
 CR_DECISIONS = ("accepted", "rejected", "hold")
 CR_SCHEMA = {
     "type": "object",
@@ -148,7 +151,7 @@ def brief(bus: Any, cid: str) -> str:
 
 
 def _hold(bus: Any, cid: str, principal: str, reason: str, usage: dict[str, Any]) -> str:
-    data = {"change_id": cid, "reason": reason[:600], **usage}
+    data = {"change_id": cid, "reason": reason[:HOLD_REASON_MAX], **usage}
     bus.publish(
         Envelope(
             topic="audit-log",
