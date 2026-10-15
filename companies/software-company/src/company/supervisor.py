@@ -136,7 +136,9 @@ class Supervisor(SupervisorBase):
                 self._check_project(a.project_id)
         elif env.topic == "review-results":
             self._count_debt(env)
-            if env.payload.get("verdict") in {"fail", "block"}:
+            # Threat model của spec mang key `SPEC-<chuỗi>` — trùng subject gate spec, escalation ở đây đè thế hệ gate
+            # đang chờ. Chuỗi spec có trần riêng `SPEC_SECURITY_REWORKS` (ADR-0059).
+            if env.payload.get("verdict") in {"fail", "block"} and not env.key.startswith("SPEC-"):
                 sig = env.payload.get("root_cause") or " | ".join(f["text"] for f in env.payload.get("findings", []))
                 sigs = self.error_signatures[env.key]; sigs.append(sig)
                 if sigs.count(sig) >= 2:
