@@ -76,8 +76,13 @@ def _set(obj: Any, path: Path, value: str) -> None:
 
 
 def trim_payload(payload: dict[str, Any], limit: int,
-                 counter: TokenCounter | None = None) -> tuple[dict[str, Any], int]:
+                 counter: TokenCounter | None = None,
+                 protect: frozenset[str] = frozenset()) -> tuple[dict[str, Any], int]:
     """Cắt chuỗi dài nhất trước cho tới khi JSON của payload ≤ limit (đo bằng `counter`, mặc định = ký tự).
+
+    `protect`: khoá cấp một của payload (vd `hint` — lời người duyệt) chỉ bị cắt khi không còn chuỗi nào khác để
+    cắt. Hub 2026-10-15: lý do reject gate spec ~3.000 ký tự là chuỗi dài nhất của payload nên bị cắt giữa trước,
+    product chỉ đọc được mục đầu và mục cuối. Rỗng = hành vi cũ từng byte.
 
     Trả về (payload mới, số KÝ TỰ đã cắt) — `trimmed_*` luôn là ký tự vì đó là thứ người đọc audit đối
     chiếu được với file gốc. `counter` chỉ quyết định NGÂN SÁCH; chọn cắt ở đâu vẫn theo chỉ số ký tự, vì
@@ -90,6 +95,7 @@ def trim_payload(payload: dict[str, Any], limit: int,
         size = measure(json.dumps(data, ensure_ascii=False, indent=2))
         if size <= limit: break
         strs = [(p, s) for p, s in _strings(data) if len(s) > MIN_KEEP]
+        strs = [x for x in strs if not (x[0] and x[0][0] in protect)] or strs
         if not strs: break
         path, s = max(strs, key=lambda x: len(x[1]))
         target = max(MIN_KEEP, len(s) - (size - limit) - 80)
@@ -141,6 +147,7 @@ def fit(system: str, payload: dict[str, Any], context: dict[str, dict[str, Any]]
         payload_share: float = 0.6, paths: dict[str, str] | None = None,
         counter: TokenCounter | None = None,
         context_cutter: Callable[[str, str, int, str], str] | None = None,
+        protect: frozenset[str] = frozenset(),
         ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], ContextBudget]:
     """Ép payload + blackboard vào hạn mức. `context` = {namespace: {version, content_ref, summary, content?}}.
     `paths` = {namespace: đường dẫn artifact} để nhãn cắt chỉ chỗ đọc thêm.
@@ -150,14 +157,14 @@ def fit(system: str, payload: dict[str, Any], context: dict[str, dict[str, Any]]
     eval. Truyền counter đo token thật thì `max_input_chars` cũng phải tính bằng token: `fit` không quy đổi
     giúp, và một quy đổi ngầm ở đây sẽ là đúng cái sai số mà `estimate_error` sinh ra để đo.
     `context_cutter` cho package chọn cách cắt một namespace đã được phân chỗ; không truyền thì mọi chuỗi
-    tiếp tục đi qua `cut_middle` như trước.
+    tiếp tục đi qua `cut_middle` như trước. `protect`: khoá payload cắt sau cùng (`trim_payload`).
     """
     measure = counter or chars_counter
     b = ContextBudget(max_input_chars=max_input_chars, system_chars=len(system))
     room = max(max_input_chars - measure(system) - 1_500, MIN_KEEP * 4)  # 1 500 cho khung prompt (tiêu đề, yêu cầu)
     ctx_wanted = sum(measure(str(v.get("content") or "")) for v in context.values()) + 200 * len(context)
     payload_limit = max(int(room * payload_share), room - ctx_wanted)  # blackboard nhỏ thì payload được rộng hơn
-    payload, b.trimmed_payload = trim_payload(payload, min(payload_limit, room), counter)
+    payload, b.trimmed_payload = trim_payload(payload, min(payload_limit, room), counter, protect)
     payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
     b.payload_chars = len(payload_json)
     ctx_room = room - measure(payload_json)
