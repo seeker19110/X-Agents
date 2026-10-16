@@ -27,6 +27,8 @@ from .stop_kind import MAX_BASE_RED, STOP_KINDS
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
 #: Ticket còn đang chạy: có thể còn merge vào nhánh tích hợp (ADR-0062).
 ACTIVE_STATES = frozenset({"dispatched", "in_progress", "in_review", "changes_requested"})
+#: Ticket của RC mà từ chối release đá về làm lại được: đã có code trên nhánh tích hợp, chưa giao.
+REWORKABLE = frozenset({"approved", "merged"})
 # Trần lời người duyệt (lý do gate, hint) khi chuyển cho agent: đủ dài để không cắt giữa ý — hub 2026-10-15 cắt ở
 # 500/1000 ký tự làm product chỉ nhận mục đầu của hint 6 mục —, chỉ để chặn payload phình.
 HINT_MAX = 8000
@@ -523,13 +525,17 @@ class DeliveryLead:
         self._maybe_open_release_gate(rid)
         return sources
 
-    def rework_release_tickets(self, rid: str, hint: str, only: list[str] | None = None) -> None:
+    def rework_release_tickets(self, rid: str, hint: str, only: list[str] | None = None) -> list[str]:
         """Người TỪ CHỐI escalation của release: finding LÀ lỗi code thật, không phải rủi ro chấp nhận được — đá các
-        ticket đã merged trong release về changes_requested (hành vi cũ, giờ chỉ chạy khi người quyết định rõ ràng).
-        `only`: chỉ các ticket mà file đã đổi chạm finding (ADR-0057 bổ sung 2026-10-16, `orch/release_rework.py`)."""
-        for tid in self.release_tickets.get(rid, []):
-            if self.state.get(tid) == "merged" and (only is None or tid in only):
-                self._set(tid, "changes_requested"); self._retry(tid, hint)
+        ticket của release về changes_requested (hành vi cũ, giờ chỉ chạy khi người quyết định rõ ràng); trả về
+        ticket đã đá. `approved` cũng tính: RC hỏng ở deploy staging thì ticket chưa từng lên `merged` (hub 2026-10-16,
+        REL-113). `only`: chỉ các ticket mà file đã đổi chạm finding (ADR-0057 bổ sung 2026-10-16,
+        `orch/release_rework.py`)."""
+        done = [tid for tid in self.release_tickets.get(rid, [])
+                if self.state.get(tid) in REWORKABLE and (only is None or tid in only)]
+        for tid in done:
+            self._set(tid, "changes_requested"); self._retry(tid, hint)
+        return done
 
     def request_changes(self, tid: str, hint: str, kind: str = "agent_error") -> None:
         """Ticket đã approved nhưng không tích hợp được (xung đột với nhánh tích hợp): làm lại với hint, tính một retry.

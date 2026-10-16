@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from ..delivery import REWORKABLE
 from ..workspace import WorkspaceError
 
 if TYPE_CHECKING:
@@ -31,7 +32,7 @@ def finding_files(o: Orchestrator, rid: str, tree: set[str]) -> set[str]:
 
 def tickets_to_rework(o: Orchestrator, rid: str) -> tuple[list[str], set[str]] | None:
     """`(ticket cần làm lại, file của finding)`; `None` = không đo được (không có nhánh tích hợp, git lỗi)."""
-    tids = [t for t in o.lead.release_tickets.get(rid, []) if o.lead.state.get(t) == "merged"]
+    tids = [t for t in o.lead.release_tickets.get(rid, []) if o.lead.state.get(t) in REWORKABLE]
     integ = o._integration_of_ticket(tids[0]) if tids and o._has_integration() else None
     if integ is None: return None
     try:
