@@ -12,7 +12,8 @@ Ranh giới (ADR-0039 §6):
   trong repo khách mới được dùng.
 - `--project-name company-<project_id>-<env>` do **code** đặt: model không đổi được nó để giẫm sang môi trường
   khác. `env` là của ROUTE (`staging` | `production`), không phải lời khai.
-- env lọc qua `clean_env` (bỏ `SECRET_ENV`, `GH_*`/`GITHUB_*`) như mọi lệnh con khác.
+- env lọc qua `clean_env` (bỏ `SECRET_ENV`, `GH_*`/`GITHUB_*`) như mọi lệnh con khác. Biến bí mật của compose khách
+  đi qua `--env-file` từ thư mục NGOÀI repo (`COMPANY_DEPLOY_ENV_DIR`, file 0600), không qua env (ADR-0061).
 - Cổng **đọc** từ `ps` chứ orchestrator không tự chọn và không sửa compose của khách (ADR-0039 §2).
 
 `docker compose` KHÔNG đi qua `Sandbox` (ADR-0039 §7): nhốt một client gọi `/var/run/docker.sock` vào container
@@ -50,6 +51,9 @@ from .smoke import _probe as http_probe  # cùng probe với smoke: "đang chạ
 ENV_MODE = "COMPANY_DEPLOY"
 ENV_RUNTIME = "COMPANY_DEPLOY_RUNTIME"
 DEFAULT_RUNTIME = "docker"
+# ADR-0061: thư mục (NGOÀI repo khách) chứa `<project compose>.env` — biến bí mật cho compose của khách. `clean_env`
+# bỏ mọi tên kiểu `*PASSWORD*` khỏi env tiến trình nên đây là đường duy nhất; giá trị không bao giờ vào env hay log.
+ENV_SECRETS_DIR = "COMPANY_DEPLOY_ENV_DIR"
 # ADR-0040: runner của mode `process` là một PREFIX (có thể nhiều token); `.` được thay bằng `repo_root` lúc ghép
 # argv (`_process_prefix`). Mặc định `bash` trần: hub chỉ chạy trên Linux (ADR gốc 0031 bỏ cầu `wsl.exe`).
 DEFAULT_RUNTIME_PROCESS = "bash"
@@ -90,6 +94,7 @@ class DeployRecord:
     started_at: str = ""
     smoke: dict[str, Any] = field(default_factory=dict)
     compose_file: str = ""
+    env_file: str = ""  # ADR-0061: ĐƯỜNG DẪN file env bí mật đã dùng (không bao giờ là giá trị)
     skipped: str = ""
     error: str = ""
     logs_tail: str = ""
@@ -97,8 +102,8 @@ class DeployRecord:
     def record(self) -> dict[str, Any]:
         out: dict[str, Any] = {"project": self.project, "env": self.env, "ok": self.ok,
                                "verified_by": VERIFIED_BY}
-        for k in ("services", "container_ids", "image_ids", "port", "started_at", "smoke", "compose_file", "skipped",
-                  "error", "logs_tail"):
+        for k in ("services", "container_ids", "image_ids", "port", "started_at", "smoke", "compose_file", "env_file",
+                  "skipped", "error", "logs_tail"):
             v = getattr(self, k)
             if v:
                 out[k] = list(v) if isinstance(v, tuple) else v
@@ -110,6 +115,25 @@ def project_name(project_id: str, env: str) -> str:
 
     Compose chỉ nhận `[a-z0-9_-]`: mã dự án thật viết hoa (`QLKH`) → hạ chữ thường, ký tự khác → `-`."""
     return re.sub(r"[^a-z0-9_-]", "-", f"company-{project_id}-{env}".lower())
+
+
+def deploy_env_file(repo_root: Path, project: str) -> str:
+    """File env bí mật cho compose project `project` (ADR-0061), "" khi không đặt `COMPANY_DEPLOY_ENV_DIR` hoặc thư mục
+    không có `<project>.env`. Tên file do CODE ghép từ project + env nên file staging không lọt sang production.
+
+    Fail-closed: file mà nhóm/người khác đọc được (như khoá ssh) hoặc thư mục nằm trong repo khách (builder ghi/commit
+    được) là lỗi cấu hình — ném `DeployError` trước khi chạy compose, không lặng lẽ bỏ qua."""
+    root = os.environ.get(ENV_SECRETS_DIR, "").strip()
+    if not root:
+        return ""
+    f = (Path(root).expanduser() / f"{project}.env").resolve()
+    if not f.is_file():
+        return ""
+    if f.is_relative_to(repo_root.resolve()):
+        raise DeployError(f"{ENV_SECRETS_DIR} phải ở ngoài repo khách (builder đọc/commit được repo): {f.parent}")
+    if f.stat().st_mode & 0o077:
+        raise DeployError(f"{f} nhóm/người khác đọc được — chmod 600 rồi deploy lại (ADR-0061)")
+    return str(f)
 
 
 def deploy_settings() -> tuple[str, str]:
@@ -191,19 +215,20 @@ def _process_cmd(run: Any, prefix: list[str], repo: Path, script: str, sub: str,
     return (True, (r.stdout or "").strip()) if r.returncode == 0 else (False, ((r.stderr or "") or (r.stdout or "")).strip()[-600:])
 
 
-def _argv(binary: str, project: str, cfile: str, *args: str) -> list[str]:
+def _argv(binary: str, project: str, cfile: str, *args: str, env_file: str = "") -> list[str]:
     """argv do CODE ghép, không nội suy chuỗi từ payload của model (ADR-0039 §6): chỉ `cfile` đến từ spec, và
     `compose_file` đã xác nhận nó là file có thật trong repo khách. Lệnh con ngoài bốn lệnh cho phép là lỗi lập
     trình, không phải cấu hình — nên ném ngay chứ không trả bản ghi hỏng."""
     if not args or args[0] not in CMD_SUB:
         raise DeployError(f"lệnh con không được phép: {args[:1]} (chỉ {' | '.join(CMD_SUB)})")
-    return [binary, "compose", "--project-name", project, "-f", cfile, *args]
+    head = ["--env-file", env_file] if env_file else []   # ADR-0061: đường dẫn do `deploy_env_file`, không từ spec
+    return [binary, "compose", *head, "--project-name", project, "-f", cfile, *args]
 
 
 def _compose(run: Any, binary: str, repo: Path, project: str, cfile: str, *args: str,
-             timeout: int = CMD_TIMEOUT_S) -> tuple[bool, str]:
+             timeout: int = CMD_TIMEOUT_S, env_file: str = "") -> tuple[bool, str]:
     """Một lệnh con compose; không ném — (ok, stdout) hoặc (False, lý do rút gọn)."""
-    argv = _argv(binary, project, cfile, *args)
+    argv = _argv(binary, project, cfile, *args, env_file=env_file)
     try:
         r = run(argv, cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace",
                 env=clean_env(), timeout=timeout)
@@ -339,20 +364,25 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
     cfile = compose_file(repo_root, rt)
     if not cfile:
         return rec(skipped=f"không khai `runtime.deploy` và không dò ra {' / '.join(COMPOSE_NAMES)} trong repo")
+    efile = deploy_env_file(repo_root, project)
+
+    def compose(*args: str, timeout: int = CMD_TIMEOUT_S) -> tuple[bool, str]:
+        return _compose(run, binary, repo_root, project, cfile, *args, timeout=timeout, env_file=efile)
 
     def teardown(**kw: Any) -> DeployRecord:
         """Nhánh hỏng: lấy đuôi log làm bằng chứng RỒI `down` — không bỏ lại container nửa sống (ADR-0039 §3)."""
-        ok_logs, logs = _compose(run, binary, repo_root, project, cfile, "logs", "--tail", str(LOGS_TAIL))
-        _compose(run, binary, repo_root, project, cfile, "down")
-        return rec(started_at=started_at, compose_file=cfile, logs_tail=logs[-LOGS_MAX:] if ok_logs else "", **kw)
+        ok_logs, logs = compose("logs", "--tail", str(LOGS_TAIL))
+        compose("down")
+        return rec(started_at=started_at, compose_file=cfile, env_file=efile,
+                   logs_tail=logs[-LOGS_MAX:] if ok_logs else "", **kw)
 
     # `--build`: project cố định theo env nên `up -d` trần dùng lại image đã dựng lần đầu — container chạy code của sha
     # cũ trong khi bằng chứng ghi sha mới (hub thật 2026-10-13: REL-022→034 cùng một container qua 5 sha).
-    ok, out = _compose(run, binary, repo_root, project, cfile, "up", "-d", "--build", timeout=UP_TIMEOUT_S)
+    ok, out = compose("up", "-d", "--build", timeout=UP_TIMEOUT_S)
     if not ok:
         return teardown(error=f"up -d: {out}")
 
-    ok, out = _compose(run, binary, repo_root, project, cfile, "ps", "--format", "json")
+    ok, out = compose("ps", "--format", "json")
     if not ok:
         return teardown(error=f"ps: {out}")
     rows = _services(out)
@@ -374,4 +404,4 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
         return teardown(services=services, container_ids=ids, port=port, smoke=smoke,
                         error="smoke: cổng đã map không trả đúng `expect_status`")
     return rec(ok=True, services=services, container_ids=ids, image_ids=tuple(_image_id(r) for r in rows), port=port,
-               started_at=started_at, smoke=smoke, compose_file=cfile)
+               started_at=started_at, smoke=smoke, compose_file=cfile, env_file=efile)
