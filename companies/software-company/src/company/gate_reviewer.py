@@ -71,6 +71,9 @@ OUTPUT_SCHEMA: dict[str, Any] = {
     "required": ["decision", "root_cause", "hint"], "additionalProperties": False,
 }
 _NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
+# ADR-0063: gate ký văn bản khách mang trong checklist người duy nhất được ký và hồ sơ duy nhất được ký.
+SIGN_MARK = "ky:"
+BRIEF_MARK = "brief:"
 
 
 def enabled() -> bool:
@@ -226,8 +229,17 @@ def sign_decision(
     }
 
 
+def sign_marks(req: GateRequest) -> tuple[str, str] | None:
+    """ADR-0063: `(người ký, sha256 hồ sơ)` nếu đây là gate ký văn bản khách, không thì `None`."""
+    who = next((c.removeprefix(SIGN_MARK) for c in req.checklist if c.startswith(SIGN_MARK)), None)
+    sha = next((c.removeprefix(BRIEF_MARK) for c in req.checklist if c.startswith(BRIEF_MARK)), None)
+    return (who, sha) if req.kind == "escalation" and who and sha else None
+
+
 def refusal(req: GateRequest, history: list[GateRequest], decision: object) -> str:
     """Lý do reviewer KHÔNG được quyết gate này; "" = trong phạm vi. Một chỗ cho cả chiều ghi (CLI) và chiều tin."""
+    if sign_marks(req) and not scope_toan_bo():  # ADR-0063: đọc lại mỗi lần như cờ, cùng điều kiện lúc xin
+        return f"gate ký văn bản khách cần {SCOPE_ENV}={SCOPE_TOAN_BO} (ADR-0063)"
     if scope_rong():  # ADR gốc 0025: chủ dự án giữ lại đúng một quyết định — duyệt spec; 0033 (`toan-bo`) trao nốt
         if decision not in {"approve", "reject"}:
             return f"ngoài phạm vi: decision {decision!r} — reviewer chỉ approve/reject"
@@ -275,6 +287,7 @@ def trusted_reviewer(
         or d.get("generation") != generation_of(req)
         or not isinstance(reason, str)
         or not all(p in reason for p in REASON_PARTS)
+        or ((marks := sign_marks(req)) and (env.actor, d.get("brief_sha256")) != marks)  # ADR-0063
     ):
         return None
     key = next((k for k in load_registry(registry_path()).get(env.actor, ()) if k.key_id == d.get("key_id")), None)
@@ -313,8 +326,13 @@ def decide(
         raise KeyError(f"{subject_id}: không có gate đang chờ")
     if why := refusal(req, gate.history, decision):
         raise PermissionError(why)
+    marks = sign_marks(req)
+    if marks and principal != marks[0]:
+        raise PermissionError(f"{subject_id}: gate ký văn bản khách chỉ dành cho {marks[0]} (ADR-0063)")
     raw = brief.read_bytes()  # đọc MỘT lần: byte được băm và byte được chụp là một
     sha = hashlib.sha256(raw).hexdigest()
+    if marks and sha != marks[1]:
+        raise PermissionError(f"{brief}: sha256 {sha} khác hồ sơ đã xin ký {marks[1]} (ADR-0063)")
     signed = sign_decision(subject_id, decision, principal, reason, generation_of(req), sha, load_private_key(key))
     data = {"subject_id": subject_id, "decision": decision, "by": principal, "reason": reason, **signed}
     env = Envelope(
@@ -459,6 +477,7 @@ def run_tick(db: Path, principal: str, key: Path, client: Any, *, repo: Path | N
     try:
         gate = PersistentGate(bus)
         skip = set(held(gate)) | set(gate.reviewer_signed_pending())
+        skip |= {sid for sid, r in gate.pending.items() if sign_marks(r)}  # ADR-0063: hồ sơ của khách, không phải gate_brief
         cr = {sid: d for sid in gate.pending if (d := _replan_cua(bus, gate.pending[sid])) is not None}
         # ADR-0051 + 0037: gate có lựa chọn `replan:<cid>` thì đường CR quyết trước — CR còn chờ thì bỏ qua (duyệt
         # mở lại trước là chạy đua: hub 2026-10-14 DDCSV-35 mở lại 17:33, replan chấp nhận 17:37, việc làm đôi).

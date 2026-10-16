@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from ..bus import REVIEWER_PREFIX
 from ..delivery import DONE_STATES
 from ..events import Envelope
-from ..gate_reviewer import machine_acceptor
+from ..gate_reviewer import machine_acceptor, sign_marks
 from ..gate_risk import request_gate
 from ..gates import Decision, GateRequest
 from ..roles import ROLE, resume_actor
@@ -204,6 +204,10 @@ def _check_debt(o: Orchestrator) -> None:
         request_gate(o.gate, GateRequest(kind="escalation", subject_id=pid, created_by=ROLE.SUPERVISOR, checklist=checklist))
 
 def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, reason: str, res: StepResult) -> None:
+    if (g := next((h for h in reversed(o.gate.history) if h.subject_id == tid), None)) and sign_marks(g):
+        # ADR-0063: gate ký văn bản khách — chữ ký là toàn bộ việc, không có ticket/RC nào để mở lại
+        o._audit("sign.decided", {"subject_id": tid, "decision": decision, "by": by, "reason": reason[:300]})
+        res.actions.append(f"sign:{tid}:{decision}"); return
     if tid in o.debt_gate:  # ADR-0032: nợ kiến trúc cấp dự án — người ghi nhận (ADR + người ký) hay chấp nhận treo
         rec = o.debt_gate.pop(tid)
         o._audit("debt.decided", {"project_id": tid, "debt_id": rec.get("debt_id"), "times": rec.get("times"),
