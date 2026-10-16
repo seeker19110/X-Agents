@@ -406,6 +406,23 @@ def _git(repo: Path, *args: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+_OBS_FILE = re.compile(r"(^|/)(alerts?|dashboards?)[^/]*\.(ya?ml|json)$|(^|/)observability/.+\.(ya?ml|json|md)$", re.I)
+
+
+def _obs_files(orch: Orchestrator, pid: str | None) -> tuple[dict[str, str], dict[str, Any] | None]:
+    """File alert/dashboard trên nhánh tích hợp ({tên: nội dung}, nguồn) cho `release.dashboard-alert`. Hub
+    2026-10-16 REL-106: code quan sát đã merge (DDCSV-93B) nhưng artifact infra mới nhất bị ticket sau ghi đè làm rơi mục
+    Observability → hồ sơ [gap] và hub lập kế hoạch lần ba cho việc đã xong. Không có repo/nhánh thì rỗng, không đoán."""
+    integ = orch.integration_for(pid)
+    if integ is None or not integ.repo.exists() or not _git(integ.repo, "rev-parse", "--verify", integ.branch):
+        return {}, None
+    names = [p for p in (_git(integ.repo, "ls-tree", "-r", "--name-only", integ.branch) or "").splitlines() if _OBS_FILE.search(p)]
+    if not names:
+        return {}, None
+    return ({p: _git(integ.repo, "show", f"{integ.branch}:{p}") or "" for p in names},
+            {"kind": "worktree", "ref": integ.branch, "path": str(integ.path)})
+
+
 def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | None,
                    req: GateRequest) -> tuple[list[dict], list[dict], dict]:
     items = _by_id(g); out: list[dict[str, Any]] = []; unavailable: list[dict[str, Any]] = []
@@ -441,13 +458,20 @@ def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | 
         out.append(_item(it, "unknown", ["chưa có api-contract"], srcs))
     else:
         eps = _endpoints(contract)
-        if infra is None:
+        docs, o_src = _obs_files(orch, pid) if eps and any(e not in (infra or "") for e in eps) else ({}, None)
+        if infra is None and not docs:
             facts = ([f"api-contract có {len(eps)} endpoint; chưa có namespace infra để đối chiếu", f"endpoint: {', '.join(eps[:8])}"]
                      if eps else ["api-contract không đọc ra endpoint nào"])
             out.append(_item(it, "unknown", facts, srcs))
         else:
-            missing = [e for e in eps if e not in infra]
-            facts = [f"{len(eps)} endpoint trong api-contract, {len(eps) - len(missing)} được nhắc trong infra"]
+            infra = infra or ""
+            in_repo = [e for e in eps if e not in infra and any(e in t for t in docs.values())]
+            missing = [e for e in eps if e not in infra and e not in in_repo]
+            facts = [f"{len(eps)} endpoint trong api-contract, {len(eps) - len(missing) - len(in_repo)} được nhắc trong infra"]
+            if in_repo and o_src:
+                hits = [p for p, t in docs.items() if any(e in t for e in in_repo)]
+                facts.append(f"{len(in_repo)} endpoint còn lại có trong file alert/dashboard của repo: {', '.join(hits[:5])}")
+                srcs.append({**o_src, "files": hits[:10]})
             if missing: facts.append("không thấy trong infra: " + ", ".join(missing[:10]))
             facts.append("infra " + ("có" if re.search(r"dashboard|alert|cảnh báo|runbook", infra, re.I) else "không")
                          + " nhắc dashboard/alert/runbook")

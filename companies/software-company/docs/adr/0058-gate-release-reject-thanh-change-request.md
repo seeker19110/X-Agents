@@ -41,6 +41,21 @@ chưa có.
 - Lý do từ chối có thể chỉ là "chưa đủ bằng chứng" chứ không phải việc. CR vẫn được nộp, và product/reviewer thấy
   ngay rồi từ chối nó. Rẻ hơn để RC sau lại vấp đúng chỗ đó.
 
+## Bổ sung 2026-10-16 — `release.dashboard-alert` đọc cả repo
+
+Đo hub thật 2026-10-16 (QLKH-DD-CSV REL-106): gap `release.dashboard-alert` lặp lại lần thứ ba (sau CR-DDCSV-OBS-001
+và GATE3-REL-074), dù DDCSV-93B đã merge `ops/observability/alerts.yaml` + `dashboard.yaml` phủ đủ 3 endpoint của
+api-contract. Mục này chỉ đối chiếu artifact `infra` mới nhất. Bản v54 do DDCSV-101 ghi đè, không còn mục
+Observability, nên hồ sơ ra [gap]. `reviewer:tu-dong` reject gate release, hub sinh GATE3-REL-106 để lập kế hoạch lần
+ba cho việc đã xong. tu-dong giữ CR đó vì trùng việc, và phiên chính bác nó.
+
+- Endpoint không có trong infra thì hồ sơ tìm tiếp trong file alert/dashboard trên nhánh tích hợp: `alert*`,
+  `dashboard*` (`.yaml/.yml/.json`), mọi `.yaml/.yml/.json/.md` dưới `observability/`. Fact ghi đúng file nào nhắc
+  endpoint; nguồn là `worktree` kèm `files`. Không có repo/nhánh thì như cũ, không đoán.
+- Hai chiều: trước khi sửa thì `test_release_dashboard_doc_alert_dashboard_trong_repo_khi_infra_lam_roi` đỏ ([gap],
+  0 endpoint được nhắc), sau khi sửa thì xanh. Chạy thử chỉ đọc trên hub thật: REL-107 ra [ok], 2 endpoint trong
+  `ops/observability/alerts.yaml` và `dashboard.yaml`.
+
 ## Phương án đã loại
 
 - **Đá ticket của RC về làm lại như escalation.** Gap của gate release (dashboard, runbook, giao hàng) thường nằm
