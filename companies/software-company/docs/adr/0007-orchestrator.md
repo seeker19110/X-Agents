@@ -51,3 +51,14 @@ vẫn giữ nguyên ba nguyên tắc: human gate không bao giờ tự đi tiế
 - Blackboard vẫn chỉ giữ tham chiếu + tóm tắt; nội dung artifact cần tool file (bước tiếp theo).
 - Skill bổ sung theo audit (backend +testing/security/database, reviewer +api-contract/observability, risk
   +privacy/ai-governance/license...), mọi skill có `version`; agent đổi skill/reads đều tăng `version` và cập nhật golden.
+
+## Bổ sung 2026-10-16: ước lượng impact của CR còn chờ không ghi blackboard
+Hub thật (QLKH-DD-CSV): lượt `change.impact` của REWORK-DDCSV-109-2 (01:31) trả kèm `context_writes` và orchestrator
+ghi luôn architecture v43 (`change/REWORK-DDCSV-109-2/plan-v1`: "rút allowlist", lập DDCSV-127). CR bị bác lúc 01:33,
+nhưng v43 vẫn là bản MỚI NHẤT mọi agent đọc. Security đọc v43 rồi chặn DDCSV-116, dù ticket này làm đúng
+CR-DDCSV-SEC-008 đã accepted. Ticket bị đẩy về builder thêm một lượt.
+
+Quyết định: `Route.context_writes=False` cho route `change-requests → product → audit-log` (CR `pending`). Runner không
+xin `context_writes` ở lượt đó, nên model không tốn token đầu ra viết toàn văn artifact. Model vẫn trả thì code bỏ và ghi
+audit `context_writes_dropped`. Kế hoạch thật cho CR chỉ được ghi ở lượt sau khi CR đã `accepted` (route
+`_cr_accepted_when`), như mọi kế hoạch khác. Test: `tests/test_cr_impact_khong_ghi_blackboard.py`.

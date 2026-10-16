@@ -84,6 +84,9 @@ class Route:
     # ADR-0037: pha của lượt — agent nạp thêm skill của pha này (`AgentSpec.phases`). None = chỉ skill cấp agent,
     # trừ route sửa code: pha lấy theo `stack` của ticket lúc chạy, xem `phase_for`.
     phase: str | None = None
+    # ADR-0007 bổ sung 2026-10-16: False = lượt KHÔNG được ghi blackboard (không xin `context_writes`, có cũng bỏ).
+    # Ước lượng impact của CR còn chờ: kế hoạch cho một CR chưa quyết không phải sự thật của dự án.
+    context_writes: bool = True
 
 
 def phase_for(r: Route, spec: AgentSpec, inp: Envelope) -> str | None:
@@ -203,7 +206,8 @@ ROUTES: tuple[Route, ...] = (
     Route("external-feedback", ROLE.OPS, "incidents", many=True, phase="docs"),
     Route("incidents", ROLE.OPS, "research-requests", _field("root_cause_class", "requirement"), many=True, phase="docs"),
     Route("acceptance-results", ROLE.OPS, "change-requests", _field("verdict", "conditional"), many=True, phase="account"),
-    Route("change-requests", ROLE.PRODUCT, "audit-log", _cr_pending, phase=PHASE.PLAN),  # ước lượng impact → người/reviewer quyết
+    Route("change-requests", ROLE.PRODUCT, "audit-log", _cr_pending, phase=PHASE.PLAN,
+          context_writes=False),  # ước lượng impact → người/reviewer quyết; chưa quyết thì chưa ghi blackboard
     Route("change-requests", ROLE.PRODUCT, "research-findings", _cr_accepted_when(True), phase=PHASE.INTAKE),
 )
 PROD_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="production", phase="deploy")
