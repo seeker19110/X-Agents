@@ -135,11 +135,11 @@ def spec_changes_asked(last: GateRequest) -> bool:
 def _reject_release(o: Orchestrator, rid: str, reason: str, res: StepResult) -> None:
     """ADR-0057 bổ sung 2026-10-16: chỉ làm lại ticket mà file đã đổi chạm finding; không ticket nào chạm → CR."""
     scope = release_rework.tickets_to_rework(o, rid)
-    if scope is None or scope[0]:
-        o.lead.rework_release_tickets(rid, reason, only=None if scope is None else scope[0])
+    if (scope is None or scope[0]) and o.lead.rework_release_tickets(rid, reason, only=None if scope is None else scope[0]):
         res.actions.append(f"release_reworked:{rid}"); return
+    # Không ticket nào làm lại được (không chạm finding, hoặc không còn ticket chưa giao): lý do đi qua CR.
     n = 1 + sum(1 for e in o.bus.replay(topic="change-requests") if e.key.startswith(f"REWORK-{rid}-"))
-    o._audit("release.rework_outside", {"release_id": rid, "finding_files": sorted(scope[1]),
+    o._audit("release.rework_outside", {"release_id": rid, "finding_files": sorted(scope[1] if scope else ()),
                                          "tickets": o.lead.release_tickets.get(rid, [])})
     o.lead.request_change_after_release_reject(rid, reason, cid=f"REWORK-{rid}-{n}", what="Escalation release")
     res.actions.append(f"release_rework_outside:{rid}")

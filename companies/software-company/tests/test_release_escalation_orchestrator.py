@@ -134,3 +134,36 @@ def test_release_check_cong_don_theo_du_an_khong_chi_ticket_trong_rc(tmp_path):
     assert lead.release_needs_security("REL-002"), "RC sau của cùng dự án mang code pii của RC trước"
     assert not lead.release_needs_security("REL-003"), "dự án khác không có ticket rủi ro thì không cần"
     assert not lead.release_needs_security("REL-404"), "RC lạ (chưa có trong sổ): không ticket nào, không cần"
+
+
+def test_tu_choi_rc_deploy_hong_thi_ticket_approved_cung_ve_rework(tmp_path):
+    """Hub thật 2026-10-16 (REL-113, DDCSV-142): deploy staging hỏng ⇒ ticket chưa từng lên `merged` (chỉ staging
+    `deployed` mới đẩy approved → merged). Từ chối escalation chỉ đụng `merged` ⇒ không ai làm lại, hint đúng nguyên
+    nhân rơi mất, mà orchestrator vẫn ghi `release_reworked`."""
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    rid, tid = _blocked_release(orch)
+    orch.lead.state[tid] = "approved"
+
+    orch.gate.decide(rid, "reject", by="human:owner", reason="secret nguồn environment trong service read_only")
+    res = orch.run()
+
+    assert orch.lead.tickets[tid].retry == 1 and "read_only" in (orch.lead.tickets[tid].hint or "")
+    assert any(a == f"release_reworked:{rid}" for r in res for a in r.actions), [r.actions for r in res]
+
+
+def test_tu_choi_rc_khong_con_ticket_nao_de_lam_lai_thi_nop_cr(tmp_path):
+    """Không ticket nào của RC còn làm lại được (đã đóng): lý do từ chối phải tới planner qua CR, không được ghi
+    `release_reworked` rồi nuốt mất."""
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    rid, tid = _blocked_release(orch)
+    orch.lead.state[tid] = "closed"
+
+    orch.gate.decide(rid, "reject", by="human:owner", reason="secret nguồn environment trong service read_only")
+    res = orch.run()
+
+    acts = [a for r in res for a in r.actions]
+    assert f"release_reworked:{rid}" not in acts and f"release_rework_outside:{rid}" in acts, acts
+    crs = [e for e in bus.replay(topic="change-requests") if e.key.startswith(f"REWORK-{rid}-")]
+    assert crs and "read_only" in crs[0].payload["description"]
