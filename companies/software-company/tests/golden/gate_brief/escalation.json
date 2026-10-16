@@ -34,7 +34,7 @@
       {
         "action": "builder: invalid_output",
         "at": "<…>",
-        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nons...ue, '_phase': 'backend'}, input_type=dict] For…"
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for Pu … se': 'backend'}, input_type=dict] For further information visit https://errors.pydantic.dev/2.14/v/missing local_checks Field requi"
       },
       {
         "action": "tasks retry=1",
@@ -44,7 +44,7 @@
       {
         "action": "builder: invalid_output",
         "at": "<…>",
-        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nons...ue, '_phase': 'backend'}, input_type=dict] For…"
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for Pu … se': 'backend'}, input_type=dict] For further information visit https://errors.pydantic.dev/2.14/v/missing local_checks Field requi"
       },
       {
         "action": "tasks retry=2",
@@ -54,7 +54,7 @@
       {
         "action": "builder: invalid_output",
         "at": "<…>",
-        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for PullRequest branch Field required [type=missing, input_value={'ticket_id': 'T1', 'nons...ue, '_phase': 'backend'}, input_type=dict] For…"
+        "detail": "payload không hợp lệ cho pull-requests: 3 validation errors for Pu … se': 'backend'}, input_type=dict] For further information visit https://errors.pydantic.dev/2.14/v/missing local_checks Field requi"
       },
       {
         "action": "delivery-lead: ticket.blocked",
