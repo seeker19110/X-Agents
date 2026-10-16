@@ -321,8 +321,8 @@ class DeliveryLead:
         tids = self.release_tickets.get(rid, []); pid = next((self.tickets[t].project_id for t in tids if t in self.tickets), None)
         desc = (f"{what} của {rid} (ticket {', '.join(tids) or '?'}) bị từ chối; RC không lên production. "
                 f"Lập kế hoạch ticket MỚI cho phần việc lý do từ chối đòi: {reason}")
-        cr = ChangeRequest(change_id=cid or f"GATE3-{rid}", project_id=pid or "", requested_by=LEAD_ACTOR, description=desc[:1000],
-                           impact={"kind": "release_gate_reject", "release_id": rid, "tickets": tids, "reason": reason[:500]})
+        cr = ChangeRequest(change_id=cid or f"GATE3-{rid}", project_id=pid or "", requested_by=LEAD_ACTOR, description=desc[:HINT_MAX + 1000],
+                           impact={"kind": "release_gate_reject", "release_id": rid, "tickets": tids, "reason": reason[:HINT_MAX]})
         self._emit(Envelope(topic="change-requests", key=cr.change_id, actor=LEAD_ACTOR, payload=cr.model_dump()))
 
     def _on_review(self, env: Envelope) -> None:

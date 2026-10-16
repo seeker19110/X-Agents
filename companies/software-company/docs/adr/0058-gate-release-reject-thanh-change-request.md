@@ -56,6 +56,17 @@ ba cho việc đã xong. tu-dong giữ CR đó vì trùng việc, và phiên ch�
   0 endpoint được nhắc), sau khi sửa thì xanh. Chạy thử chỉ đọc trên hub thật: REL-107 ra [ok], 2 endpoint trong
   `ops/observability/alerts.yaml` và `dashboard.yaml`.
 
+## Bổ sung 2026-10-16 (2) — CR mang nguyên văn lý do từ chối
+
+Hub thật (QLKH-DD-CSV REL-109): lý do bác escalation dài khoảng 3300 ký tự và có hai nhóm chặn. CR `REWORK-REL-109-1`
+cắt mô tả ở 1000 ký tự và `impact.reason` ở 500 ký tự. Vì vậy nhóm chặn 2 (QA đỏ ở `tests/dpia`) không tới product,
+cũng không tới agent duyệt CR. Product đoán sai việc cần làm, còn `reviewer:tu-dong` giữ CR vì "mô tả bị cắt ở 'N'".
+
+- `request_change_after_release_reject` dùng cùng trần với `REPLAN-*`/`REWORK-<ticket>-*`: mô tả `HINT_MAX + 1000`,
+  `impact.reason` `HINT_MAX`. Lý do từ chối là danh sách việc, cắt đi là mất việc.
+- Hai chiều: trước khi sửa thì `test_ly_do_dai_toi_planner_nguyen_van_ca_mo_ta_lan_impact` đỏ (đoạn cuối của lý do
+  không có trong mô tả), sau khi sửa thì xanh.
+
 ## Phương án đã loại
 
 - **Đá ticket của RC về làm lại như escalation.** Gap của gate release (dashboard, runbook, giao hàng) thường nằm
