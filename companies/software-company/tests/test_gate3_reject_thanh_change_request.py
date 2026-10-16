@@ -68,3 +68,23 @@ def test_mo_lai_bus_khong_nop_lai_change_request(tmp_path):
     Orchestrator(bus2, FakeClient(handler=handler)).tick()
     assert len(_cr_gate3(bus2)) == 1, "replay quyết định cũ không được nộp CR lần hai"
     bus2.close()
+
+
+# ---------- bổ sung 2026-10-16: lý do dài không bị cắt khỏi CR ----------
+# Hub thật (QLKH-DD-CSV REL-109): lý do bác escalation dài ~3300 ký tự, hai nhóm chặn. CR REWORK-REL-109-1 cắt mô
+# tả ở 1000 ký tự và impact.reason ở 500 — nhóm chặn 2 (QA đỏ ở tests/dpia) không tới product lẫn agent duyệt CR;
+# product đoán sai việc, reviewer:tu-dong giữ CR vì "mô tả bị cắt ở 'N'".
+
+
+def test_ly_do_dai_toi_planner_nguyen_van_ca_mo_ta_lan_impact():
+    bus = InMemoryBus()
+    orch = _toi_gate_release(bus)
+    duoi = "nhóm chặn 2: sửa tests/dpia/test_matrix.py cho khớp catalog gate"
+    ly_do = "root_cause: " + "bằng chứng dài. " * 200 + f"; decision: reject; hint: {duoi}"
+    assert len(ly_do) > 3000
+    orch.gate.decide("REL-001", "reject", by="human:release-manager", reason=ly_do)
+    orch.run()
+
+    p = _cr_gate3(bus)[0].payload
+    assert duoi in p["description"], "việc nằm cuối lý do vẫn phải tới planner"
+    assert p["impact"]["reason"] == ly_do, "agent duyệt CR đọc impact.reason — không được cụt"
