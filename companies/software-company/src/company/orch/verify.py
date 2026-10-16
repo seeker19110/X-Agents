@@ -285,13 +285,14 @@ def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope,
             st = _staging_event(o, rid)
             spec = project_spec(o, pid) if pid else None
             dep = dast.deploy_of(st.payload.get("evidence") if st is not None else None)
+            ran = dast.deployed_images(dep)  # image ĐÃ DỰNG đang chạy: quét riêng, image nền của nó bỏ (scan_refs)
             ev = {"supply_chain": supply_chain.evidence(root, o.sandbox, sha=sha),
                   "dast": dast.evidence(root, spec.payload if spec is not None else None, o.sandbox,
                                         o.blackboard.content("api-contract", pid), sha, deployed=dep),
                   # ADR-0056: SCA + secret trên máy trực — cùng lý do SBOM/DAST: security không đoán, máy phải đưa số.
                   # Bổ sung 2026-10-14: cả image ĐÃ DỰNG mà staging đang chạy (image dẫn xuất `build:`)
-                  "vuln": scanners.vuln_evidence(root, sha, image_digest.references(root, pinned=True),
-                                                 deployed=dast.deployed_images(dep)),
+                  "vuln": scanners.vuln_evidence(root, sha, image_digest.scan_refs(root, {s for s, _ in ran}),
+                                                 deployed=ran),
                   "secrets": scanners.secret_evidence(root, sha)}
         # audit không kèm toàn văn SBOM / checks / danh sách phát hiện: chúng đi trong `review-results`
         for action, ev1, big in (("supply_chain.run", ev["supply_chain"], "sbom"), ("dast.run", ev["dast"], "checks"),

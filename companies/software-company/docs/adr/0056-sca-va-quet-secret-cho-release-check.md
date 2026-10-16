@@ -137,6 +137,29 @@ block thuộc hai loại được miễn, vậy hồ sơ phải cho thấy MỌI
 - Hai chiều: trước khi sửa thì `test_lich_su_liet_ke_moi_finding_block_cua_review_khong_cat_mat` đỏ (hồ sơ chỉ có
   `root_cause`, không có mã finding nào), sau khi sửa thì xanh.
 
+## Bổ sung 2026-10-16 (3) — image nền của image đã dựng đang chạy không vào bằng chứng
+
+Đo hub thật 2026-10-16 (QLKH-DD-CSV REL-107), ngay sau bổ sung đầu tiên của ngày: bằng chứng có thêm base
+`postgres:16.15-trixie@ca0bd484` của `infra/db/Dockerfile`, với 25 CRITICAL/HIGH có bản sửa (gồm CVE-2025-68121 của
+`gosu`). Dockerfile đó **cố ý** ghim base này rồi `apt-get upgrade` và gỡ `gosu` (ADR-DD-15, quyết định của chủ dự
+án). Image db đang chạy (`f6d27292`) có 0 CVE có bản sửa. `reviewer:tu-dong` từ chối vì "base còn CVE có bản sửa";
+hub lập REWORK-REL-107-1 đòi đổi base, ngược quyết định kiến trúc. tu-dong tự giữ CR đó vì đúng điểm này.
+
+Bổ sung 2026-10-14 đã nói: image dẫn xuất không có image nền nào nói đúng về nó. Vậy:
+
+- `image_digest.scan_refs(root, deployed)` là `references(pinned=True)` **bỏ** image nền của Dockerfile mà compose
+  build cho một service **đang chạy** ở staging (`evidence.deploy` có image id). Image đã dựng của service đó được quét
+  riêng (`deployed=true`) và mới là bằng chứng. Một service đang chạy làm cả Dockerfile được tính là đã quét, nên
+  `migrate` dùng chung Dockerfile với `db` cũng được bỏ base.
+- Base còn được Dockerfile khác (chưa chạy) hay `image:` của compose dùng thì **giữ**. Chưa deploy được staging thì
+  giữ toàn bộ như trước: image nền là bằng chứng duy nhất.
+- `_compose_builds` đọc cả dạng ngắn `build: <context>` (mặc định `Dockerfile` trong context) và gắn Dockerfile với
+  service.
+- Hai chiều: trước khi sửa thì `test_scan_refs_bo_image_nen_cua_dockerfile_ma_image_da_dung_dang_chay` (ImportError) và
+  `test_release_check_bo_image_nen_cua_image_da_dung_dang_chay` (images còn `python:3.12-slim`,
+  `postgres:16.15-trixie`) đỏ; sau khi sửa thì xanh. Chạy thử trên cây tích hợp thật: `references` ra 2 base, còn
+  `scan_refs({app, db})` ra 0.
+
 ## Cái giá đã biết
 
 - Hai binary ngoài repo, phiên bản do máy trực quyết; `tool` ghi "trivy 0.75.0"/"gitleaks 8.30.1" vào bằng chứng để

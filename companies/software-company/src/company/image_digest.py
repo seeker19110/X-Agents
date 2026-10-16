@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from .deploy import COMPOSE_NAMES
@@ -23,6 +24,8 @@ DOMAINS = ("auth.docker.io", "registry-1.docker.io")
 DOCKERFILES = ("Dockerfile", "*/Dockerfile")  # đúng tập mà job `image-pin` của khách quét
 _FROM = re.compile(r"^\s*FROM\s+(.*)$", re.IGNORECASE)
 _IMAGE = re.compile(r"""^\s*image:\s*["']?([^"'\s#]+)""")
+_SERVICE = re.compile(r"^  ([A-Za-z0-9._-]+):\s*(#.*)?$")
+_BUILD = re.compile(r"""^\s+build:\s*["']?([^"'\s#]*)""")
 _BUILD_KEY = re.compile(r"""^\s*(context|dockerfile):\s*["']?([^"'\s#]+)""")
 _REF = re.compile(r"^[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]{1,128})?(@sha256:[0-9a-f]{64})?$")
 _SKIP = frozenset({"scratch"})
@@ -80,26 +83,36 @@ def _compose_refs(text: str, pinned: bool = False) -> list[str]:
     ]
 
 
-def _compose_dockerfiles(root: Path) -> list[Path]:
-    """Dockerfile mà compose BUILD (`build.dockerfile`, tương đối `build.context`), kể cả ngoài `DOCKERFILES` — hub
-    2026-10-16 (REL-105): `infra/db/Dockerfile` hai tầng thư mục nên image nền db không được quét. Đường ra ngoài repo
-    bị bỏ. Đọc theo dòng như `_IMAGE`: `context:` đứng trước `dockerfile:` trong cùng khối `build:`."""
+def _compose_builds(root: Path) -> list[tuple[str, Path]]:
+    """(service, Dockerfile) mà compose BUILD — `build: <context>` hay khối `build:` với `context`/`dockerfile` (mặc
+    định `Dockerfile` trong context), kể cả ngoài `DOCKERFILES`. Hub 2026-10-16 (REL-105): `infra/db/Dockerfile` hai
+    tầng thư mục nên image nền db không được quét. Đường ra ngoài repo bị bỏ. Đọc theo dòng như `_IMAGE`: service là
+    khoá thụt đúng hai dấu cách."""
     top, out = root.resolve(), []
     for n in COMPOSE_NAMES:
         try:
-            text, ctx = (root / n).read_text(encoding="utf-8"), "."
+            lines = (root / n).read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError):
             continue
-        for ln in text.splitlines():
-            if not (m := _BUILD_KEY.match(ln)):
-                continue
-            if m.group(1) == "context":
-                ctx = m.group(2)
-                continue
-            p, ctx = (root / ctx / m.group(2)).resolve(), "."
-            if p.is_relative_to(top) and p.is_file():
-                out.append(p)
+        svc, ctx, df = "", None, "Dockerfile"
+        for ln in [*lines, "  __eof__:"]:
+            if m := _SERVICE.match(ln):
+                p: Path | None = None if ctx is None else (root / ctx / df).resolve()
+                if p is not None and p.is_relative_to(top) and p.is_file():
+                    out.append((svc, p))
+                svc, ctx, df = m.group(1), None, "Dockerfile"
+            elif m := _BUILD.match(ln):
+                ctx = m.group(1) or "."
+            elif ctx is not None and (m := _BUILD_KEY.match(ln)):
+                ctx, df = (m.group(2), df) if m.group(1) == "context" else (ctx, m.group(2))
     return out
+
+
+def _refs(p: Path, read: Callable[[str, bool], list[str]], pinned: bool = True) -> list[str]:
+    try:
+        return read(p.read_text(encoding="utf-8"), pinned)
+    except (OSError, UnicodeDecodeError):
+        return []
 
 
 def references(root: Path, *, pinned: bool = False) -> list[str]:
@@ -107,17 +120,29 @@ def references(root: Path, *, pinned: bool = False) -> list[str]:
     `pinned=True` giữ cả image đã ghim — tập để quét lỗ hổng image nền (ADR-0056), không phải tập cần ghim."""
     out: list[str] = []
     files = [(p, _dockerfile_refs) for g in DOCKERFILES for p in sorted(root.glob(g))]
-    files += [(p, _dockerfile_refs) for p in _compose_dockerfiles(root)]  # trùng file thì trùng ref: bỏ ở dưới
+    files += [(p, _dockerfile_refs) for _, p in _compose_builds(root)]  # trùng file thì trùng ref: bỏ ở dưới
     files += [(root / n, _compose_refs) for n in COMPOSE_NAMES]
     for p, read in files:
-        try:
-            text = p.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        for r in read(text, pinned):
+        for r in _refs(p, read, pinned):
             if r not in out:
                 out.append(r)
     return out
+
+
+def scan_refs(root: Path, deployed: set[str]) -> list[str]:
+    """Image nền cần quét lỗ hổng (ADR-0056): `references(pinned=True)` BỎ image nền của Dockerfile mà image đã dựng
+    từ nó đang chạy ở staging (`deployed` = service có image id) — image đó được quét riêng và mới là bằng chứng.
+
+    Hub 2026-10-16 (REL-107): `infra/db/Dockerfile` cố ý ghim base `postgres:16.15-trixie` rồi `apt-get upgrade` và gỡ
+    `gosu` (ADR-DD-15); image db đang chạy có 0 CVE có bản sửa, base có 25. Đưa base vào bằng chứng → reviewer đòi đổi
+    base, đi ngược quyết định kiến trúc. Base còn được Dockerfile chưa chạy hay `image:` của compose dùng thì giữ."""
+    builds = _compose_builds(root)
+    done = {p for s, p in builds if s in deployed}
+    other = {p.resolve() for g in DOCKERFILES for p in root.glob(g)} | {p for _, p in builds}
+    keep = {r for p in other - done for r in _refs(p, _dockerfile_refs)}
+    keep |= {r for n in COMPOSE_NAMES for r in _refs(root / n, _compose_refs)}
+    drop = {r for p in done for r in _refs(p, _dockerfile_refs)} - keep
+    return [r for r in references(root, pinned=True) if r not in drop]
 
 
 def tags(root: Path) -> list[str]:

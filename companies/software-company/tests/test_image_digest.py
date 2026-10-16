@@ -277,3 +277,47 @@ def test_references_doc_ca_dockerfile_do_compose_build_tro_toi(tmp_path):
     (tmp_path / "thoat" / "Dockerfile").write_text("FROM evil:1\n", encoding="utf-8")
     assert references(root, pinned=True) == [PG, "node:22-alpine"], "Dockerfile compose build, context tương đối"
     assert references(root) == ["node:22-alpine"], "đã ghim thì không cần digest; đường thoát ra ngoài repo bị bỏ"
+
+
+# ---------- bổ sung 2026-10-16 (2): image nền của image ĐÃ DỰNG đang chạy không phải bằng chứng về nó ----------
+# Hub thật (QLKH-DD-CSV REL-107): sau #537 bằng chứng có thêm base `postgres:16.15-trixie@ca0bd484` của
+# `infra/db/Dockerfile` (25 CRITICAL/HIGH có bản sửa). Dockerfile cố ý ghim base đó rồi `apt-get upgrade` và gỡ `gosu`
+# (ADR-DD-15); image db ĐANG CHẠY có 0 CVE có bản sửa. `reviewer:tu-dong` từ chối vì "base còn CVE có bản sửa", hub
+# lập kế hoạch đổi base, đi ngược quyết định kiến trúc của chủ dự án. Đúng như ADR-0056 bổ sung 2026-10-14: image dẫn
+# xuất không có image nền nào nói đúng về nó; image đã dựng đang chạy mới là bằng chứng.
+
+COMPOSE_HAI = """services:
+  db:
+    build:
+      context: .
+      dockerfile: infra/db/Dockerfile
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/db/Dockerfile
+  app:
+    build: .
+  cache:
+    image: redis:7.4-alpine
+volumes:
+  pgdata: {}
+"""
+
+
+def test_scan_refs_bo_image_nen_cua_dockerfile_ma_image_da_dung_dang_chay(tmp_path):
+    from company.image_digest import scan_refs
+
+    root = _repo(
+        tmp_path,
+        **{
+            "docker-compose.yml": COMPOSE_HAI,
+            "infra/db/Dockerfile": f"FROM {PG}\n",
+            "Dockerfile": "FROM python:3.12-slim\n",
+        },
+    )
+    assert scan_refs(root, set()) == references(root, pinned=True), "chưa deploy: image nền là bằng chứng duy nhất"
+    assert scan_refs(root, {"db"}) == ["python:3.12-slim", "redis:7.4-alpine"], "migrate cùng Dockerfile với db"
+    assert scan_refs(root, {"db", "app"}) == ["redis:7.4-alpine"], "`build: .` = Dockerfile ở context"
+    (root / "api").mkdir()
+    (root / "api" / "Dockerfile").write_text(f"FROM {PG}\n", encoding="utf-8")
+    assert PG in scan_refs(root, {"db", "app"}), "base còn được Dockerfile khác (chưa chạy) dùng thì vẫn quét"
