@@ -102,3 +102,15 @@ def _with_debate(e: Envelope, o: Orchestrator) -> dict[str, Any]:
     o._audit("research.debate", {**d.as_audit(), "source_event": e.event_id}, actor=DEBATE_ACTOR, tokens=d.tokens,
              cost=d.cost_usd, project_id=pid)
     return {"debate": d.summary()}
+
+
+
+def _with_deploy_readiness(e: Envelope, o: Orchestrator) -> dict[str, object]:
+    """Sự thật MÁY về việc dựng staging cho lượt `ops` (ADR-0061 bổ sung 2026-10-16) — xem `deploy.readiness`."""
+    from ..deploy import readiness
+    from ..smoke import parse_runtime
+    from .verify import project_spec
+    pid = o.project_for(e) or str(e.payload.get("project_id") or "")
+    integ, spec = o.integration_for(pid), project_spec(o, pid) if pid else None
+    rt = parse_runtime(spec.payload if spec is not None else None)
+    return {"deploy_readiness": readiness(integ.path if integ is not None else None, pid, rt)}

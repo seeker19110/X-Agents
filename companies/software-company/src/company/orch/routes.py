@@ -19,7 +19,15 @@ if TYPE_CHECKING:
     pass
 
 from .enrich import BLIND_STRIP as BLIND_STRIP  # re-export: worktree_flow/orchestrator nhập từ đây
-from .enrich import _with_chan_doan, _with_debate, _with_diff, _with_draft, _with_intake, _with_task
+from .enrich import (
+    _with_chan_doan,
+    _with_debate,
+    _with_deploy_readiness,
+    _with_diff,
+    _with_draft,
+    _with_intake,
+    _with_task,
+)
 from .guards import MAX_CLARIFY_ROUNDS as MAX_CLARIFY_ROUNDS
 from .guards import PLAN_REWORKS as PLAN_REWORKS
 from .guards import SPEC_KINDS as SPEC_KINDS
@@ -156,7 +164,8 @@ def phase_for(r: Route, spec: AgentSpec, inp: Envelope) -> str | None:
 
 
 
-STAGING_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="staging", phase="deploy")
+STAGING_ROUTE = Route("release-candidates", ROLE.OPS, "release-events", target_env="staging", phase="deploy",
+                      enrich=_with_deploy_readiness)  # ADR-0061 bổ sung: sự thật máy về deploy
 # release-check của security: tách hằng để `recheck` (ADR-0047 §5) gọi lại ĐÚNG dòng này, không dựng tay
 RELEASE_CHECK_ROUTE = Route("release-candidates", ROLE.SECURITY, "review-results", _release_needs_security)
 ROUTES: tuple[Route, ...] = (
