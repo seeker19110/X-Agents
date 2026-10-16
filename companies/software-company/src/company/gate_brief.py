@@ -381,11 +381,18 @@ def _brief_estimates(orch: Orchestrator, items: dict[str, SelfItem], pid: str | 
              if t.get("estimate_tokens") and int(t.get("budget_tokens") or 0) < int(t["estimate_tokens"]) * 1.5]
     if over_cap: facts.append("budget vượt budget_tokens_per_task của agent: " + ", ".join(over_cap))
     if under: facts.append("budget < estimate × 1.5: " + ", ".join(under))
-    pb = orch.supervisor.project_budget_usd
+    sup = orch.supervisor; pb = sup.project_budget_usd
+    used = sup.project_cost.get(pid or "", 0.0) - sup.project_granted.get(pid or "", 0.0)
     facts.append(f"trần tiền dự án (llm.yaml budget_usd): {pb if pb is not None else 'chưa đặt'}"
-                 + (f"; đã dùng {orch.supervisor.project_cost.get(pid or '', 0.0):.2f} USD" if pid else ""))
+                 + (f"; đã dùng {used:.2f} USD" if pid else ""))
+    if pb and sup.unpriced:
+        facts.append(f"trần tiền không đo được: {sup.unpriced} lời gọi không có giá trong `prices`, tính 0 USD")
     # Vượt trần agent chỉ là cảnh báo ở release: ticket đã xong, reject không đổi được budget (chủ repo 2026-10-13).
-    out.append(_item(it, "gap" if under else "unknown", facts, [plan_src]))
+    # Trần tiền dự án mới là hạn mức cứng: đặt rồi, đo được, chưa vượt ⇒ `ok` (hub 2026-10-16: trước đây không bao
+    # giờ `ok`, agent duyệt giữ mọi release).
+    measured = bool(pb) and not sup.unpriced
+    verdict = "gap" if under or (measured and used > (pb or 0.0)) else "ok" if measured else "unknown"
+    out.append(_item(it, verdict, facts, [plan_src]))
     return out
 
 
