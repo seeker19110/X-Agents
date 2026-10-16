@@ -353,6 +353,31 @@ def test_release_voi_repo_doc_diff_nhanh_tich_hop(tmp_path):
     assert "file đổi trên company/integration" in it["facts"][0]
 
 
+def test_release_dashboard_doc_alert_dashboard_trong_repo_khi_infra_lam_roi(tmp_path):
+    """Hub 2026-10-16 (QLKH-DD-CSV REL-106): DDCSV-93B đã merge `ops/observability/alerts.yaml` + `dashboard.yaml` phủ đủ
+    3 endpoint, nhưng artifact infra mới nhất (v54, DDCSV-101 ghi đè) không còn mục Observability → hồ sơ ra [gap],
+    `tu-dong` reject gate release và hub lập kế hoạch lần thứ ba cho việc đã xong (GATE3-REL-106). Bằng chứng nằm
+    trong REPO — hồ sơ phải đọc ở đó, không chỉ ở bản ghi chép."""
+    import subprocess
+
+    repo = _init_repo(tmp_path / "repo")
+    db, _, orch = _scenario(tmp_path, to="release", repo=repo)
+    orch.blackboard.write("builder", "infra", "infra/v54", content="CI rel-verify, smoke /healthz", project_id="P1")
+    integ = orch.integration_for("P1")
+    obs = integ.path / "ops" / "observability"
+    obs.mkdir(parents=True)
+    (obs / "alerts.yaml").write_text("- alert: OBS-1\n  endpoint: GET /orders\n  runbook: docs/ops/runbook.md#OBS-1\n"
+                                     "- alert: OBS-2\n  endpoint: POST /payments\n", encoding="utf-8")
+    (obs / "README.txt").write_text("không phải file alert: /khong-tinh\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(integ.path), "add", "-A"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(integ.path), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "obs"],
+                   check=True, capture_output=True)
+    it = next(x for x in GB.build(GB.load_state(db, repo=repo), "REL-001")["self_check"] if x["id"] == "release.dashboard-alert")
+    assert it["verdict"] == "ok", it["facts"]
+    assert any("ops/observability/alerts.yaml" in f for f in it["facts"]), "nói rõ lấy bằng chứng ở file nào"
+    assert any(s.get("kind") == "worktree" for s in it["sources"])
+
+
 
 def test_release_nhan_ra_docs_ten_tieng_viet(tmp_path):
     """`core.quotepath` mặc định: `docs/hướng-dẫn.md` ra `"docs/h\\341\\273\\260..."` — mở đầu bằng ngoặc kép nên
