@@ -126,3 +126,31 @@ def test_route_co_tool_nhan_read_artifact(tmp_path):
         "write_file" in c["tools"] for c in with_tools
     )
     assert any("write_file" not in c["tools"] for c in with_tools), "cả route chỉ đọc lẫn route ghi"
+
+
+# ---------- ADR-0049 bổ sung 2026-10-16: đọc một bản CŨ theo `version` ----------
+# Hub thật (QLKH-DD-CSV, DDCSV-102): định nghĩa V-SEC7-08..27 chỉ có ở threat-model v140 §11/§12; read_artifact chỉ
+# trả bản mới nhất (v163/v165) nên builder lẫn security không điền được 19/27 mã, ticket kẹt ở escalation.
+
+
+def test_read_artifact_doc_ban_cu_theo_version(tmp_path):
+    t = _tool(_bb(tmp_path))
+    assert t.read_artifact("prd", version=1) == "# PRD cũ", "bản cũ lấy từ bus — nguồn sự thật, không phải file mirror"
+    assert t.read_artifact("prd", "Phạm vi", version=2) == "## Phạm vi\n\nREQ-1 đăng nhập\n\n", "version + section"
+
+
+def test_read_artifact_version_khong_co_noi_khoang_co(tmp_path):
+    out = _tool(_bb(tmp_path)).read_artifact("prd", version=7)
+    assert out.startswith("lỗi") and "1..2" in out
+
+
+def test_read_artifact_version_khong_lot_du_an_khac(tmp_path):
+    bb = Blackboard(InMemoryBus(), store=tmp_path / "art")
+    bb.write("product", "prd", "docs/prd.md", "của P2", content="# PRD của dự án khác", project_id="P2")
+    bb.write("product", "prd", "docs/prd.md", "PRD v1", content="# PRD P1", project_id="P1")
+    assert _tool(bb).read_artifact("prd", version=1) == "# PRD P1", "dự án do code chọn, không phải theo số bản"
+
+
+def test_read_artifact_version_khi_du_an_chua_co_artifact(tmp_path):
+    out = _tool(_bb(tmp_path), pid="P9").read_artifact("prd", version=1)
+    assert out.startswith("lỗi") and "chưa có" in out
