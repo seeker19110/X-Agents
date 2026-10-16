@@ -17,7 +17,7 @@ from typing import Any
 from xagents_core.sandbox import SECRET_ENV as SECRET_ENV  # re-export: `llm.py` và test nhập từ đây
 from xagents_core.sandbox import clean_env
 
-from .stacks import Stack, detect, no_tests_ran
+from .stacks import Stack, detect, failed_tests, no_tests_ran
 
 
 class WorkspaceError(Exception): ...
@@ -134,13 +134,13 @@ class TicketWorkspace:
             self.sandbox = SubprocessSandbox()
         return self.sandbox
 
-    def _run(self, *cmd: str, timeout: int = 600) -> CheckResult:
+    def _run(self, *cmd: str, timeout: int = 600, cwd: Path | None = None) -> CheckResult:
         # Env đã lọc khoá API (như tool của model): lint/test của repo khách không được thấy secret của công ty.
         # Qua `Sandbox` từ ADR-0035: cùng cách cắt output (4000), cùng timeout; backend `container` thêm mạng tắt
         # và hạn mức. `env=clean_env()` truyền TƯỜNG MINH — `RunSpec.env` mặc định là `{}` (rỗng thật, không phải
         # "chưa khai"), để rỗng là lệnh chạy không có cả `PATH`.
         from .sandbox import RunSpec, registry_domains
-        r = self._sandbox().run(RunSpec(argv=list(cmd), cwd=self.path, env=clean_env(), timeout=float(timeout),
+        r = self._sandbox().run(RunSpec(argv=list(cmd), cwd=cwd or self.path, env=clean_env(), timeout=float(timeout),
                                         max_output=4000,
                                         allowed_domains=registry_domains(cmd, self._sandbox().name)))
         if r.timed_out:
@@ -164,6 +164,35 @@ class TicketWorkspace:
             # Dấu ở ĐẦU và giữ trong trần 4000: cắt từ cuối như `_run` sẽ làm mất chính dấu đó.
             return CheckResult(ok=False, output=f"{NO_TESTS_MARK}\n{r.output[len(NO_TESTS_MARK) + 1 - 4000:]}", ran=False)
         return r
+
+    def inherited_failures(self, ids: list[str]) -> set[str] | None:
+        """ADR-0062: chạy lại đúng các test `ids` trên ĐIỂM RẼ NHÁNH (worktree tạm, cùng sandbox) — tập id cũng đỏ ở
+        nền. Xanh hết ở nền → tập rỗng. Không chạy/đọc được (git, sandbox, id không tồn tại ở nền) → None."""
+        argv = self.stack().test
+        if argv is None or not ids: return None
+        tmp = self.repo / ".worktrees" / f".nen-{self.ticket_id}"
+        try:
+            if tmp.exists(): _git(self.repo, "worktree", "remove", "--force", str(tmp))
+            _git(self.repo, "worktree", "add", "--detach", str(tmp), self.base_sha())
+            r = self._run(*argv, *ids, cwd=tmp)
+        except WorkspaceError:
+            return None
+        finally:
+            if tmp.exists(): _git(self.repo, "worktree", "remove", "--force", str(tmp))
+        if r.ok: return set()
+        base = failed_tests(r.output)
+        return None if base is None else set(base) & set(ids)
+
+    def catch_up(self) -> bool:
+        """ADR-0062: đưa đầu nhánh nền vào nhánh ticket bằng merge (giữ commit đã có, diff cho reviewer vẫn tính từ
+        điểm rẽ nhánh mới). Worktree đang dở hoặc xung đột → không đổi gì (huỷ merge), trả False."""
+        if self.dirty(): return False
+        try:
+            _git(self.path, "-c", "user.name=agent", "-c", "user.email=agent@company.local", "merge", "--no-edit", self.base)
+            return True
+        except WorkspaceError:
+            subprocess.run(["git", "-C", str(self.path), *NO_HOOKS, "merge", "--abort"], capture_output=True, env=clean_env())
+            return False
 
     def run_checks(self) -> dict[str, Any]:
         """Đúng định dạng `pull-requests.local_checks`. Không có coverage thì bỏ trống chứ không bịa.

@@ -57,6 +57,20 @@ def no_tests_ran(output: str) -> bool:
     """Output của lệnh test cho thấy không test nào được chạy (exit code một mình không phải bằng chứng)."""
     return bool(_NO_TESTS_RE.search(output)) and not _TESTS_RAN_RE.search(output)
 
+
+_FAILED_ID_RE = re.compile(r"^(?:FAILED|ERROR) (\S+)", re.M)
+_SUMMARY_RE = re.compile(r"^.*\bin \d+(?:\.\d+)?s\b.*$", re.M)
+_SUMMARY_BAD_RE = re.compile(r"\b(\d+) (?:failed|errors?)\b")
+
+
+def failed_tests(output: str) -> list[str] | None:
+    """ADR-0062: id các test đỏ trong tóm tắt pytest (`FAILED <id>`, `ERROR <id>`). Số id phải khớp số đỏ ở dòng tổng
+    cuối cùng; không khớp (output bị cắt), không có test đỏ, hay không phải pytest → None: không chứng minh được."""
+    ids = list(dict.fromkeys(_FAILED_ID_RE.findall(output)))
+    tong = _SUMMARY_RE.findall(output)
+    want = sum(int(n) for n in _SUMMARY_BAD_RE.findall(tong[-1])) if tong else 0
+    return ids if ids and len(ids) == want else None
+
 PY = Stack(
     "python",
     [sys.executable, "-m", "ruff", "check"],

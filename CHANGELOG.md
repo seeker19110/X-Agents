@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **test đỏ sẵn trên nền không còn tính là ticket trượt** (ADR-0062: máy chạy lại đúng các test đỏ ở điểm rẽ nhánh; đỏ sẵn hết thì ticket `changes_requested → waiting`, không đốt retry, và được giao lại, bắt kịp nhánh tích hợp, khi có merge mới; trần 3 lần, chỉ khi dự án còn ticket khác đang chạy). Hub thật (QLKH-DD-CSV): 10 test `tests/dpia` đỏ sau DDCSV-110 làm DDCSV-111 và DDCSV-132 hết lượt rồi bị REPLAN thay, còn DDCSV-138 (compose, không chạm `tests/dpia`) bị trả về vì đúng 10 test đó. Đo hai chiều: tắt từng phần (nhánh chờ, điều kiện còn ticket chạy, nhả khi merge, bắt kịp nền, dựng lại) thì ca tương ứng đỏ; bật lại thì xanh.
+
 - fix(company): **CR sau khi bác release (`GATE3-*`, `REWORK-REL-*`) mang nguyên văn lý do từ chối** (mô tả `HINT_MAX + 1000`, `impact.reason` `HINT_MAX`, cùng trần với `REPLAN-*`; ADR-0058 bổ sung 2). Hub thật (QLKH-DD-CSV REWORK-REL-109-1): mô tả bị cắt ở 1000 ký tự và lý do ở 500 ký tự, nên nhóm chặn 2 (QA đỏ ở `tests/dpia`) không tới planner và CR bị agent duyệt giữ lại. Đo hai chiều: trước khi sửa ca mới đỏ, sau khi sửa thì xanh.
 
 - fix(company): **bằng chứng deploy che mọi giá trị trong file env bí mật và ghi số đo `secret_redaction`** (`deploy._redacted`: `error`, `logs_tail`, `smoke` được che ngay lúc dựng `DeployRecord`; `{values, hits, verified_by=orchestrator}`; ADR-0061 bổ sung 2). Hub thật (QLKH-DD-CSV REL-109): security chặn RC với TM-SEC10-05 (High), "mật khẩu DB có thể lộ vào log", vì không có bằng chứng giảm nhẹ. Log container và stderr compose vốn đi thẳng lên bus. Đo hai chiều: trước khi sửa 3 ca mới đỏ (giá trị nằm nguyên trong `logs_tail`/`error`), sau khi sửa thì xanh.

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from ..events import Envelope, Task
 from ..roles import LEAD_ACTOR, ROLE
+from ..stacks import failed_tests
 from ..tools import ToolBox, WorkspaceTools
 from ..workspace import Integration, TicketWorkspace, WorkspaceError, _git
 from .routes import BLIND_STRIP, MAX_CONFLICT_RETRIES, Route, key_for
@@ -225,6 +226,7 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str |
     # khi xanh nhưng KHÔNG ghi (và không xoá) được file test. Đi thẳng từ `tasks` thì bộ test vẫn là của chính nó.
     doc_lap = task.topic == "test-suites"
     if ws is not None:
+        if o.lead.stops[tid]["base_red"]: ws.create(); ws.catch_up()  # ADR-0062: từng chờ vì nền đỏ — chạy trên nền mới
         g = o.runner.generate_in_workspace(agent, task, ws, budget=budget, max_turns=o.max_turns,
                                               write_scope="src" if doc_lap else "all", phase=phase)
         p = g.payloads[0]
@@ -234,6 +236,7 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str |
             bad = [k for k in ("lint", "tests") if lc.get(k) is False]
             hint = f"{'/'.join(bad)} local fail (retry {task.payload.get('retry', 0)}):\n" + \
                    "\n".join((lc.get({"lint": "lint_output", "tests": "test_output"}[k]) or "")[-1500:] for k in bad)
+            if bad == ["tests"] and base_red(o, ws, tid, lc): return None
             o._audit("pr.rejected_local_checks", {"ticket_id": tid, "agent": agent, "failed": bad, "commit": p.get("pr_ref"),
                                                      "files": p.get("impact", {}).get("files", [])},
                         actor=agent, tokens=g.tokens, cost=g.cost_usd, ticket_id=tid, project_id=task.payload.get("project_id"))
@@ -247,6 +250,23 @@ def engineer(o: Orchestrator, agent: str, task: Envelope, r: Route, phase: str |
     p = {**p, "tests_authored_by": ROLE.QA if doc_lap else "assignee"}
     return o.runner.publish(agent, task, r.topic_out, p, key=key_for(r.topic_out, p, task.key),
                                tokens=g.tokens, model=g.model, context_writes=g.context_writes, generated=g)
+
+def base_red(o: Orchestrator, ws: TicketWorkspace, tid: str, lc: dict[str, object]) -> bool:
+    """ADR-0062: lint xanh, test đỏ — mọi test đỏ đều đỏ sẵn ở điểm rẽ nhánh (máy chạy lại để chứng minh) thì ticket nằm
+    chờ nền đổi thay vì làm lại. Không chứng minh được, hoặc `DeliveryLead` không cho chờ → False (rework như cũ)."""
+    ids = failed_tests(str(lc.get("test_output") or ""))
+    if ids is None or tid not in o.lead.tickets: return False
+    nen = ws.inherited_failures(ids)
+    if nen != set(ids): return False
+    base = ws.base_sha()[:12]
+    hint = (f"Lượt trước: lint xanh; {len(ids)} test đỏ đều ĐỎ SẴN ở điểm rẽ nhánh {base}, không do ticket này "
+            f"(ADR-0062): {', '.join(ids)[:1500]}. Code của bạn đã commit trên nhánh ticket; nhánh đã được bắt kịp nền mới. "
+            "Chạy test: xanh thì không cần sửa gì (nêu no_changes_reason); còn đỏ thì chỉ sửa phần thuộc ticket này.")
+    if not o.lead.park_base_red(tid, hint): return False
+    o._audit("ticket.base_red", {"ticket_id": tid, "failed": len(ids), "inherited": sorted(nen)[:50], "base": base,
+                                 "hint": hint, "verified_by": "workspace"},
+             ticket_id=tid, project_id=o.lead.tickets[tid].project_id)
+    return True
 
 def comment(o: Orchestrator, ticket_id: str, by: str, text: str) -> Task:
     """Nhận xét của người cho ticket đang chạy: ghi audit `human.comment` và phát lại task với hint = nhận xét
