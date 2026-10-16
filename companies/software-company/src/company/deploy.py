@@ -136,6 +136,21 @@ def deploy_env_file(repo_root: Path, project: str) -> str:
     return str(f)
 
 
+def readiness(repo_root: Path | None, project_id: str, rt: Runtime | None) -> dict[str, object]:
+    """Sự thật MÁY cho lượt staging của `ops` (ADR-0061 bổ sung 2026-10-16): mode, compose project, compose file dò
+    được, file secret ngoài repo có/không. Ops không đo được env của hub; thiếu mục này nó suy từ threat-model cũ (REL-105:
+    khai `pending_human` vì "thiếu QLKH_COMPOSE_DB_PASSWORD" khi hub đã cấp) và `deploy()` không bao giờ chạy. Chỉ
+    có/không và đường dẫn, không bao giờ giá trị."""
+    project = project_name(project_id, "staging")
+    out: dict[str, object] = {"verified_by": VERIFIED_BY, "mode": deploy_settings()[0], "project": project,
+                              "compose_file": compose_file(repo_root, rt) if repo_root is not None and rt else ""}
+    try:
+        out["secret_env_file"] = bool(repo_root is not None and deploy_env_file(repo_root, project))
+    except DeployError as err:
+        out["secret_env_file"], out["secret_env_file_error"] = False, str(err)[:200]
+    return out
+
+
 def deploy_settings() -> tuple[str, str]:
     """`(mode, binary)` từ môi trường. Company đọc env, core thì không — cùng lý do với `sandbox_from_config`:
     tên biến là của công ty, không phải của lõi. Mặc định `binary` phụ thuộc mode (ADR-0040): `process` bắc cầu

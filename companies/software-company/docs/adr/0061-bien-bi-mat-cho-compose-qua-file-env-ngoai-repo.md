@@ -45,3 +45,14 @@ cho staging bằng kho secret hoặc biến môi trường của runner". Hub ch
 - Postgres chỉ đặt mật khẩu ở lần khởi tạo volume. Volume staging cũ dựng bằng mật khẩu khác thì phải
   `docker compose -p <project> down -v` một lần. Đó là dữ liệu staging, không phải dữ liệu thật.
 - Test: `tests/test_deploy_env_file.py` (hai chiều cho cả ba hàng rào).
+
+## Bổ sung 2026-10-16: ops nhận sự thật máy về việc dựng staging
+`deploy()` chỉ chạy khi ops khai `deployed` (ADR-0039). Hub thật (QLKH-DD-CSV, REL-105): sau khi file secret đã có, ops
+vẫn khai `pending_human` vì threat-model cũ ghi "staging thiếu QLKH_COMPOSE_DB_PASSWORD". Không container, không DAST,
+security chặn RC. Ops không đo được env của hub.
+
+Quyết định: `STAGING_ROUTE` có enrich `_with_deploy_readiness` (`orch/enrich.py`). Đầu vào lượt staging mang
+`deploy_readiness` (`verified_by=orchestrator`): `mode`, `project`, `compose_file` dò được trong cây tích hợp,
+`secret_env_file` có/không, và `secret_env_file_error` khi file sai quyền hoặc nằm trong repo. Chỉ có/không và đường dẫn,
+không bao giờ giá trị. Test: `tests/test_ops_deploy_readiness.py`.
+
