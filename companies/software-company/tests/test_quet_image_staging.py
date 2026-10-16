@@ -108,6 +108,45 @@ def test_release_check_quet_image_cua_staging_da_deploy(tmp_path, monkeypatch):
     assert [(i.get("service"), i["ref"]) for i in imgs if i.get("deployed")] == [("app", ID_APP), ("db", ID_DB)]
 
 
+def test_release_check_bo_image_nen_cua_image_da_dung_dang_chay(tmp_path, monkeypatch):
+    """Bổ sung 2026-10-16 (REL-107): staging chạy app + db dựng từ Dockerfile → image nền của hai Dockerfile đó không
+    vào `evidence.vuln.images` nữa; chỉ image đã dựng đang chạy là bằng chứng (`image_digest.scan_refs`)."""
+    from company.events import Task
+    from test_dast import _sec
+    from test_deploy_release_fsm import RUNTIME, _fake_deploy, _git, _orch, _repo
+    from test_supply_chain import _fake_licenses
+
+    _fake_licenses(monkeypatch)
+    t = FakeTools()
+    monkeypatch.setattr(sc, "which", t.which)
+    monkeypatch.setattr(sc, "run", t.run)
+    fn, _ = _fake_deploy(monkeypatch, ps=(0, PS_HAI, ""))
+    repo = _repo(tmp_path)
+    (repo / "compose.yaml").write_text(
+        "services:\n  db:\n    build:\n      context: .\n      dockerfile: infra/db/Dockerfile\n  app:\n    build: .\n",
+        encoding="utf-8",
+    )
+    (repo / "infra" / "db").mkdir(parents=True)
+    (repo / "infra" / "db" / "Dockerfile").write_text("FROM postgres:16.15-trixie\n", encoding="utf-8")
+    (repo / "Dockerfile").write_text("FROM python:3.12-slim\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "build")
+    bus, orch = _orch(tmp_path, repo, deploy_fn=fn, runtime={**RUNTIME, "deploy": "compose.yaml"})
+    orch.lead.tickets["T1"] = Task(
+        ticket_id="T1",
+        project_id="P",
+        requirement_id="R1",
+        assignee="builder",
+        title="T1",
+        acceptance=["a"],
+        risk_tags=["auth"],
+    )
+    orch.run()
+    imgs = _sec(bus)["evidence"]["vuln"]["images"]
+    assert [i["ref"] for i in imgs if not i.get("deployed")] == [], "image nền của image đã dựng đang chạy: bỏ"
+    assert [i.get("service") for i in imgs if i.get("deployed")] == ["app", "db"]
+
+
 def test_nhan_compose_dang_dict_va_id_hong_hinh():
     from company.deploy import _image_id
 
