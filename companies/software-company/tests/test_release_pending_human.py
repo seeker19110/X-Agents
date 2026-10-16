@@ -241,3 +241,40 @@ def test_huy_rc_superseded_khong_de_ticket_lai_cho_flush_releases_tao_rc_trung()
 
     assert orch.lead.state["T1"] != "approved", "phải chuyển sang DONE_STATE thật, không để lửng lơ ở approved"
     assert "T1" not in orch.lead.unreleased("P1"), "ticket đã giao không được cho flush_releases gom lại"
+
+
+def _rc_deploy_failed(env: str, *, gate3: bool):
+    from company.events import Envelope as _Env
+    from company.gates import GateRequest
+    bus = InMemoryBus(); orch = Orchestrator(bus, FakeClient(handler=handler))
+    bus.publish(_Env(topic="release-candidates", key="REL-1", actor="delivery-lead",
+                     payload={"release_id": "REL-1", "project_id": "P1", "version": "0.1.0", "tickets": []}))
+    if gate3:
+        orch.gate.request(GateRequest(kind="release", subject_id="REL-1", created_by="delivery-lead", checklist=[]))
+        orch.gate.decide("REL-1", "approve", by="human:release-manager")
+    bus.publish(_Env(topic="release-events", key="REL-1", actor="ops",
+                     payload={"release_id": "REL-1", "version": "0.1.0", "env": env, "status": "deploy_failed"}))
+    return bus, orch
+
+
+def test_duyet_redeploy_sau_deploy_failed_production_thi_chay_lai_production():
+    """Hub thật 2026-10-16 (REL-119): Gate 3 đã ký, deploy production hỏng vì máy trực thiếu file env bí mật; người sửa
+    cấu hình rồi duyệt escalation `decision:redeploy` — nhưng `_rerun_release` chỉ nhận `pending_human` ⇒ không chạy
+    lại gì, RC nằm im dù gate đã đóng."""
+    from company.orchestrator import StepResult
+    bus, orch = _rc_deploy_failed("production", gate3=True)
+    assert orch._rerun_release("REL-1", "reviewer:phien-chinh", "đã thêm file env", StepResult("x", "audit-log", "REL-1"))
+    rr = [e for e in bus.replay(topic="audit-log") if e.payload["action"] == "release.rerun"]
+    assert rr and '"env": "production"' in rr[-1].payload["evidence"]
+
+
+def test_duyet_redeploy_sau_deploy_failed_staging_thi_chay_lai_staging():
+    from company.orchestrator import StepResult
+    _bus, orch = _rc_deploy_failed("staging", gate3=False)
+    assert orch._rerun_release("REL-1", "reviewer:phien-chinh", "", StepResult("x", "audit-log", "REL-1"))
+
+
+def test_deploy_failed_production_van_khong_vuot_gate_3():
+    from company.orchestrator import StepResult
+    _bus, orch = _rc_deploy_failed("production", gate3=False)
+    assert orch._rerun_release("REL-1", "reviewer:phien-chinh", "", StepResult("x", "audit-log", "REL-1")) is False

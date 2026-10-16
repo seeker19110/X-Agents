@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **duyệt escalation `redeploy` sau `deploy_failed` nay chạy lại deploy** (ADR-0039 bổ sung 2026-10-16). Trước đây chỉ `pending_human` được chạy lại; production vẫn đòi Gate 3 đã ký. Hub thật (QLKH-DD-CSV, REL-119): deploy production hỏng vì máy trực thiếu file env bí mật. Phiên chính sửa cấu hình rồi duyệt redeploy, nhưng không có gì chạy lại: gate đã đóng mà RC nằm im. Đo hai chiều: trước khi sửa ca production và ca staging đỏ, sau khi sửa thì xanh.
+
 - fix(company): **từ chối escalation của RC hỏng ở deploy staging nay làm lại ticket `approved`, hoặc nộp CR** (ADR-0057 bổ sung 6). Trước đây chỉ ticket `merged` được làm lại, mà ticket chỉ lên `merged` khi staging `deployed`. Hub thật (QLKH-DD-CSV, REL-113): bác vì compose ghi secret vào service `read_only`, nhưng DDCSV-142 vẫn ở `approved`; không ai làm lại, hint đúng nguyên nhân rơi mất, orchestrator vẫn ghi `release_reworked`. Nay `rework_release_tickets` trả về ticket đã làm lại; rỗng thì lý do đi qua CR `REWORK-<RC>-<n>`. Đo hai chiều: trước khi sửa hai ca mới đỏ (retry 0; `release_reworked` dù không ai làm lại), sau khi sửa thì xanh.
 
 - fix(company): **hồ sơ gate giữ dòng lỗi cuối của lệnh** (`gate_brief.excerpt_ends`: một phần ba đầu + đuôi, cho cột chi tiết lỗi trong lịch sử thất bại của release, dự án và ticket). Hub thật (QLKH-DD-CSV, REL-113): `docker compose up -d` in hàng chục dòng "Recreated" rồi mới tới lỗi `cannot create secret … in read-only service migrate`; hồ sơ cắt 200 ký tự đầu nên agent duyệt giữ gate vì "không có dòng lỗi cuối". Đo hai chiều: trước khi sửa ca mới đỏ (chi tiết chỉ còn "Recreated…"), sau khi sửa thì xanh; golden escalation sinh lại.

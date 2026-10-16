@@ -108,3 +108,11 @@ code cũ, đúng loại lời khai ADR này sinh ra để chặn.
   đổi thì compose tự tạo lại container. Service chỉ có `image:` (vd `db`) không bị đụng.
 - Chế độ `process` (ADR-0040) không đổi: script của khách tự dựng.
 - Đo hai chiều: bỏ `--build` ⇒ `test_up_dung_lai_image_tu_cay_rc_moi_lan_deploy` đỏ.
+
+## Bổ sung 2026-10-16 — duyệt `redeploy` sau `deploy_failed` thì chạy lại thật
+
+Hub thật (QLKH-DD-CSV, REL-119): Gate 3 đã ký, deploy production hỏng vì máy trực thiếu file env bí mật (ADR-0061).
+Người sửa cấu hình rồi duyệt escalation `decision:redeploy|close`, nhưng `_rerun_release` chỉ nhận release-event cuối
+`pending_human` ⇒ không chạy lại gì, gate đóng mà RC nằm im. Nay `deploy_failed` cũng được chạy lại, cùng route với
+env của release-event cuối; production vẫn chỉ khi Gate 3 đã ký (không thêm, không bớt cổng nào). Đo hai chiều: trước
+khi sửa ca production và staging đỏ (`_rerun_release` trả False), sau khi sửa xanh; ca "không vượt Gate 3" xanh cả hai chiều.
