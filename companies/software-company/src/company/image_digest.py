@@ -23,6 +23,7 @@ DOMAINS = ("auth.docker.io", "registry-1.docker.io")
 DOCKERFILES = ("Dockerfile", "*/Dockerfile")  # đúng tập mà job `image-pin` của khách quét
 _FROM = re.compile(r"^\s*FROM\s+(.*)$", re.IGNORECASE)
 _IMAGE = re.compile(r"""^\s*image:\s*["']?([^"'\s#]+)""")
+_BUILD_KEY = re.compile(r"""^\s*(context|dockerfile):\s*["']?([^"'\s#]+)""")
 _REF = re.compile(r"^[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]{1,128})?(@sha256:[0-9a-f]{64})?$")
 _SKIP = frozenset({"scratch"})
 
@@ -79,11 +80,34 @@ def _compose_refs(text: str, pinned: bool = False) -> list[str]:
     ]
 
 
+def _compose_dockerfiles(root: Path) -> list[Path]:
+    """Dockerfile mà compose BUILD (`build.dockerfile`, tương đối `build.context`), kể cả ngoài `DOCKERFILES` — hub
+    2026-10-16 (REL-105): `infra/db/Dockerfile` hai tầng thư mục nên image nền db không được quét. Đường ra ngoài repo
+    bị bỏ. Đọc theo dòng như `_IMAGE`: `context:` đứng trước `dockerfile:` trong cùng khối `build:`."""
+    top, out = root.resolve(), []
+    for n in COMPOSE_NAMES:
+        try:
+            text, ctx = (root / n).read_text(encoding="utf-8"), "."
+        except (OSError, UnicodeDecodeError):
+            continue
+        for ln in text.splitlines():
+            if not (m := _BUILD_KEY.match(ln)):
+                continue
+            if m.group(1) == "context":
+                ctx = m.group(2)
+                continue
+            p, ctx = (root / ctx / m.group(2)).resolve(), "."
+            if p.is_relative_to(top) and p.is_file():
+                out.append(p)
+    return out
+
+
 def references(root: Path, *, pinned: bool = False) -> list[str]:
     """Image chưa ghim digest, theo thứ tự gặp, không trùng. Bỏ alias stage, `${ARG}`, `scratch`, đã có `@sha256:`.
     `pinned=True` giữ cả image đã ghim — tập để quét lỗ hổng image nền (ADR-0056), không phải tập cần ghim."""
     out: list[str] = []
     files = [(p, _dockerfile_refs) for g in DOCKERFILES for p in sorted(root.glob(g))]
+    files += [(p, _dockerfile_refs) for p in _compose_dockerfiles(root)]  # trùng file thì trùng ref: bỏ ở dưới
     files += [(root / n, _compose_refs) for n in COMPOSE_NAMES]
     for p, read in files:
         try:

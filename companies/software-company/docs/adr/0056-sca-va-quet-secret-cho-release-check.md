@@ -110,6 +110,20 @@ sửa", không liệt kê đủ mã CVE.
   Evidence cũ không có `serious_ids` thì rút từ `findings` và ghi rõ "danh sách có trần, có thể thiếu"; `unverified`
   thì in lý do. Không có review security thì không có mục — không bịa.
 
+## Bổ sung 2026-10-16 — Dockerfile do compose trỏ tới
+
+Đo hub thật 2026-10-16 (QLKH-DD-CSV REL-105, finding TM-REL105-03 "image db không được quét"): service `db` của
+compose build từ `infra/db/Dockerfile`. File này nằm hai tầng thư mục, ngoài `DOCKERFILES` (`Dockerfile`,
+`*/Dockerfile`), nên image nền postgres không bao giờ vào `evidence.vuln.images`. Khi staging không dựng được thì
+không có đường "image đã dựng" bù vào, và RC bị chặn vì một lỗ của tập quét chứ không phải lỗ của sản phẩm.
+
+- `image_digest.references` đọc thêm mọi `build.dockerfile` trong compose, tương đối `build.context` (đọc theo dòng
+  như `image:`; `context:` đứng trước `dockerfile:` trong cùng khối). Đường dẫn ra ngoài repo bị bỏ, file không có
+  cũng bị bỏ. Tập này dùng chung cho quét lỗ hổng image nền (`pinned=True`) và cho lệnh `image_digest` của builder
+  (ADR-0055), nên Dockerfile compose build cũng được hỏi digest.
+- Hai chiều: trước khi sửa thì `test_references_doc_ca_dockerfile_do_compose_build_tro_toi` đỏ (tập quét không có
+  `postgres…@sha256` của `infra/db/Dockerfile`), sau khi sửa thì xanh.
+
 ## Cái giá đã biết
 
 - Hai binary ngoài repo, phiên bản do máy trực quyết; `tool` ghi "trivy 0.75.0"/"gitleaks 8.30.1" vào bằng chứng để
