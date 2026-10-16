@@ -103,7 +103,7 @@
         },
         "evidence": {
           "type": "object",
-          "description": "bằng chứng máy sinh của lượt deploy (ADR-0039). `deploy`: {project, env, ok, services[], container_ids[], port, started_at, smoke, compose_file, verified_by: orchestrator} khi đã dựng; {skipped: lý do} khi chưa bật `COMPANY_DEPLOY` / không có compose file; {error, logs_tail} khi hỏng.",
+          "description": "bằng chứng máy sinh của lượt deploy (ADR-0039). `deploy`: {project, env, ok, services[], container_ids[], port, started_at, smoke, compose_file, env_file (đường dẫn file env bí mật ngoài repo, ADR-0061 — không bao giờ là giá trị), verified_by: orchestrator} khi đã dựng; {skipped: lý do} khi chưa bật `COMPANY_DEPLOY` / không có compose file; {error, logs_tail} khi hỏng.",
           "properties": {
             "deploy": {
               "type": "object",
