@@ -56,3 +56,20 @@ Quyết định: `STAGING_ROUTE` có enrich `_with_deploy_readiness` (`orch/enri
 `secret_env_file` có/không, và `secret_env_file_error` khi file sai quyền hoặc nằm trong repo. Chỉ có/không và đường dẫn,
 không bao giờ giá trị. Test: `tests/test_ops_deploy_readiness.py`.
 
+
+## Bổ sung 2026-10-16 (2): che giá trị bí mật trong bằng chứng deploy, có số đo
+Hub thật (QLKH-DD-CSV, REL-109): security chặn RC với TM-SEC10-05 (High), "mật khẩu DB có thể lộ vào log", vì RC
+không có bằng chứng giảm nhẹ. `DeployRecord` ghi `logs_tail` (log container) và `error` (stderr compose) lên bus.
+`orch/verify.py` còn đọc thẳng hai trường đó vào audit. App in chuỗi kết nối DB thì mật khẩu vào `release-events`.
+Phiên chính đã đo tay, chỉ đếm: 0 lần trong `company.sqlite`/WAL, `company.artifacts`, journal của orchestrator và
+repo khách. Nhưng đó là lời khai, không phải bằng chứng trong RC.
+
+Quyết định: có file env bí mật thì `deploy()` dựng MỌI bản ghi qua `_redacted`.
+- Mọi giá trị dài ≥ `SECRET_MIN` (6) của file được thay bằng `***` trong `error`, `logs_tail` và `smoke`, ngay lúc dựng
+  `DeployRecord`, trước khi bất kỳ ai đọc.
+- Bản ghi mang `secret_redaction = {values, hits, verified_by=orchestrator}`: số giá trị được canh, số chỗ đã che. Đây
+  là bằng chứng máy sinh cho security; `hits=0` ở lần chạy sạch vẫn được ghi.
+- Không có file env bí mật thì không có trường này.
+
+Test: `tests/test_deploy_env_file.py` §bổ sung. Hai chiều: trước khi sửa, 3 ca mới đỏ (giá trị nằm nguyên trong
+`logs_tail`/`error`, chưa có `secret_redaction`); sau khi sửa thì xanh.
