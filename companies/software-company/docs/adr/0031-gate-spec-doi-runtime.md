@@ -46,3 +46,13 @@ nhất để trả lời và đắt nhất để bỏ qua.
 ## Liên quan
 ADR-0029 (smoke do orchestrator chạy), ADR-0030 (sổ Ruling), ADR-0010/0013 (model khai, code chứng), B1 trong
 `../../../docs/archive/DAC-TA-NANG-CAP-2026-09.md`, báo cáo `2026-09-06-ban-giao-khong-chay-duoc.md`.
+
+## Bổ sung 2026-10-16: hồ sơ gate spec của CR đọc cả chuỗi PRD delta
+Product ghi PRD của một CR thành chuỗi `prd/<dự án>/change/<CR>/vN`; các bản sau thường là delta cộng dồn chỉ chứa
+mục đổi. Hồ sơ `gate_brief` chỉ đọc bản cuối, nên mục KHÔNG đổi bị chấm là thiếu. Hub thật (QLKH-DD-CSV,
+SPEC-CR-DDCSV-SEC-009): delta §8b → "không có Ngoài phạm vi" (gap); delta §3/§6 → "0 dòng PII". Ba lần reject vì mục vắng
+mặt chứ không vì mục sai, mỗi lần một lượt product viết lại.
+
+Quyết định: với gate `SPEC-<CR>` mà bản `prd` thuộc chuỗi `…/change/<CR>/…`, mỗi mục máy kiểm (NFR, ngoài phạm vi, PII,
+mục 8b) lấy từ bản MỚI NHẤT trong chuỗi có mục đó; fact ghi "lấy từ prd@vN" khi không phải bản cuối, nguồn trỏ đúng bản
+đã đọc. Không mượn mục của chuỗi CR khác hay của PRD dự án. Test: `tests/test_ho_so_spec_cr_doc_prd_cua_chuoi.py`.
