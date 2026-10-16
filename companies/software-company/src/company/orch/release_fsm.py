@@ -20,6 +20,7 @@ from ..roles import ROLE, SOURCE
 from ..workspace import Integration, WorkspaceError
 from .fsm import Transition
 from .routes import PROD_ROUTE, RELEASE_CHECK_ROUTE, STAGING_ROUTE, Route
+from .verify import DEPLOY_FAILED
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -279,10 +280,12 @@ def _recall(o: Orchestrator, agent: str, env: Envelope) -> None:
             o.partial[env.event_id] = {s for s in o.partial[env.event_id] if not s.startswith(f"{agent}:")}
 
 def _rerun_release(o: Orchestrator, rid: str, by: str, reason: str, res: StepResult) -> bool:
-    """Chạy lại lượt release-engineer mà nó vừa tự dừng: env lấy từ release-event cuối; production chỉ khi Gate 3
-    đã ký. Lý do người duyệt đi vào payload làm `human_hint`. Trả False nếu không có gì để chạy lại."""
+    """Chạy lại lượt release-engineer mà nó vừa tự dừng (`pending_human`) hoặc lượt deploy mà orchestrator đo là hỏng
+    (`deploy_failed`, ADR-0039 — gate `decision:redeploy|close`): env lấy từ release-event cuối; production chỉ khi
+    Gate 3 đã ký. Lý do người duyệt đi vào payload làm `human_hint`. Trả False nếu không có gì để chạy lại.
+    Hub 2026-10-16 (REL-119): production `deploy_failed` vì máy trực thiếu file env; duyệt redeploy không chạy lại gì."""
     last = o.latest("release-events", rid); rc = o.latest("release-candidates", rid)
-    if last is None or rc is None or last.payload.get("status") != "pending_human": return False
+    if last is None or rc is None or last.payload.get("status") not in {"pending_human", DEPLOY_FAILED}: return False
     env_ = last.payload.get("env")
     route = STAGING_ROUTE if env_ == "staging" else PROD_ROUTE
     if route is PROD_ROUTE and not o.lead._gate_kind_approved(rid, "release"): return False
