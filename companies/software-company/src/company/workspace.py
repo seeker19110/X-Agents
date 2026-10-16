@@ -17,7 +17,7 @@ from typing import Any
 from xagents_core.sandbox import SECRET_ENV as SECRET_ENV  # re-export: `llm.py` và test nhập từ đây
 from xagents_core.sandbox import clean_env
 
-from .stacks import Stack, detect
+from .stacks import Stack, detect, no_tests_ran
 
 
 class WorkspaceError(Exception): ...
@@ -84,6 +84,11 @@ def exclude_worktrees(repo: Path) -> None:
 class CheckResult:
     ok: bool
     output: str
+    ran: bool | None = None  # chỉ `test()`: False = lệnh chạy xong mà không thu được test nào
+
+
+# Đầu `test_output` khi lệnh test không chạy test nào: người đọc PR thấy ngay, `author_tests` không coi là đỏ đúng TDD.
+NO_TESTS_MARK = "KHÔNG CÓ TEST NÀO CHẠY — exit code của lệnh test không phải bằng chứng khi không thu được test nào."
 
 
 @dataclass
@@ -154,7 +159,11 @@ class TicketWorkspace:
     def test(self, *args: str) -> CheckResult:
         argv = self.stack().test
         if argv is None: return CheckResult(ok=False, output="không có lệnh test cho stack này")
-        return self._run(*argv, *args)
+        r = self._run(*argv, *args)
+        if no_tests_ran(r.output):
+            # Dấu ở ĐẦU và giữ trong trần 4000: cắt từ cuối như `_run` sẽ làm mất chính dấu đó.
+            return CheckResult(ok=False, output=f"{NO_TESTS_MARK}\n{r.output[len(NO_TESTS_MARK) + 1 - 4000:]}", ran=False)
+        return r
 
     def run_checks(self) -> dict[str, Any]:
         """Đúng định dạng `pull-requests.local_checks`. Không có coverage thì bỏ trống chứ không bịa.

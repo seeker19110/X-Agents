@@ -50,7 +50,7 @@ from .llm import Completion, LLMError, ModelClient
 from .prd_context import cut_prd_sections
 from .registry import AgentSpec, load_agents
 from .tools import ArtifactTools, ToolBox, ToolError, WorkspaceTools, dump_calls, tools_prompt
-from .workspace import TicketWorkspace, WorkspaceError
+from .workspace import NO_TESTS_MARK, TicketWorkspace, WorkspaceError
 
 DEFAULT_MAX_INPUT_CHARS = 120_000
 # Khoá payload là LỜI NGƯỜI (người duyệt, khách trả lời làm rõ): `fit` chỉ cắt chúng khi không còn chuỗi nào khác và
@@ -585,7 +585,9 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         checks = ws.run_checks()
         # Stack không có lệnh test (vd. node không khai script `test`) thì `tests=False` không nói lên điều gì:
         # `unknown` thay vì "đỏ" giả, đúng tinh thần `local_checks.unverified` của ADR-0010.
-        status = "unknown" if ws.stack().test is None else ("green" if checks.get("tests") else "red")
+        # Không thu được test nào (file test rỗng, sai tên): đỏ đó không ràng buộc hành vi nào — không phải "đỏ đúng".
+        empty = str(checks.get("test_output") or "").startswith(NO_TESTS_MARK)
+        status = "unknown" if ws.stack().test is None or empty else ("green" if checks.get("tests") else "red")
         try:
             sha = ws.commit_all(f"test({inp.key}): {str(inp.payload.get('title') or inp.key)[:72]}") if ws.dirty() else ws.head_sha()
         except WorkspaceError as e:
@@ -596,7 +598,9 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
                  files=files, tests_status=status, blind=inp.topic == "tasks")
         if assignee := inp.payload.get("assignee"): p["assignee"] = assignee
         g.payloads = [p]
-        self._audit(spec, "tests_green_before_code" if status == "green" else "tests_red_as_expected", inp,
+        action = "tests_not_collected" if empty else (
+            "tests_green_before_code" if status == "green" else "tests_red_as_expected")
+        self._audit(spec, action, inp,
                     evidence=json.dumps({"files": files, "commit": sha, "tests": checks.get("tests"),
                                          "output": (checks.get("test_output") or "")[-800:]}, ensure_ascii=False))
         return g, status
