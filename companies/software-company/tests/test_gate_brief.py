@@ -727,3 +727,35 @@ def test_escalation_ticket_bi_chan_vi_phu_thuoc_bi_replan_neu_ly_do_cua_cr(tmp_p
     b = GB.build(GB.load_state(db), "T2", closed=True)
     hist = [f"{h['action']} {h['detail']}" for h in b["extra"]["history"]]
     assert any("T1" in h and "ticket.replanned" in h and "ticket cắt sai" in h for h in hist), hist
+
+
+def _ngan_sach(orch, *, pb, cost=0.0, unpriced=0):
+    orch.supervisor.project_budget_usd = pb
+    orch.supervisor.project_cost["P1"] = cost
+    orch.supervisor.unpriced = unpriced
+    return next(x for x in GB.build(orch, "REL-001")["self_check"] if x["id"] == "plan.ngan-sach-token")
+
+
+def test_release_ngan_sach_ok_khi_co_tran_tien_va_chua_vuot(tmp_path):
+    """Hub thật 2026-10-16 (REL-111/112): mục này không bao giờ `ok` — ngoài `gap` code luôn trả `unknown`, kể cả khi
+    chủ dự án đặt `budget_usd`. Agent duyệt chỉ approve khi mọi mục `ok`/`unavailable` ⇒ mọi release bị giữ mãi."""
+    _db, _, orch = _scenario(tmp_path, to="release")
+    it = _ngan_sach(orch, pb=50.0, cost=12.5)
+    assert it["verdict"] == "ok" and any("12.50" in f for f in it["facts"])
+
+
+def test_release_ngan_sach_gap_khi_vuot_tran_tien(tmp_path):
+    _db, _, orch = _scenario(tmp_path, to="release")
+    assert _ngan_sach(orch, pb=10.0, cost=12.5)["verdict"] == "gap"
+
+
+def test_release_ngan_sach_unknown_khi_tran_tien_khong_do_duoc(tmp_path):
+    """Lời gọi không có giá tính 0 USD: trần tiền đặt rồi mà không đo được — không được xanh vì rỗng."""
+    _db, _, orch = _scenario(tmp_path, to="release")
+    it = _ngan_sach(orch, pb=50.0, unpriced=3)
+    assert it["verdict"] == "unknown" and any("không có giá" in f for f in it["facts"])
+
+
+def test_release_ngan_sach_unknown_khi_chua_dat_tran(tmp_path):
+    _db, _, orch = _scenario(tmp_path, to="release")
+    assert _ngan_sach(orch, pb=None)["verdict"] == "unknown"
