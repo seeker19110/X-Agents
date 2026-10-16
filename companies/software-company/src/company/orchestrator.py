@@ -409,14 +409,13 @@ class Orchestrator:
                                 actor=agent, tokens=g.tokens, cost=g.cost_usd)
                 res.actions.append(f"{agent}→{r.topic_out}×{len(g.payloads)}")
             else:
-                tools = None
                 inp, bang_chung = self._evidence_before(r, inp)  # ADR-0029/0046: bằng chứng MÁY chạy trước lượt chấm
-                if r.tools == "ro":
-                    tools = self._read_only_tools(inp)
-                elif r.tools == "research":
+                tools = self._read_only_tools(inp) if r.tools == "ro" else None
+                if r.tools == "research":
                     integ = self.integration_for(self.project_for(env))  # researcher đọc đúng codebase của dự án
                     tools = research_toolbox(integ.repo if integ is not None else None, self.web)
-                g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns, phase=phase)
+                g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns, phase=phase,
+                                         context_writes=r.context_writes)
                 if r.tools == "ro" and tools is not None and not g.tool_calls:
                     # Có tool mà không chạy gì: verdict chỉ là lời khai. Không chặn (người đọc review vẫn quyết), nhưng phải hiện.
                     self._audit("review.no_tool_evidence", {"agent": agent, "topic": env.topic, "key": env.key},

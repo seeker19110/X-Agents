@@ -126,10 +126,10 @@ def _co_ve_la_json(text: str) -> bool:
 
 
 def build_user_message(spec: AgentSpec, inp: Envelope, topic_out: str, context: dict[str, Any],
-                       many: bool = False) -> str:
+                       many: bool = False, context_writes: bool = True) -> str:
     """Phần động của prompt. Nội dung đầu vào được bọc rõ là DỮ LIỆU (chống prompt injection)."""
     ctx = json.dumps(context, ensure_ascii=False, indent=2, sort_keys=True) if context else "(trống)"
-    ns = spec.namespaces_write
+    ns = spec.namespaces_write if context_writes else []
     ctx_ask = (f' Kèm "context_writes": [{{namespace ∈ {ns}, content_ref, summary, content}}] cho mỗi artifact bạn tạo/cập nhật '
                "trên blackboard (rỗng nếu không có); `content` là TOÀN VĂN artifact (markdown/yaml), không phải tóm tắt — "
                "agent khác chỉ đọc được những gì bạn ghi ở đây." if ns else "")
@@ -465,7 +465,8 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         return ctx, paths
 
     def generate(self, agent_id: str, inp: Envelope, topic_out: str, many: bool = False, tools: ToolBox | None = None,
-                 max_turns: int = 25, budget: int | None = None, phase: str | None = None) -> Generated:
+                 max_turns: int = 25, budget: int | None = None, phase: str | None = None,
+                 context_writes: bool = True) -> Generated:
         """Kiểm quyền reads/writes, chặn/lọc injection, ép ngữ cảnh vào hạn mức, gọi model, kiểm JSON theo schema topic.
         Không publish. `many=True`: yêu cầu {"items": [...]} — nhiều payload một lượt (vd. delivery-lead chia ticket).
         Agent sở hữu namespace trả thêm `context_writes` (ghi blackboard ở bước publish).
@@ -506,8 +507,8 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         if budget_.trimmed:
             self._audit(spec, "context_trimmed", inp, evidence=json.dumps(budget_.report(), ensure_ascii=False))
             inp = inp.model_copy(update={"payload": payload})
-        user = build_user_message(spec, inp, topic_out, context, many=many)
-        out_schema = output_schema(schema, spec.namespaces_write, many)
+        user = build_user_message(spec, inp, topic_out, context, many=many, context_writes=context_writes)
+        out_schema = output_schema(schema, spec.namespaces_write if context_writes else [], many)
         # `t0`/`duration_ms` GIỮ NGUYÊN: `metrics.collect` cộng nó thành `duration_ms_avg`. Span là cơ chế
         # thứ hai chạy song song (ADR-0009 quyết định 1), không thay con số này.
         t0 = time.perf_counter()
@@ -548,6 +549,10 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             if not isinstance(writes, list) or not all(isinstance(w, dict) and {"namespace", "content_ref", "summary"} <= set(w)
                                                        for w in writes):
                 raise BusError("context_writes phải là [{namespace, content_ref, summary, content}]")
+            if writes and not context_writes:   # route cấm ghi blackboard (ADR-0007 bổ sung): không xin, có cũng bỏ
+                self._audit(spec, "context_writes_dropped", inp,
+                            evidence=json.dumps([w["namespace"] for w in writes], ensure_ascii=False))
+                writes = []
             for p in payloads:
                 # `_phase` là của CODE, không phải lời khai của model (cùng nguyên tắc với `env`/`release_id` ở
                 # `_release`): guard `_from_phase` hạ nguồn chỉ đúng khi trường này do runner ghi.
