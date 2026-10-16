@@ -1,0 +1,10 @@
+{
+  "_ghi_chu": "Chép thành bang-gia.json rồi điền giá USD / 1 triệu token, lấy từ trang giá chính thức NGAY NGÀY ĐO; ghi ngày và URL. Ô còn null = chưa có giá: báo cáo in 'thiếu giá', không in 0 USD.",
+  "ngay": null,
+  "nguon": null,
+  "usd_moi_trieu_token": {
+    "claude-opus": {"input": null, "cache_ghi_5m": null, "cache_ghi_1h": null, "cache_doc": null, "output": null},
+    "claude-sonnet": {"input": null, "cache_ghi_5m": null, "cache_ghi_1h": null, "cache_doc": null, "output": null},
+    "claude-haiku": {"input": null, "cache_ghi_5m": null, "cache_ghi_1h": null, "cache_doc": null, "output": null}
+  }
+}

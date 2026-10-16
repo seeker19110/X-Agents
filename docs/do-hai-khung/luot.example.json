@@ -1,0 +1,25 @@
+{
+  "_ghi_chu": "KHUÔN, số giả để minh hoạ — không phải số đo. Một file cho mỗi lượt: luot-<khung>-<lần>.json. 'token' là output nguyên văn của do_hai_khung.py (claude-jsonl hoặc xagents); 'nghiem_thu' là output nguyên văn của nghiem_thu_dhcb.py, null khi chưa chấm.",
+  "khung": "x-templates",
+  "lan": 1,
+  "bat_dau": "2026-10-20T08:00:00+07:00",
+  "ket_thuc": "2026-10-20T11:10:00+07:00",
+  "thoi_gian_giay": 11400,
+  "mo_hinh_chinh": "claude-opus-5-5",
+  "ket_cuc": "done",
+  "khai_xong": true,
+  "can_thiep": [
+    {"luc": "2026-10-20T09:12:00+07:00", "viec": "trả lời loop defer T-007 bằng câu cố định của TRA-LOI-SAN.md", "phut": 1}
+  ],
+  "token": {
+    "nguon": "claude-jsonl",
+    "mo_hinh": {
+      "claude-opus-5-5": {"input": 1200, "cache_ghi_5m": 0, "cache_ghi_1h": 90000, "cache_ghi": 0, "cache_doc": 2500000, "output": 60000, "khong_tach": 0, "luot": 300}
+    },
+    "tong": {"input": 1200, "cache_ghi_5m": 0, "cache_ghi_1h": 90000, "cache_ghi": 0, "cache_doc": 2500000, "output": 60000, "khong_tach": 0, "luot": 300},
+    "thoi_gian_giay": 11400,
+    "canh_bao": []
+  },
+  "nghiem_thu": null,
+  "ghi_chu": ""
+}
