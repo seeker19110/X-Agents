@@ -43,6 +43,19 @@ class Stack:
 
 PY_TEST_GLOBS = ("tests/**", "test/**", "test_*.py", "*_test.py")
 NODE_TEST_GLOBS = ("test/**", "tests/**", "__tests__/**", "*.test.*", "*.spec.*")
+# Script npm không kiểm gì (`true`, `:`, `exit 0`, `echo …` đứng một mình) = không có lệnh: chạy nó chỉ đẻ ra một
+# màu xanh không phải bằng chứng. `echo … && exit 1` (mặc định `npm init`) không khớp — nó đỏ thật, để nó lộ ra.
+NOOP_SCRIPT_RE = re.compile(r"\s*(?:true|:|exit(?:\s+0)?|echo(?:\s[^&|;]*)?)\s*")
+# Lệnh test chạy xong mà KHÔNG thu được test nào (pytest thoát 5, `go test` không file test thoát 0, cargo 0 test,
+# jest/vitest "No tests found", mocha "0 passing") — chỉ khi không có dấu hiệu nào cho thấy có test đã chạy.
+_NO_TESTS_RE = re.compile(
+    r"\bno tests ran\b|\bNo tests? (?:files? )?found\b|\[no test files\]|^running 0 tests\b|^\s*0 passing\b", re.M | re.I)
+_TESTS_RAN_RE = re.compile(r"^ok\s|^running [1-9]\d* tests?\b|\b[1-9]\d* (?:passed|failed|passing|failing)\b", re.M)
+
+
+def no_tests_ran(output: str) -> bool:
+    """Output của lệnh test cho thấy không test nào được chạy (exit code một mình không phải bằng chứng)."""
+    return bool(_NO_TESTS_RE.search(output)) and not _TESTS_RAN_RE.search(output)
 
 PY = Stack(
     "python",
@@ -253,14 +266,16 @@ def _ten_goi(spec: str) -> str:
 
 
 def _node_stack(pkg: Path) -> Stack:
-    """Chỉ khai lệnh khi package.json thật sự có script tương ứng — tránh `npm test` mặc định thoát lỗi."""
+    """Chỉ khai lệnh khi package.json thật sự có script tương ứng và script đó kiểm gì đó (`NOOP_SCRIPT_RE`)."""
     try:
         scripts = json.loads(pkg.read_text(encoding="utf-8")).get("scripts") or {}
     except (OSError, json.JSONDecodeError):
         scripts = {}
+    def real(name: str) -> bool:
+        return isinstance(scripts.get(name), str) and not NOOP_SCRIPT_RE.fullmatch(scripts[name])
     return Stack(
         "node",
-        ["npm", "run", "lint"] if "lint" in scripts else None,
-        ["npm", "test", "--", "--watch=false"] if "test" in scripts else None,
+        ["npm", "run", "lint"] if real("lint") else None,
+        ["npm", "test", "--", "--watch=false"] if real("test") else None,
         NODE_TEST_GLOBS,
     )
