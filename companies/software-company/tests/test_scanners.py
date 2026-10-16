@@ -389,6 +389,33 @@ def test_vuln_evidence_image_findings_critical_truoc_co_ban_sua_truoc_va_co_tran
     t = FakeTools(img={"Results": [{"Target": "x", "Vulnerabilities": vulns}]})
     monkeypatch.setattr(sc, "which", t.which)
     monkeypatch.setattr(sc, "run", t.run)
-    f = vuln_evidence(tmp_path, "s", ["a:1"])["images"][0]["findings"]
-    assert [x["id"] for x in f[:2]] == ["C-1", "H-fix"] and len(f) == sc.MAX_FINDINGS
+    im = vuln_evidence(tmp_path, "s", ["a:1"])["images"][0]
+    f = im["findings"]
+    assert [x["id"] for x in f[:2]] == ["C-1", "H-fix"] and len(f) == 62 and im["findings_complete"] is True, (
+        "hub 2026-10-16 REL-118: image db 62 C/H mà chỉ liệt kê 50 ⇒ reviewer không kiểm được `fixed` của 12 cặp"
+    )
     assert all(x["severity"] in ("CRITICAL", "HIGH") for x in f), "MEDIUM/LOW chỉ đếm"
+
+
+def test_vuln_evidence_qua_tran_an_toan_thi_noi_ro_danh_sach_chua_du(tmp_path, monkeypatch):
+    monkeypatch.setattr(sc, "SERIOUS_MAX", 3)
+    vulns = [{"VulnerabilityID": f"H-{i}", "PkgName": "p", "Severity": "HIGH"} for i in range(5)]
+    vulns += [{"VulnerabilityID": f"L-{i}", "PkgName": "p", "Severity": "LOW"} for i in range(5)]
+    t = FakeTools(fs={"Results": [{"Target": "requirements.lock", "Type": "pip", "Vulnerabilities": vulns}]},
+                  img={"Results": [{"Target": "x", "Vulnerabilities": vulns}]})
+    monkeypatch.setattr(sc, "which", t.which)
+    monkeypatch.setattr(sc, "run", t.run)
+    ev = vuln_evidence(tmp_path, "s", ["a:1"])
+    im, lock = ev["images"][0], ev["targets"][0]
+    assert len(im["findings"]) == 3 and im["findings_complete"] is False
+    assert [x["severity"] for x in lock["findings"][:3]] == ["HIGH"] * 3 and lock["findings_complete"] is False
+
+
+def test_vuln_evidence_lock_file_liet_ke_du_cap_nghiem_trong_truoc(tmp_path, monkeypatch):
+    vulns = [{"VulnerabilityID": f"L-{i}", "PkgName": "p", "Severity": "LOW"} for i in range(60)]
+    vulns += [{"VulnerabilityID": f"H-{i}", "PkgName": "q", "Severity": "HIGH"} for i in range(55)]
+    t = FakeTools(fs={"Results": [{"Target": "requirements.lock", "Type": "pip", "Vulnerabilities": vulns}]})
+    monkeypatch.setattr(sc, "which", t.which)
+    monkeypatch.setattr(sc, "run", t.run)
+    target = vuln_evidence(tmp_path, "s", [])["targets"][0]
+    assert [x["severity"] for x in target["findings"]] == ["HIGH"] * 55 and target["findings_complete"] is True

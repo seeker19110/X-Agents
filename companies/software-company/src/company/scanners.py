@@ -29,6 +29,9 @@ from .smoke import VERIFIED_BY, unverified
 which: Any = shutil.which
 run: Any = subprocess.run
 MAX_FINDINGS = 50
+#: Trần AN TOÀN cho danh sách CRITICAL/HIGH — reviewer cần đủ từng cặp (CVE, gói, fixed) để ký miễn ADR gốc 0036;
+#: `MAX_FINDINGS` chỉ còn cắt MEDIUM/LOW của lock file. Vượt trần thì `findings_complete=false`, không lặng lẽ cắt.
+SERIOUS_MAX = 500
 TIMEOUT_S = 600
 TRIVY_FS = ("fs", "--scanners", "vuln", "--file-patterns", r"pip:requirements\.lock", "--format", "json", "--quiet")
 TRIVY_IMAGE = ("image", "--scanners", "vuln", "--format", "json", "--quiet")
@@ -84,8 +87,6 @@ def _image_summary(ref: str, doc: dict[str, Any]) -> dict[str, Any]:
     vulns = [v for r in doc.get("Results") or [] for v in r.get("Vulnerabilities") or []]
     meta = doc.get("Metadata") or {}
     os_ = meta.get("OS") or {}
-    serious = [v for v in vulns if v.get("Severity") in ("CRITICAL", "HIGH")]
-    serious.sort(key=lambda v: (v.get("Severity") != "CRITICAL", not v.get("FixedVersion")))
     return {
         "ref": ref,
         "digest": next(iter(meta.get("RepoDigests") or []), None),
@@ -94,8 +95,19 @@ def _image_summary(ref: str, doc: dict[str, Any]) -> dict[str, Any]:
         "total": len(vulns),
         "fixable": sum(1 for v in vulns if v.get("FixedVersion")),
         **_serious(vulns),
-        "findings": [_finding(v) for v in serious[:MAX_FINDINGS]],
+        **_listed(vulns, others=False),
     }
+
+
+def _listed(vulns: list[dict[str, Any]], *, others: bool) -> dict[str, Any]:
+    """Đủ mọi CRITICAL/HIGH (CRITICAL trước, có bản sửa trước, trần `SERIOUS_MAX`); lock file lấp thêm MEDIUM/LOW tới
+    `MAX_FINDINGS`. Hub 2026-10-16 (REL-118): image db 62 C/H mà `findings` chỉ 50 ⇒ 12 cặp không kiểm được `fixed`."""
+    serious = [v for v in vulns if v.get("Severity") in ("CRITICAL", "HIGH")]
+    serious.sort(key=lambda v: (v.get("Severity") != "CRITICAL", not v.get("FixedVersion")))
+    out = serious[:SERIOUS_MAX]
+    if others:
+        out += [v for v in vulns if v.get("Severity") not in ("CRITICAL", "HIGH")][: max(0, MAX_FINDINGS - len(out))]
+    return {"findings": [_finding(v) for v in out], "findings_complete": len(serious) <= SERIOUS_MAX}
 
 
 def _serious(vulns: list[dict[str, Any]]) -> dict[str, Any]:
@@ -137,7 +149,7 @@ def vuln_evidence(
                 "by_severity": _by_severity(vulns),
                 "total": len(vulns),
                 **_serious(vulns),
-                "findings": [_finding(v) for v in vulns[:MAX_FINDINGS]],
+                **_listed(vulns, others=True),
             }
         )
     by_id: dict[str, list[str]] = {}
