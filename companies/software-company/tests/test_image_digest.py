@@ -240,3 +240,40 @@ def test_script_registry_ngoai_docker_hub_va_loi_mang_thi_noi_ro_va_exit_1(monke
     assert lines[0].startswith("ghcr.io/org/tool:1.2 LOI:") and "docker.io" in lines[0]
     assert lines[1].startswith("localhost:5000/x:1 LOI:")
     assert lines[2] == "python:3.12-slim LOI: timed out"
+
+
+# ---------- bổ sung 2026-10-16: Dockerfile do compose trỏ tới (`build.dockerfile`) ----------
+# Hub thật (QLKH-DD-CSV, REL-105, TM-REL105-03): service `db` build từ `infra/db/Dockerfile` — hai tầng thư mục, ngoài
+# `DOCKERFILES` ("Dockerfile", "*/Dockerfile"). Image nền postgres không bao giờ vào `evidence.vuln.images`, security
+# chặn RC vì "image db không được quét". Tập quét phải gồm cả Dockerfile mà compose thật sự build.
+
+COMPOSE_BUILD = """services:
+  db:
+    build:
+      context: .
+      dockerfile: infra/db/Dockerfile
+  api:
+    build:
+      context: ./svc
+      dockerfile: "docker/Dockerfile.api"  # ghi chú
+  ngoai:
+    build:
+      context: ..
+      dockerfile: ../thoat/Dockerfile
+"""
+PG = "postgres:16.10-bookworm@sha256:38471f330eb885e04de130b768d6db4e10469e2311879c7e5c699f6d2d8a1c74"
+
+
+def test_references_doc_ca_dockerfile_do_compose_build_tro_toi(tmp_path):
+    root = _repo(
+        tmp_path,
+        **{
+            "docker-compose.yml": COMPOSE_BUILD,
+            "infra/db/Dockerfile": f"FROM {PG}\n",
+            "svc/docker/Dockerfile.api": "FROM node:22-alpine\n",
+        },
+    )
+    (tmp_path / "thoat").mkdir()
+    (tmp_path / "thoat" / "Dockerfile").write_text("FROM evil:1\n", encoding="utf-8")
+    assert references(root, pinned=True) == [PG, "node:22-alpine"], "Dockerfile compose build, context tương đối"
+    assert references(root) == ["node:22-alpine"], "đã ghim thì không cần digest; đường thoát ra ngoài repo bị bỏ"
