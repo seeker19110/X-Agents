@@ -20,6 +20,7 @@ from ..gate_reviewer import machine_acceptor
 from ..gate_risk import request_gate
 from ..gates import Decision, GateRequest
 from ..roles import ROLE, resume_actor
+from . import release_rework
 from .retry_flow import DECIDE_APPLIED, _deploy_production, _rerun_missing_reviews, _retry_decide_calls, decide_applied
 from .routes import ACTOR
 
@@ -131,6 +132,19 @@ def spec_changes_asked(last: GateRequest) -> bool:
     return last.decision == "request_changes" or (last.decision == "reject" and (last.decided_by or "").startswith(REVIEWER_PREFIX))
 
 
+def _reject_release(o: Orchestrator, rid: str, reason: str, res: StepResult) -> None:
+    """ADR-0057 bổ sung 2026-10-16: chỉ làm lại ticket mà file đã đổi chạm finding; không ticket nào chạm → CR."""
+    scope = release_rework.tickets_to_rework(o, rid)
+    if scope is None or scope[0]:
+        o.lead.rework_release_tickets(rid, reason, only=None if scope is None else scope[0])
+        res.actions.append(f"release_reworked:{rid}"); return
+    n = 1 + sum(1 for e in o.bus.replay(topic="change-requests") if e.key.startswith(f"REWORK-{rid}-"))
+    o._audit("release.rework_outside", {"release_id": rid, "finding_files": sorted(scope[1]),
+                                         "tickets": o.lead.release_tickets.get(rid, [])})
+    o.lead.request_change_after_release_reject(rid, reason, cid=f"REWORK-{rid}-{n}", what="Escalation release")
+    res.actions.append(f"release_rework_outside:{rid}")
+
+
 def _retire_replanned(o: Orchestrator, env: Envelope, res: StepResult) -> None:
     """ADR-0051: người `accepted` CR `REPLAN-<ticket>-<n>` → ticket cũ đóng như bị từ chối ở escalation (`close_escalated`:
     ticket phụ thuộc không âm thầm chạy trên nền thiếu). Gate escalation của nó do CHÍNH người ký đóng trong
@@ -220,8 +234,7 @@ def _on_escalation_decided(o: Orchestrator, tid: str, decision: str, by: str, re
                 if o.lead.state.get(rtid) == "approved":
                     o.lead.mark_done_already_integrated(rtid)
         else:
-            o.lead.rework_release_tickets(tid, reason or "người từ chối escalation release: cần sửa nội dung thật")
-            res.actions.append(f"release_reworked:{tid}")
+            _reject_release(o, tid, reason or "người từ chối escalation release: cần sửa nội dung thật", res)
         return
     if tid in o.stalled:  # escalation cấp dự án (chuỗi nghiên cứu lỗi): retry event hoặc đóng dự án
         if decision == "approve":

@@ -112,3 +112,29 @@ biệt được hai ca, còn orchestrator biết qua `integrated`.
 
 Đo hai chiều: bỏ `EMPTY_PR` khỏi `TICKET_TRANSITIONS` thì `tests/test_pr_rong_khong_thanh_viec_xong.py` đỏ cả 2 ca
 (QA được gọi, ticket thành `merged`); bật lại thì xanh.
+
+## Bổ sung 2026-10-16 — chỉ làm lại ticket mà file đã đổi chạm finding (thay quyết định 3)
+
+**Đo được** (hub QLKH-DD-CSV, 2026-10-12 → 16): sau release reject, 44,9M token (khoảng 11 % tổng) tiêu cho 58 lượt builder
+và 23 lượt review làm lại ticket ĐÃ merge. Quyết định 1 biến kết quả thành CR, nhưng chỉ SAU một lượt builder trên mỗi
+ticket của RC. REL-085/087/090/091/096/098 bị chặn bởi đúng một phát hiện gitleaks ở
+`tests/security/rel_verify/rel_fixtures.py:24` (commit của DDCSV-95, không nằm trong RC nào trong số đó): mỗi lần reject
+đá mọi ticket của RC về làm lại.
+
+**Quyết định** (`orch/release_rework.py`, nhánh `_reject_release` ở `gates_flow`):
+
+1. Vị trí file của finding = token dạng đường dẫn trong `location` của mọi finding `block` ở các review của RC
+   (`release_reviews`), chỉ tính token có thật trong cây tích hợp (`Integration.files`).
+2. File ticket đã đổi = hợp `git diff --name-only <merge>^1 <merge>` trên mọi merge commit `merge(<ticket>):`
+   (`--first-parent`) của nhánh tích hợp (`Integration.ticket_files`) — sự thật git, không phải lời khai.
+3. Từ chối escalation release → chỉ ticket `merged` của RC có file đã đổi chạm (1) bị đá về làm lại
+   (`rework_release_tickets(only=…)`). Ticket không tìm thấy merge commit nào → coi như chạm.
+4. Không ticket nào chạm (gồm cả khi finding không có vị trí file: image nền, DPIA, CVE OS) → không làm lại ai; audit
+   `release.rework_outside` (`release_id`, `finding_files`, `tickets`) và CR `REWORK-<RC>-<n>` dùng đường
+   `release_gate_reject` của ADR-0058 (`tu-dong` quyết trước, ADR gốc 0037). Kết cục giống quyết định 1, bỏ được các lượt
+   builder không đổi gì.
+5. Không đo được (không có nhánh tích hợp, git lỗi) → hành vi cũ: làm lại mọi ticket `merged` của RC.
+
+Quyết định 3 cũ ("máy không đoán finding thuộc ticket nào") vẫn đúng tinh thần: phép so là sự thật git và chuỗi vị trí
+máy sinh; khi không có sự thật thì quay về đo kết quả như cũ. Test: `tests/test_rework_release_theo_file_finding.py`
+(5 ca, hai chiều).

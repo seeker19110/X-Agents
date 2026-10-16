@@ -444,3 +444,10 @@ class Integration:
 
     def files(self) -> list[str]:
         return [x for x in _git(self.repo, "ls-tree", "-r", "--name-only", self.branch).splitlines() if x]
+
+    def ticket_files(self, ticket_id: str) -> set[str]:
+        """File mà các merge commit `merge(<ticket>):` (`merge_ticket_locked`) đã đổi trên nhánh tích hợp, so với cha
+        thứ nhất. Rỗng = không tìm thấy merge nào của ticket (ADR-0057 bổ sung 2026-10-16)."""
+        shas = _git(self.repo, "log", "--first-parent", "--merges", "--fixed-strings", f"--grep=merge({ticket_id}):",
+                    "--format=%H", self.branch).split()
+        return {f for sha in shas for f in _git(self.repo, "diff", "--name-only", f"{sha}^1", sha).splitlines() if f}
