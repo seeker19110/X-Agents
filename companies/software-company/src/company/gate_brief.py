@@ -743,11 +743,16 @@ def _release_vuln(orch: Orchestrator, subject: str) -> dict[str, Any] | None:
             if not isinstance(r, dict): continue
             serious = [f for f in r.get("findings") or [] if isinstance(f, dict) and f.get("severity") in ("CRITICAL", "HIGH")]
             complete = "serious_ids" in r
+            sev = r.get("by_severity") or {}
+            total = int(sev.get("CRITICAL") or 0) + int(sev.get("HIGH") or 0)
             items.append({"kind": kind, "name": r.get("target") or r.get("ref"), "service": r.get("service"),
                           "deployed": bool(r.get("deployed")), "by_severity": r.get("by_severity") or {},
                           "serious_fixable": r["serious_fixable"] if complete else sum(1 for f in serious if f.get("fixed")),
                           "serious_ids": list(r["serious_ids"]) if complete else sorted({str(f.get("id")) for f in serious}),
-                          "complete": complete})
+                          "complete": complete,
+                          # Hub 2026-10-16 (REL-118): cặp (CVE, gói, fixed) liệt kê đủ chưa — reviewer không phải tự đếm.
+                          "pairs": len(serious), "pairs_total": total,
+                          "pairs_complete": bool(r.get("findings_complete")) and len(serious) >= total})
     return {"tool": v.get("tool"), "sha": v.get("sha"), "items": items, "errors": v.get("errors") or []}
 
 
@@ -894,7 +899,8 @@ def _vuln_md(v: dict[str, Any]) -> list[str]:
         sev = ", ".join(f"{k} {n}" for k, n in it["by_severity"].items()) or "0"
         ids = ", ".join(it["serious_ids"]) or "—"
         out.append(f"- {it['kind']} {who}`{it['name']}` — {sev}; CRITICAL/HIGH có bản sửa: {it['serious_fixable']}; "
-                   f"mã CRITICAL/HIGH ({len(it['serious_ids'])}): {ids}"
+                   f"mã CRITICAL/HIGH ({len(it['serious_ids'])}): {ids}; "
+                   f"cặp (CVE, gói) liệt kê {it['pairs']}/{it['pairs_total']} — {'đủ' if it['pairs_complete'] else 'CHƯA đủ'}"
                    + ("" if it["complete"] else " — danh sách có trần, có thể thiếu (evidence cũ)"))
     out += [f"- lỗi quét `{e.get('image')}`: {e.get('error')}" for e in v["errors"] if isinstance(e, dict)]
     return out

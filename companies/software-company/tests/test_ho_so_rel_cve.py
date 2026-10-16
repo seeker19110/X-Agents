@@ -22,7 +22,9 @@ def _vuln(i: int, sev: str = "HIGH", fixed: str | None = None) -> dict:
 def test_image_summary_dem_ca_h_co_ban_sua_va_ma_cve_tren_toan_bo_khong_theo_tran():
     vulns = [_vuln(i) for i in range(60)] + [_vuln(1, "HIGH")] + [_vuln(99, "CRITICAL", "1.2")] + [_vuln(7, "LOW", "2")]
     s = _image_summary(ID_DB, {"Results": [{"Vulnerabilities": vulns}]})
-    assert len(s["findings"]) == 50, "danh sách chi tiết vẫn có trần"
+    assert len(s["findings"]) == 62 and s["findings_complete"] is True, (
+        "hub 2026-10-16 REL-118: danh sách cặp đủ mọi CRITICAL/HIGH, không còn cắt ở 50"
+    )
     assert s["serious_fixable"] == 1, "đếm CRITICAL/HIGH có bản sửa trên TOÀN BỘ, không chỉ 50 dòng đầu"
     assert s["serious_ids"] == sorted({f"CVE-2026-{i:05d}" for i in [*range(60), 99]}), "mã duy nhất, đủ, có thứ tự"
     assert s["fixable"] == 2, "fixable cũ vẫn đếm mọi mức độ"
@@ -180,3 +182,25 @@ def test_lich_su_liet_ke_moi_finding_block_cua_review_khong_cat_mat(tmp_path):
         assert fid in md, f"{fid} phải có trong hồ sơ"
     assert "TM-W-01" not in md, "warn không phải lý do chặn"
     assert "block 3/3" in md and "threat-model v171" in md, "đếm và vị trí của từng finding"
+
+
+def test_ho_so_noi_so_cap_cve_goi_liet_ke_tren_tong_va_khi_nao_chua_du(tmp_path):
+    """Hub 2026-10-16 (REL-118): tu-dong phải tự đếm `findings` (50) với by_severity (62) mới thấy danh sách bị cắt.
+    Hồ sơ nói thẳng số cặp đã liệt kê trên tổng CRITICAL/HIGH và đủ hay chưa."""
+    orch, pub = _rel_orch(tmp_path)
+    f = [{"id": f"CVE-{i}", "package": "p", "severity": "HIGH", "fixed": None} for i in range(50)]
+    images = [
+        {"ref": "db", "service": "db", "by_severity": {"CRITICAL": 1, "HIGH": 61}, "serious_fixable": 0,
+         "serious_ids": ["CVE-0"], "findings": f},
+        {"ref": "app", "by_severity": {"HIGH": 2, "LOW": 9}, "serious_fixable": 0, "serious_ids": ["CVE-0"],
+         "findings": f[:2], "findings_complete": True},
+    ]
+    vuln = {"verified_by": "orchestrator", "tool": "trivy", "sha": "s", "targets": [], "errors": [], "images": images}
+    pub(orch.bus, "review-results", "REL-001", "security",
+        {"ticket_id": "REL-001", "source": "security", "verdict": "block", "evidence": {"vuln": vuln}})
+    b = GB.build(orch, "REL-001")
+    db, app = b["extra"]["vuln"]["items"]
+    assert (db["pairs"], db["pairs_total"], db["pairs_complete"]) == (50, 62, False)
+    assert (app["pairs"], app["pairs_total"], app["pairs_complete"]) == (2, 2, True)
+    md = GB.render_md(b)
+    assert "cặp (CVE, gói) liệt kê 50/62 — CHƯA đủ" in md and "cặp (CVE, gói) liệt kê 2/2;" not in md
