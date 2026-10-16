@@ -157,6 +157,10 @@ def rehydrate(o: Orchestrator) -> None:
                     # Mở lại vào `waiting` không có event `tasks` nào: phụ thuộc đã đổi và trạng thái chỉ nằm ở dòng này.
                     o.lead.tickets[t.ticket_id] = t.model_copy(update={"depends_on": list(d.get("depends_on") or [])})
                     o.lead.state[t.ticket_id] = "waiting"
+            elif a["action"] == "ticket.base_red":  # ADR-0062: chờ nền đổi không có event `tasks` — trạng thái chỉ ở dòng này
+                tid = str(d["ticket_id"]); o.lead.state[tid] = "waiting"; o.lead.base_wait.add(tid)
+                o.lead.stops[tid]["base_red"] += 1
+                if t := o.lead.tickets.get(tid): o.lead.tickets[tid] = t.model_copy(update={"hint": d.get("hint")})
             elif a["action"] == "release.finding_waived":
                 o.lead.release_waived[str(d["release_id"])].add(str(d["source"]))
             elif a["action"] == "debt.escalated": o.debt_gate[str(d["project_id"])] = d

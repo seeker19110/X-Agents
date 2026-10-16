@@ -22,9 +22,11 @@ from .gate_risk import request_gate
 from .gates import GateRequest
 from .quality_floor import QualityBar, QualityEvidence, ReleaseQuality, collect_evidence, project_bar
 from .roles import LEAD_ACTOR, SOURCE
-from .stop_kind import STOP_KINDS
+from .stop_kind import MAX_BASE_RED, STOP_KINDS
 
 DONE_STATES = frozenset({"approved", "merged", "released", "closed"})
+#: Ticket còn đang chạy: có thể còn merge vào nhánh tích hợp (ADR-0062).
+ACTIVE_STATES = frozenset({"dispatched", "in_progress", "in_review", "changes_requested"})
 # Trần lời người duyệt (lý do gate, hint) khi chuyển cho agent: đủ dài để không cắt giữa ý — hub 2026-10-15 cắt ở
 # 500/1000 ký tự làm product chỉ nhận mục đầu của hint 6 mục —, chỉ để chặn payload phình.
 HINT_MAX = 8000
@@ -59,6 +61,8 @@ class DeliveryLead:
         # ADR-0052: ticket_id → đếm lần `_retry` theo kiểu dừng (`stop_kind.STOP_KINDS`), để `ticket.blocked` nói được
         # ba retry đã cháy vì gì. Chỉ sống trong RAM; bản chụp nằm trong evidence của `ticket.blocked`.
         self.stops: dict[str, Counter[str]] = defaultdict(Counter)
+        # ADR-0062: ticket nằm chờ vì test đỏ sẵn trên nền; nhả khi có merge mới vào nhánh tích hợp (`mark_integrated`).
+        self.base_wait: set[str] = set()
         # batch_releases: gom mọi ticket approved của dự án vào MỘT RC khi không còn ticket nào đang chạy (thay vì mỗi
         # ticket một release → mỗi ticket một lần staging, một gate 3, một UAT). Ticket blocked/escalated chờ người,
         # không giữ release của người khác.
@@ -137,7 +141,7 @@ class DeliveryLead:
     # ---------- lập lịch và dispatch ----------
 
     def _deps_done(self, task: Task) -> bool:
-        return all(self._dep_done(d) for d in task.depends_on)
+        return task.ticket_id not in self.base_wait and all(self._dep_done(d) for d in task.depends_on)
 
     def _dep_done(self, tid: str) -> bool:
         if tid in self.abandoned: return False  # đóng vì bị bỏ, không phải vì xong: code của nó không tồn tại
@@ -149,7 +153,25 @@ class DeliveryLead:
         """Orchestrator gọi sau khi merge branch ticket vào nhánh tích hợp thành công: ticket phụ thuộc đang `waiting`
         được dispatch (trả về danh sách). Khi khôi phục từ log (`replaying`) chỉ ghi nhận, không publish."""
         self.integrated.add(tid)
+        self.base_wait.clear()  # ADR-0062: nền đã đổi — ticket chờ vì test đỏ sẵn được thử lại trên nền mới
         return self._flush_waiting()
+
+    def _active_others(self, tid: str) -> bool:
+        """Cùng dự án còn ticket khác đang chạy (có thể merge và đổi nền) — ADR-0062 §4."""
+        pid = self.tickets[tid].project_id
+        return any(x != tid and t.project_id == pid and (self.state.get(x) in ACTIVE_STATES
+                   or (self.state.get(x) == "approved" and x not in self.integrated)) for x, t in self.tickets.items())
+
+    def park_base_red(self, tid: str, hint: str) -> bool:
+        """ADR-0062: mọi test đỏ của PR đều đỏ sẵn ở điểm rẽ nhánh → ticket nằm `waiting`, không đốt retry, giao lại khi
+        nhánh tích hợp có merge mới. Không chờ (trả False, người gọi `rework` như cũ) khi không còn ticket nào khác của
+        dự án đang chạy — không ai đổi được nền — hoặc đã chờ đủ `MAX_BASE_RED` lần."""
+        if self.state.get(tid) not in {"dispatched", "in_progress"} or not self._active_others(tid): return False
+        if self.stops[tid]["base_red"] >= MAX_BASE_RED: return False
+        self.stops[tid]["base_red"] += 1
+        self.tickets[tid] = self.tickets[tid].model_copy(update={"hint": hint})
+        self.state[tid] = "changes_requested"; self._set(tid, "waiting"); self.base_wait.add(tid)
+        return True
 
     def _publish_task(self, task: Task) -> None:
         self._set(task.ticket_id, "dispatched")
@@ -258,6 +280,9 @@ class DeliveryLead:
     def _block(self, t: Task, hint: str | None, kind: str, why: str | None = None) -> None:
         tid = t.ticket_id
         self._set(tid, "blocked")
+        if self.base_wait and not self._active_others(tid):  # ADR-0062 §4: ticket chạy cuối cùng dừng — không chờ nền nữa
+            self.base_wait -= {x for x in self.base_wait if self.tickets[x].project_id == t.project_id}
+            self._flush_waiting()
         # `blocked` phải BỀN, không chỉ nằm trong RAM: nó suy ra từ số lần retry chứ không từ event nào, nên
         # mở lại bus là mất. Khi đó ticket quay về `dispatched` (theo event `tasks` cuối), và người duyệt
         # escalation bấm approve thì `_on_escalation_decided` thấy state không phải blocked nên KHÔNG gọi

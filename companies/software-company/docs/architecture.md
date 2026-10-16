@@ -78,6 +78,8 @@ lượt `qa[review]` chạy cho mọi PR, nên `qa` không còn là nguồn revi
 
 `draft → (waiting) → dispatched → in_progress → in_review → changes_requested → approved → merged → released → closed`
 cộng `blocked` và `escalated` có thể vào từ bất kỳ trạng thái nào.
+ADR-0062: PR đỏ chỉ vì test đã đỏ sẵn ở điểm rẽ nhánh thì `changes_requested → waiting` (không đốt retry); ticket
+được giao lại, bắt kịp nhánh tích hợp, khi có merge mới vào đó.
 
 ## Human gate
 

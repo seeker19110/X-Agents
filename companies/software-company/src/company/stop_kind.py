@@ -18,13 +18,15 @@ from typing import Final, Literal, get_args
 
 from .llm import TransientError
 
-StopKind = Literal["agent_error", "turn_limit", "infra_transient", "merge_conflict", "budget", "needs_human", "no_progress"]
+StopKind = Literal["agent_error", "turn_limit", "infra_transient", "merge_conflict", "budget", "needs_human", "no_progress", "base_red"]
 STOP_KINDS: Final[tuple[str, ...]] = get_args(StopKind)
 
 #: Số lần builder hết lượt tool mà worktree có tiến độ được làm tiếp KHÔNG tính retry (xem `orchestrator.turn_continuations`).
 MAX_TURN_CONTINUATIONS: Final = 3
 #: Xung đột merge thứ N+1 liên tiếp cho một ticket mới tính vào retry nội dung (xem `orchestrator.conflict_retries`).
 MAX_CONFLICT_RETRIES: Final = 6
+#: ADR-0062: số lần ticket được nằm chờ vì test đỏ sẵn trên nền trước khi tính như `agent_error`.
+MAX_BASE_RED: Final = 3
 #: `subtype` của `claude -p` là trục trặc của lượt ép đầu ra, không phải nội dung sai: thử lại đúng một lần trước khi hỏi
 #: người. Đo được 2026-09-24 (CAMPUS-UNI/REL-003): ops trên `release-candidates` chết một lần là gate escalation.
 AUTORETRY_SUBTYPES: Final = frozenset({"error_max_structured_output_retries"})
@@ -48,6 +50,7 @@ STOP_POLICY: Final[dict[str, Policy]] = {
     "budget": Policy(burns_retry=False, free_stops=None, then="escalate"),                       # chạm trần token/tiền (supervisor budget_cut)
     "needs_human": Policy(burns_retry=False, free_stops=None, then="escalate"),                  # không nhánh nào nhận, chuỗi nghiên cứu chết
     "no_progress": Policy(burns_retry=False, free_stops=None, then="escalate"),                  # cùng chữ ký lỗi ≥ 2 (supervisor)
+    "base_red": Policy(burns_retry=False, free_stops=MAX_BASE_RED, then="defer"),                # ADR-0062: test đỏ sẵn trên nền; chờ nền đổi
 }
 
 
