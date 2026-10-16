@@ -190,3 +190,18 @@ Bổ sung 2026-10-14 đã nói: image dẫn xuất không có image nền nào n
   rỗng như bảng trên).
 - Bỏ `pinned=True` ⇒ `test_references_pinned_giu_ca_image_da_ghim_cho_quet_lo_hong` đỏ.
 - 16 test mới; 13 ca đầu đỏ trước khi có `company.scanners` (`ModuleNotFoundError`), xanh sau; 3 ca sau (OSError, timeout gitleaks, chiều ngược ngoại lệ subprocess) thêm khi cổng báo thiếu phủ và ranh giới sandbox đỏ.
+
+## Bổ sung 2026-10-16 (4) — danh sách cặp (CVE, gói) đủ mọi CRITICAL/HIGH
+
+Đo hub thật 2026-10-16 (QLKH-DD-CSV REL-118): `serious_ids`/`serious_fixable` đã đếm trên toàn bộ, nhưng
+`reviewer:tu-dong` vẫn giữ: ký miễn ADR gốc 0036 cần kiểm `fixed` của **từng cặp** (CVE, gói), mà
+`images[service=db].findings` chỉ có 50/62 cặp — 12 cặp không kiểm được. Cùng chỗ cắt làm bảng cặp của CR-DDCSV-SEC-011
+thiếu 12 dòng db.
+
+- `findings` của image liệt kê **mọi** CRITICAL/HIGH (CRITICAL trước, có bản sửa trước), trần an toàn `SERIOUS_MAX=500`;
+  lock file liệt kê mọi CRITICAL/HIGH trước rồi lấp MEDIUM/LOW tới `MAX_FINDINGS=50`. Thêm `findings_complete` (đủ mọi
+  CRITICAL/HIGH chưa) — vượt trần thì nói `false`, không lặng lẽ cắt.
+- `gate_brief` mỗi dòng in "cặp (CVE, gói) liệt kê X/Y — đủ | CHƯA đủ" (`pairs`, `pairs_total`, `pairs_complete`):
+  reviewer không phải tự đếm `findings` với `by_severity`.
+- Đo hai chiều: trước khi sửa 4 ca đỏ (image 62 cặp chỉ ra 50; thiếu `SERIOUS_MAX`; lock file liệt kê LOW trước HIGH;
+  hồ sơ thiếu `pairs`), sau khi sửa xanh.
