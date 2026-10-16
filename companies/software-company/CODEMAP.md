@@ -103,7 +103,7 @@
 | Muốn | Sửa |
 |---|---|
 | Lệnh CLI orchestrator (`run`, `status`, `diagnose`, `publish`, `redeploy`, `recheck`, `takeover`…) | cờ và subcommand: `_parser()` trong `src/company/orch/cli.py`; **thân từng lệnh**: `src/company/orch/cli_cmds.py` (`BUS_CMDS` chỉ cần bus, `ORCH_CMDS` cần `Orchestrator`) — thêm lệnh mới là thêm parser + một hàm + một dòng bảng; tự khởi động lại khi mã đổi: `run --watch` |
-| Hồ sơ bằng chứng gate (`make gate-brief`, `/gate-brief`) | `src/company/gate_brief.py`; slash command `../../.claude/commands/gate-brief.md` |
+| Hồ sơ bằng chứng gate (`make gate-brief`, `/gate-brief`) | `src/company/gate_brief.py` (gate spec của CR đọc chuỗi PRD delta: `_prd_chain`/`_newest`, ADR-0031 bổ sung 2026-10-16); slash command `../../.claude/commands/gate-brief.md` |
 | Hồ sơ gate `SPEC-<mã CR>` đối chiếu PRD của chính chuỗi CR (bản `prd` hiện hành ngay sau spec mới nhất của chuỗi, trước khi chuỗi khác ra spec), runtime và câu hỏi theo key chuỗi | `gate_brief._prd_of`, `_brief_spec` (test: `tests/test_ho_so_spec_cr_doc_prd_cua_chuoi.py`, `tests/test_spec_cua_cr_lap_ke_hoach.py`) |
 | Trợ lý kiểm duyệt `sc-*` | `src/company/subagents.py` sinh từ agents + skills + checklists — không sửa tay đầu ra |
 | Quét tài sản prompt, ngân sách prompt tĩnh | `src/company/assetscan.py` (ADR-0022) |

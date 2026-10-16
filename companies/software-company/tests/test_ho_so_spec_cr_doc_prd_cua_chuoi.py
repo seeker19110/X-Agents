@@ -98,3 +98,47 @@ def test_chuoi_cr_ma_du_an_chua_co_prd_nao_thi_unknown():
     _mo_gate(orch, "SPEC-CR-Z")
     nfr = _muc(GB.build(orch, "SPEC-CR-Z"), "spec.nfr-co-so-do")
     assert nfr["verdict"] == "unknown" and not nfr["sources"]
+
+
+# ---------- bổ sung 2026-10-16: PRD dạng DELTA cộng dồn trong cùng chuỗi CR ----------
+# Hub thật (QLKH-DD-CSV, SPEC-CR-DDCSV-SEC-009): product ghi PRD của CR thành chuỗi `prd/<dự án>/change/<CR>/vN`, các
+# bản sau là delta chỉ chứa mục đổi. Hồ sơ chỉ đọc bản cuối: v31 (delta §8b) → "không có Ngoài phạm vi" = gap; v34
+# (delta §3/§6) → không còn §6a → spec.pii thiếu dòng PII. Bốn lượt product, ba lần reject vì mục KHÔNG đổi vắng mặt.
+
+PRD_D1 = (
+    "# PRD CR-D (v1)\n\n## NFR\n- xuất CSV ≤ 5 s p95\n\n## Ngoài phạm vi\n- không làm D1\n- không làm D2\n"
+    "\n## 6a. Phân loại PII\n- 0 trường dữ liệu cá nhân mới\n\n## 8b. Chạy ở đâu\n- docker compose up\n"
+)
+PRD_D2 = "# PRD CR-D (v2, DELTA)\n\n## 0. Trạng thái\n- chỉ sửa câu chữ §0\n"
+
+
+def _chuoi_delta(khac: bool = False):
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    if khac:  # chuỗi CR khác có đủ mục — KHÔNG được mượn
+        orch.blackboard.write("product", "prd", "prd/P1/change/CR-E/v1", summary="E", content=PRD_D1, project_id="P1")
+    base = dict(bus.latest("approved-specs", "P1").payload)
+    _pub(bus, "approved-specs", "CR-D", "product", {**base, "change_id": "CR-D", "status": "pending_human"})
+    if not khac:
+        orch.blackboard.write("product", "prd", "prd/P1/change/CR-D/v1", summary="v1", content=PRD_D1, project_id="P1")
+    orch.blackboard.write("product", "prd", "prd/P1/change/CR-D/v2", summary="v2", content=PRD_D2, project_id="P1")
+    orch.run()
+    return GB.build(orch, "SPEC-CR-D")
+
+
+def test_delta_cua_chuoi_cr_lay_muc_khong_doi_tu_ban_truoc_cung_chuoi():
+    b = _chuoi_delta()
+    oos, nfr = _muc(b, "spec.out-of-scope"), _muc(b, "spec.nfr-co-so-do")
+    assert oos["verdict"] == "ok" and "2 mục" in " ".join(oos["facts"]), oos
+    assert nfr["verdict"] == "ok" and "5 s" in " ".join(nfr["facts"]), nfr
+    assert oos["sources"][0]["content_ref"] == "prd/P1/change/CR-D/v1", "nguồn ghi đúng bản đã lấy mục"
+    pii = _muc(b, "spec.pii")
+    assert "dữ liệu cá nhân" in " ".join(pii["facts"]), pii
+    rt = _muc(b, "spec.runtime")
+    assert any("prd có mục 8b" in f for f in rt["facts"]), rt["facts"]
+
+
+def test_delta_khong_muon_muc_cua_chuoi_cr_khac():
+    oos = _muc(_chuoi_delta(khac=True), "spec.out-of-scope")
+    assert oos["verdict"] == "gap", "CR-E có Ngoài phạm vi nhưng không thuộc chuỗi CR-D"

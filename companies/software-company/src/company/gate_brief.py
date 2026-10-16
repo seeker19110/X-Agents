@@ -158,8 +158,46 @@ def _prd_of(orch: Orchestrator, pid: str | None, key: str | None) -> tuple[str |
                      "content_ref": p.get("content_ref")}
 
 
+Chain = list[tuple[str | None, dict[str, Any] | None]]
+
+
+def _prd_chain(orch: Orchestrator, pid: str | None, key: str | None, prd: str | None,
+               src: dict[str, Any] | None) -> Chain:
+    """Bản `prd` của gate kèm các bản TRƯỚC của cùng chuỗi CR (`…/change/<key>/vN`), mới trước. Product ghi PRD của
+    CR thành delta cộng dồn chỉ chứa mục đổi; mục KHÔNG đổi nằm ở bản trước cùng chuỗi. Hub 2026-10-16
+    (SPEC-CR-DDCSV-SEC-009): đọc mỗi bản cuối thì delta §8b "không có Ngoài phạm vi", delta §3/§6 "không có PII" —
+    ba lần reject vì mục vắng mặt chứ không vì mục sai. Bản không thuộc chuỗi (spec dự án, CR không tự viết PRD) giữ
+    nguyên một bản."""
+    chain: Chain = [(prd, src)]
+    mine = re.compile(rf"/change/{re.escape(key or '')}(?:/|$)")
+    if prd is None or src is None or not key or not mine.search(str(src.get("content_ref") or "")):
+        return chain
+    ck, cur = orch.blackboard.context_key("prd", pid), int(src.get("version") or 0)
+    older = [e.payload for e in orch.bus.replay(topic="shared-context") if e.key == ck
+             and int(e.payload.get("version") or 0) < cur and e.payload.get("content") is not None
+             and mine.search(str(e.payload.get("content_ref") or ""))]
+    for p in reversed(older):
+        path = orch.blackboard.path("prd", int(p["version"]), project_id=pid)
+        chain.append((p["content"], {"kind": "namespace", "ref": "prd", "version": p["version"],
+                                     "path": str(path) if path else None, "content_ref": p.get("content_ref")}))
+    return chain
+
+
+def _newest(chain: Chain, fn: Callable[[str], Any]) -> tuple[Any, dict[str, Any] | None]:
+    """Kết quả `fn` trên bản mới nhất của chuỗi có mục đó (kết quả khác None) kèm nguồn của chính bản ấy."""
+    for text, src in chain:
+        if text is not None and (r := fn(text)) is not None:
+            return r, src
+    return None, chain[0][1]
+
+
 def _topic_src(topic: str, key: str, envs: list[Envelope]) -> dict[str, Any]:
     return {"kind": "topic", "ref": topic, "key": key, "event_ids": [e.event_id for e in envs][-20:]}
+
+
+def _tu(src: dict[str, Any] | None, cur: dict[str, Any] | None) -> str:
+    """Ghi chú nguồn khi mục lấy từ bản TRƯỚC trong chuỗi delta — người ký phải thấy hồ sơ không đọc bản cuối."""
+    return f" (lấy từ prd@v{src['version']}: bản cuối là delta không đổi mục này)" if src and cur and src is not cur else ""
 
 
 def _item(it: SelfItem, verdict: str, facts: list[str], sources: list[dict[str, Any]]) -> dict[str, Any]:
@@ -196,12 +234,13 @@ def _brief_spec(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
     items = _by_id(g); out: list[dict[str, Any]] = []; unavailable: list[dict[str, Any]] = []
     prd, prd_src = _prd_of(orch, pid, subject[5:] if subject.startswith("SPEC-") else pid)
     srcs = [prd_src] if prd_src else []
+    chain = _prd_chain(orch, pid, subject[5:] if subject.startswith("SPEC-") else pid, prd, prd_src)
 
     it = items["spec.nfr-co-so-do"]
     if prd is None:
         out.append(_item(it, "unknown", ["chưa có prd trên blackboard (hoặc chỉ có con trỏ, không có toàn văn)"], srcs))
     else:
-        sec = _nfr_section(prd)
+        sec, nsrc = _newest(chain, _nfr_section)
         if sec is None:
             hits = [ln for ln in prd.splitlines() if _MEASURE.search(ln)]
             out.append(_item(it, "unknown", ["prd không có mục NFR/phi chức năng riêng",
@@ -211,28 +250,30 @@ def _brief_spec(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
             lines = [ln for ln in sec.splitlines() if ln.strip()]
             hits = [ln for ln in lines if _MEASURE.search(ln)]
             out.append(_item(it, "ok" if hits else "gap",
-                             [f"mục NFR có {len(lines)} dòng, {len(hits)} dòng có ngưỡng/đơn vị"]
-                             + [f"vd: {excerpt(x, 120)}" for x in hits[:3]], srcs))
+                             [f"mục NFR có {len(lines)} dòng, {len(hits)} dòng có ngưỡng/đơn vị" + _tu(nsrc, prd_src)]
+                             + [f"vd: {excerpt(x, 120)}" for x in hits[:3]], [nsrc] if nsrc else srcs))
 
     it = items["spec.out-of-scope"]
     if prd is None:
         out.append(_item(it, "unknown", ["chưa có prd"], srcs))
     else:
-        sec = _section(prd, _OOS_HEAD)
+        sec, osrc = _newest(chain, lambda t: _section(t, _OOS_HEAD))
         if sec is None:
             out.append(_item(it, "gap", ["prd không có heading Out of scope / Ngoài phạm vi / Không làm"], srcs))
         else:
             bullets = [ln for ln in sec.splitlines() if _BULLET.match(ln)]
             out.append(_item(it, "ok" if bullets else "gap",
-                             [f"mục ngoài phạm vi có {len(bullets)} mục"] + [f"vd: {excerpt(x, 120)}" for x in bullets[:3]], srcs))
+                             [f"mục ngoài phạm vi có {len(bullets)} mục" + _tu(osrc, prd_src)]
+                             + [f"vd: {excerpt(x, 120)}" for x in bullets[:3]], [osrc] if osrc else srcs))
 
     it = items["spec.pii"]
     facts: list[str] = []; pii_src = list(srcs)
     if prd is None:
         facts.append("chưa có prd")
     else:
-        hits = [ln for ln in prd.splitlines() if _PII.search(ln)]
-        facts.append(f"prd có {len(hits)} dòng nhắc PII/dữ liệu cá nhân")
+        hits, psrc = _newest(chain, lambda t: [ln for ln in t.splitlines() if _PII.search(ln)] or None)
+        hits = hits or []
+        facts.append(f"prd có {len(hits)} dòng nhắc PII/dữ liệu cá nhân" + _tu(psrc, prd_src))
         facts += [f"vd: {excerpt(x, 120)}" for x in hits[:2]]
     tm, tm_src = _ns(orch, "threat-model", pid)
     if tm_src: pii_src.append(tm_src)
@@ -277,7 +318,8 @@ def _brief_spec(orch: Orchestrator, g: GateSection, subject: str, pid: str | Non
             deps = (p.get("runtime") or {}).get("dependencies") or []
             facts.append("phụ thuộc ngoài: " + (", ".join(map(str, deps)) if deps else "không khai (chạy in-memory?)"))
         if prd is not None:
-            facts.append("prd " + ("có" if _section(prd, _RT_HEAD) is not None else "không có") + " mục 8b `Chạy ở đâu`")
+            rt8b, rsrc = _newest(chain, lambda t: _section(t, _RT_HEAD))
+            facts.append("prd " + ("có" if rt8b is not None else "không có") + " mục 8b `Chạy ở đâu`" + _tu(rsrc, prd_src))
         n_miss = sum(1 for e in orch.bus.replay(topic="audit-log") if e.payload.get("action") == "spec.runtime_missing"
                      and _evidence(e.payload).get("project_id") == pid)
         if n_miss: facts.append(f"spec từng bị trả lại vì thiếu runtime: {n_miss} lần")
