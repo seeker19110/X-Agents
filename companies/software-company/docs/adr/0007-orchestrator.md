@@ -62,3 +62,15 @@ Quyết định: `Route.context_writes=False` cho route `change-requests → pro
 xin `context_writes` ở lượt đó, nên model không tốn token đầu ra viết toàn văn artifact. Model vẫn trả thì code bỏ và ghi
 audit `context_writes_dropped`. Kế hoạch thật cho CR chỉ được ghi ở lượt sau khi CR đã `accepted` (route
 `_cr_accepted_when`), như mọi kế hoạch khác. Test: `tests/test_cr_impact_khong_ghi_blackboard.py`.
+
+## Bổ sung 2026-10-16 (b): bản blackboard của CR bị bác không phải bản hiện hành
+Mục trên chặn bản ghi MỚI; các bản đã ghi trước bản vá vẫn là "mới nhất". Hub thật (QLKH-DD-CSV): architecture v44
+(`change/REWORK-DDCSV-100-1/plan-v1`, "cấm merge allowlist DDCSV-116") của một CR đã bị bác khiến ops từ chối dựng
+staging cho REL-105 và security chặn vì thiếu DAST.
+
+Quyết định: `company.blackboard.Blackboard` đọc (`read`/`content`/`snapshot`) bỏ qua bản có `content_ref` dạng
+`…/change/<CR>/…` khi quyết định CUỐI của CR đó trên bus là `rejected`, rơi về bản hợp lệ gần nhất (toàn văn đọc lại từ
+bus). Không ghi tay blackboard, không sửa bus; số bản khi ghi vẫn đếm theo bản mới nhất thật. CR được chấp nhận lại
+sau đó thì bản kế hoạch lại hiện hành. `read_artifact(version=N)` vẫn đọc đúng bản N. Test:
+`tests/test_blackboard_cr_bi_bac.py`.
+

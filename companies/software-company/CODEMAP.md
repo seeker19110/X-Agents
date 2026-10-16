@@ -17,7 +17,7 @@
 
 | Muốn | Sửa | Test đối chiếu |
 |---|---|---|
-| Agent nào nhận event nào, điều kiện gì | `ROUTES`, `THREAT_ROUTE`, `PLAN_INPUTS`, `STAGING_ROUTE`/`PROD_ROUTE` trong `src/company/orchestrator.py`; lượt nào được ghi blackboard: `Route.context_writes` (`orch/routes.py`, tắt ở impact của CR còn chờ — ADR-0007 bổ sung 2026-10-16) | `tests/test_routing.py`; bảng Consumer `docs/architecture.md` |
+| Agent nào nhận event nào, điều kiện gì | `ROUTES`, `THREAT_ROUTE`, `PLAN_INPUTS`, `STAGING_ROUTE`/`PROD_ROUTE` trong `src/company/orchestrator.py`; bản của CR bị bác không đọc như hiện hành: `Blackboard.void`/`_current` (`src/company/blackboard.py`); lượt nào được ghi blackboard: `Route.context_writes` (`orch/routes.py`, tắt ở impact của CR còn chờ — ADR-0007 bổ sung 2026-10-16) | `tests/test_routing.py`; bảng Consumer `docs/architecture.md` |
 | Khung event chung (`Envelope`, `AuditLog`, `SharedContext`, `SupervisorAction`, `can_transition`) | `platform/xagents-core/src/xagents_core/events.py` — **LỚP CƠ SỞ** từ K3.5a; `src/company/events.py` kế thừa và thêm trường phạm vi của mình, thu hẹp `topic`/`namespace` về Literal. Model miền, `PAYLOAD_MODELS`, `TRANSITIONS` ở LẠI package | `platform/xagents-core/tests/test_events.py` |
 | Thêm/đổi trường của một topic | `topics/schemas/<topic>.json` **và** model trong `src/company/events.py` (`PAYLOAD_MODELS`) | `tests/test_schema_consistency.py` |
 | Ai được ghi namespace blackboard nào | `NAMESPACE_OWNERS` trong `events.py`; bảng `topics/README.md` | — |
