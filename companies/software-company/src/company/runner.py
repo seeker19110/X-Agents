@@ -361,7 +361,13 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             #
             # Input vẫn có trần CỨNG bằng hai hàng rào khác: `max_turns` (số lượt) nhân `max_input_chars` (ngữ
             # cảnh mỗi lượt). Nên bỏ input khỏi ngân sách KHÔNG mở đường cho chi phí vô hạn.
-            if budget is not None and produced > budget:
+            if budget is not None and produced > budget and not c.tool_calls:
+                # ADR-0060: phiên ĐÃ XONG (backend chạy cả phiên trong một lời gọi, `claude -p`) — token đã tiêu, bỏ kết
+                # quả chỉ buộc thêm một phiên. Giữ kết quả; audit `produced:*` mang output thật nên supervisor vẫn
+                # `budget_cut` và hỏi người. Không mang token ở đây: không đếm hai lần.
+                self._audit(spec, "budget_overrun", inp, evidence=json.dumps(
+                    {"output": produced, "budget": budget, "turn": turn}, ensure_ascii=False))
+            elif budget is not None and produced > budget:
                 self._audit(spec, "budget_exhausted", inp, tokens=total, cost=usd,
                             evidence=f"output {produced} > {budget} token sau {turn} lượt "
                                      f"(tổng kể cả input: {total}); tool={dump_calls(tools)}")
