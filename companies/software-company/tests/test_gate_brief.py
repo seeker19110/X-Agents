@@ -759,3 +759,22 @@ def test_release_ngan_sach_unknown_khi_tran_tien_khong_do_duoc(tmp_path):
 def test_release_ngan_sach_unknown_khi_chua_dat_tran(tmp_path):
     _db, _, orch = _scenario(tmp_path, to="release")
     assert _ngan_sach(orch, pb=None)["verdict"] == "unknown"
+
+
+def test_escalation_release_giu_dong_loi_cuoi_cua_deploy(tmp_path):
+    """Hub thật 2026-10-16 (REL-113): `docker compose up -d` in hàng chục dòng tiến trình rồi mới tới dòng lỗi ở CUỐI
+    ("cannot create secret … in read-only service migrate"). `excerpt` cắt 200 ký tự đầu ⇒ hồ sơ chỉ còn "Recreated…",
+    agent duyệt giữ gate vì "không có dòng lỗi cuối". Chi tiết lỗi phải giữ được cả đuôi."""
+    from test_smoke_evidence import SERVER_DIE, _orch, _repo
+    repo = _repo(tmp_path, SERVER_DIE)
+    _, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 10})
+    orch.run()
+    tien_trinh = "".join(f" Container staging-app-{i}  Recreated\n" for i in range(30))
+    loi = 'cannot create secret "qlkh_db_password" in read-only service migrate: `file` is the sole supported option'
+    _pub(orch.bus, "release-events", "REL-001", "ops",
+         {"release_id": "REL-001", "version": "0.1.0", "env": "staging", "status": "deploy_failed",
+          "evidence": {"deploy": {"ok": False, "error": f"up -d: {tien_trinh}{loi}"}}})
+    b = GB.build(orch, "REL-001")
+    row = next(h for h in b["extra"]["history"] if h["action"] == "release-events staging deploy_failed")
+    assert "read-only service migrate" in row["detail"] and row["detail"].startswith("up -d"), row["detail"]
+    assert len(row["detail"]) <= GB.EXCERPT + 40

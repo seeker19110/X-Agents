@@ -102,6 +102,14 @@ def excerpt(text: Any, n: int = EXCERPT) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def excerpt_ends(text: Any, n: int = EXCERPT) -> str:
+    """Như `excerpt` nhưng giữ cả ĐUÔI: lỗi của lệnh (compose, pytest, git) nằm ở dòng cuối, đầu chỉ là tiến trình
+    (hub 2026-10-16, REL-113: "Recreated…" còn, "cannot create secret … read-only service" mất)."""
+    s = " ".join(str(text or "").split())
+    head = n // 3
+    return s if len(s) <= n else s[:head] + " … " + s[-(n - head - 3):]
+
+
 def _review_rows(e: Envelope, at: int) -> list[dict[str, Any]]:
     """Dòng "Lịch sử thất bại" của một review chặn: một dòng tóm tắt, rồi MỖI finding block một dòng riêng (vị trí +
     trích). Hub 2026-10-16 REL-106: nối câu chữ các finding rồi cắt 200 ký tự thì chỉ còn finding đầu — reviewer đọc
@@ -689,14 +697,14 @@ def _brief_escalation_release(orch: Orchestrator, it: Any, subject: str, pid: st
         if sm.get("stderr_tail"): detail = f"{detail or ''} | stderr: {sm['stderr_tail']}"
         if sm.get("exit_code") is not None: detail = f"{detail or ''} | exit={sm['exit_code']}"
         history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(),
-                        "action": f"release-events {p.get('env')} {p.get('status')}", "detail": excerpt(detail)})
+                        "action": f"release-events {p.get('env')} {p.get('status')}", "detail": excerpt_ends(detail)})
     for e in orch.bus.replay(topic="audit-log"):
         p = e.payload; a = str(p.get("action") or "")
         if not (a.startswith("release.") or a in ERROR_ACTIONS): continue
         d = _evidence(p)
         if d.get("release_id") != subject: continue
         history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"{p.get('actor')}: {a}",
-                        "detail": excerpt(d.get("error") or d.get("reason") or d.get("stderr_tail")
+                        "detail": excerpt_ends(d.get("error") or d.get("reason") or d.get("stderr_tail")
                                           or " ".join(f"{k}={d[k]}" for k in ("claimed_status", "http_status", "exit_code") if k in d)
                                           or p.get("evidence"))})
     for e in orch.bus.replay(topic="review-results", key=subject):
@@ -768,7 +776,7 @@ def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str
 
     if subject in orch.stalled or subject not in orch.lead.tickets:
         st = orch.stalled.get(subject, {})
-        phist = [{"at": e.ts.isoformat(), "action": e.payload.get("action"), "detail": excerpt(_evidence(e.payload).get("error")
+        phist = [{"at": e.ts.isoformat(), "action": e.payload.get("action"), "detail": excerpt_ends(_evidence(e.payload).get("error")
                   or _evidence(e.payload).get("reason") or e.payload.get("evidence"))}
                  for e in orch.bus.replay(topic="audit-log")
                  if e.payload.get("project_id") == subject and e.payload.get("action") in ERROR_ACTIONS]
@@ -799,7 +807,7 @@ def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str
         if p.get("ticket_id") == subject and p.get("action") in ERROR_ACTIONS:
             d = _evidence(p)
             history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"{p.get('actor')}: {p.get('action')}",
-                            "detail": excerpt(d.get("error") or d.get("hint") or d.get("failed") or d.get("conflicts") or p.get("evidence"))})
+                            "detail": excerpt_ends(d.get("error") or d.get("hint") or d.get("failed") or d.get("conflicts") or p.get("evidence"))})
     for e in orch.bus.replay(topic="supervisor-actions", key=subject):
         history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"supervisor {e.payload.get('action')}", "detail": excerpt(e.payload.get("reason"))})
     history.sort(key=lambda h: (str(h["at"]), h["_seq"]))
