@@ -313,15 +313,9 @@ def decide(
         raise KeyError(f"{subject_id}: không có gate đang chờ")
     if why := refusal(req, gate.history, decision):
         raise PermissionError(why)
-    signed = sign_decision(
-        subject_id,
-        decision,
-        principal,
-        reason,
-        generation_of(req),
-        hashlib.sha256(brief.read_bytes()).hexdigest(),
-        load_private_key(key),
-    )
+    raw = brief.read_bytes()  # đọc MỘT lần: byte được băm và byte được chụp là một
+    sha = hashlib.sha256(raw).hexdigest()
+    signed = sign_decision(subject_id, decision, principal, reason, generation_of(req), sha, load_private_key(key))
     data = {"subject_id": subject_id, "decision": decision, "by": principal, "reason": reason, **signed}
     env = Envelope(
         topic="audit-log",
@@ -333,7 +327,15 @@ def decide(
     )
     if trusted_reviewer(env, req, gate.history) is None:
         raise PermissionError(f"chữ ký không qua registry {registry_path()} (khoá lạ, hết hạn, hoặc registry khác)")
+    if not (snap := signed_brief_path(brief, sha)).exists(): snap.write_bytes(raw)
     return gate.decide_signed(subject_id, principal, reason, signed, decision)
+
+
+def signed_brief_path(brief: Path, sha: str) -> Path:
+    """Bản chụp đúng byte hồ sơ đã ký, đặt tên theo `brief_sha256`, cạnh hồ sơ. `gate_brief` ghi đè `<subject>.json`
+    mỗi thế hệ gate (hub 2026-10-15: REL-091 hai lần decide, đĩa chỉ còn hồ sơ thế hệ sau) — không có bản chụp thì
+    không ai kiểm lại được chữ ký cũ trên đúng thứ người ký đã đọc."""
+    return brief.with_name(f"{brief.stem}.{sha}.json")
 
 
 # ---------- ADR gốc 0034: agent duyệt tự động ----------

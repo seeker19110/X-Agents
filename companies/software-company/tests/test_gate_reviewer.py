@@ -455,3 +455,34 @@ def test_new_key_khong_ghi_de_registry_hong(tmp_path, noi_dung):
         gr.new_key("reviewer:b", reg, tmp_path / "keys")
     assert reg.read_text(encoding="utf-8") == noi_dung, "registry hỏng phải được giữ nguyên để người xem"
     assert not (tmp_path / "keys").exists(), "không được sinh khoá bí mật khi registry không nhận được nó"
+
+
+# ---------- bản chụp hồ sơ đã ký (hub 2026-10-15: REL-091 hai lần decide, đĩa chỉ còn hồ sơ thế hệ sau) ----------
+
+def _signed_sha(g: PersistentGate) -> str:
+    ev = [e for e in g.bus.replay(topic="audit-log") if e.payload["action"] == "gate.decide"]
+    return json.loads(ev[-1].payload["evidence"])["brief_sha256"]
+
+
+def test_decide_luu_ban_chup_ho_so_dung_byte_da_ky(khoa, brief):
+    g = _gate()
+    gr.decide(g, "T1", ID, LY_DO, khoa, brief)
+    sha = _signed_sha(g)
+    snap = gr.signed_brief_path(brief, sha)
+    assert snap.read_bytes() == brief.read_bytes() and hashlib.sha256(snap.read_bytes()).hexdigest() == sha
+
+
+def test_ho_so_bi_ghi_de_the_he_sau_ban_chup_cu_van_con(khoa, brief):
+    g = _gate()
+    gr.decide(g, "T1", ID, LY_DO, khoa, brief)
+    cu = brief.read_bytes(); sha_cu = _signed_sha(g)
+    brief.write_text('{"subject_id": "T1", "the_he": 2}', encoding="utf-8")  # gate_brief ghi đè cùng tên
+    assert gr.signed_brief_path(brief, sha_cu).read_bytes() == cu, "kiểm lại chữ ký cũ cần đúng byte cũ"
+
+
+def test_decide_that_bai_khong_de_lai_ban_chup(khoa, brief, tmp_path, monkeypatch):
+    g = _gate()
+    monkeypatch.setenv(gr.REGISTRY_ENV, str(tmp_path / "registry-trong.json"))
+    with pytest.raises(PermissionError):
+        gr.decide(g, "T1", ID, LY_DO, khoa, brief)
+    assert sorted(p.name for p in brief.parent.glob(f"{brief.stem}.*.json")) == []
