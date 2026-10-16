@@ -312,13 +312,16 @@ class DeliveryLead:
         self._emit(Envelope(topic="change-requests", key=cid, actor=LEAD_ACTOR, payload=cr.model_dump()))
         return cid
 
-    def request_change_after_release_reject(self, rid: str, reason: str) -> None:
+    def request_change_after_release_reject(self, rid: str, reason: str, cid: str | None = None,
+                                            what: str = "Gate release") -> None:
         """ADR-0058: gate release bị từ chối — RC không đi tiếp, ticket không bị đá về (gate đánh giá bằng chứng cả RC,
-        không phải lỗi một ticket). Lý do từ chối là danh sách việc: nộp CR `GATE3-<RC>` cho planner, người/reviewer quyết."""
+        không phải lỗi một ticket). Lý do từ chối là danh sách việc: nộp CR `GATE3-<RC>` cho planner, người/reviewer quyết.
+        ADR-0057 bổ sung 2026-10-16: escalation release bị từ chối mà finding không chạm file ticket nào → cùng CR này,
+        `cid`/`what` riêng (`REWORK-<RC>-<n>`, "Escalation release")."""
         tids = self.release_tickets.get(rid, []); pid = next((self.tickets[t].project_id for t in tids if t in self.tickets), None)
-        desc = (f"Gate release của {rid} (ticket {', '.join(tids) or '?'}) bị từ chối; RC không lên production. "
+        desc = (f"{what} của {rid} (ticket {', '.join(tids) or '?'}) bị từ chối; RC không lên production. "
                 f"Lập kế hoạch ticket MỚI cho phần việc lý do từ chối đòi: {reason}")
-        cr = ChangeRequest(change_id=f"GATE3-{rid}", project_id=pid or "", requested_by=LEAD_ACTOR, description=desc[:1000],
+        cr = ChangeRequest(change_id=cid or f"GATE3-{rid}", project_id=pid or "", requested_by=LEAD_ACTOR, description=desc[:1000],
                            impact={"kind": "release_gate_reject", "release_id": rid, "tickets": tids, "reason": reason[:500]})
         self._emit(Envelope(topic="change-requests", key=cr.change_id, actor=LEAD_ACTOR, payload=cr.model_dump()))
 
@@ -495,11 +498,12 @@ class DeliveryLead:
         self._maybe_open_release_gate(rid)
         return sources
 
-    def rework_release_tickets(self, rid: str, hint: str) -> None:
+    def rework_release_tickets(self, rid: str, hint: str, only: list[str] | None = None) -> None:
         """Người TỪ CHỐI escalation của release: finding LÀ lỗi code thật, không phải rủi ro chấp nhận được — đá các
-        ticket đã merged trong release về changes_requested (hành vi cũ, giờ chỉ chạy khi người quyết định rõ ràng)."""
+        ticket đã merged trong release về changes_requested (hành vi cũ, giờ chỉ chạy khi người quyết định rõ ràng).
+        `only`: chỉ các ticket mà file đã đổi chạm finding (ADR-0057 bổ sung 2026-10-16, `orch/release_rework.py`)."""
         for tid in self.release_tickets.get(rid, []):
-            if self.state.get(tid) == "merged":
+            if self.state.get(tid) == "merged" and (only is None or tid in only):
                 self._set(tid, "changes_requested"); self._retry(tid, hint)
 
     def request_changes(self, tid: str, hint: str, kind: str = "agent_error") -> None:

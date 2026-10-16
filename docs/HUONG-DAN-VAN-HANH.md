@@ -507,6 +507,7 @@ Ba biến/khoá người vận hành cần biết:
 | Đặt ở đâu | Tên | Giá trị | Nghĩa |
 |---|---|---|---|
 | env máy trực | `COMPANY_DEPLOY` | `auto` (mặc định) \| `compose` \| `off` | `auto`: có runtime trên PATH thì deploy, không có thì **bỏ qua kèm lý do**. `compose`: khai đích danh — thiếu binary là **lỗi**, không tụt về "coi như xong". `off`: giữ hành vi trước ADR-0039. |
+| env máy trực | `COMPANY_DEPLOY_ENV_DIR` | thư mục NGOÀI repo khách, vd `~/.config/x-agents/deploy-env` | Biến bí mật cho compose của khách (mật khẩu DB staging…): file `company-<dự án>-<env>.env` (tên `project` của bằng chứng deploy), mỗi dòng `KEY=giá trị`, `chmod 600`. Đi qua `--env-file`, không qua env tiến trình (`clean_env` bỏ mọi tên `*PASSWORD*`). File đọc được bởi người khác hoặc nằm trong repo khách → deploy **lỗi**. ADR-0061. |
 | env máy trực | `COMPANY_DEPLOY_RUNTIME` | mặc định `docker` | Đổi khi runtime tên khác (`podman`). Chỉ bốn lệnh con được chạy: `up -d`, `ps`, `logs --tail`, `down`. |
 | spec (`approved-specs.runtime.deploy`) | đường dẫn compose file trong repo khách | vd. `deploy/compose.yaml` | Không khai thì dò `docker-compose.yml`, `compose.yaml`. Khai một file **không tồn tại** → bỏ qua kèm lý do, **không** lặng lẽ rơi về file dò được. |
 

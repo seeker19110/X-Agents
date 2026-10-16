@@ -38,6 +38,15 @@ ADR-0048 (bài học tại mốc merge); giữ ADR gốc 0003/0004 (không RAG, 
 - `related_lessons` dài thêm tối đa 5 × độ dài hint người viết.
 - Còn biết: mode `cli` (ADR-0023) chạy tool riêng của CLI, không qua `ToolBox` — lượt đó không có `read_artifact`.
 
+## Bổ sung 2026-10-16: đọc bản cũ theo `version`
+Hub thật (QLKH-DD-CSV, DDCSV-102): định nghĩa V-SEC7-08..27 chỉ nằm ở threat-model v140 §11/§12. Các bản sau là delta
+cộng dồn không chép lại định nghĩa, còn `read_artifact` chỉ trả bản mới nhất (v163/v165). Builder lẫn security đều ghi
+ruling từ chối đoán 19/27 mã; `reviewer:tu-dong` giữ escalation vì "chạy lại sẽ lặp y hệt".
+
+Quyết định: `read_artifact(namespace, section=None, version=None)`. Có `version` thì toàn văn đọc từ bus
+(`shared-context`, khoá do code ghép từ dự án của lượt), không đọc file mirror; bản không có thì trả `lỗi` kèm khoảng
+bản đang có. Phạm vi đọc (`reads_full`, namespace toàn công ty) giữ nguyên.
+
 ## Liên quan
 
 ADR-0010 (ranh giới tool), ADR-0012 (cắt có nhãn), ADR-0020 (phạm vi đọc theo vai), ADR-0048 (bài học tại merge);

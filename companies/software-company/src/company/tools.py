@@ -283,11 +283,12 @@ class ArtifactTools:
     def __init__(self, blackboard: Blackboard, project_id: str | None, spec: AgentSpec):
         self.blackboard, self.project_id, self.spec = blackboard, project_id, spec
 
-    def read_artifact(self, namespace: str, section: str | None = None) -> str:
+    def read_artifact(self, namespace: str, section: str | None = None, version: int | None = None) -> str:
         if namespace in self.blackboard.cfg.global_namespaces or not self.spec.reads_full(namespace):
             raise ToolError(f"namespace ngoài phạm vi đọc của agent: {namespace!r}")
-        text = self.blackboard.content(namespace, self.project_id)
+        text = self.blackboard.content(namespace, self.project_id) if version is None else self._version(namespace, version)
         if text is None: return f"lỗi: dự án chưa có artifact {namespace!r}"
+        if text.startswith("lỗi:"): return text
         heads = list(_SECTION.finditer(text))
         titles = [m.group().removeprefix("##").strip() for m in heads]
         if section is None:
@@ -299,10 +300,22 @@ class ArtifactTools:
                 return text[heads[i].start():heads[i + 1].start() if i + 1 < len(heads) else len(text)]
         return f"lỗi: {namespace!r} không có mục {section!r}; có: {', '.join(titles)}"
 
+    def _version(self, namespace: str, version: int) -> str | None:
+        """Toàn văn bản `version` (ADR-0049 bổ sung 2026-10-16) — đọc từ bus, nguồn sự thật; khoá bus do CODE ghép từ
+        dự án của lượt nên số bản không đưa được agent sang dự án khác. Bản mới nhất vẫn đi đường `content()`."""
+        key = self.blackboard.context_key(namespace, self.project_id)
+        vers = {int(e.payload.get("version") or 0): e.payload.get("content")
+                for e in self.blackboard.bus.replay(topic="shared-context", key=key)}
+        if not vers: return None
+        if version not in vers: return f"lỗi: {namespace!r} không có bản {version}; có {min(vers)}..{max(vers)}"
+        return vers[version]
+
     def add_to(self, tb: ToolBox) -> ToolBox:
         tb.add(ToolSpec("read_artifact", "Đọc đủ artifact blackboard đã bị cắt khỏi ngữ cảnh, theo tên namespace "
-                        "(vd. prd). `section` = tiêu đề mục ## để chỉ đọc mục đó.",
-                        {"type": "object", "properties": {"namespace": {"type": "string"}, "section": {"type": "string"}},
+                        "(vd. prd). `section` = tiêu đề mục ## để chỉ đọc mục đó. `version` = số bản cũ (vd. 140) khi "
+                        "bản mới nhất là delta không còn định nghĩa gốc; bỏ trống = bản mới nhất.",
+                        {"type": "object", "properties": {"namespace": {"type": "string"}, "section": {"type": "string"},
+                                                          "version": {"type": "integer", "minimum": 1}},
                          "required": ["namespace"]}), self.read_artifact)
         return tb
 
