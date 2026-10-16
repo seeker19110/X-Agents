@@ -102,6 +102,20 @@ def excerpt(text: Any, n: int = EXCERPT) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def _review_rows(e: Envelope, at: int) -> list[dict[str, Any]]:
+    """Dòng "Lịch sử thất bại" của một review chặn: một dòng tóm tắt, rồi MỖI finding block một dòng riêng (vị trí +
+    trích). Hub 2026-10-16 REL-106: nối câu chữ các finding rồi cắt 200 ký tự thì chỉ còn finding đầu — reviewer đọc
+    "chỉ một block" và ký miễn cả block không thuộc diện miễn (ADR gốc 0036 đòi MỌI block)."""
+    p = e.payload
+    if p.get("verdict") not in {"block", "fail"}:
+        return []
+    act, base = f"review {p.get('source')} {p.get('verdict')}", {"_seq": at, "at": e.ts.isoformat()}
+    blocks = [f for f in p.get("findings") or [] if isinstance(f, dict) and f.get("level") == "block"]
+    rows = [{**base, "action": act, "detail": excerpt(p.get("root_cause") or "; ".join(str(f.get("text", "")) for f in blocks))}]
+    return rows + [{**base, "action": f"{act} {i}/{len(blocks)}", "detail": excerpt(f"{f.get('location')}: {f.get('text')}")}
+                   for i, f in enumerate(blocks, 1)]
+
+
 def _section(content: str, head: re.Pattern[str], score: Callable[[str], Any] = len) -> str | None:
     """Thân DÀI NHẤT trong các heading markdown khớp `head` (tới heading cùng cấp hoặc cao hơn); None nếu không có.
     Hub 2026-10-15: PRD có "### 0.2 Lỗi của hint: NFR thiếu số đo" (2 dòng) trước "## 5. NFR" (11 dòng); lấy heading
@@ -655,10 +669,7 @@ def _brief_escalation_release(orch: Orchestrator, it: Any, subject: str, pid: st
                                           or " ".join(f"{k}={d[k]}" for k in ("claimed_status", "http_status", "exit_code") if k in d)
                                           or p.get("evidence"))})
     for e in orch.bus.replay(topic="review-results", key=subject):
-        p = e.payload
-        if p.get("verdict") in {"block", "fail"}:
-            detail = p.get("root_cause") or "; ".join(f.get("text", "") for f in p.get("findings", []) if isinstance(f, dict) and f.get("level") == "block")
-            history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"review {p.get('source')} {p.get('verdict')}", "detail": excerpt(detail)})
+        history += _review_rows(e, seq.get(e.event_id, 0))
     history.sort(key=lambda h: (str(h["at"]), h["_seq"]))
     for h in history: del h["_seq"]
     rc = orch.latest("release-candidates", subject)
@@ -747,10 +758,7 @@ def _brief_escalation(orch: Orchestrator, g: GateSection, subject: str, pid: str
     for e in orch.bus.replay(topic="tasks", key=subject):
         history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"tasks retry={e.payload.get('retry', 0)}", "detail": excerpt(e.payload.get("hint"))})
     for e in orch.bus.replay(topic="review-results", key=subject):
-        p = e.payload
-        if p.get("verdict") in {"block", "fail"}:
-            detail = p.get("root_cause") or "; ".join(f.get("text", "") for f in p.get("findings", []) if isinstance(f, dict) and f.get("level") == "block")
-            history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"review {p.get('source')} {p.get('verdict')}", "detail": excerpt(detail)})
+        history += _review_rows(e, seq.get(e.event_id, 0))
     for e in orch.bus.replay(topic="audit-log"):
         p = e.payload
         if p.get("action") in DEP_CLOSED_ACTIONS and subject in (d := _evidence(p)).get("dependents_blocked", []):

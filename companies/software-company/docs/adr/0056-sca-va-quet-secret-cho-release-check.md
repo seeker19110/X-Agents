@@ -124,6 +124,19 @@ không có đường "image đã dựng" bù vào, và RC bị chặn vì một 
 - Hai chiều: trước khi sửa thì `test_references_doc_ca_dockerfile_do_compose_build_tro_toi` đỏ (tập quét không có
   `postgres…@sha256` của `infra/db/Dockerfile`), sau khi sửa thì xanh.
 
+## Bổ sung 2026-10-16 (2) — hồ sơ cho thấy MỌI finding block
+
+Đo hub thật 2026-10-16 (QLKH-DD-CSV REL-106): security chặn với ba finding block. Hai cái là CVE không có bản sửa ở
+image db và app (diện miễn), cái thứ ba là TM-DDCSV112-01 (`dpia_gate` không kiểm `decision/by`, không thuộc diện
+miễn). "Lịch sử thất bại" của `gate_brief` nối câu chữ các finding rồi cắt còn 200 ký tự, nên chỉ còn nửa finding
+đầu. `reviewer:tu-dong` viết "hồ sơ chỉ có một finding block" rồi ký miễn cả RC. ADR gốc 0036 chỉ cho approve khi MỌI
+block thuộc hai loại được miễn, vậy hồ sơ phải cho thấy MỌI block.
+
+- Mỗi review chặn (ticket và release) cho một dòng tóm tắt như cũ, rồi **mỗi finding block một dòng riêng**
+  (`review <nguồn> block i/n`: vị trí + trích 200 ký tự). Finding `warn`/`nit` không vào lịch sử.
+- Hai chiều: trước khi sửa thì `test_lich_su_liet_ke_moi_finding_block_cua_review_khong_cat_mat` đỏ (hồ sơ chỉ có
+  `root_cause`, không có mã finding nào), sau khi sửa thì xanh.
+
 ## Cái giá đã biết
 
 - Hai binary ngoài repo, phiên bản do máy trực quyết; `tool` ghi "trivy 0.75.0"/"gitleaks 8.30.1" vào bằng chứng để

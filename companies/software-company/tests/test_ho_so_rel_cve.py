@@ -143,3 +143,40 @@ def test_ho_so_vuln_unverified_hoac_khong_co_review_security(tmp_path):
     )
     b = GB.build(orch, "REL-001")
     assert b["extra"]["vuln"] == {"unverified": "không có trivy"} and "không có trivy" in GB.render_md(b)
+
+
+# ---------- bổ sung 2026-10-16: MỌI finding block vào "Lịch sử thất bại", không chỉ cái đầu ----------
+# Hub thật (QLKH-DD-CSV REL-106): security block với 3 finding block (CVE db, CVE app, TM-DDCSV112-01 — lỗ của
+# `dpia_gate`, không thuộc diện miễn). Lịch sử nối câu chữ các finding rồi cắt 200 ký tự: chỉ còn nửa finding đầu.
+# `reviewer:tu-dong` đọc hồ sơ, viết "hồ sơ chỉ có một finding block là TM-REL106-01" và ký miễn — kể cả cái không
+# được miễn. ADR gốc 0036 chỉ cho approve khi MỌI block thuộc hai loại; hồ sơ phải cho thấy MỌI block.
+
+DAI = " — " + "chi tiết dài " * 30
+
+
+def test_lich_su_liet_ke_moi_finding_block_cua_review_khong_cat_mat(tmp_path):
+    orch, pub = _rel_orch(tmp_path)
+    findings = [
+        {"level": "block", "location": "image db", "text": "TM-A-01: CVE không bản sửa ở db" + DAI},
+        {"level": "block", "location": "image app", "text": "TM-A-02: CVE không bản sửa ở app" + DAI},
+        {"level": "warn", "location": "dast", "text": "TM-W-01: chỉ là cảnh báo"},
+        {"level": "block", "location": "threat-model v171", "text": "TM-B-01: gate không kiểm decision/by" + DAI},
+    ]
+    pub(
+        orch.bus,
+        "review-results",
+        "REL-001",
+        "security",
+        {
+            "ticket_id": "REL-001",
+            "source": "security",
+            "verdict": "block",
+            "root_cause": "tóm tắt",
+            "findings": findings,
+        },
+    )
+    md = GB.render_md(GB.build(orch, "REL-001"))
+    for fid in ("TM-A-01", "TM-A-02", "TM-B-01"):
+        assert fid in md, f"{fid} phải có trong hồ sơ"
+    assert "TM-W-01" not in md, "warn không phải lý do chặn"
+    assert "block 3/3" in md and "threat-model v171" in md, "đếm và vị trí của từng finding"
