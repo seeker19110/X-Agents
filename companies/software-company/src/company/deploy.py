@@ -98,16 +98,47 @@ class DeployRecord:
     skipped: str = ""
     error: str = ""
     logs_tail: str = ""
+    secret_redaction: dict[str, Any] = field(default_factory=dict)  # số đo che giá trị file env bí mật, không giá trị
 
     def record(self) -> dict[str, Any]:
         out: dict[str, Any] = {"project": self.project, "env": self.env, "ok": self.ok,
                                "verified_by": VERIFIED_BY}
         for k in ("services", "container_ids", "image_ids", "port", "started_at", "smoke", "compose_file", "env_file",
-                  "skipped", "error", "logs_tail"):
+                  "skipped", "error", "logs_tail", "secret_redaction"):
             v = getattr(self, k)
             if v:
                 out[k] = list(v) if isinstance(v, tuple) else v
         return out
+
+
+SECRET_MIN = 6  # giá trị ngắn hơn (cờ, số cổng) không che: che "1" là che nát cả bằng chứng
+
+
+def _secret_values(env_file: str) -> list[str]:
+    """Giá trị trong file env bí mật (ADR-0061) để che khỏi bằng chứng — `KEY=VALUE`, bỏ dòng chú thích/rỗng, bỏ nháy."""
+    vals = []
+    for ln in Path(env_file).read_text(encoding="utf-8").splitlines():
+        k, sep, v = ln.partition("=")
+        v = v.strip().strip("'\"")
+        if sep and not k.lstrip().startswith("#") and len(v) >= SECRET_MIN:
+            vals.append(v)
+    return vals
+
+
+def _redacted(kw: dict[str, Any], vals: list[str]) -> dict[str, Any]:
+    """Che MỌI giá trị bí mật trong phần chữ của bản ghi deploy (`error`, `logs_tail`, `smoke`) và ghi số đo
+    `secret_redaction` do máy sinh. Hub 2026-10-16 (REL-109, TM-SEC10-05 High): `logs_tail` là log container và
+    `error` là stderr compose — app in chuỗi kết nối DB là mật khẩu lên bus; security chặn RC vì không có bằng chứng che."""
+    hits = 0
+    def che(s: str) -> str:
+        nonlocal hits
+        for v in vals:
+            hits += s.count(v); s = s.replace(v, "***")
+        return s
+    out = {k: che(v) if k in ("error", "logs_tail") and isinstance(v, str) else v for k, v in kw.items()}
+    if isinstance(out.get("smoke"), dict):
+        out["smoke"] = json.loads(che(json.dumps(out["smoke"], ensure_ascii=False)))
+    return {**out, "secret_redaction": {"values": len(vals), "hits": hits, "verified_by": VERIFIED_BY}}
 
 
 def project_name(project_id: str, env: str) -> str:
@@ -336,8 +367,10 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
     mode_, binary_ = deploy_settings()
     mode, binary = (mode if mode is not None else mode_), (binary if binary is not None else binary_)
     project = project_name(project_id, env)
+    vals: list[str] | None = None  # có file env bí mật → che giá trị của nó ở MỌI bản ghi trả về (ADR-0061 bổ sung)
+
     def rec(**kw: Any) -> DeployRecord:
-        return DeployRecord(project=project, env=env, **kw)
+        return DeployRecord(project=project, env=env, **(kw if vals is None else _redacted(kw, vals)))
 
     if env not in ENVS:
         raise DeployError(f"env không hợp lệ: {env!r} ({' | '.join(ENVS)}) — env là của ROUTE, không phải lời khai")
@@ -380,6 +413,7 @@ def deploy(repo_root: Path, project_id: str, env: str, rt: Runtime, *,
     if not cfile:
         return rec(skipped=f"không khai `runtime.deploy` và không dò ra {' / '.join(COMPOSE_NAMES)} trong repo")
     efile = deploy_env_file(repo_root, project)
+    vals = _secret_values(efile) if efile else None
 
     def compose(*args: str, timeout: int = CMD_TIMEOUT_S) -> tuple[bool, str]:
         return _compose(run, binary, repo_root, project, cfile, *args, timeout=timeout, env_file=efile)

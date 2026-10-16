@@ -105,3 +105,45 @@ def test_thu_muc_nam_trong_repo_khach_thi_tu_choi(tmp_path, monkeypatch):
     monkeypatch.setenv(ENV_SECRETS_DIR, str(inside))
     with pytest.raises(DeployError, match="ngoài repo"):
         _run(tmp_path, monkeypatch)
+
+
+# ---------- bổ sung 2026-10-16: che giá trị bí mật trong bằng chứng, có số đo ----------
+# Hub thật (QLKH-DD-CSV REL-109, TM-SEC10-05 High): security chặn RC vì "mật khẩu DB có thể lộ vào log", không có
+# bằng chứng giảm nhẹ. `DeployRecord` ghi `logs_tail` (log container) và `error` (stderr compose) lên bus — app in
+# chuỗi kết nối DB là mật khẩu vào `release-events`. Phiên chính đo tay: 0 lần trong bus/artifact/journal — nhưng đó
+# là lời khai; bằng chứng phải do máy ghi ngay trong RC.
+
+
+def test_gia_tri_bi_mat_trong_log_va_loi_bi_che_va_co_so_do(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_SECRETS_DIR, str(_secrets(tmp_path)))
+    rec, _ = _run(
+        tmp_path, monkeypatch, ps=(0, "[]", ""), logs=(0, f"app | postgresql://qlkh:{GIA_TRI_GIA}@db/qlkh\n", "")
+    )
+    r = rec.record()
+    assert GIA_TRI_GIA not in repr(r), "giá trị trong file env không bao giờ vào bằng chứng"
+    assert "postgresql://qlkh:***@db/qlkh" in r["logs_tail"]
+    assert r["secret_redaction"] == {"values": 1, "hits": 1, "verified_by": "orchestrator"}
+
+
+def test_loi_compose_chua_gia_tri_bi_mat_cung_bi_che(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_SECRETS_DIR, str(_secrets(tmp_path)))
+    rec, _ = _run(tmp_path, monkeypatch, up=(1, "", f"interpolation: {GIA_TRI_GIA} {GIA_TRI_GIA}"))
+    r = rec.record()
+    assert GIA_TRI_GIA not in repr(r) and r["secret_redaction"]["hits"] == 2
+
+
+def test_doc_gia_tri_bi_mat_bo_chu_thich_dong_rong_va_gia_tri_ngan(tmp_path):
+    from company.deploy import _secret_values
+
+    f = tmp_path / "x.env"
+    f.write_text(f"# A={GIA_TRI_GIA}\n\nPORT=8080\nB='{GIA_TRI_GIA}-2'\nKHONG_BANG\n", encoding="utf-8")
+    assert _secret_values(str(f)) == [f"{GIA_TRI_GIA}-2"], "chú thích, rỗng, giá trị ngắn (cổng): không che"
+
+
+def test_chay_sach_van_ghi_so_do_hits_bang_0_khong_file_thi_khong_ghi(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_SECRETS_DIR, str(_secrets(tmp_path)))
+    rec, _ = _run(tmp_path, monkeypatch)
+    assert rec.ok and rec.record()["secret_redaction"] == {"values": 1, "hits": 0, "verified_by": "orchestrator"}
+    monkeypatch.delenv(ENV_SECRETS_DIR)
+    rec, _ = _run(tmp_path, monkeypatch)
+    assert "secret_redaction" not in rec.record(), "không có file env bí mật thì không có gì để canh"
