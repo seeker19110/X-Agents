@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **trần cho vòng reviewer reject → viết lại spec** (ADR-0031 bổ sung 2026-10-17). `reject` của `reviewer:*` ở gate spec chỉ gọi lại product tối đa 2 lần trên cùng event nguồn; vượt trần thì dừng và ghi audit `spec.rework_capped`. Câu trả lời mới của người mở lại chuỗi. Hub thật SPEC-CR-DDCSV-DPIA-003 quay vòng vì chờ một event chỉ chủ dự án tạo được.
+
 - fix(company): **trần hạn ký miễn CVE do máy kiểm** (ADR gốc 0036 bổ sung 2026-10-17). Thêm `COMPANY_CVE_WAIVER_MAX_DAYS`, mặc định 90. Reviewer approve `REL-*` có `CVE-` mà ghi hạn sau mốc hôm nay + trần thì `decide` từ chối (agent tự động chuyển thành hold). Trần cũng được đưa vào prompt của agent duyệt. Hub thật REL-122 ký 90 ngày trong khi dự án chỉ cho 7.
 
 - chore(harness): **cài khung X-Templates 2.0.0 cạnh harness projects-template** (hook PreToolUse `pre-bash-guard.sh`/`pre-edit-guard.sh`/`pre-mcp-guard.sh` + SessionStart/PreCompact/Stop, `guard.py`, skill/agent của khung, `xt.yaml` trỏ vào `scripts/dev-task.sh`, `.xtemplates/` bản sao chỉ đọc). Hook cũ và mọi `deny` giữ nguyên; `_lib.sh` gộp hàm hai phía; `settings.json` chỉ thêm hook, không đăng ký một script hai lần (test canh); `test_cong_tai_lieu` loại riêng `.xtemplates/` khỏi phép canh văn xuôi. Thêm 26 test hook khung vào console (901 → 927).

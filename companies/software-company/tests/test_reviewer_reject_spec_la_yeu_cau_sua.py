@@ -63,3 +63,49 @@ def test_nguoi_reject_spec_van_la_dung():
     orch.gate.decide("SPEC-P1", "reject", by="human:po", reason="dự án huỷ")
     orch.run()
     assert len(goi) == n0 and "SPEC-P1" not in orch.gate.pending and not orch.plans
+
+
+def _actions(orch, action):
+    return [e for e in orch.bus.replay(topic="audit-log") if e.payload.get("action") == action]
+
+
+def test_reviewer_reject_spec_qua_tran_thi_dung_khong_goi_product(khoa):
+    """Hub thật 2026-10-17 (SPEC-CR-DDCSV-DPIA-003): spec chờ một event của chủ dự án mà agent không tạo được.
+    `reviewer:tu-dong` reject, product viết lại, gate mở, lại reject. Mỗi vòng tốn một lượt spec, một lượt duyệt và một
+    lượt threat model, trên CÙNG event nguồn. Qua `SPEC_REVIEWER_REWORKS` lần thì dừng và ghi audit. Phiên chính đọc
+    được audit đó; nguồn mới (câu trả lời mới) mở lại chuỗi."""
+    from company.orch.routes import SPEC_REVIEWER_REWORKS
+
+    orch, goi = _orch()
+    n0 = len(goi)
+    for _ in range(SPEC_REVIEWER_REWORKS):
+        gr.decide(orch.gate, "SPEC-P1", ID, LY_DO, khoa[0], khoa[1], decision="reject")
+        orch.run()
+        assert "SPEC-P1" in orch.gate.pending
+    assert len(goi) == n0 + SPEC_REVIEWER_REWORKS
+    gr.decide(orch.gate, "SPEC-P1", ID, LY_DO, khoa[0], khoa[1], decision="reject")
+    orch.run()
+    assert len(goi) == n0 + SPEC_REVIEWER_REWORKS, "quá trần: không gọi product thêm lượt nào"
+    assert "SPEC-P1" not in orch.gate.pending
+    capped = _actions(orch, "spec.rework_capped")
+    assert len(capped) == 1 and "SPEC-P1" in capped[0].payload["evidence"]
+
+
+def test_nguon_moi_sau_khi_cham_tran_mo_lai_chuoi(khoa):
+    from company.orch.routes import SPEC_REVIEWER_REWORKS
+    from test_orchestrator import _pub
+
+    orch, goi = _orch()
+    for _ in range(SPEC_REVIEWER_REWORKS + 1):
+        gr.decide(orch.gate, "SPEC-P1", ID, LY_DO, khoa[0], khoa[1], decision="reject")
+        orch.run()
+    n = len(goi)
+    _pub(
+        orch.bus,
+        "clarification-answers",
+        "P1",
+        "human:po",
+        {"project_id": "P1", "answers": [{"question_id": "Q1", "answer": "chủ dự án bổ sung"}]},
+    )
+    orch.run()
+    assert len(goi) > n and "SPEC-P1" in orch.gate.pending, "câu trả lời mới của người là nguồn mới: chạy lại spec"

@@ -52,6 +52,8 @@ from .guards import (
 from .guards import spec_runtime_gap as spec_runtime_gap
 
 ACTOR = "orchestrator"
+# Số lần `reject` của `reviewer:*` ở gate spec được gọi lại product trên CÙNG event nguồn (hub 2026-10-17, DPIA-003).
+SPEC_REVIEWER_REWORKS = 2
 PAUSING = frozenset({"pause", "budget_cut", "escalate"})
 
 # ADR-0052: hai trần này là hai dòng của bảng `STOP_POLICY`, khai một chỗ ở `stop_kind.py`; giữ tên ở đây cho chỗ nhập cũ.
