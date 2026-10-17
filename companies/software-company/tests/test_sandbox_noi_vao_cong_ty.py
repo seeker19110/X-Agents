@@ -158,6 +158,10 @@ CHI_COMPOSE = {"deploy.py"}
 # ADR-0056: trivy/gitleaks là công cụ ĐỌC chạy trên máy trực (cần DB và docker daemon, không chạy code khách);
 # `run`/`which` là thuộc tính module để test tiêm như `deploy.py`, không gọi `subprocess.run(...)` trực tiếp.
 CHI_QUET_MAY_TRUC = {"scanners.py"}
+# ADR-0064: lệnh đo NFR (perf/a11y) phải tới được cổng staging đã map trên 127.0.0.1 của máy trực, nên container mạng
+# tắt không chạy được. Lệnh do NGƯỜI VẬN HÀNH khai trong file ngoài repo, chỉ chủ ghi được (không phải model), env đã
+# lọc, có timeout; cùng mức tin cậy với script deploy `process` (ADR-0040). Chỉ giữ `subprocess.run` làm runner mặc định.
+CHI_DO_NFR = {"measure.py"}
 
 
 def _goi_subprocess(src: str) -> list[str]:
@@ -183,6 +187,8 @@ def test_pham_vi_khong_module_nao_ngoai_sandbox_goi_subprocess_truc_tiep():
                 continue
             if p.name in CHI_QUET_MAY_TRUC and goi == "subprocess.run":
                 continue
+            if p.name in CHI_DO_NFR and goi == "subprocess.run":
+                continue
             vi_pham.append(f"{p.relative_to(SRC).as_posix()}: {goi[:110]}")
     assert not vi_pham, ("lệnh chạy ngoài Sandbox (ADR-0035) — đưa qua `Sandbox` hoặc ghi lý do vào danh sách "
                          "ngoại lệ của test này:\n" + "\n".join(vi_pham))
@@ -203,6 +209,14 @@ def test_pham_vi_quet_may_truc_chi_tiem_run_khong_goi_truc_tiep():
         goi = _goi_subprocess(src)
         assert goi == ["subprocess.run"], f"{name}: chỉ một chỗ, là mặc định của `run`: {goi}"
         assert "run: Any = subprocess.run" in src and "which: Any = shutil.which" in src
+
+
+def test_pham_vi_do_nfr_chi_tiem_run_khong_goi_truc_tiep():
+    """Chiều ngược cho ngoại lệ ADR-0064: `measure.py` chỉ giữ `subprocess.run` làm runner mặc định tiêm được."""
+    for name in sorted(CHI_DO_NFR):
+        src = (SRC / name).read_text(encoding="utf-8")
+        assert _goi_subprocess(src) == ["subprocess.run"], f"{name}: chỉ một chỗ, là runner mặc định"
+        assert "_RUN: Any = subprocess.run" in src and "run: Any = _RUN" in src
 
 
 def test_pham_vi_gh_chi_o_github_pr_va_la_gh_that():
