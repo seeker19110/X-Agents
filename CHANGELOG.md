@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **hồ sơ nghiệm thu đọc bằng chứng deploy production thay vì smoke trần** (ADR-0041 bổ sung 2026-10-17). Spec khai `runtime.deploy` thì mục `acceptance.da-chay` của `gate_brief` probe cổng đã map của bản ghi deploy production mới nhất. Chưa có bản ghi ok thì báo không đo được (`unknown`), không còn `gap` sai. Hub thật UAT-REL-126: smoke trần đụng cổng 8080 của staging trong khi production chạy ở 8081.
+
 - fix(company): **override compose theo env cho deploy, và hỏi lại khi RC fail sau khi miễn đã áp** (ADR-0061 bổ sung 2026-10-17, ADR-0036 bổ sung 2026-10-17). `deploy` thêm `-f <project>.override.yml` từ `COMPANY_DEPLOY_ENV_DIR` sau compose của khách; file trong repo khách hoặc người khác ghi được thì từ chối. Một nguồn release fail SAU khi miễn đã áp giờ mở escalation mới thay vì treo. Hub thật REL-126: production không bind được 127.0.0.1:8080 vì staging đang giữ.
 
 - fix(company): **trần cho vòng reviewer reject → viết lại spec** (ADR-0031 bổ sung 2026-10-17). `reject` của `reviewer:*` ở gate spec chỉ gọi lại product tối đa 2 lần trên cùng event nguồn; vượt trần thì dừng và ghi audit `spec.rework_capped`. Câu trả lời mới của người mở lại chuỗi. Hub thật SPEC-CR-DDCSV-DPIA-003 quay vòng vì chờ một event chỉ chủ dự án tạo được.
