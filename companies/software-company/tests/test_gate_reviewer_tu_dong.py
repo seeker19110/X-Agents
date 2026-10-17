@@ -297,3 +297,14 @@ def test_cli_run_watch_lap_va_thoat_sach_khi_sigint(khoa, tmp_path, monkeypatch,
     assert ngu == [7.0, 7.0]
     out = capsys.readouterr().out
     assert out.count("T1: hold") == 1, "vòng hai không hỏi lại gate đã giữ ở cùng thế hệ"
+
+
+def test_prompt_he_thong_neu_tran_han_ky_mien_cve(khoa, brief, monkeypatch):
+    """Hub REL-122: model ký hạn 90 ngày theo prompt tĩnh, dù dự án chỉ cho 7. Trần đang bật phải nằm trong prompt,
+    để lượt đầu ký đúng. Nếu chỉ dựa vào `decide` thì model ký sai, bị chặn rồi thành hold, tốn thêm một lượt."""
+    monkeypatch.setenv(gr.WAIVER_MAX_DAYS_ENV, "7")
+    seen: list[str] = []
+    def h(system: str, user: str) -> dict:
+        seen.append(system); return OK
+    gr.review_one(_gate("T1", TICKET), "T1", "hồ sơ", brief, FakeClient(handler=h), ID, khoa)
+    assert "7 ngày" in seen[0] and gr.WAIVER_MAX_DAYS_ENV in seen[0]

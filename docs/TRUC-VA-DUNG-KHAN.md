@@ -202,6 +202,10 @@ quyết định ngoài S2 của reviewer không còn được áp, các gate đ�
 **Phạm vi `toan-bo`** (ADR gốc 0033 — như `rong` cộng gate spec): `COMPANY_GATE_REVIEWER_SCOPE=toan-bo`, cùng khoá
 `phien-chinh`. Dừng: đặt lại `rong` (hoặc bỏ biến) rồi mở lại orchestrator — spec reviewer đã duyệt hiện lại chờ người.
 
+**Trần hạn ký miễn CVE** (ADR gốc 0036 bổ sung 2026-10-17): `COMPANY_CVE_WAIVER_MAX_DAYS=<n>`, mặc định 90. Đặt
+trong env của unit `xagents-reviewer` và của phiên ký. Khi approve `REL-*` mà lý do có `CVE-`, mọi ngày sau mốc hôm nay + n
+đều bị `decide` từ chối: với agent tự động, kết quả thành hold. Dự án chặt hơn 90 ngày thì đặt số nhỏ hơn.
+
 ### Bước agent chậm ở đâu — span (ADR gốc 0009)
 
 `export COMPANY_OTEL=1` trước khi mở orchestrator software-company thì span `runner.step` → `llm.complete` →

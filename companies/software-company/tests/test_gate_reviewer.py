@@ -486,3 +486,46 @@ def test_decide_that_bai_khong_de_lai_ban_chup(khoa, brief, tmp_path, monkeypatc
     with pytest.raises(PermissionError):
         gr.decide(g, "T1", ID, LY_DO, khoa, brief)
     assert sorted(p.name for p in brief.parent.glob(f"{brief.stem}.*.json")) == []
+
+
+# ---------- trần hạn ký miễn CVE (ADR gốc 0036 bổ sung 2026-10-17, hub REL-122) ----------
+
+def _ly_do_mien(han: str) -> str:
+    return (f"root_cause: miễn CVE-2026-6653 (libxml2) không có bản sửa; hạn xem lại {han}; "
+            "decision: approve; hint: quét lại trước hạn")
+
+
+@pytest.mark.parametrize(("ngay", "env", "qua"), [
+    (95, None, False),   # mặc định 90 ngày như ADR 0036
+    (80, None, True),
+    (30, "7", False),    # dự án chặt hơn: hub thật REL-122 ký 90 ngày khi chủ dự án chỉ cho 7
+    (6, "7", True),
+    (-400, "7", True),   # ngày đã qua (mốc sự kiện cũ trong lý do) không phải hạn xem lại
+])
+def test_ky_mien_cve_REL_khong_vuot_tran_han(khoa, brief, monkeypatch, ngay, env, qua):
+    monkeypatch.setenv(gr.SCOPE_ENV, gr.SCOPE_RONG)
+    if env is None:
+        monkeypatch.delenv(gr.WAIVER_MAX_DAYS_ENV, raising=False)
+    else:
+        monkeypatch.setenv(gr.WAIVER_MAX_DAYS_ENV, env)
+    g = _gate("REL-122")
+    han = (datetime.now(UTC) + timedelta(days=ngay)).date().isoformat()
+    if qua:
+        gr.decide(g, "REL-122", ID, _ly_do_mien(han), khoa, brief)
+        assert "REL-122" not in g.pending
+    else:
+        with pytest.raises(ValueError, match="trần"):
+            gr.decide(g, "REL-122", ID, _ly_do_mien(han), khoa, brief)
+        assert "REL-122" in g.pending, "từ chối thì gate vẫn chờ, không ghi chữ ký"
+
+
+def test_tran_han_chi_ap_cho_approve_REL_co_CVE(khoa, brief, monkeypatch):
+    """Ticket thường hay lý do không nhắc CVE thì ngày tương lai (hạn hoàn thành, hạn khoá) không bị soi."""
+    monkeypatch.setenv(gr.SCOPE_ENV, gr.SCOPE_RONG)
+    monkeypatch.setenv(gr.WAIVER_MAX_DAYS_ENV, "7")
+    xa = (datetime.now(UTC) + timedelta(days=60)).date().isoformat()
+    g = _gate("T1")
+    gr.decide(g, "T1", ID, _ly_do_mien(xa), khoa, brief)
+    g2 = _gate("REL-123")
+    gr.decide(g2, "REL-123", ID, f"root_cause: smoke hỏng hạ tầng, xem lại {xa}; decision: approve; hint: x", khoa, brief)
+    assert "T1" not in g.pending and "REL-123" not in g2.pending

@@ -28,7 +28,7 @@ import os
 import re
 import sys
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -58,6 +58,10 @@ DEFAULT_KEY_DIR = Path.home() / ".config" / "xagents" / "gate-reviewer"
 SCOPE_CHECKLIST = frozenset({"decision:reopen|close", "decision:retry|close"})
 RELEASE_PREFIX = "REL-"  # `DeliveryLead`: release_id = f"REL-{n:03d}"
 REASON_PARTS = ("root_cause", "decision", "hint")
+# ADR gốc 0036 bổ sung 2026-10-17: trần hạn xem lại khi ký miễn CVE; dự án chặt hơn 90 ngày đặt nhỏ hơn.
+WAIVER_MAX_DAYS_ENV = "COMPANY_CVE_WAIVER_MAX_DAYS"
+WAIVER_MAX_DAYS_DEFAULT = 90
+_NGAY = re.compile(r"\b(\d{4}-\d{2}-\d{2})")
 _SIGNED = ("subject_id", "decision", "by", "reason", "generation", "brief_sha256", "signed_at", "key_id")
 # ADR gốc 0034: agent duyệt tự động.
 PROMPT_PATH = ROOT / "gates" / "reviewer-tu-dong.md"
@@ -303,6 +307,19 @@ def trusted_reviewer(
     return d
 
 
+def waiver_max_days() -> int:
+    return int(os.environ.get(WAIVER_MAX_DAYS_ENV) or WAIVER_MAX_DAYS_DEFAULT)
+
+
+def waiver_deadline_check(reason: str, now: datetime | None = None) -> None:
+    """Ký miễn CVE (ADR gốc 0036): mọi ngày tương lai trong lý do là hạn xem lại, không được vượt trần. Máy kiểm,
+    không để model nhớ: hub thật REL-122 ký 90 ngày khi dự án chỉ cho 7. Ngày đã qua là mốc sự kiện, bỏ qua."""
+    days = waiver_max_days()
+    cap = ((now or datetime.now(UTC)) + timedelta(days=days)).date()
+    if late := sorted({d for d in _NGAY.findall(reason) if date.fromisoformat(d) > cap}):
+        raise ValueError(f"hạn xem lại {', '.join(late)} vượt trần {days} ngày ({WAIVER_MAX_DAYS_ENV}); ký lại hạn ≤ {cap}")
+
+
 def decide(
     gate: PersistentGate,
     subject_id: str,
@@ -321,6 +338,8 @@ def decide(
         raise PermissionError(f"{FLAG_ENV} chưa bật — reviewer không được ký")
     if missing := [p for p in REASON_PARTS if p not in reason]:
         raise ValueError(f"lý do thiếu {missing}: cần root_cause/decision/hint")
+    if decision == "approve" and subject_id.startswith(RELEASE_PREFIX) and "CVE-" in reason:
+        waiver_deadline_check(reason)
     req = gate.pending.get(subject_id)
     if req is None:
         raise KeyError(f"{subject_id}: không có gate đang chờ")
@@ -400,7 +419,8 @@ def review_one(gate: PersistentGate, subject_id: str, brief_md: str, brief_json:
 
     req = gate.pending[subject_id]
     _, body = load_prompt()
-    system = f"{body}\n\nPhạm vi đang bật: {os.environ.get(SCOPE_ENV) or 'S2 (chỉ escalation ticket/dự án, chỉ approve)'}."
+    system = (f"{body}\n\nPhạm vi đang bật: {os.environ.get(SCOPE_ENV) or 'S2 (chỉ escalation ticket/dự án, chỉ approve)'}."
+              f"\nTrần hạn xem lại khi ký miễn CVE: {waiver_max_days()} ngày ({WAIVER_MAX_DAYS_ENV}); thay mức 90 ngày ở trên.")
     head = f"GATE {subject_id} ({req.kind}); checklist của code: {', '.join(req.checklist)}\n\n"
     # `max_input_chars` là trần cho PHẦN HỒ SƠ (prompt hệ thống tĩnh và nhỏ); hồ sơ dài hơn thì cắt đuôi và nói rõ.
     limit = max(200, int(getattr(client, "max_input_chars", 120_000)) - len(head))
