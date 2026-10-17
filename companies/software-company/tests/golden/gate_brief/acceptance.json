@@ -7,6 +7,7 @@
   ],
   "created_by": "ops",
   "extra": {
+    "measure": [],
     "release_id": "REL-001",
     "rulings": [],
     "smoke": {

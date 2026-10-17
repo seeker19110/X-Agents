@@ -538,8 +538,32 @@ def _brief_release(orch: Orchestrator, g: GateSection, subject: str, pid: str | 
                                   "metrics": excerpt(json.dumps(e.payload.get("metrics") or {}, ensure_ascii=False)),
                                   "run": _run_summary(e.payload),
                                   **({"waived": waived} if waived and e.payload.get("source") in orch.lead.release_waived.get(subject, set()) else {})}
-                                 for e in reviews]}
+                                 for e in reviews],
+             "measure": _measures(orch, subject)}
     return out, unavailable, extra
+
+
+def _measures(orch: Orchestrator, rid: str) -> list[dict[str, Any]]:
+    """ADR-0064: lần đo MỚI NHẤT của mỗi phép đo NFR cho `rid` — audit `measure.run` do orchestrator ghi, không đọc lời
+    khai `perf`/`a11y` của model."""
+    last: dict[str, dict[str, Any]] = {}
+    for e in orch.bus.replay(topic="audit-log"):
+        if e.payload.get("action") == "measure.run" and e.actor == "orchestrator":
+            d = _evidence(e.payload)
+            if d.get("release_id") == rid: last[str(d.get("id"))] = {**d, "at": e.ts.isoformat(timespec="seconds")}
+    return list(last.values())
+
+
+def _measure_md(ms: list[dict[str, Any]]) -> list[str]:
+    if not ms:
+        return ["- chưa đo: không có `measure.run` nào cho release này — khai `<project staging>.measure.json` trong "
+                "`COMPANY_DEPLOY_ENV_DIR` hoặc chạy `python -m company.measure run <release>` (ADR-0064)"]
+    out = []
+    for m in ms:
+        kq = "ĐẠT" if m.get("ok") else (f"KHÔNG ĐO ĐƯỢC: {m.get('reason')}" if m.get("unverified") else "KHÔNG ĐẠT")
+        out.append(f"- {m.get('id')} ({m.get('kind')}): {kq} — exit={m.get('exit_code')} {m.get('elapsed_s')}s "
+                   f"sha={str(m.get('sha') or '?')[:7]} lúc {m['at']} — {excerpt(str(m.get('stdout_tail') or m.get('error') or ''), 300)}")
+    return out
 
 
 def _waiver(orch: Orchestrator, rid: str) -> dict[str, str] | None:
@@ -680,7 +704,8 @@ def _brief_acceptance(orch: Orchestrator, g: GateSection, subject: str, pid: str
         reason = "bus không mang bằng chứng về mã của bản giao — đọc diff release theo nguồn của mục"
         out.append(_item(it, "unknown", [reason], [{"kind": "code", "ref": rid}]))
         unavailable.append({"id": it.id, "reason": reason})
-    return out, unavailable, {"release_id": rid, "tickets": orch.lead.release_tickets.get(rid, []), "smoke": smoke}
+    return out, unavailable, {"release_id": rid, "tickets": orch.lead.release_tickets.get(rid, []), "smoke": smoke,
+                              "measure": _measures(orch, rid)}
 
 
 # ---------- gate `escalation` (§5.6) ----------
@@ -964,6 +989,8 @@ def render_md(b: dict[str, Any]) -> str:
         else:
             lines += ["- " + f for f in _smoke_facts(sm)]
             lines.append(f"- kết luận máy: {'ok' if sm.get('ok') else 'KHÔNG ĐẠT'} (mã HTTP kỳ vọng do spec đặt)")
+    if b["kind"] in {"release", "acceptance"}:
+        lines += ["", "## Đo NFR — orchestrator chạy lệnh đo đã khai trên staging (ADR-0064)", "", *_measure_md(ex.get("measure") or [])]
     rul = ex.get("rulings") or []
     lines += ["", f"## Sổ Ruling — agent đã tự quyết {len(rul)} việc thay vì hỏi người (ADR-0030)", ""]
     lines += [f"- {r['at']} `{r['by']}` [{r.get('ticket_id') or r.get('project_id') or '-'}] **{r['decision']}** — vì: {r['why']} — sai thì: {r['cost_if_wrong']}"

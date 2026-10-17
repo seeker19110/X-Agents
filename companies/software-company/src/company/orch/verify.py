@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .. import dast, image_digest, scanners, supply_chain
+from .. import dast, image_digest, measure, scanners, supply_chain
 from ..deploy import DeployError, _smoke_running, deploy_thay_smoke, project_name
 from ..events import Envelope
 from ..gate_risk import request_gate
@@ -234,6 +234,21 @@ def regression_run(o: Orchestrator, env: Envelope) -> dict[str, Any]:
     return run
 
 
+def measure_run(o: Orchestrator, env: Envelope) -> measure.Records | None:
+    """ADR-0064: phép đo NFR người vận hành khai (`<project staging>.measure.json`), orchestrator chạy trên cổng staging
+    đã map, tại sha RC (`measure.evidence_for`); mỗi bản ghi một audit `measure.run`. None = dự án không khai đo."""
+    rid = str(env.payload.get("release_id") or env.key)
+    rc = o.latest("release-candidates", rid)  # tiến trình CLI chưa dựng ticket: RC mang sẵn project_id
+    pid = o.project_for(env) or (str(rc.payload.get("project_id") or "") if rc is not None else "") or None
+    integ = o._integration_of_release(env)
+    if pid is None or integ is None or not integ.path.exists(): return None
+    # no-ky-thuat: đo chạy đồng bộ, chặn vòng orchestrator tới 1800 s mỗi phép đo, quay lại khi một RC khai quá 3 phép đo hoặc chạy nhiều dự án song song
+    recs = measure.evidence_for(_release_root(o, rid, integ), project_name(pid, "staging"),
+                                dast.deploy_of(env.payload.get("evidence")), o.release_sha.get(rid) or integ.sha())
+    for r in recs or []: o._audit("measure.run", {"release_id": rid, **r}, project_id=pid)
+    return recs
+
+
 def verdict_with_run(o: Orchestrator, agent: str, env: Envelope, p: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
     """Gắn `evidence.run` do orchestrator chạy vào verdict QA (ghi đè mọi `evidence.run` model tự khai) và đối chiếu:
     smoke fail → verdict `fail`; `unverified` với spec `kind=application` → `fail` (spec phải khai `runtime`);
@@ -300,7 +315,9 @@ def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope,
                                  ("secrets.run", ev["secrets"], "findings")):
             o._audit(action, {"release_id": rid, **{k: v for k, v in ev1.items() if k != big}}, project_id=pid)
         kind = "supply_chain"
-    return inp.model_copy(update={"payload": {**inp.payload, "evidence": {**_dict_of(inp.payload.get("evidence")), **ev}}}), kind
+    ms = measure_run(o, inp) if kind == "run" else None  # ADR-0064: cạnh `evidence.run`, cùng lượt QA hồi quy
+    extra = {"measure": ms} if ms is not None else {}
+    return inp.model_copy(update={"payload": {**inp.payload, "evidence": {**_dict_of(inp.payload.get("evidence")), **ev, **extra}}}), kind
 
 
 def evidence_after(o: Orchestrator, agent: str, inp: Envelope, p: dict[str, Any], kind: str | None) -> dict[str, Any]:
@@ -310,7 +327,10 @@ def evidence_after(o: Orchestrator, agent: str, inp: Envelope, p: dict[str, Any]
     if kind is None: return p
     mine = _dict_of(inp.payload.get("evidence"))
     ev = mine[kind]
-    if kind == "run": return verdict_with_run(o, agent, inp, p, ev)
+    if kind == "run":
+        p = verdict_with_run(o, agent, inp, p, ev)  # `measure` chỉ có một nguồn là orchestrator (ADR-0064): bỏ lời khai
+        ev_m = {k: v for k, v in p["evidence"].items() if k != "measure"} | ({"measure": mine["measure"]} if "measure" in mine else {})
+        return {**p, "evidence": ev_m}
     ev_p = _dict_of(p.get("evidence"))
     claimed = {k: v for k, v in (("supply_chain", ev_p.get("supply_chain")), ("sbom_ref", p.get("sbom_ref"))) if v is not None}
     rid = str(inp.payload.get("release_id") or inp.key)
