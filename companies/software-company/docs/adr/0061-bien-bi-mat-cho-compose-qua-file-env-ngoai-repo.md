@@ -73,3 +73,20 @@ Quyết định: có file env bí mật thì `deploy()` dựng MỌI bản ghi q
 
 Test: `tests/test_deploy_env_file.py` §bổ sung. Hai chiều: trước khi sửa, 3 ca mới đỏ (giá trị nằm nguyên trong
 `logs_tail`/`error`, chưa có `secret_redaction`); sau khi sửa thì xanh.
+
+
+## Bổ sung 2026-10-17: override compose theo env, cùng thư mục
+Hub thật (QLKH-DD-CSV, REL-126): staging và production là hai compose project trên CÙNG một máy (ADR-0039 §2). Compose
+của khách ghim `127.0.0.1:8080:8080` (ADR-DD-21 của khách, "không tham số hoá"). Gate 3 duyệt xong, `up -d` production
+hỏng: "Bind for 127.0.0.1:8080 failed: port is already allocated". Sửa compose của khách là đổi ADR của khách.
+
+Quyết định: `deploy_override_file` tìm `<project>.override.yml` trong `COMPANY_DEPLOY_ENV_DIR`. Có thì mọi lệnh compose
+thêm `-f <override>` NGAY SAU file của khách (compose gộp theo thứ tự, file sau thắng; đổi cổng dùng `ports: !override`).
+- Tên file do code ghép từ project + env: override production không lọt sang staging.
+- Fail-closed: nằm trong repo khách, hoặc nhóm/người khác ghi được (`mode & 0o022`), thì ném `DeployError` trước khi chạy
+  compose. Override đổi được image, volume, cổng; ai ghi được nó là dựng được production.
+- Bằng chứng ghi `compose_override` (đường dẫn). Smoke vẫn đọc cổng từ `ps` (`_published_port`), nên không cần khai lại.
+- Không có file thì argv như cũ.
+
+Test: `tests/test_deploy_env_file.py` §bổ sung 2026-10-17. Hai chiều: trước khi sửa, 3 ca mới đỏ (không có `-f` thứ hai,
+không ném khi sai quyền / nằm trong repo). Bỏ `-f <override>` khỏi `_argv` thì ca thứ tự đỏ lại.

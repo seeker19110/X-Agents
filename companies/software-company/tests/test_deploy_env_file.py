@@ -36,7 +36,7 @@ class Fake:
     def __call__(self, argv, **kw):
         self.calls.append(list(argv))
         self.envs.append(kw["env"])
-        sub = argv[argv.index("-f") + 2]
+        sub = next(t for t in argv[argv.index("--project-name") + 2:] if t in CMD_SUB)   # sau mọi `-f <file>`
         assert sub in CMD_SUB
         code, out, err = self._rc[sub]
         return subprocess.CompletedProcess(argv, code, out, err)
@@ -147,3 +147,50 @@ def test_chay_sach_van_ghi_so_do_hits_bang_0_khong_file_thi_khong_ghi(tmp_path, 
     monkeypatch.delenv(ENV_SECRETS_DIR)
     rec, _ = _run(tmp_path, monkeypatch)
     assert "secret_redaction" not in rec.record(), "không có file env bí mật thì không có gì để canh"
+
+
+# ---------- bổ sung 2026-10-17: override compose theo env, ngoài repo ----------
+# Hub thật (QLKH-DD-CSV REL-126): staging và production là hai compose project trên CÙNG một máy, compose của khách
+# ghim `127.0.0.1:8080:8080` (ADR-DD-21) ⇒ production `up` hỏng "Bind for 127.0.0.1:8080 failed: port is already
+# allocated". Sửa compose của khách là đổi ADR của khách; hub cấp `<project>.override.yml` cạnh file env bí mật.
+
+OVERRIDE = "services:\n  app:\n    ports: !override\n      - \"127.0.0.1:8081:8080\"\n"
+
+
+def _override(d: Path, name: str = "company-qlkh-dd-csv-production.override.yml", mode: int = 0o600) -> Path:
+    d.mkdir(exist_ok=True)
+    f = d / name
+    f.write_text(OVERRIDE, encoding="utf-8")
+    f.chmod(mode)
+    return f
+
+
+def test_override_cua_dung_project_va_env_xep_sau_compose_cua_khach(tmp_path, monkeypatch):
+    f = _override(tmp_path / "hub-secrets")
+    monkeypatch.setenv(ENV_SECRETS_DIR, str(f.parent))
+    rec, fake = _run(tmp_path, monkeypatch, env="production", ps=(0, "[]", ""))  # nhánh hỏng: cả bốn lệnh con
+    want = str(f.resolve())
+    assert all(c[c.index("-f"):c.index("-f") + 4] == ["-f", "compose.yaml", "-f", want] for c in fake.calls), \
+        "override xếp SAU file của khách (compose gộp theo thứ tự), ở MỌI lệnh con kể cả down"
+    assert rec.record()["compose_override"] == want, "bằng chứng ghi override nào đã dùng"
+
+
+def test_override_production_khong_dung_cho_staging(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_SECRETS_DIR, str(_override(tmp_path / "hub-secrets").parent))
+    rec, fake = _run(tmp_path, monkeypatch, env="staging")
+    assert rec.ok and all(c.count("-f") == 1 for c in fake.calls) and "compose_override" not in rec.record()
+
+
+def test_override_nguoi_khac_ghi_duoc_thi_tu_choi(tmp_path, monkeypatch):
+    """Override đổi cổng, volume, image — ai ghi được nó là dựng được production."""
+    monkeypatch.setenv(ENV_SECRETS_DIR, str(_override(tmp_path / "hub-secrets", mode=0o664).parent))
+    with pytest.raises(DeployError, match="ghi được"):
+        _run(tmp_path, monkeypatch, env="production")
+
+
+def test_override_nam_trong_repo_khach_thi_tu_choi(tmp_path, monkeypatch):
+    inside = tmp_path / "repo" / ".hub"
+    (tmp_path / "repo").mkdir()
+    monkeypatch.setenv(ENV_SECRETS_DIR, str(_override(inside).parent))
+    with pytest.raises(DeployError, match="ngoài repo"):
+        _run(tmp_path, monkeypatch, env="production")
