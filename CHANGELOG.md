@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **override compose theo env cho deploy, và hỏi lại khi RC fail sau khi miễn đã áp** (ADR-0061 bổ sung 2026-10-17, ADR-0036 bổ sung 2026-10-17). `deploy` thêm `-f <project>.override.yml` từ `COMPANY_DEPLOY_ENV_DIR` sau compose của khách; file trong repo khách hoặc người khác ghi được thì từ chối. Một nguồn release fail SAU khi miễn đã áp giờ mở escalation mới thay vì treo. Hub thật REL-126: production không bind được 127.0.0.1:8080 vì staging đang giữ.
+
 - fix(company): **trần cho vòng reviewer reject → viết lại spec** (ADR-0031 bổ sung 2026-10-17). `reject` của `reviewer:*` ở gate spec chỉ gọi lại product tối đa 2 lần trên cùng event nguồn; vượt trần thì dừng và ghi audit `spec.rework_capped`. Câu trả lời mới của người mở lại chuỗi. Hub thật SPEC-CR-DDCSV-DPIA-003 quay vòng vì chờ một event chỉ chủ dự án tạo được.
 
 - fix(company): **trần hạn ký miễn CVE do máy kiểm** (ADR gốc 0036 bổ sung 2026-10-17). Thêm `COMPANY_CVE_WAIVER_MAX_DAYS`, mặc định 90. Reviewer approve `REL-*` có `CVE-` mà ghi hạn sau mốc hôm nay + trần thì `decide` từ chối (agent tự động chuyển thành hold). Trần cũng được đưa vào prompt của agent duyệt. Hub thật REL-122 ký 90 ngày trong khi dự án chỉ cho 7.

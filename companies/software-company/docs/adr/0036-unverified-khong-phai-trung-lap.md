@@ -72,6 +72,20 @@ chặn cho đường `legacy` (test `test_khong_runtime_kind_application_legacy_
 finding nguy hiểm nhất **không đi vào** đường waive; nó không sửa cơ chế waive. Nếu sau này có loại finding thứ
 hai "không được waive" thì phải phân loại finding thật sự, không thêm case-by-case ở đây.
 
+## Bổ sung 2026-10-17: nguồn fail đến SAU khi miễn đã áp thì hỏi lại
+Hub thật (QLKH-DD-CSV, REL-126): escalation của RC đã duyệt và miễn đã áp (`release_waived` có nguồn). Sau đó một nguồn
+khác báo `fail`. `_on_release_qa` chỉ hỏi escalation khi `not _gate_kind_approved(rid, "escalation")`, mà escalation cũ
+đã duyệt, nên không mở gate nào. Nguồn mới cũng không nằm trong `release_waived`, nên Gate 3 không mở. RC treo im lặng.
+
+Quyết định: escalation đã duyệt chỉ chặn hỏi lại khi miễn **chưa áp** (`release_waived[rid]` rỗng). Khi đó miễn sắp áp
+sẽ phủ mọi nguồn đang fail, nên hỏi lại là trùng. Đã áp rồi thì nguồn fail mới chưa ai thấy, nên mở escalation mới.
+
+Còn hở (chưa làm): miễn áp MUỘN vẫn phủ cả nguồn fail đến giữa lúc ký và lúc áp, dù người ký chưa thấy nguồn đó. Muốn đóng
+thì phải ghi tập nguồn người ký đã thấy vào quyết định, tức là đổi schema gate.
+
+Test: `tests/test_release_escalation_orchestrator.py`, hai ca mới. Hai chiều: trước khi sửa, ca "fail sau khi đã áp"
+đỏ (`gate.pending` rỗng); ca "đã duyệt chưa áp" xanh ở cả hai phía và canh không hỏi trùng.
+
 ## Liên quan
 
 - ADR-0029 (bằng chứng máy chạy cho `deployed`) — mục 3 bị sửa bởi ADR này.

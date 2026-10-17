@@ -505,7 +505,10 @@ class DeliveryLead:
         if r.verdict != "pass" and r.source not in self.release_waived.get(rid, set()):
             # Bằng chứng (finding của reviewer/qa/security) đã nằm trong topic `review-results`, `gate_brief` đọc
             # trực tiếp từ đó — không cần chép lại vào GateRequest.
-            if not self.replaying and rid not in self.gate.pending and not self._gate_kind_approved(rid, "escalation"):
+            # Escalation đã duyệt mà miễn ĐÃ áp (`release_waived` có nguồn) thì nguồn fail này đến SAU miễn — người chưa
+            # thấy nó, phải hỏi lại (hub 2026-10-17, REL-126). Đã duyệt mà CHƯA áp: miễn sắp áp sẽ phủ nó, không hỏi trùng.
+            settled = self._gate_kind_approved(rid, "escalation") and not self.release_waived.get(rid)
+            if not self.replaying and rid not in self.gate.pending and not settled:
                 request_gate(self.gate, GateRequest(kind="escalation", subject_id=rid, created_by=LEAD_ACTOR,
                                               checklist=["root_cause", "decision:reopen|close", "hint"]))
             return

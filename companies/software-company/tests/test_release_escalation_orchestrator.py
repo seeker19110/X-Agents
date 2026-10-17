@@ -81,6 +81,38 @@ def test_escalation_cua_release_khong_chan_gate_release_mo_sau_do(tmp_path):
     assert not orch.lead._gate_kind_approved(rid, "release") and orch.lead._gate_kind_approved(rid, "escalation")
 
 
+def test_nguon_fail_sau_khi_da_ap_mien_thi_mo_escalation_moi(tmp_path):
+    """Hub thật 2026-10-17 (QLKH-DD-CSV): escalation REL-* được duyệt và ÁP (miễn security) trước khi QA hồi quy báo
+    fail. QA không nằm trong phần đã miễn, mà escalation mới bị chặn vì "escalation của RC này đã duyệt", nên Gate 3
+    cần QA pass-hoặc-miễn không bao giờ mở: RC kẹt, không đường nào tự đi tiếp. Nguồn fail SAU khi miễn đã áp
+    phải có escalation mới để reviewer xét đúng nguồn đó."""
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    rid, tid = _blocked_release(orch)
+    orch.lead.tickets[tid].risk_tags = ["crypto"]  # release cần cả security
+    del orch.lead.release_reviews[rid]["qa"]
+    orch.lead.release_reviews[rid]["security"] = ReviewResult(
+        ticket_id=rid, source="security", verdict="block", findings=[{"level": "block", "text": "CVE không bản sửa"}])
+    orch.gate.decide(rid, "approve", by="human:owner", reason="miễn CVE không bản sửa")
+    orch.run()
+    assert orch.lead.release_waived[rid] == {"security"} and rid not in orch.gate.pending
+
+    orch.lead._on_release_qa(ReviewResult(ticket_id=rid, source="qa", verdict="fail",
+                                          findings=[{"level": "block", "text": "RC không có ký miễn"}]))
+    assert rid in orch.gate.pending and orch.gate.pending[rid].kind == "escalation", "nguồn mới fail → escalation mới"
+
+
+def test_mien_da_duyet_nhung_chua_ap_thi_khong_mo_escalation_trung(tmp_path):
+    """Chiều ngược lại (REL-126 thật): quyết định đã ký nhưng orchestrator chưa áp giữa hai lô. Nguồn fail tới lúc đó
+    sẽ được chính lượt áp đó miễn (`waive_release_findings` lấy mọi nguồn chưa pass), nên không mở escalation trùng."""
+    bus = SQLiteBus(tmp_path / "c.sqlite")
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    rid, _tid = _blocked_release(orch)
+    orch.gate.decide(rid, "approve", by="human:owner", reason="miễn")
+    orch.lead._on_release_qa(ReviewResult(ticket_id=rid, source="security", verdict="block", findings=[]))
+    assert rid not in orch.gate.pending, "chưa áp miễn: không mở escalation trùng"
+
+
 def test_escalation_cua_ticket_van_di_duong_cu(tmp_path):
     """Chốt chặn: nhánh mới chỉ bắt release_id. Escalation của TICKET vẫn `reopen` như trước (không rơi nhầm vào
     nhánh release)."""
