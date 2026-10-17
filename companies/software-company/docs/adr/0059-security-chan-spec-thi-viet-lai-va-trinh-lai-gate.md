@@ -37,3 +37,22 @@ research, câu hỏi làm rõ cho một việc vốn chỉ là "sửa spec theo 
 ## Liên quan
 ADR-0031 §3 (`_spec_rework`, khuôn đếm theo chuỗi), ADR-0037 (threat model trước kế hoạch), ADR gốc 0033/0034 (reviewer
 ký gate spec, reject kèm hint).
+
+## Bổ sung 2026-10-17: threat model thấy chữ ký gate spec
+Hub thật (QLKH-DD-CSV, SPEC-CR-DDCSV-DPIA-004): chủ dự án tự ký gate spec (`human:liend`). Lý do ký nêu rõ chấp nhận rủi
+ro RK-DPIA4-01. Ngay sau đó security chặn spec vì rủi ro này "chưa accepted cho tới khi có event gate.decide do chủ dự án
+ký". Chữ ký đã có, nhưng đầu vào lượt threat model chỉ là `approved-specs`, agent không đọc được `gate.history`. Product
+viết lại (§1 ở trên), gate trình lại, và chủ dự án bị đòi ký lại đúng thứ vừa ký.
+
+Quyết định:
+- `spec_security.with_gate_decision` gắn `spec_gate_decision` vào đầu vào lượt threat model: `{subject_id, decision, by,
+  reason, verified_by=orchestrator}` của thế hệ gate spec mới nhất đã quyết. CODE điền từ `gate.history`, không phải lời
+  khai của product.
+- `spec_gate_decision` vào `PROTECTED_PAYLOAD_KEYS` của runner: lý do ký là lời người, không bị tỉa giữa khi payload
+  `approved-specs` (~36k ký tự) vượt hạn mức.
+
+Không đổi prompt của security. Trường tự mô tả, và lý do ký của người viết bằng lời thường.
+
+Test: `tests/test_spec_bi_security_chan_viet_lai.py::test_threat_model_thay_chu_ky_gate_spec_moi_nhat` và
+`tests/test_hint_khong_bi_tia.py::test_chu_ky_gate_spec_nguyen_ven_khi_tia_payload`. Hai chiều: trước khi sửa, ca thứ
+nhất đỏ (đầu vào chỉ có `_phase, artifacts, kind, project_id, status`), ca thứ hai đỏ (lý do bị tỉa); sau khi sửa thì xanh.

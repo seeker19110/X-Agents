@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **threat model của security thấy chữ ký gate spec** (ADR-0059 bổ sung 2026-10-17). Đầu vào lượt threat model mang `spec_gate_decision` (ai ký, quyết gì, lý do), do code điền từ `gate.history`. Lý do ký thuộc khoá payload được bảo vệ, không bị tỉa. Hub thật SPEC-CR-DDCSV-DPIA-004: chủ dự án đã ký chấp nhận RK-DPIA4-01, nhưng security vẫn chặn vì không thấy chữ ký, và gate bị trình lại để ký lần nữa.
+
 - fix(company): **hồ sơ nghiệm thu đọc bằng chứng deploy production thay vì smoke trần** (ADR-0041 bổ sung 2026-10-17). Spec khai `runtime.deploy` thì mục `acceptance.da-chay` của `gate_brief` probe cổng đã map của bản ghi deploy production mới nhất. Chưa có bản ghi ok thì báo không đo được (`unknown`), không còn `gap` sai. Hub thật UAT-REL-126: smoke trần đụng cổng 8080 của staging trong khi production chạy ở 8081.
 
 - fix(company): **override compose theo env cho deploy, và hỏi lại khi RC fail sau khi miễn đã áp** (ADR-0061 bổ sung 2026-10-17, ADR-0036 bổ sung 2026-10-17). `deploy` thêm `-f <project>.override.yml` từ `COMPANY_DEPLOY_ENV_DIR` sau compose của khách; file trong repo khách hoặc người khác ghi được thì từ chối. Một nguồn release fail SAU khi miễn đã áp giờ mở escalation mới thay vì treo. Hub thật REL-126: production không bind được 127.0.0.1:8080 vì staging đang giữ.

@@ -58,3 +58,12 @@ def test_hint_va_dap_an_nguyen_ven_khi_phan_con_lai_la_chuoi_ngan():
     user = client.calls[0]["user"]
     assert DUOI in user and "h" * 3_000 in user, "hint nguyên vẹn"
     assert all(f"đáp án {i} " + "a" * 900 + f" HẾT-{i}" in user for i in range(3)), "đáp án của khách nguyên vẹn"
+
+
+def test_chu_ky_gate_spec_nguyen_ven_khi_tia_payload():
+    """Chữ ký gate spec (`spec_gate_decision`, lý do của chủ dự án ~2k ký tự) đi vào lượt threat model trên một
+    payload `approved-specs` ~36k (hub thật SPEC-CR-DDCSV-DPIA-004): là LỜI NGƯỜI, không được bị tỉa giữa."""
+    ly_do = "root_cause: " + "r" * 7_000 + " " + DUOI
+    gd = {"subject_id": "SPEC-P1", "decision": "approve", "by": "human:po", "reason": ly_do, "verified_by": "orchestrator"}
+    _bus, client = _chay(spec_gate_decision=gd, **{f"ghi_chu_{i}": "n" * 5_000 for i in range(10)})
+    assert DUOI in client.calls[0]["user"] and "r" * 7_000 in client.calls[0]["user"], "lý do ký không bị cắt giữa"

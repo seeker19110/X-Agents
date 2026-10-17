@@ -56,7 +56,7 @@ DEFAULT_MAX_INPUT_CHARS = 120_000
 # Khoá payload là LỜI NGƯỜI (người duyệt, khách trả lời làm rõ): `fit` chỉ cắt chúng khi không còn chuỗi nào khác và
 # payload vượt cả `room` (hub 2026-10-15: hint reject gate spec ~3.000 ký tự và đáp án Q-DPIA-01..03 bị cắt giữa vì
 # `requirements_draft` 52k ký tự gồm toàn chuỗi ngắn — PRD viết lại chỉ sửa mục đầu và cuối).
-PROTECTED_PAYLOAD_KEYS = frozenset({"hint", "human_hint", "answers"})
+PROTECTED_PAYLOAD_KEYS = frozenset({"hint", "human_hint", "answers", "spec_gate_decision"})  # + chữ ký gate spec (2026-10-17)
 
 # 4L-3: trần lặp KHÔNG TIẾN BỘ trong vòng tool. Đo được khi chạy thật (2026-09-04): 956.637 token đầu ra cho MỘT
 # ticket, phần lớn là cùng một lời gọi tool lặp lại với y nguyên tham số và y nguyên kết quả — `max_turns` và
