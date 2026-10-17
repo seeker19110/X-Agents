@@ -258,7 +258,7 @@ def _threat_model(o: Orchestrator, env: Envelope, sid: str, res: StepResult) -> 
     if prior is not None and prior.payload.get("verdict") != "block":
         return True
     try:
-        g = o.runner.generate(ROLE.SECURITY, env, "review-results")
+        g = o.runner.generate(ROLE.SECURITY, spec_security.with_gate_decision(o, env, sid), "review-results")
         p = {**g.payloads[0], "ticket_id": sid, "source": SOURCE.SECURITY}
         o.runner.publish(ROLE.SECURITY, env, "review-results", p, key=sid, tokens=g.tokens, model=g.model,
                             context_writes=g.context_writes, generated=g)

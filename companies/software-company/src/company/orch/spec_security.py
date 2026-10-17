@@ -27,6 +27,17 @@ def spec_approved_now(o: Orchestrator, sid: str) -> bool:
     return last is not None and last.decision == "approve"
 
 
+def with_gate_decision(o: Orchestrator, env: Envelope, sid: str) -> Envelope:
+    """Đầu vào lượt threat model mang chữ ký gate spec MỚI NHẤT (ai, quyết gì, lý do) do CODE điền từ `gate.history`.
+    Hub thật 2026-10-17 (SPEC-CR-DDCSV-DPIA-004): chủ dự án đã ký gate chấp nhận RK-DPIA4-01, security vẫn chặn vì rủi ro
+    "chưa accepted cho tới khi có gate.decide do chủ dự án ký" — agent không đọc được gate, chủ dự án bị đòi ký lại."""
+    g = next((g for g in reversed(o.gate.history) if g.subject_id == sid and g.decision != "pending"), None)
+    if g is None:
+        return env
+    d = {"subject_id": sid, "decision": g.decision, "by": g.decided_by, "reason": g.reason, "verified_by": "orchestrator"}
+    return env.model_copy(update={"payload": {**env.payload, "spec_gate_decision": d}})
+
+
 def _hint(n: int, review: Mapping[str, object]) -> str:
     fs = review.get("findings")
     findings = [f for f in fs if isinstance(f, Mapping)] if isinstance(fs, list) else []

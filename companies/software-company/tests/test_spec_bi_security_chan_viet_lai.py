@@ -140,3 +140,28 @@ def test_luot_viet_lai_transient_thi_hoan_khong_dem():
     assert any(r.startswith("transient:") for _, r in orch.deferred.values()), (
         "lượt viết lại lỗi tạm thì hoãn event spec"
     )
+
+
+def test_threat_model_thay_chu_ky_gate_spec_moi_nhat():
+    """Hub thật 2026-10-17 (SPEC-CR-DDCSV-DPIA-004): chủ dự án tự ký gate spec (`human:liend`) chấp nhận rủi ro
+    RK-DPIA4-01, rồi security chặn spec vì rủi ro đó "chưa accepted cho tới khi có event gate.decide do chủ dự án ký"
+    — chữ ký đã có, nhưng đầu vào lượt threat model không mang nó. Product viết lại, trình lại gate, chủ dự án phải ký
+    lại một thứ đã ký. Code điền chữ ký (ai, quyết gì, lý do) từ `gate.history` vào đầu vào, `verified_by=orchestrator`."""
+    seen: list[dict] = []
+
+    def h(system, user):
+        inp = _inp(user)
+        if _agent_of(system) == "security" and "artifacts" in inp:
+            seen.append(inp)
+        return handler(system, user)
+
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=h))
+    _drive_to_spec_gate(bus, orch)
+    orch.gate.decide("SPEC-P1", "approve", by="human:po", reason="chấp nhận RK-01 cho dữ liệu giả")
+    orch.run()
+    assert seen, "threat model phải chạy sau khi duyệt"
+    d = seen[-1].get("spec_gate_decision")
+    assert d is not None, f"đầu vào threat model không mang chữ ký gate spec: {sorted(seen[-1])}"
+    assert d["subject_id"] == "SPEC-P1" and d["decision"] == "approve" and d["by"] == "human:po"
+    assert d["reason"] == "chấp nhận RK-01 cho dữ liệu giả" and d["verified_by"] == "orchestrator"
