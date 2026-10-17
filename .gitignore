@@ -72,3 +72,6 @@ companies/keeper/llm.yaml
 companies/keeper/llm.yaml.bak
 companies/keeper/llm.yaml.bak*
 companies/keeper/llm.yaml.tmp
+
+# X-Templates: trạng thái autopilot cục bộ
+.autopilot/

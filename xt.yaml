@@ -1,0 +1,35 @@
+# xt.yaml — lệnh chuẩn của dự án cho agent và hook (YAML PHẲNG `task: lệnh`, do .xtemplates/scripts/dev-task.sh đọc).
+# Agent KHÔNG suy diễn lệnh từ văn xuôi; đọc file này. Để trống "" = không có; thiếu khoá = tự dò (package.json/pyproject/go.mod/Cargo.toml/Makefile).
+# Khi autopilot đang chạy, lint/test để "" hoặc lệnh không kiểm gì (true, :, exit 0, echo …) = cổng ĐỎ (ADR-0011): điền ở task đầu PLAN.
+# Nhà của bộ khoá: LOOP-HARNESS-008 (framework/11-autonomous-loop/harness-files.md). `scripts/dev-task.sh` CHỈ chạy các khoá format · lint · typecheck · test · build · format_file
+# (`gate` = build → typecheck → lint → test; lint nên gồm kiểm format). Khoá khác (install, dev, e2e, migrate, init, smoke, audit…) là lệnh KHAI BÁO để agent ĐỌC và chạy trực tiếp; dev-task không chạy.
+# Mẫu theo stack (giữ MỘT bộ, xoá phần còn lại):
+#   Node:   lint: npm run lint · typecheck: npm run typecheck · test: npm test -- --run · build: npm run build · format: npm run format · format_file: npx --no-install prettier --write "{}"
+#   Python: lint: ruff check . · typecheck: pyright · test: pytest -q · build: "" · format: ruff format . · format_file: case "{}" in *.py) ruff format "{}" ;; esac
+#   Go:     lint: go vet ./... · typecheck: "" · test: go test ./... · build: go build ./... · format: gofmt -l -w . · format_file: gofmt -w "{}"
+#
+# === X-Agents (điền khi cài khung, nguồn: .github/workflows/ci.yml + scripts/dev-task.sh + Makefile) ===
+# Repo là uv workspace 5 package Python; MỘT bảng tra lệnh nằm ở `scripts/dev-task.sh` (đã được `platform/console/tests/test_cong_khung.py`
+# đối chiếu từng lệnh với ci.yml) nên các khoá dưới chỉ trỏ vào đó — không chép lệnh lần hai để khỏi lệch CI.
+#   lint / typecheck / test = đúng lệnh các job *-static, *-unit của CI (ruff check · mypy · pytest --cov, ngưỡng fail_under trong pyproject từng gói); cả 5 gói, ~vài phút.
+#   build: "" — CI không có job build (`make build` = `uv build --all-packages` chỉ chạy tay khi phát hành).
+#   format: "" — CÓ CHỦ Ý: `dev-task.sh format` (ruff format cả cây) làm phình diff, CI không kiểm format (TRAPS.md §3); format từng file qua `format_file`
+#   (chỉ file .py vốn đã sạch ruff format).
+#   merge_autonomy: L1 — người merge mọi PR (AGENTS.md của repo + ruleset riêng quyết merge; khung 2.0.0 mặc định mẫu là L3).
+#   audit = lệnh job `audit` của CI (cần mạng); e2e: không có.
+# Cổng thật trước commit đã có `.claude/hooks/pre-commit-gate.sh` (chạy gói bị đụng); hook khung `pre-bash-guard.sh` chạy thêm `scripts/dev-task.sh gate` (cả 5 gói).
+lint: scripts/dev-task.sh lint
+typecheck: scripts/dev-task.sh typecheck
+test: scripts/dev-task.sh test
+build: ""
+format: ""
+format_file: scripts/dev-task.sh format-file "{}"
+# Merge PR (ADR-0013/0014/0015, LOOP-STOP-022): L3 (mặc định) = mở PR là bật auto-merge của GitHub, merge khi required check
+# xanh (cần bật "Allow auto-merge" + ruleset có required check; ghi miễn trừ WF-REVIEW-007); L2 = máy chỉ tự merge làn nhanh
+# (`xt.py merge-check`); L1 = người merge mọi PR.
+# merge_risk_paths: glob thêm vào danh sách đường dẫn nhạy cảm (luôn để người merge), cách nhau dấu phẩy.
+merge_autonomy: L1
+merge_risk_paths: ""
+# Tuỳ chọn, agent đọc và chạy trực tiếp (dev-task không chạy): e2e, audit (dependency), perf (k6/lighthouse), migrate (áp migration local), install, dev, init, smoke
+e2e: ""
+audit: uv export --no-hashes --no-dev --all-packages | sed '/^-e /d' > /tmp/req.txt && uvx pip-audit --strict -r /tmp/req.txt

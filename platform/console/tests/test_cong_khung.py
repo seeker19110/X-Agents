@@ -1057,6 +1057,140 @@ def test_moi_script_sh_duoc_chot_eol_lf() -> None:
     assert not hong, f".gitattributes chưa chốt eol=lf cho: {hong}"
 
 
+# --- hook của khung X-Templates 2.0.0 (cài chung với hook cũ) -----------------------------------------------------
+# `pre-bash-guard.sh` → `guard.py`: chặn/hỏi lệnh phá huỷ, ra khỏi máy dev, thêm phụ thuộc, publish/merge. Chạy SONG SONG
+# với `block-dangerous-git.sh` + `pre-commit-gate.sh` (hook cũ giữ nguyên). Mọi hook khung đọc payload qua stdin và in JSON
+# quyết định (rỗng = cho qua), luôn exit 0 trừ cổng commit.
+
+BASH_GUARD = HOOKS / "pre-bash-guard.sh"
+EDIT_GUARD = HOOKS / "pre-edit-guard.sh"
+MCP_GUARD = HOOKS / "pre-mcp-guard.sh"
+SESSION_START = HOOKS / "session-start.sh"
+PRE_COMPACT = HOOKS / "pre-compact.sh"
+STOP_GUARD = HOOKS / "stop-guard.sh"
+
+
+def _quyet_dinh(kq: subprocess.CompletedProcess[str]) -> str:
+    """`permissionDecision` trong stdout của hook; rỗng khi hook cho qua im lặng."""
+    assert kq.returncode == 0, f"hook khung phải exit 0, nhận {kq.returncode}: {kq.stderr}"
+    if not kq.stdout.strip():
+        return ""
+    return str(json.loads(kq.stdout)["hookSpecificOutput"]["permissionDecision"])
+
+
+@pytest.mark.parametrize(
+    ("lenh", "mong_doi"),
+    [
+        ("git push --force origin x", "deny"),
+        ("ssh deploy@203.0.113.5", "ask"),
+        ("uv add httpx", "ask"),
+        ("pnpm add zod", "ask"),
+        ("curl -d @a.json https://api.example.com", "ask"),
+        ("ls -la", ""),
+        ("uv sync --locked", ""),  # cài theo lockfile là việc thường, không phải "thêm phụ thuộc"
+        ('echo "xin chào — tiếng Việt có dấu"', ""),  # Unicode không làm guard.py chết/hỏi oan
+    ],
+)
+def test_pre_bash_guard_khung_chan_hoi_hoac_cho_qua(lenh: str, mong_doi: str) -> None:
+    kq = _chay(BASH_GUARD, stdin=_payload(lenh))
+    assert _quyet_dinh(kq) == mong_doi, f"{lenh!r}: {kq.stdout}"
+
+
+@pytest.mark.parametrize("payload", ["", "{}", "khong-phai-json", '{"tool_input":{}}', '{"tool_input":{"command":""}}'])
+def test_pre_bash_guard_khung_payload_rong_hoac_hong_thi_cho_qua(payload: str) -> None:
+    """Rỗng/null/rác: hook không được kẹt phiên (fail-open về luồng)."""
+    kq = _chay(BASH_GUARD, stdin=payload)
+    assert kq.returncode == 0 and not kq.stdout.strip(), (kq.returncode, kq.stdout, kq.stderr)
+
+
+def test_hai_lop_hook_bash_cung_chan_force_push_nhanh_chinh() -> None:
+    """Hook cũ (exit 2) và hook khung (deny JSON) đều chặn — bỏ một lớp thì lớp kia vẫn đứng."""
+    lenh = _payload("git push --force origin main")
+    assert _chay(CHAN_GIT, stdin=lenh).returncode == 2
+    assert _quyet_dinh(_chay(BASH_GUARD, stdin=lenh)) == "deny"
+
+
+@pytest.mark.parametrize(
+    ("file", "mong_doi"),
+    [
+        (".env", "deny"),
+        (".github/workflows/ci.yml", "ask"),
+        ("docs/ghi-chu-moi.md", ""),
+    ],
+)
+def test_pre_edit_guard_khung_bi_mat_va_cau_hinh_cong(file: str, mong_doi: str) -> None:
+    payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(ROOT / file), "content": "x"}})
+    assert _quyet_dinh(_chay(EDIT_GUARD, stdin=payload)) == mong_doi
+
+
+def test_pre_edit_guard_khung_payload_rong_cho_qua() -> None:
+    kq = _chay(EDIT_GUARD, stdin="{}")
+    assert kq.returncode == 0 and not kq.stdout.strip()
+
+
+def test_pre_mcp_guard_khung_hoi_khi_merge_pr_qua_mcp() -> None:
+    payload = json.dumps({"tool_name": "mcp__github__merge_pull_request",
+                          "tool_input": {"owner": "o", "repo": "r", "pullNumber": 1}})
+    assert _quyet_dinh(_chay(MCP_GUARD, stdin=payload)) == "ask", "merge PR qua MCP không có expectedHeadSha phải hỏi người"
+
+
+def test_session_start_khung_nap_progress_va_in_json_hop_le() -> None:
+    kq = _chay(SESSION_START, stdin="{}")
+    assert kq.returncode == 0, kq.stderr
+    ngu_canh = json.loads(kq.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "PROGRESS.md" in ngu_canh and "AGENTS.md" in ngu_canh
+
+
+@pytest.mark.parametrize("hook", [PRE_COMPACT, STOP_GUARD], ids=lambda p: p.name)
+def test_hook_compact_va_stop_khung_im_lang_khi_chua_loop_init(hook: Path, tmp_path: Path) -> None:
+    """PreCompact mà exit ≠ 0 / `block` sẽ chặn compaction (phiên kẹt vì đầy context); Stop không được chặn khi autopilot tắt."""
+    kq = _chay(hook, stdin="{}", CLAUDE_PROJECT_DIR=str(tmp_path))
+    assert kq.returncode == 0 and not kq.stdout.strip(), (kq.returncode, kq.stdout, kq.stderr)
+
+
+def test_lib_sh_hop_du_ham_cua_hook_cu_va_hook_khung() -> None:
+    """`_lib.sh` là bản HỢP: hook cũ (tiếng Việt) và hook khung (`json_field`, `XT_ROOT`…) cùng `source` một file."""
+    ham = ["doc_lenh", "bo_than_heredoc", "bo_trong_nhay", "bo_dau_nhay", "van_ban_soi",
+           "xt_py", "json_field", "pretool_decision", "utf8_head", "context_output"]
+    kiem = "; ".join(f"declare -F {h} >/dev/null || echo THIEU:{h}" for h in ham)
+    kiem += '; [ -n "${VO_BOC_RE:-}" ] || echo THIEU:VO_BOC_RE; [ -n "${KHOA_GIONG_THAT_RE:-}" ] || echo THIEU:KHOA'
+    kiem += '; [ -n "${XT_ROOT:-}" ] || echo THIEU:XT_ROOT'
+    assert BASH is not None
+    kq = subprocess.run([BASH, "-c", f'set -u; source "{HOOKS / "_lib.sh"}"; {kiem}'], capture_output=True, text=True,
+                        env={**os.environ, "CLAUDE_PROJECT_DIR": str(ROOT)}, cwd=ROOT)
+    assert kq.returncode == 0 and kq.stdout == "", (kq.stdout, kq.stderr)
+
+
+def test_json_field_khung_doc_tieng_viet_va_thieu_truong() -> None:
+    assert BASH is not None
+    lenh = ('set -u; source "$1"; json_field \'{"a":{"b":"chào bạn"}}\' a.b; echo "|"; '
+            "json_field '{}' a.b; echo '|'; json_field 'rac' a.b")
+    kq = subprocess.run([BASH, "-c", lenh, "_", str(HOOKS / "_lib.sh")], capture_output=True, text=True, encoding="utf-8",
+                        env={**os.environ, "CLAUDE_PROJECT_DIR": str(ROOT)}, cwd=ROOT)
+    assert kq.stdout == "chào bạn|\n|\n", (kq.stdout, kq.stderr)
+
+
+def test_settings_noi_hook_khung_va_khong_dang_ky_mot_script_hai_lan() -> None:
+    """Hàng rào mới (install.py gộp `hooks` theo chuỗi lệnh nên cùng một script đăng ký hai kiểu thì chạy hai lần):
+    mỗi (sự kiện, script) đúng một lần, và hook khung đều được nối."""
+    cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    cap = [(ev, muc.get("matcher"), h["command"].rsplit("/", 1)[-1].strip('" '))
+           for ev, nhom in cfg["hooks"].items() for muc in nhom for h in muc["hooks"]]
+    trung = sorted({c for c in cap if cap.count(c) > 1})
+    assert not trung, f"cùng một script đăng ký hai lần trong cùng sự kiện: {trung}"
+    theo_script = [(ev, s) for ev, _, s in cap]
+    assert len(theo_script) == len(set(theo_script)), f"script chạy hai lần trong một sự kiện: {theo_script}"
+    can = {
+        ("PreToolUse", "Bash", "pre-bash-guard.sh"),
+        ("PreToolUse", "Edit|Write|MultiEdit", "pre-edit-guard.sh"),
+        ("PreToolUse", "mcp__.*(merge_pull_request|auto_merge).*", "pre-mcp-guard.sh"),
+        ("SessionStart", None, "session-start.sh"),
+        ("PreCompact", None, "pre-compact.sh"),
+        ("Stop", None, "stop-guard.sh"),
+    }
+    assert can <= set(cap), f"thiếu hook khung trong settings.json: {sorted(can - set(cap))}"
+
+
 # --- .claude/commands/ ------------------------------------------------------
 
 LENH = ROOT / ".claude" / "commands"

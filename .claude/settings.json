@@ -31,6 +31,24 @@
           { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-dangerous-git.sh" },
           { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-commit-gate.sh" }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-bash-guard.sh", "timeout": 600 }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-edit-guard.sh", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "mcp__.*(merge_pull_request|auto_merge).*",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-mcp-guard.sh", "timeout": 120 }
+        ]
       }
     ],
     "PostToolUse": [
@@ -38,6 +56,27 @@
         "matcher": "Edit|Write",
         "hooks": [
           { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/auto-format.sh" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start.sh", "timeout": 20 }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-compact.sh", "timeout": 30 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-guard.sh", "timeout": 30 }
         ]
       }
     ]
