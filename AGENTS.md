@@ -176,9 +176,11 @@ Luật cấm 1, 3, 6 và luật bắt buộc 3 ở trên **có cơ chế chặn*
 | `block-dangerous-git.sh` | `git push` (kể cả force) vào `main`/`master`; `reset --hard`; `merge\|rebase\|cherry-pick --abort` |
 | `pre-commit-gate.sh` | commit khi: đang đứng trên `main` · staged có `llm.yaml`/`media.yaml`/`*.sqlite*`/`company.artifacts/` · dòng thêm có chuỗi giống khoá/token thật (mẫu `KHOA_GIONG_THAT_RE` ở `_lib.sh`; gitleaks quét cả lịch sử nên phải chặn trước khi vào commit) · diff hạ `fail_under` · cổng đỏ ở gói bị đụng, gói import nó, hoặc console (luôn chạy; commit chỉ đụng tài liệu/config ngoài mọi gói, không `.py`, thì chỉ chạy chế độ nhanh `dev-task.sh repo-gate` = `pytest -m cong_repo`) |
 | `auto-format.sh` | (không chặn) format file vừa sửa qua `dev-task.sh format-file` — chỉ khi bản trong index vốn đã sạch `ruff format` hoặc file mới chưa track |
+| `pre-bash-guard.sh` → `guard.py`, `pre-edit-guard.sh`, `pre-mcp-guard.sh` (khung X-Templates, cài 2026-10-17) | chạy SONG SONG với ba hook trên, chỉ thêm: chặn lệnh phá huỷ (`push --force`…); HỎI người khi ra khỏi máy dev (`ssh`/`scp`, `psql` tới máy chủ ngoài, `curl` gửi dữ liệu), thêm phụ thuộc (`uv add`, `pnpm add`), docker đặc quyền, publish/deploy/merge, sửa cấu hình cổng/CI/migration/bí mật; trước `git commit` chạy `scripts/dev-task.sh gate` (cả 5 gói). `session-start.sh`, `pre-compact.sh`, `stop-guard.sh` nạp/ghi trạng thái autopilot (`PROGRESS.md`, `.autopilot/`). Lệnh chuẩn cho khung ở `xt.yaml`; bản sao khung ở `.xtemplates/` (chỉ đọc) |
 
 Hai hook soi lệnh dùng chung bộ lọc `_lib.sh` (bỏ thân heredoc, bỏ dữ liệu trong nháy, mở vỏ bọc `bash -c`/`eval`) — một
-bản, sửa một chỗ; `_lib.sh` chỉ để `source`, không phải hook.
+bản, sửa một chỗ; `_lib.sh` chỉ để `source`, không phải hook. Từ khi cài khung, `_lib.sh` là bản HỢP: phần tiếng Việt của repo
++ phần hàm của khung (`json_field`, `pretool_decision`, `XT_ROOT`…) — `install.py` chạy lại sẽ ghi `_lib.sh.xtemplates-new`, gộp tay phần khung, không đè phần repo.
 
 Đường thoát tường minh: `ALLOW_DANGEROUS_GIT=1`, hoặc `--no-verify` cùng đoạn với `git commit` — dùng thì **phải nói rõ
 lý do cho người dùng**, không lặng lẽ lách. Hook chặn oan → sửa hook kèm test, đừng tắt nó.

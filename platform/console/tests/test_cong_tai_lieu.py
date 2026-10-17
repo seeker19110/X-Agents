@@ -35,6 +35,12 @@ pytestmark = pytest.mark.cong_repo   # đọc file ngoài gói console → hook 
 _THU_MUC_LICH_SU = frozenset({"adr", "sessions", "reports", "archive", "thi-hanh", "specs"})
 
 
+# Bản sao CHỈ ĐỌC của thư viện ngoài, do `install.py` của khung X-Templates ghi (không sửa tay, cập nhật bằng cách chạy
+# lại install). Không phải tài liệu của repo này: nó cố ý chứa ví dụ `../../etc/passwd` và bảng của khung. Chỉ loại ĐÚNG
+# thư mục này khỏi phép canh văn xuôi — mọi `.md` khác của repo (kể cả `.claude/`) vẫn bị canh như cũ.
+_BAN_SAO_NGOAI = (".xtemplates/",)
+
+
 def _la_lich_su(rel: str) -> bool:
     """`rel` (đường dẫn kiểu git) là bản ghi lịch sử: CHANGELOG, nằm trong thư mục lịch sử, hoặc đặc tả `DAC-TA-*`
     (tự khai "mọi file:dòng đo tại `main@<sha>`" — một ảnh chụp, không phải bản đồ sống)."""
@@ -50,7 +56,8 @@ def _packages() -> list[str]:
 
 def _tai_lieu_song() -> list[str]:
     kq = subprocess.run(["git", "ls-files", "-z", "*.md"], cwd=ROOT, capture_output=True, check=True)
-    song = [f for f in kq.stdout.decode("utf-8").split("\0") if f and not _la_lich_su(f)]
+    song = [f for f in kq.stdout.decode("utf-8").split("\0")
+            if f and not _la_lich_su(f) and not f.startswith(_BAN_SAO_NGOAI)]
     assert song, "git ls-files không trả tài liệu nào — cổng xanh vì rỗng"
     return song
 
@@ -351,3 +358,12 @@ def test_bo_loc_cua_cong_tai_lieu_dung_y() -> None:
     bang = ("| a | b |\n|---|:-:|\n| `x|y` | z |\n| `x\\|y` | z |\n| một |\n\n| c |\n|---|\n| d | e |\n"
             "```\n| f |\n|---|\n| g | h |\n```\n| i | j | k |\n")
     assert _hang_thua_o(bang) == [(3, 2, 3), (9, 1, 2)]
+
+
+def test_ban_sao_khung_ngoai_khong_vao_phep_canh_van_xuoi_nhung_tai_lieu_repo_van_vao() -> None:
+    """Chỉ `.xtemplates/` (bản sao chỉ đọc của khung ngoài) được loại; loại rộng hơn là cổng xanh vì rỗng."""
+    song = _tai_lieu_song()
+    assert not [f for f in song if f.startswith(".xtemplates/")], "bản sao khung ngoài lọt vào phép canh văn xuôi"
+    assert "README.md" in song and "AGENTS.md" in song
+    assert any(f.startswith(".claude/") for f in song), "loại nhầm cả .claude/"
+    assert _BAN_SAO_NGOAI == (".xtemplates/",), "đổi phạm vi loại trừ phải đổi cả lý do ở chú thích"

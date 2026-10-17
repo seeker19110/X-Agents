@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# _lib.sh — hàm dùng chung cho hai hook PreToolUse soi lệnh Bash (`block-dangerous-git.sh`, `pre-commit-gate.sh`).
+# _lib.sh — thư viện `source` dùng chung cho hook của repo VÀ hook của khung X-Templates. Hai phần, tên hàm không trùng:
+#   (1) Phần repo (tiếng Việt: doc_lenh, bo_than_heredoc, bo_trong_nhay, bo_dau_nhay, VO_BOC_RE, van_ban_soi,
+#       KHOA_GIONG_THAT_RE) — cho `block-dangerous-git.sh`, `pre-commit-gate.sh`;
+#   (2) Phần khung (cuối file: XT_ROOT, xt_py, json_field, pretool_decision, utf8_head, context_output) — cho
+#       `pre-bash-guard.sh`, `pre-edit-guard.sh`, `pre-mcp-guard.sh`, `session-start.sh`, `pre-compact.sh`,
+#       `stop-guard.sh`, `auto-format.sh` bản khung. Chép nguyên văn từ `.claude/hooks/_lib.sh` của khung X-Templates 2.0.0;
+#       install.py chạy lại sẽ ghi `_lib.sh.xtemplates-new`: gộp tay phần (2), KHÔNG đè phần (1).
 # CHỈ để `source "$(dirname "$0")/_lib.sh"`: không tự chạy, không nối vào `settings.json`, không `set` gì ở đây
 # (hook gọi tự đặt shell option — cố ý KHÔNG -e).
 #
@@ -108,3 +114,58 @@ van_ban_soi() {
 # nhánh). Placeholder entropy 0 (`sk-live-XXXXXXXXXXXXXXXX`, `<dien-khoa>`) cố ý KHÔNG khớp: hook này chặn thứ
 # gitleaks sẽ chặn, không chặt hơn — chặn oan dạy người gõ --no-verify thành phản xạ.
 KHOA_GIONG_THAT_RE='(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|glpat-[A-Za-z0-9_-]{20}|AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9]{32,}|sk-(live|test)-[0-9a-f]{16,}|xox[baprs]-[A-Za-z0-9-]{10,})'
+
+# =====================================================================================================================
+# PHẦN (2) — hàm của khung X-Templates 2.0.0 (nguyên văn). Mọi hook khung: fail-open (lỗi hook không được kẹt phiên),
+# chỉ dùng bash + python3 (jq tùy chọn). Không trùng tên với phần (1).
+# =====================================================================================================================
+
+XT_ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
+# Đường dẫn xt.py: dự án đích cài khung vào .xtemplates/, còn repo khung thì ở scripts/.
+xt_py() {
+  for p in "$XT_ROOT/.xtemplates/scripts/xt.py" "$XT_ROOT/scripts/xt.py"; do
+    [ -f "$p" ] && { printf '%s' "$p"; return 0; }
+  done
+  return 1
+}
+
+# Đọc một trường trong payload JSON (stdin của hook) bằng python3; rỗng nếu thiếu.
+json_field() { # $1=payload $2=đường dẫn dạng a.b.c
+  printf '%s' "$1" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for k in sys.argv[1].split("."):
+    d = d.get(k) if isinstance(d, dict) else None
+    if d is None:
+        sys.exit(0)
+sys.stdout.write(d if isinstance(d, str) else json.dumps(d, ensure_ascii=False))
+' "$2" 2>/dev/null
+}
+
+# In JSON quyết định PreToolUse (deny|ask|allow) kèm lý do, rồi exit 0.
+pretool_decision() { # $1=deny|ask $2=lý do
+  python3 -c '
+import json, sys
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+      "permissionDecision": sys.argv[1], "permissionDecisionReason": sys.argv[2]}}, ensure_ascii=False))
+' "$1" "$2"
+  exit 0
+}
+
+# Cắt stdin tối đa $1 byte KHÔNG cắt giữa ký tự UTF-8 (head -c từng làm hỏng tiếng Việt — AUD-HAR-011).
+utf8_head() {
+  python3 -c 'import sys; sys.stdout.write(sys.stdin.buffer.read()[: int(sys.argv[1])].decode("utf-8", "ignore"))' "$1" 2>/dev/null
+}
+
+# In JSON additionalContext cho SessionStart/UserPromptSubmit.
+context_output() { # $1=hookEventName $2=nội dung
+  python3 -c '
+import json, sys
+print(json.dumps({"hookSpecificOutput": {"hookEventName": sys.argv[1],
+      "additionalContext": sys.argv[2]}}, ensure_ascii=False))
+' "$1" "$2"
+}
