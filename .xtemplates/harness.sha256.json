@@ -3,7 +3,7 @@
   ".claude/agents/researcher.md": "6e97d0974fc1f5335a2001dc63373ec35eb9e2b793eef72a6e05ea9bb22a9e34",
   ".claude/agents/reviewer.md": "0e1a80af8e646a2be7fcef6f37a83df5ecf30b970e542f766161d7e4aa7b1c2e",
   ".claude/hooks/guard.py": "47e2b54294d95062b1bc929eddb9709f09f17bad59d23b09b9dec7292aa99fa5",
-  ".claude/hooks/pre-bash-guard.sh": "1aa6e76fcf706b71b5945cd87d9810769548cdf057b2de9f482114274a33c4e0",
+  ".claude/hooks/pre-bash-guard.sh": "4296181d0babc5cf25368efb8eb8be01306893adebd6a6180b74210648ed62b7",
   ".claude/hooks/pre-compact.sh": "d452650e82615454602f25bb7e760637b3a5f6dacfc01e61ca95aa102bb5aa98",
   ".claude/hooks/pre-edit-guard.sh": "82259fa5c24e414080961955ff556e3d1c5105de2bb9a42c8f58a0bd734476d4",
   ".claude/hooks/pre-mcp-guard.sh": "20a337cefccd06efc1bd5f2d2127049a79f30a709f2c3215e8f4fa2fc3a8e296",
