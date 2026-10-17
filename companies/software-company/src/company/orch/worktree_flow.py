@@ -56,6 +56,13 @@ def integration_for(o: Orchestrator, project_id: str | None) -> Integration | No
     if project_id and project_id in o.project_repos: return o.project_repos[project_id]
     return o.integration
 
+def research_root(o: Orchestrator, project_id: str | None) -> Path | None:
+    """Codebase cho lượt research: worktree tích hợp nếu đã có — code đã giao nằm ở đó, còn gốc repo khách có thể
+    đang checkout `main` cũ (hub thật đọc 0.1.0, CR-DDCSV-DPIA-003). Dự án mới chưa có worktree thì đọc gốc repo."""
+    integ = integration_for(o, project_id)
+    if integ is None: return None
+    return integ.path if integ.path.exists() else integ.repo
+
 def project_of_ticket(o: Orchestrator, ticket_id: str) -> str | None:
     t = o.lead.tickets.get(ticket_id)
     return t.project_id if t is not None else None

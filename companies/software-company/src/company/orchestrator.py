@@ -256,6 +256,7 @@ class Orchestrator:
 
     _learn_repo = worktree_flow.learn_repo
     integration_for = worktree_flow.integration_for
+    _research_root = worktree_flow.research_root
     _project_of_ticket = worktree_flow.project_of_ticket
     _integration_of_ticket = worktree_flow.integration_of_ticket
     _has_integration = worktree_flow.has_integration
@@ -412,8 +413,7 @@ class Orchestrator:
                 inp, bang_chung = self._evidence_before(r, inp)  # ADR-0029/0046: bằng chứng MÁY chạy trước lượt chấm
                 tools = self._read_only_tools(inp) if r.tools == "ro" else None
                 if r.tools == "research":
-                    integ = self.integration_for(self.project_for(env))  # researcher đọc đúng codebase của dự án
-                    tools = research_toolbox(integ.repo if integ is not None else None, self.web)
+                    tools = research_toolbox(self._research_root(self.project_for(env)), self.web)  # đúng codebase dự án
                 g = self.runner.generate(agent, inp, r.topic_out, tools=tools, max_turns=self.max_turns, phase=phase,
                                          context_writes=r.context_writes)
                 if r.tools == "ro" and tools is not None and not g.tool_calls:
