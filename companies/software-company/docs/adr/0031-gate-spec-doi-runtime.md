@@ -56,3 +56,15 @@ mặt chứ không vì mục sai, mỗi lần một lượt product viết lại
 Quyết định: với gate `SPEC-<CR>` mà bản `prd` thuộc chuỗi `…/change/<CR>/…`, mỗi mục máy kiểm (NFR, ngoài phạm vi, PII,
 mục 8b) lấy từ bản MỚI NHẤT trong chuỗi có mục đó; fact ghi "lấy từ prd@vN" khi không phải bản cuối, nguồn trỏ đúng bản
 đã đọc. Không mượn mục của chuỗi CR khác hay của PRD dự án. Test: `tests/test_ho_so_spec_cr_doc_prd_cua_chuoi.py`.
+
+## Bổ sung 2026-10-17: trần cho vòng reviewer reject → viết lại spec
+
+Hub thật, SPEC-CR-DDCSV-DPIA-003: spec chờ một event của chủ dự án mà agent không tạo được. `reviewer:tu-dong` reject,
+product viết lại trên CÙNG event nguồn, gate mở, rồi lại reject. Mỗi vòng tốn ba lượt agent (spec, duyệt, threat model)
+mà không vòng nào có thông tin mới.
+
+Quyết định: `reject` của `reviewer:*` chỉ gọi lại product tối đa `SPEC_REVIEWER_REWORKS` (= 2) lần trên cùng event nguồn
+(`orch/spec_runtime.reviewer_rework_capped`). Lần reject vượt trần thì không gọi lại product: gate dừng, audit ghi
+`spec.rework_capped` để phiên chính đọc. Bộ đếm dựng từ lịch sử gate (gate tạo sau `ts` của event nguồn), không giữ trạng
+thái riêng. Vì vậy event nguồn mới (câu trả lời mới của người) đếm lại từ 0. `reject` của người giữ nghĩa cũ: dừng.
+Test: `tests/test_reviewer_reject_spec_la_yeu_cau_sua.py`.

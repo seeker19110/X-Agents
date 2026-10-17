@@ -28,7 +28,7 @@ from .guards import pending_clarifications
 from .hen import cho_hen, moc_reset
 from .pr_rong import EMPTY_PR
 from .routes import ACTIVE_STATES, PLAN_INPUTS, PLAN_REWORKS, spec_route, spec_runtime_gap
-from .spec_runtime import _spec_rework, _spec_source
+from .spec_runtime import _spec_rework, _spec_source, reviewer_rework_capped
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -124,7 +124,8 @@ def _plan(o: Orchestrator, env: Envelope, res: StepResult) -> StepResult:
                         return o._spec_runtime_missing(env, project, gap, res)
                     request_gate(o.gate, GateRequest(kind="spec", subject_id=sid, created_by=env.actor,
                                                   checklist=["prd", "acceptance-criteria", "ux-flow", "risks"]))
-                elif changes is not None and (cause := _spec_source(o, env, project)) is not None:
+                elif (changes is not None and (cause := _spec_source(o, env, project)) is not None
+                      and not reviewer_rework_capped(o, sid, cause)):
                     _spec_rework(o, env, cause, f"người yêu cầu sửa spec ở gate {sid}: {last.reason}"[:HINT_MAX], res)
                     if res.transient:  # `_act_plan` trả True nên `process()` không tự hoãn: hoãn ở đây, khoá chưa ghi
                         return o._defer_transient(env, res)

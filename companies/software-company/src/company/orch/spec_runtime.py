@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from ..bus import REVIEWER_PREFIX
 from ..events import Envelope
 from ..gate_risk import request_gate
 from ..gates import GateRequest
 from ..roles import ROLE
-from .routes import SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
+from .routes import SPEC_REVIEWER_REWORKS, SPEC_RUNTIME_REWORKS, spec_route, spec_runtime_gap
 
 if TYPE_CHECKING:
     from ..orchestrator import Orchestrator, StepResult
@@ -27,6 +28,18 @@ def _spec_rework(o: Orchestrator, env: Envelope, cause: Envelope, hint: str, res
     inp = cause.model_copy(update={"payload": {**cause.payload, "hint": hint, "previous_spec": prev}})
     o._recall(ROLE.PRODUCT, cause)  # `partial` đã ghi `product` cho event nguồn: gọi lại là CHỦ Ý
     o._call(ROLE.PRODUCT, inp, spec_route(cause.topic), res)
+
+def reviewer_rework_capped(o: Orchestrator, sid: str, cause: Envelope) -> bool:
+    """Đã đủ `SPEC_REVIEWER_REWORKS` lần `reviewer:*` reject gate `sid` kể từ event nguồn `cause` (hub 2026-10-17,
+    SPEC-CR-DDCSV-DPIA-003: spec chờ event của chủ dự án, mỗi vòng reject → viết lại tốn ba lượt agent). Đếm từ lịch
+    sử gate, không giữ bộ đếm riêng; nguồn mới (câu trả lời mới) có `ts` sau mọi lần reject cũ nên đếm lại từ 0."""
+    n = sum(1 for g in o.gate.history if g.subject_id == sid and g.created_at >= cause.ts
+            and g.decision == "reject" and (g.decided_by or "").startswith(REVIEWER_PREFIX))
+    if n <= SPEC_REVIEWER_REWORKS: return False
+    o._audit("spec.rework_capped", {"subject_id": sid, "source_event": cause.event_id, "rejects": n,
+                                     "reason": "reviewer reject quá trần trên cùng event nguồn; cần nguồn mới"},
+             once=f"spec_capped:{sid}:{cause.event_id}")
+    return True
 
 def _runtime_da_duyet(o: Orchestrator, project: str, chain: str) -> str:
     """Runtime của spec gần nhất của dự án đã qua gate `SPEC-<key>` (chuỗi khác `chain`), dạng câu chép được vào
