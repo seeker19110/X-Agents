@@ -45,3 +45,17 @@ nhánh đó không bao giờ chạy tới.
   nguyên tắc "compose/script là của khách, công ty chỉ chạy nó" (ADR-0039 §"Bối cảnh").
 - **Sửa `runtime.command` cho khớp thực tế**: không giải được gốc — mọi lệnh Python cần dependency đều fail
   cùng lý do (venv/bắc cầu WSL), không phải vấn đề nội dung lệnh.
+
+## Bổ sung 2026-10-17: hồ sơ nghiệm thu cũng theo luật này
+Hub thật (QLKH-DD-CSV, UAT-REL-126): `deploy_thay_smoke` đã áp cho `smoke()`, `regression_run()` và `dast.evidence()`,
+nhưng mục `acceptance.da-chay` của `gate_brief` (ADR-0029, B4) vẫn chạy smoke trần trên cổng của spec (8080). Staging
+cùng máy đang giữ cổng đó, nên mục ra `gap` ("cổng 8080 đã có tiến trình khác") trong khi production đã deploy ok ở cổng
+8081 (ADR-0061 bổ sung 2026-10-17). `reviewer:tu-dong` giữ gate vì "không có bằng chứng sản phẩm chạy được".
+
+Quyết định: `_smoke_for_brief` hỏi `deploy_thay_smoke` trước. Có lý do thì đọc `evidence.deploy` của release-event
+production mới nhất của RC. Nếu `ok` và có cổng thì probe cổng đó ngay lúc dựng hồ sơ (`_smoke_running`, không khởi động,
+không giết gì), ghi `deploy` = tham chiếu lần deploy. Nếu không thì `unverified` kèm lý do, mục là `unknown`, không còn
+`gap` sai.
+
+Test: `tests/test_gate_brief.py`, hai ca `runtime_deploy`. Hai chiều: trước khi sửa, cả hai đỏ (`gap` vì smoke trần với
+lệnh chết); tắt nhánh mới thì đỏ lại; bật thì xanh.

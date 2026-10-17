@@ -30,7 +30,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from . import dast
 from .bus import InMemoryBus
+from .deploy import _smoke_running, deploy_thay_smoke
 from .events import Envelope
 from .gate_checklists import GateSection, SelfItem
 from .gate_checklists import load as load_gates
@@ -563,6 +565,17 @@ def _smoke_for_brief(orch: Orchestrator, pid: str | None, rid: str) -> dict[str,
     if integ is None or not integ.path.exists():
         return {"unverified": True, "reason": "không có worktree tích hợp để khởi động sản phẩm (chạy lại với --repo)",
                 "verified_by": "orchestrator"}
+    if why := deploy_thay_smoke(rt, integ.path):
+        # Hub thật 2026-10-17 (QLKH UAT-REL-126): smoke trần trên cổng spec đụng staging cùng máy trong khi production đã
+        # deploy ok ở cổng khác. Cùng luật `regression_run`: probe cổng đã map của bản ghi deploy production mới nhất.
+        dep = next((d for e in reversed(list(orch.bus.replay(topic="release-events", key=rid)))
+                    if e.payload.get("env") == "production" and (d := dast.deploy_of(e.payload.get("evidence")))), None)
+        if not dep or not dep.get("ok") or not dep.get("port"):
+            return {"unverified": True, "verified_by": "orchestrator",
+                    "reason": f"{why}; chưa có bản ghi deploy production ok (có cổng) cho {rid}"}
+        return {**_smoke_running(rt, int(dep["port"])), "command": ["probe container production đã deploy"],
+                "cwd": str(integ.path), "ref": _git(integ.path, "rev-parse", "--short", "HEAD"), "release_id": rid,
+                "deploy": dast.deploy_ref(dep)}
     # `orch` ở đây do `gate_brief` tự dựng (lệnh chỉ đọc) nên `sandbox` của nó là `SubprocessSandbox` mặc
     # định trừ khi người gọi đã cấu hình — dùng lại chính nó thay vì dựng riêng, để hồ sơ gate và lượt
     # smoke thật của orchestrator chạy CÙNG lớp bảo vệ (bằng chứng so được với nhau).

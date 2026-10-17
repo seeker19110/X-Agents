@@ -568,6 +568,62 @@ def test_acceptance_smoke_fail_van_ra_ho_so_va_verdict_gap(tmp_path, monkeypatch
     assert "KHÔNG ĐẠT" in md and "mã thoát: 3" in md
 
 
+def _serve_once_ok():
+    """Một http.server thật trên cổng trống, chạy nền — đóng vai container production đã deploy (đang sống)."""
+    import http.server
+    import threading
+    srv = http.server.HTTPServer(("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def _prod_deploy(bus, port: int | None, ok: bool = True):
+    dep = {"project": "company-p1-production", "env": "production", "ok": ok, "verified_by": "orchestrator",
+           "container_ids": ["abc"], "started_at": "2026-10-17T07:52:00+00:00"}
+    if port is not None: dep["port"] = port
+    _pub(bus, "release-events", "REL-001", "ops", {"release_id": "REL-001", "project_id": "P1", "env": "production",
+                                                    "status": "deployed", "version": "0.1.0", "evidence": {"deploy": dep}})
+
+
+def test_acceptance_runtime_deploy_doc_ban_ghi_deploy_production_khong_chay_smoke_tran(tmp_path, monkeypatch):
+    """Hub thật 2026-10-17 (QLKH UAT-REL-126): spec khai `runtime.deploy` (compose). Hồ sơ vẫn chạy smoke TRẦN trên cổng
+    spec (8080) — staging cùng máy đang giữ cổng đó ⇒ "cổng 8080 đã có tiến trình khác", `da-chay` gap, trong khi
+    production đã deploy ok ở cổng khác (override của hub). Cùng luật `deploy_thay_smoke` như `regression_run`: probe
+    cổng đã map của bản ghi deploy production, không khởi động gì."""
+    from company.smoke import Runtime
+    repo = _init_repo(tmp_path / "repo")
+    db, bus, _ = _scenario(tmp_path, _runtime_handler, repo=repo)
+    # lệnh trần CHẾT: nếu hồ sơ còn chạy smoke trần thì mục này gap — chiều đo của bản sửa
+    monkeypatch.setattr(GB, "parse_runtime",
+                        lambda _p: Runtime(("python", "-c", SERVER_DIE), path="/", timeout_s=5, deploy="compose.yaml"))
+    srv = _serve_once_ok()
+    try:
+        _prod_deploy(bus, srv.server_address[1])
+        b = GB.build(GB.load_state(db, repo=repo), "UAT-REL-001")
+    finally:
+        srv.shutdown(); srv.server_close()
+    it = _smoke_item(b); sm = b["extra"]["smoke"]
+    assert it["verdict"] == "ok" and sm["ok"] is True and sm["http_status"] == 200, sm
+    assert sm["url"] == f"http://127.0.0.1:{srv.server_address[1]}/" and sm["verified_by"] == "orchestrator"
+    assert sm["deploy"]["project"] == "company-p1-production", "ghi rõ đo container của lần deploy nào"
+    assert _verdicts(b)["acceptance.moi-truong"] == "ok"
+
+
+def test_acceptance_runtime_deploy_chua_co_deploy_production_ok_thi_khong_the_chay(tmp_path, monkeypatch):
+    """`runtime.deploy` mà chưa có bản ghi deploy production ok (có cổng) → nói thẳng không đo được (unknown +
+    unavailable), không chạy smoke trần để rồi kết luận gap sai."""
+    from company.smoke import Runtime
+    repo = _init_repo(tmp_path / "repo")
+    db, bus, _ = _scenario(tmp_path, _runtime_handler, repo=repo)
+    monkeypatch.setattr(GB, "parse_runtime",
+                        lambda _p: Runtime(("python", "-c", SERVER_DIE), path="/", timeout_s=5, deploy="compose.yaml"))
+    _prod_deploy(bus, None, ok=False)
+    b = GB.build(GB.load_state(db, repo=repo), "UAT-REL-001")
+    it = _smoke_item(b)
+    assert it["verdict"] == "unknown" and "acceptance.da-chay" in {u["id"] for u in b["unavailable"]}
+    assert any("deploy" in f for f in it["facts"]), it["facts"]
+
+
 # ---------- escalation (§5.6) ----------
 
 def test_escalation_gom_hint_cu_va_lich_su(tmp_path):
