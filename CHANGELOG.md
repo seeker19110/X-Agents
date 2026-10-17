@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- chore(harness): **cài khung X-Templates 2.0.0 cạnh harness projects-template** (hook PreToolUse `pre-bash-guard.sh`/`pre-edit-guard.sh`/`pre-mcp-guard.sh` + SessionStart/PreCompact/Stop, `guard.py`, skill/agent của khung, `xt.yaml` trỏ vào `scripts/dev-task.sh`, `.xtemplates/` bản sao chỉ đọc). Hook cũ và mọi `deny` giữ nguyên; `_lib.sh` gộp hàm hai phía; `settings.json` chỉ thêm hook, không đăng ký một script hai lần (test canh); `test_cong_tai_lieu` loại riêng `.xtemplates/` khỏi phép canh văn xuôi. Thêm 26 test hook khung vào console (901 → 927).
+
 - fix(company): **duyệt escalation `redeploy` sau `deploy_failed` nay chạy lại deploy** (ADR-0039 bổ sung 2026-10-16). Trước đây chỉ `pending_human` được chạy lại; production vẫn đòi Gate 3 đã ký. Hub thật (QLKH-DD-CSV, REL-119): deploy production hỏng vì máy trực thiếu file env bí mật. Phiên chính sửa cấu hình rồi duyệt redeploy, nhưng không có gì chạy lại: gate đã đóng mà RC nằm im. Đo hai chiều: trước khi sửa ca production và ca staging đỏ, sau khi sửa thì xanh.
 
 - fix(company): **bằng chứng lỗ hổng liệt kê đủ mọi cặp (CVE, gói) CRITICAL/HIGH** (ADR-0056 bổ sung 4). Trước đây danh sách cắt ở 50; nay trần an toàn là `SERIOUS_MAX=500`, có cờ `findings_complete`. Hồ sơ gate in "cặp (CVE, gói) liệt kê X/Y — đủ | CHƯA đủ". Hub thật (QLKH-DD-CSV, REL-118): image db có 62 CRITICAL/HIGH nhưng chỉ liệt kê 50, nên `reviewer:tu-dong` không kiểm được `fixed` của 12 cặp và giữ gate; bảng cặp của CR-DDCSV-SEC-011 cũng thiếu 12 dòng db. Đo hai chiều: trước khi sửa 4 ca mới đỏ, sau khi sửa thì xanh.
