@@ -458,6 +458,28 @@ def test_orchestrator_gives_researcher_repo_and_web_tools(tmp_path):
     assert orch2.web is None and research_toolbox(orch2.repo, orch2.web) is None, "không repo, không --web → researcher không tool"
 
 
+def test_researcher_doc_nhanh_tich_hop_khong_doc_checkout_repo_goc(tmp_path):
+    """Hub thật (CR-DDCSV-DPIA-003, 2026-10-16): repo khách checkout `main` ở 0.1.0, còn code đã giao nằm trên
+    `company/integration`. Researcher đọc gốc repo nên viết yêu cầu theo code cũ. Khi worktree tích hợp đã có, đó
+    mới là codebase của dự án — giống QA hồi quy (`read_only_tools`)."""
+    import subprocess
+
+    from company.workspace import Integration
+    repo = _init_repo(tmp_path / "repo")
+    integ = Integration(repo, base="main"); integ.ensure()
+    (integ.path / "mod.py").write_text("def add_v2(a, b):\n    return a + b\n", encoding="utf-8")
+    for a in (["add", "-A"], ["commit", "-q", "-m", "v2"]):
+        subprocess.run(["git", "-C", str(integ.path), *a], check=True, capture_output=True)
+    seen: list[str] = []
+    def th(msgs, tools):
+        if not any(m["role"] == "assistant" for m in msgs): return [_tc("read_file", path="mod.py")]
+        seen.extend(m["content"] for m in msgs if m["role"] == "tool"); return []
+    bus = InMemoryBus(); client = FakeClient(handler=handler, tool_handler=th)
+    _pub(bus, "research-requests", "P1", "human:sales", {"project_id": "P1", "description": "app"})
+    Orchestrator(bus, client, repo=repo, base="main").run()
+    assert any("add_v2" in c for c in seen), f"researcher phải đọc nhánh tích hợp, đọc được: {seen}"
+
+
 # ---------- orchestrator: hoãn khi transport lỗi, chạy song song ----------
 
 class _Blip:
