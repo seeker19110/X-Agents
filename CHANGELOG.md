@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **trần hạn ký miễn CVE do máy kiểm** (ADR gốc 0036 bổ sung 2026-10-17). Thêm `COMPANY_CVE_WAIVER_MAX_DAYS`, mặc định 90. Reviewer approve `REL-*` có `CVE-` mà ghi hạn sau mốc hôm nay + trần thì `decide` từ chối (agent tự động chuyển thành hold). Trần cũng được đưa vào prompt của agent duyệt. Hub thật REL-122 ký 90 ngày trong khi dự án chỉ cho 7.
+
 - fix(company): **lượt research của product đọc worktree tích hợp (`company/integration`) khi worktree đó đã có**, không đọc gốc repo khách. Gốc repo có thể vẫn checkout `main` cũ: hub thật đọc 0.1.0 thay vì code đã giao (CR-DDCSV-DPIA-003). Dự án mới chưa có worktree tích hợp thì vẫn đọc gốc repo như trước.
 
 - fix(company): **duyệt escalation `redeploy` sau `deploy_failed` nay chạy lại deploy** (ADR-0039 bổ sung 2026-10-16). Trước đây chỉ `pending_human` được chạy lại; production vẫn đòi Gate 3 đã ký. Hub thật (QLKH-DD-CSV, REL-119): deploy production hỏng vì máy trực thiếu file env bí mật. Phiên chính sửa cấu hình rồi duyệt redeploy, nhưng không có gì chạy lại: gate đã đóng mà RC nằm im. Đo hai chiều: trước khi sửa ca production và ca staging đỏ, sau khi sửa thì xanh.
