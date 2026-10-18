@@ -155,6 +155,21 @@ def test_install_chep_env_mau_quyen_0600_va_khong_de_env_co_san(tmp_path: Path) 
     assert env.read_text(encoding="utf-8") == "ORCHESTRATOR_ARGS=--repo /srv/khach\n", "cài lại không được đè cấu hình"
 
 
+def test_install_bo_thu_muc_windows_cua_wsl_khoi_path(tmp_path: Path) -> None:
+    """Hub thật 2026-10-18: WSL nối 50 thư mục Windows (`/mnt/c/...`) vào PATH của shell lúc cài; khi 9P sang Windows
+    treo, mọi CLI Go tra PATH lúc khởi động (`docker`, `gh`) kẹt trạng thái D `p9_client_rpc` — `docker --version`
+    16–51 s, egress của security quá 30 s ở 5 RC liền. PATH ghi vào hub.env không được mang `/mnt/...`."""
+    cfg = tmp_path / "cfg"
+    uv = str(Path(shutil.which("uv") or "uv").parent)  # script đòi thấy uv trên PATH
+    path = f"{uv}:/mnt/c/Windows/system32:/usr/bin:/mnt/c/Program Files/Docker/Docker/resources/bin:/bin"
+    kq = _chay("install", XDG_CONFIG_HOME=str(cfg), SYSTEMCTL="true", PATH=path)
+    assert kq.returncode == 0, kq.stderr
+    dong = next(
+        d for d in (cfg / "x-agents" / "hub.env").read_text(encoding="utf-8").splitlines() if d.startswith("PATH=")
+    )
+    assert dong == f"PATH={uv}:/usr/bin:/bin"
+
+
 def test_env_mau_khong_mang_gia_tri_bi_mat() -> None:
     for dong in (MAU / "hub.env.example").read_text(encoding="utf-8").splitlines():
         if dong.startswith("#") or "=" not in dong:

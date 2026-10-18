@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(deploy): **`scripts/systemd.sh install` bỏ các thư mục Windows `/mnt/...` khỏi `PATH` ghi vào `hub.env`.** WSL tự nối thư mục Windows vào PATH của shell. Khi 9P sang Windows chậm, `docker` và `gh` tra PATH lúc khởi động bị kẹt ở trạng thái D `p9_client_rpc`. Hub thật 2026-10-18: `docker --version` mất 16–51 s trong khi daemon trả lời trong 0,05 s; egress của security quá 30 s ở 5 RC liền; deploy staging quá 60 s. `docs/TRIEN-KHAI-SYSTEMD.md` có lệnh kiểm và cách sửa `hub.env` đã cài từ trước.
+
 - fix(company): **hồ sơ escalation của release thấy lỗi agent không nhánh nào xử lý.** "Lịch sử thất bại" của escalation `REL-*` lấy thêm audit mang `subject` = release (`agent_error_unhandled`), không chỉ audit mang `release_id`. Hub thật 2026-10-18 REL-148: lượt release-check của security lỗi hạ tầng (egress `docker network connect` quá 30 s), supervisor mở escalation, nhưng hồ sơ không có dòng lỗi nên `reviewer:tu-dong` giữ gate với lý do "hồ sơ không nêu finding nào".
 
 - fix(company): **hồ sơ escalation của release có mục "Đo NFR".** `gate_brief` cho gate escalation `REL-*` giờ mang lần `measure.run` mới nhất (ADR-0064), như hồ sơ gate release và gate nghiệm thu. Hub thật 2026-10-18: security chặn REL-140 vì threat-model đòi kiểm tự động "app dùng role qlkh_app, rolsuper=false". Phép đo DB-ROLE do orchestrator chạy đã ĐẠT trên đúng sha, nhưng `reviewer:tu-dong` không thấy nó và ghi "evidence REL-140 chưa có kết quả kiểm này".
