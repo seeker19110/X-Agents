@@ -36,7 +36,11 @@ install() {
   render "$UNIT_DIR"
   if [ ! -e "$ENV_FILE" ]; then
     mkdir -p "$(dirname "$ENV_FILE")"
-    (umask 077 && sed -e "s|@PATH@|$PATH|g" "$MAU/hub.env.example" > "$ENV_FILE")
+    # Bỏ thư mục Windows mà WSL nối vào PATH (/mnt/...): 9P sang Windows treo thì mọi CLI Go tra PATH lúc khởi
+    # động (docker, gh) kẹt hàng chục giây — hub thật 2026-10-18, egress security quá 30 s ở 5 RC liền.
+    local path_hub
+    path_hub="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/mnt/' | paste -sd: -)"
+    (umask 077 && sed -e "s|@PATH@|$path_hub|g" "$MAU/hub.env.example" > "$ENV_FILE")
     echo "[systemd] đã tạo $ENV_FILE — điền ORCHESTRATOR_ARGS (--repo <repo khách>) trước khi bật"
   else
     echo "[systemd] giữ nguyên $ENV_FILE (đã có)"

@@ -38,6 +38,12 @@ Script sinh 5 unit vào `~/.config/systemd/user/` (đường dẫn repo và `uv`
 `~/.config/x-agents/hub.env` quyền `0600` từ [`deploy/systemd/hub.env.example`](../deploy/systemd/hub.env.example).
 Cài lại (sau `git pull`) không đè `hub.env`.
 
+Dòng `PATH` trong `hub.env` là PATH của shell lúc cài, **bỏ các thư mục `/mnt/...`** mà WSL tự nối từ Windows. Khi
+9P sang Windows chậm, CLI viết bằng Go tra PATH lúc khởi động (`docker`, `gh`) có thể kẹt hàng chục giây (đo
+2026-10-18: `docker --version` mất 16–51 s, egress của agent quá 30 s). `hub.env` cài từ trước bản này vẫn còn các
+mục đó. Đếm bằng lệnh `grep '^PATH=' ~/.config/x-agents/hub.env | tr ':' '\n' | grep -c '^/mnt/'`. Kết quả khác 0
+thì bỏ các mục đó khỏi dòng `PATH`, rồi restart các unit.
+
 Sửa `~/.config/x-agents/hub.env` — tối thiểu là repo khách:
 
 ```bash
