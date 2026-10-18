@@ -752,6 +752,25 @@ def test_escalation_release_co_lich_su_smoke_fail_va_du_an(tmp_path):
     assert "release.smoke_failed" in md and "(trống)" not in md
 
 
+def test_escalation_release_thay_phep_do_cua_orchestrator(tmp_path):
+    """Hub thật 2026-10-18 (REL-140): security chặn vì threat-model đòi kiểm tự động "app dùng role qlkh_app,
+    rolsuper=false". Phép đo DB-ROLE (ADR-0064, `measure.run` do orchestrator ghi) đã ĐẠT trên đúng sha, nhưng hồ sơ
+    escalation của release không có mục đo nên `reviewer:tu-dong` ghi "evidence REL-140 chưa có kết quả kiểm này".
+    Hồ sơ escalation của release phải mang lần đo mới nhất như hồ sơ gate release."""
+    from test_smoke_evidence import SERVER_DIE, _orch, _repo
+    repo = _repo(tmp_path, SERVER_DIE)
+    _, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 10})
+    orch.run()
+    assert orch.gate.pending["REL-001"].kind == "escalation"
+    orch._audit("measure.run", {"release_id": "REL-001", "id": "DB-ROLE", "kind": "other", "ok": True, "exit_code": 0,
+                                "elapsed_s": 1.6, "sha": "2907098abc", "stdout_tail": "DB-ROLE ĐẠT: app dùng qlkh_app",
+                                "verified_by": "orchestrator"})
+    b = GB.build(orch, "REL-001")
+    assert [m["id"] for m in b["extra"]["measure"]] == ["DB-ROLE"]
+    md = GB.render_md(b)
+    assert "## Đo NFR" in md and "DB-ROLE (other): ĐẠT" in md and "app dùng qlkh_app" in md
+
+
 def test_escalation_ticket_bi_chan_vi_phu_thuoc_bi_bo_neu_ly_do_trong_lich_su(tmp_path):
     """Hub thật 2026-10-14 (QLKH-DD-CSV): DDCSV-65/66 bị đóng vì CR-DDCSV-INFRA-002 thay → DDCSV-64 (phụ thuộc) sang
     `blocked`, gate escalation mở. Hồ sơ in "Lịch sử thất bại: (trống)" — ticket chưa hỏng lần nào — nên
