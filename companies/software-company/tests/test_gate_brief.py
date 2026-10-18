@@ -752,6 +752,25 @@ def test_escalation_release_co_lich_su_smoke_fail_va_du_an(tmp_path):
     assert "release.smoke_failed" in md and "(trống)" not in md
 
 
+def test_escalation_release_thay_loi_agent_khong_nhanh_nao_xu_ly(tmp_path):
+    """Hub thật 2026-10-18 (REL-148): lượt release-check của security lỗi hạ tầng (egress docker timeout), supervisor mở
+    escalation. Audit `agent_error_unhandled` mang khoá `subject` (không có `release_id`) nên hồ sơ lọc mất; tu-dong giữ
+    gate vì "hồ sơ không nêu finding nào". Lịch sử thất bại của release phải có dòng lỗi đó."""
+    from test_smoke_evidence import SERVER_DIE, _orch, _repo
+    repo = _repo(tmp_path, SERVER_DIE)
+    _, orch = _orch(tmp_path, repo, {"command": "python serve.py", "port": 0, "timeout_s": 10})
+    orch.run()
+    orch._audit("agent_error_unhandled", {"agent": "security", "topic": "release-candidates", "event_id": "e1",
+                                          "subject": "REL-001", "error": "egress: docker network connect timed out after 30 seconds",
+                                          "stop_kind": "needs_human", "error_kind": "infra"})
+    orch._audit("agent_error_unhandled", {"agent": "security", "topic": "release-candidates", "event_id": "e2",
+                                          "subject": "REL-999", "error": "release khác, không được lẫn"})
+    h = GB.build(orch, "REL-001")["extra"]["history"]
+    rows = [x for x in h if "agent_error_unhandled" in x["action"]]
+    assert rows and "timed out after 30 seconds" in (rows[-1]["detail"] or ""), h
+    assert not any("REL-999" in (x["detail"] or "") or "release khác" in (x["detail"] or "") for x in h)
+
+
 def test_escalation_release_thay_phep_do_cua_orchestrator(tmp_path):
     """Hub thật 2026-10-18 (REL-140): security chặn vì threat-model đòi kiểm tự động "app dùng role qlkh_app,
     rolsuper=false". Phép đo DB-ROLE (ADR-0064, `measure.run` do orchestrator ghi) đã ĐẠT trên đúng sha, nhưng hồ sơ

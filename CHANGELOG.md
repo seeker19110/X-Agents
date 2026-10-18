@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **hồ sơ escalation của release thấy lỗi agent không nhánh nào xử lý.** "Lịch sử thất bại" của escalation `REL-*` lấy thêm audit mang `subject` = release (`agent_error_unhandled`), không chỉ audit mang `release_id`. Hub thật 2026-10-18 REL-148: lượt release-check của security lỗi hạ tầng (egress `docker network connect` quá 30 s), supervisor mở escalation, nhưng hồ sơ không có dòng lỗi nên `reviewer:tu-dong` giữ gate với lý do "hồ sơ không nêu finding nào".
+
 - fix(company): **hồ sơ escalation của release có mục "Đo NFR".** `gate_brief` cho gate escalation `REL-*` giờ mang lần `measure.run` mới nhất (ADR-0064), như hồ sơ gate release và gate nghiệm thu. Hub thật 2026-10-18: security chặn REL-140 vì threat-model đòi kiểm tự động "app dùng role qlkh_app, rolsuper=false". Phép đo DB-ROLE do orchestrator chạy đã ĐẠT trên đúng sha, nhưng `reviewer:tu-dong` không thấy nó và ghi "evidence REL-140 chưa có kết quả kiểm này".
 
 - fix(company): **không smoke, đo NFR hay DAST trên staging khi staging đã chạy RC khác.** Cổng staging là một cho cả dự án. Lượt QA hồi quy hoặc release-check tới muộn, sau khi một RC sau đã lên staging, thì probe/đo là đo RC sau mà bằng chứng mang sha RC cũ. Giờ `evidence.run`, `evidence.measure` và `evidence.dast` của lượt đó là `unverified` và nói rõ staging đang chạy RC nào (`orch/verify.staging_khac`). Hub thật 2026-10-18: QA REL-139 chạy lúc 02:49 khi staging đã chạy REL-140 từ 02:01, smoke và DD-N4/DD-N6 ghi cho sha 9d45a48 kết quả đo trên REL-140.
