@@ -291,3 +291,46 @@ def test_chay_bang_python_m(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit) as e:
         runpy.run_module("company.measure", run_name="__main__")
     assert e.value.code == 2 and "REL-404" in capsys.readouterr().out
+
+
+# ---------- staging đã chạy RC khác: không đo, không smoke dưới tên RC cũ ----------
+
+
+def _staging_rc_sau(tmp_path, monkeypatch):
+    """REL-001 lên staging, rồi REL-002 cùng dự án lên staging SAU nó (cùng cổng). Hub thật 2026-10-18: lượt QA hồi quy
+    REL-139 tới lúc 02:49 trong khi staging đã chạy REL-140 từ 02:01; smoke và DD-N4/DD-N6 đo REL-140 mà bằng chứng
+    mang sha REL-139."""
+    hub = tmp_path / "hub"
+    _cfg(hub, [{"id": "DD-N4", "kind": "perf", "command": PY_OK}]).rename(hub / "company-p-staging.measure.json")
+    monkeypatch.setenv(ENV_SECRETS_DIR, str(hub))
+    bus, orch = _staging_deployed(tmp_path, monkeypatch)
+    ev = next(e for e in bus.replay(topic="release-events") if e.payload.get("env") == "staging")
+    later = {**ev.payload, "release_id": "REL-002", "project_id": "P"}
+    bus.publish(ev.model_copy(update={"key": "REL-002", "event_id": "rc-sau", "payload": later}))
+    return orch, ev
+
+
+def test_staging_da_chay_rc_khac_thi_phep_do_unverified_khong_chay(tmp_path, monkeypatch):
+    from company.orch.verify import measure_run
+
+    orch, ev = _staging_rc_sau(tmp_path, monkeypatch)
+    (r,) = measure_run(orch, ev)
+    assert r["id"] == "DD-N4" and r["unverified"] is True and r["ok"] is False
+    assert "REL-002" in r["reason"] and "stdout_tail" not in r, "không chạy lệnh đo trên staging của RC khác"
+
+
+def test_khong_biet_du_an_thi_khong_doan_staging_cua_ai(tmp_path, monkeypatch):
+    """Không truy được dự án: không so với staging của dự án nào (None không được khớp release-events thiếu dự án)."""
+    from company.orch.verify import staging_khac
+
+    orch, _ = _staging_rc_sau(tmp_path, monkeypatch)
+    assert staging_khac(orch, "REL-001", "P") is not None and staging_khac(orch, "REL-001", None) is None
+
+
+def test_staging_da_chay_rc_khac_thi_smoke_hoi_quy_unverified(tmp_path, monkeypatch):
+    from company.orch.verify import regression_run
+
+    orch, ev = _staging_rc_sau(tmp_path, monkeypatch)
+    run = regression_run(orch, ev)
+    assert run["unverified"] is True and "REL-002" in run["reason"] and "http_status" not in run
+    assert run["deploy_declared"] is True, "không hạ verdict QA vì lý do không thuộc chất lượng RC"

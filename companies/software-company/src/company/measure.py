@@ -156,9 +156,11 @@ def run_measures(
 Records = list[dict[str, Any]]  # bằng chứng đo, một bản ghi mỗi phép đo — `orch/` dùng tên này (trần `dict[str, Any]`)
 
 
-def evidence_for(root: Path, project: str, deployed: dict[str, Any] | None, sha: str) -> Records | None:
-    """Bằng chứng đo cho một RC đã deploy staging: None = không khai đo. Lỗi cấu hình hay staging chưa deploy ok (có
-    cổng) thành bản ghi `unverified` nói rõ; mọi bản ghi mang `sha` RC."""
+def evidence_for(
+    root: Path, project: str, deployed: dict[str, Any] | None, sha: str, *, khac: str | None = None
+) -> Records | None:
+    """Bằng chứng đo cho một RC đã deploy staging: None = không khai đo. Lỗi cấu hình, staging chưa deploy ok (có
+    cổng), hay staging đang chạy RC khác (`khac` là lý do) thành bản ghi `unverified` nói rõ; mọi bản ghi mang `sha` RC."""
     try:
         cfg = measure_config(root, project)
         if not cfg:
@@ -168,7 +170,9 @@ def evidence_for(root: Path, project: str, deployed: dict[str, Any] | None, sha:
         recs: Records = [{"id": "?", "ok": False, **unverified(str(e)[:300])}]
     else:
         dep = deployed or {}
-        if dep.get("ok") and dep.get("port"):
+        if khac:
+            recs = [{"id": m.id, "kind": m.kind, "ok": False, **unverified(khac)} for m in ms]
+        elif dep.get("ok") and dep.get("port"):
             recs = run_measures(root, ms, f"http://127.0.0.1:{dep['port']}", efile)
         else:
             recs = [{"id": m.id, "kind": m.kind, "ok": False,
