@@ -745,7 +745,8 @@ def _brief_escalation_release(orch: Orchestrator, it: Any, subject: str, pid: st
         p = e.payload; a = str(p.get("action") or "")
         if not (a.startswith("release.") or a in ERROR_ACTIONS): continue
         d = _evidence(p)
-        if d.get("release_id") != subject: continue
+        # `agent_error_unhandled` mang `subject`, không `release_id` (hub 2026-10-18 REL-148: security lỗi egress, hồ sơ trống)
+        if subject not in (d.get("release_id"), d.get("subject")): continue
         history.append({"_seq": seq.get(e.event_id, 0), "at": e.ts.isoformat(), "action": f"{p.get('actor')}: {a}",
                         "detail": excerpt_ends(d.get("error") or d.get("reason") or d.get("stderr_tail")
                                           or " ".join(f"{k}={d[k]}" for k in ("claimed_status", "http_status", "exit_code") if k in d)
