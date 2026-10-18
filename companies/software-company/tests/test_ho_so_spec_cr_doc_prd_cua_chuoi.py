@@ -142,3 +142,19 @@ def test_delta_cua_chuoi_cr_lay_muc_khong_doi_tu_ban_truoc_cung_chuoi():
 def test_delta_khong_muon_muc_cua_chuoi_cr_khac():
     oos = _muc(_chuoi_delta(khac=True), "spec.out-of-scope")
     assert oos["verdict"] == "gap", "CR-E có Ngoài phạm vi nhưng không thuộc chuỗi CR-D"
+
+
+def test_chuoi_cr_khac_ghi_prd_o_pha_nhap_khong_cuop_ho_so():
+    """Hub thật 2026-10-17: CR-DDCSV-NFR-003 ra spec lúc 18:52 (prd v58, …/change/CR-DDCSV-NFR-003/v1), rồi
+    CR-DDCSV-NFR-004 ghi prd v59 (…/change/CR-DDCSV-NFR-004/v1) kèm `requirements-draft` lúc 19:02, CHƯA có
+    `approved-specs`. Chỉ dừng ở `approved-specs` của chuỗi khác thì hồ sơ SPEC-CR-DDCSV-NFR-003 đọc PRD của NFR-004
+    và `reviewer:tu-dong` giữ gate vì "hai nửa hồ sơ trỏ vào hai CR khác nhau"."""
+    bus = InMemoryBus()
+    orch = Orchestrator(bus, FakeClient(handler=handler))
+    _drive_to_plan(bus, orch)
+    _spec_cr(bus, orch, "CR-A", PRD_A)
+    orch.blackboard.write("product", "prd", "prd/P1/change/CR-B/v1", summary="nháp CR-B", content=PRD_B, project_id="P1")
+    orch.run()
+    nfr = _muc(GB.build(orch, "SPEC-CR-A"), "spec.nfr-co-so-do")
+    assert nfr["sources"][0]["content_ref"] == "prd/P1/change/CR-A", "bản nháp của CR-B không được thay PRD của CR-A"
+    assert nfr["verdict"] == "ok" and "5 s" in " ".join(nfr["facts"])
