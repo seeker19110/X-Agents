@@ -43,6 +43,20 @@ def _staging_event(o: Orchestrator, rid: str) -> Envelope | None:
                  if e.payload.get("env") == "staging"), None)
 
 
+def staging_khac(o: Orchestrator, rid: str, pid: str | None) -> str | None:
+    """Lý do khi staging của dự án đang chạy RC KHÁC: lần deploy staging ok mới nhất của `pid` thuộc release khác `rid`.
+    None = staging vẫn là `rid` (hoặc không biết dự án). Cổng staging là một cho cả dự án, nên probe/đo nó dưới tên RC
+    cũ là gán bằng chứng của RC mới cho sha cũ. Hub thật 2026-10-18: QA hồi quy REL-139 tới lúc 02:49 khi staging đã
+    chạy REL-140 từ 02:01, smoke và DD-N4/DD-N6 đo REL-140 mà bằng chứng mang sha REL-139."""
+    if pid is None: return None
+    last = next((e for e in reversed(list(o.bus.replay(topic="release-events")))
+                 if e.payload.get("env") == "staging" and (dast.deploy_of(e.payload.get("evidence")) or {}).get("ok")
+                 and o.project_for(e) == pid), None)
+    if last is None or (other := str(last.payload.get("release_id") or last.key)) == rid: return None
+    return (f"staging đang chạy {other} (deploy {last.ts.isoformat(timespec='seconds')}), không phải {rid} — "
+            f"đo lúc này là đo {other}, không gán cho sha của {rid}")
+
+
 def release_evidence(o: Orchestrator, rid: str) -> dict[str, Any]:
     staging = _staging_event(o, rid)
     reviews = {s: {"verdict": x.verdict, "findings": len(x.findings)} for s, x in o.lead.release_reviews.get(rid, {}).items()}
@@ -218,12 +232,13 @@ def regression_run(o: Orchestrator, env: Envelope) -> dict[str, Any]:
         # deploy ok mà QA phải tự biện "pass dù evidence.run unverified"). Chưa deploy được → `deploy_declared=True`
         # để `verdict_with_run` không hạ verdict QA xuống `fail` vì lý do không liên quan tới chất lượng PR.
         d = dast.deploy_of(env.payload.get("evidence")) or {}
-        if d.get("ok") and d.get("port"):
+        khac = staging_khac(o, rid, pid)
+        if d.get("ok") and d.get("port") and not khac:
             run = {**_smoke_running(rt, int(d["port"])), "sha": o.release_sha.get(rid) or integ.sha(), "spec_kind": kind,
                    "deploy": dast.deploy_ref(d)}
             o._audit("regression.run", {"release_id": rid, **run}, project_id=pid)
             return run
-        run = {**unverified(why), "spec_kind": kind, "deploy_declared": True}
+        run = {**unverified(khac or why), "spec_kind": kind, "deploy_declared": True}
     else:
         run = {**run_smoke(_release_root(o, rid, integ), rt, sandbox=o.sandbox), "sha": o.release_sha.get(rid) or integ.sha(),
                "spec_kind": kind}
@@ -244,7 +259,8 @@ def measure_run(o: Orchestrator, env: Envelope) -> measure.Records | None:
     if pid is None or integ is None or not integ.path.exists(): return None
     # no-ky-thuat: đo chạy đồng bộ, chặn vòng orchestrator tới 1800 s mỗi phép đo, quay lại khi một RC khai quá 3 phép đo hoặc chạy nhiều dự án song song
     recs = measure.evidence_for(_release_root(o, rid, integ), project_name(pid, "staging"),
-                                dast.deploy_of(env.payload.get("evidence")), o.release_sha.get(rid) or integ.sha())
+                                dast.deploy_of(env.payload.get("evidence")), o.release_sha.get(rid) or integ.sha(),
+                                khac=staging_khac(o, rid, pid))
     for r in recs or []: o._audit("measure.run", {"release_id": rid, **r}, project_id=pid)
     return recs
 
@@ -301,9 +317,11 @@ def evidence_before(o: Orchestrator, r: Route, inp: Envelope) -> tuple[Envelope,
             spec = project_spec(o, pid) if pid else None
             dep = dast.deploy_of(st.payload.get("evidence") if st is not None else None)
             ran = dast.deployed_images(dep)  # image ĐÃ DỰNG đang chạy: quét riêng, image nền của nó bỏ (scan_refs)
+            khac = staging_khac(o, rid, pid)  # lượt bị hoãn chạy lại sau khi RC khác đã lên staging cùng cổng
             ev = {"supply_chain": supply_chain.evidence(root, o.sandbox, sha=sha),
-                  "dast": dast.evidence(root, spec.payload if spec is not None else None, o.sandbox,
-                                        o.blackboard.content("api-contract", pid), sha, deployed=dep),
+                  "dast": unverified(khac) if khac else dast.evidence(
+                      root, spec.payload if spec is not None else None, o.sandbox,
+                      o.blackboard.content("api-contract", pid), sha, deployed=dep),
                   # ADR-0056: SCA + secret trên máy trực — cùng lý do SBOM/DAST: security không đoán, máy phải đưa số.
                   # Bổ sung 2026-10-14: cả image ĐÃ DỰNG mà staging đang chạy (image dẫn xuất `build:`)
                   "vuln": scanners.vuln_evidence(root, sha, image_digest.scan_refs(root, {s for s, _ in ran}),

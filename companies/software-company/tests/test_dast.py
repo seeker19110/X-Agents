@@ -562,6 +562,30 @@ def test_dast_quet_staging_da_deploy_truoc_release_check(tmp_path, monkeypatch):
     assert _audits(bus, "dast.run")[-1]["deploy"]["container_ids"] == ["abcdef012345"]
 
 
+def test_staging_da_chay_rc_khac_thi_dast_unverified_khong_quet(tmp_path, monkeypatch):
+    """Lượt release-check của REL-001 bị hoãn (transient) và chạy lại khi REL-002 đã lên staging cùng cổng: quét lúc này
+    là quét REL-002 — DAST phải `unverified` nói rõ, không gán kết quả cho sha REL-001 (hub thật 2026-10-18, REL-139)."""
+    import company.dast as dast
+    from company.orch.routes import RELEASE_CHECK_ROUTE
+    from company.orch.verify import evidence_before
+    from test_deploy_release_fsm import RUNTIME, _fake_deploy, _orch, _repo
+    from test_supply_chain import _fake_licenses
+
+    _fake_licenses(monkeypatch)
+    fn, _ = _fake_deploy(monkeypatch)
+    bus, orch = _orch(tmp_path, _repo(tmp_path), deploy_fn=fn, runtime={**RUNTIME, "deploy": "compose.yaml"})
+    orch.run()
+    st = next(e for e in bus.replay(topic="release-events") if e.payload.get("env") == "staging")
+    later = {**st.payload, "release_id": "REL-002", "project_id": "P"}
+    bus.publish(st.model_copy(update={"key": "REL-002", "event_id": "rc-sau", "payload": later}))
+    monkeypatch.setattr(dast, "http_probe", lambda url: 200)  # REL-002 đang chạy khoẻ trên cổng đó
+    monkeypatch.setattr(dast, "scan", lambda *a: (_ for _ in ()).throw(AssertionError("quét staging của RC khác")))
+    rc = orch.latest("release-candidates", "REL-001")
+    inp, kind = evidence_before(orch, RELEASE_CHECK_ROUTE, rc)
+    ev = inp.payload["evidence"]["dast"]
+    assert kind == "supply_chain" and ev["unverified"] is True and "REL-002" in ev["reason"]
+
+
 def test_loi_khai_dast_cua_model_bi_bo_dast_summary_giu(tmp_path, monkeypatch):
     from test_orchestrator import _agent_of, _inp, handler
 
