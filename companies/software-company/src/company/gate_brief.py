@@ -765,7 +765,9 @@ def _brief_escalation_release(orch: Orchestrator, it: Any, subject: str, pid: st
     item = _item(it, "unknown" if pb is None else ("ok" if cost < pb else "gap"), facts,
                  [_topic_src("release-events", subject, list(orch.bus.replay(topic="release-events", key=subject)))])
     extra = {"scope": "release", "release": release, "history": history[-40:], "hints_used": hints, "duplicate_hints": dup,
-             "budget": {"cost_usd": round(cost, 4), "project_budget_usd": pb}}
+             "budget": {"cost_usd": round(cost, 4), "project_budget_usd": pb},
+             # Hub 2026-10-18 REL-140: threat-model đòi kiểm runtime mà phép đo (ADR-0064) đã làm — người duyệt phải thấy
+             "measure": _measures(orch, subject)}
     if (vuln := _release_vuln(orch, subject)) is not None: extra["vuln"] = vuln
     return [item], [], extra
 
@@ -994,7 +996,7 @@ def render_md(b: dict[str, Any]) -> str:
         else:
             lines += ["- " + f for f in _smoke_facts(sm)]
             lines.append(f"- kết luận máy: {'ok' if sm.get('ok') else 'KHÔNG ĐẠT'} (mã HTTP kỳ vọng do spec đặt)")
-    if b["kind"] in {"release", "acceptance"}:
+    if b["kind"] in {"release", "acceptance"} or ex.get("scope") == "release":
         lines += ["", "## Đo NFR — orchestrator chạy lệnh đo đã khai trên staging (ADR-0064)", "", *_measure_md(ex.get("measure") or [])]
     rul = ex.get("rulings") or []
     lines += ["", f"## Sổ Ruling — agent đã tự quyết {len(rul)} việc thay vì hỏi người (ADR-0030)", ""]

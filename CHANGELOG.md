@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(company): **hồ sơ escalation của release có mục "Đo NFR".** `gate_brief` cho gate escalation `REL-*` giờ mang lần `measure.run` mới nhất (ADR-0064), như hồ sơ gate release và gate nghiệm thu. Hub thật 2026-10-18: security chặn REL-140 vì threat-model đòi kiểm tự động "app dùng role qlkh_app, rolsuper=false". Phép đo DB-ROLE do orchestrator chạy đã ĐẠT trên đúng sha, nhưng `reviewer:tu-dong` không thấy nó và ghi "evidence REL-140 chưa có kết quả kiểm này".
+
 - fix(company): **không smoke, đo NFR hay DAST trên staging khi staging đã chạy RC khác.** Cổng staging là một cho cả dự án. Lượt QA hồi quy hoặc release-check tới muộn, sau khi một RC sau đã lên staging, thì probe/đo là đo RC sau mà bằng chứng mang sha RC cũ. Giờ `evidence.run`, `evidence.measure` và `evidence.dast` của lượt đó là `unverified` và nói rõ staging đang chạy RC nào (`orch/verify.staging_khac`). Hub thật 2026-10-18: QA REL-139 chạy lúc 02:49 khi staging đã chạy REL-140 từ 02:01, smoke và DD-N4/DD-N6 ghi cho sha 9d45a48 kết quả đo trên REL-140.
 
 - fix(company): **hồ sơ gate spec của một CR không bị PRD nháp của CR khác cướp.** `gate_brief._prd_of` thôi lấy thêm bản `prd` khi gặp bản thuộc chuỗi `…/change/<mã khác>/`, kể cả bản nháp ghi kèm `requirements-draft` chưa có `approved-specs`. Trước đây chỉ dừng ở `approved-specs` của chuỗi khác. Hub thật 2026-10-17: hồ sơ SPEC-CR-DDCSV-NFR-003 đọc prd v59 của CR-DDCSV-NFR-004 (bản nháp), nên `reviewer:tu-dong` giữ gate vì hai nửa hồ sơ trỏ vào hai CR khác nhau.
