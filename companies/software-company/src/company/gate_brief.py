@@ -161,8 +161,9 @@ def _ns(orch: Orchestrator, namespace: str, pid: str | None) -> tuple[str | None
 def _prd_of(orch: Orchestrator, pid: str | None, key: str | None) -> tuple[str | None, dict[str, Any] | None]:
     """PRD mà gate `SPEC-<key>` phải đối chiếu. Spec của dự án (key = project_id): bản mới nhất. Spec của một chuỗi CR:
     bản `prd` HIỆN HÀNH ngay sau khi chuỗi đó ra spec mới nhất — gồm bản chính lượt đó ghi kèm (context_writes đi sau
-    event spec), trước khi chuỗi khác ra spec. Hub 2026-10-15: hai CR mở gate spec cùng lúc, hồ sơ CR trước đọc PRD
-    của CR sau."""
+    event spec), trước khi chuỗi khác ra spec hoặc ghi PRD của nó (`…/change/<mã khác>/`, kể cả bản nháp chưa có
+    spec). Hub 2026-10-15: hai CR mở gate spec cùng lúc, hồ sơ CR trước đọc PRD của CR sau. Hub 2026-10-17: CR sau mới
+    ghi PRD nháp (`requirements-draft`) cũng cướp hồ sơ."""
     if pid is None or key is None or key == pid:
         return _ns(orch, "prd", pid)
     ck = orch.blackboard.context_key("prd", pid)
@@ -170,10 +171,14 @@ def _prd_of(orch: Orchestrator, pid: str | None, key: str | None) -> tuple[str |
     last = max((i for i, e in enumerate(envs) if e.topic == "approved-specs" and e.key == key), default=None)
     if last is None:
         return _ns(orch, "prd", pid)
+    mine = re.compile(rf"/change/{re.escape(key)}(?:/|$)")
     cur: Envelope | None = None
     for i, e in enumerate(envs):
         if i > last and e.topic == "approved-specs" and e.key != key: break
-        if e.topic == "shared-context" and e.key == ck: cur = e
+        if e.topic == "shared-context" and e.key == ck:
+            ref = str(e.payload.get("content_ref") or "")
+            if i > last and "/change/" in ref and not mine.search(ref): break
+            cur = e
     if cur is None:
         return _ns(orch, "prd", pid)
     p = cur.payload; content = p.get("content")
