@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -115,6 +116,71 @@ def test_so_do_cache_va_num_turns_CONG_qua_moi_luot_cua_vong_tool(tmp_path):
                                                     tools=WorkspaceTools(ws).toolbox())
     assert len(client.calls) == 2
     assert (g.cached_input_tokens, g.cache_write_tokens, g.num_turns) == (800, 140, 6)
+
+
+def _completion_cua_ticket(ticket_id, invalid=False):
+    n = 1 if ticket_id == "T1" else 2
+    return Completion(
+        text="không phải JSON" if invalid else json.dumps({"ticket_id": ticket_id, "source": "reviewer", "verdict": "pass"}),
+        input_tokens=1_000 * n, output_tokens=n, model="fake",
+        cached_input_tokens=100 * n, cache_write_tokens=10 * n, num_turns=n,
+    )
+
+
+def _token_thuc_theo_ticket(bus):
+    return {e.payload["ticket_id"]: json.loads(e.payload["evidence"])["actual_tokens"]
+            for e in bus.replay(topic="audit-log") if e.payload["action"] == "token_estimate"}
+
+
+def test_generate_song_song_khong_tron_usage_va_token_uoc_luong():
+    """Hai barrier ép HAI lời gọi model cùng sống: một khóa toàn runner sẽ không qua được ca này."""
+    in_client = threading.Barrier(2, timeout=10)
+    after_usage = threading.Barrier(2, timeout=10)
+
+    class _Client:
+        def complete(self, **kw):
+            ticket_id = "T1" if '"ticket_id": "T1"' in kw["user"] else "T2"
+            in_client.wait()
+            return _completion_cua_ticket(ticket_id)
+
+    class _Runner(AgentRunner):
+        def _complete(self, *args, **kw):
+            c = super()._complete(*args, **kw)
+            after_usage.wait()
+            return c
+
+    bus = InMemoryBus()
+    runner = _Runner(bus, _Client())
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = list(workers.map(lambda tid: runner.generate("qa", _pr_env(tid), "review-results"), ("T1", "T2")))
+    assert [(g.cached_input_tokens, g.cache_write_tokens, g.num_turns) for g in results] == [(100, 10, 1), (200, 20, 2)]
+    assert _token_thuc_theo_ticket(bus) == {"T1": 1_000, "T2": 2_000}
+
+
+@pytest.mark.parametrize("nested_fails", [False, True])
+def test_generate_long_nhau_giu_usage_cua_luot_ngoai_ke_ca_luot_trong_loi(nested_fails):
+    """Một callback tái nhập runner trên cùng thread cũng không được reset số đo của lời gọi ngoài."""
+    class _Client:
+        def complete(self, **kw):
+            ticket_id = "T1" if '"ticket_id": "T1"' in kw["user"] else "T2"
+            return _completion_cua_ticket(ticket_id, invalid=nested_fails and ticket_id == "T2")
+
+    class _Runner(AgentRunner):
+        def _complete(self, spec, inp, *args, **kw):
+            c = super()._complete(spec, inp, *args, **kw)
+            if inp.key == "T1":
+                if nested_fails:
+                    with pytest.raises(RunnerError, match="đầu ra không hợp lệ"):
+                        self.generate("qa", _pr_env("T2"), "review-results")
+                else:
+                    inner = self.generate("qa", _pr_env("T2"), "review-results")
+                    assert (inner.cached_input_tokens, inner.cache_write_tokens, inner.num_turns) == (200, 20, 2)
+            return c
+
+    bus = InMemoryBus()
+    outer = _Runner(bus, _Client()).generate("qa", _pr_env("T1"), "review-results")
+    assert (outer.cached_input_tokens, outer.cache_write_tokens, outer.num_turns) == (100, 10, 1)
+    assert _token_thuc_theo_ticket(bus) == {"T1": 1_000, "T2": 2_000}
 
 def _agents_co_pha(phase_skills: list[str], phase: str = "review") -> dict:
     """Agent thật `reviewer` nhưng khai thêm một pha (ADR-0037) — không đụng `agents/` trên đĩa."""

@@ -931,6 +931,35 @@ def test_per_agent_max_input_chars_trims_more():
     assert "context_trimmed" in _acts(bus) and len(client.calls[0]["user"]) < 40_000
 
 
+def test_diagnose_gate_decisions_do_not_reopen_subjects():
+    from company.metrics import diagnose
+
+    bus = InMemoryBus()
+    for subject, decision in (("SPEC-P1", "approve"), ("REL-001", "reject"), ("T1", "approve")):
+        bus.publish(Envelope(topic="audit-log", key=subject, actor="human:pm",
+                             payload={"actor": "human:pm", "action": "gate.decide",
+                                      "evidence": json.dumps({"subject_id": subject, "decision": decision})}))
+    result = diagnose(bus)
+    assert result["ticket_quay_vong"] == {}, "a gate decision is not evidence that a ticket actually reopened"
+    assert result["gate"]["quyet"] == 3
+
+
+def test_diagnose_counts_only_applied_ticket_reopened_events():
+    from company.metrics import diagnose
+
+    bus = InMemoryBus()
+    for action, evidence in (("gate.decide", {"subject_id": "T1", "decision": "approve"}),
+                             ("ticket.reopened", {"ticket_id": "T1"}),
+                             ("ticket.reopened", {"ticket_id": "T1"}),
+                             ("ticket.reopened", {})):
+        bus.publish(Envelope(topic="audit-log", key="orchestrator", actor="orchestrator",
+                             payload={"actor": "orchestrator", "action": action,
+                                      "evidence": json.dumps(evidence)}))
+    assert diagnose(bus)["ticket_quay_vong"] == {
+        "T1": {"retry": 0, "blocked": 0, "reopen": 2, "review_block": 0},
+    }
+
+
 def test_diagnose_gom_loi_tho_thanh_khuon_va_chi_ra_ticket_quay_vong():
     """`metrics` đếm được `errors: 193` nhưng không nói 193 lỗi đó LÀ GÌ.
 

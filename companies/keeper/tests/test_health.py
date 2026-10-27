@@ -1,14 +1,18 @@
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from keeper import health
 from keeper.fakes import FakeGitHub
 from keeper.github import WorkflowRun
 
 
-def _run(sha: str, conclusion: str | None, *, name: str = "ci", db: int = 1) -> WorkflowRun:
+def _run(sha: str, conclusion: str | None, *, name: str = "ci", db: int = 1,
+         workflow: int | None = 1, event: str = "push", status: str = "completed") -> WorkflowRun:
     return WorkflowRun(databaseId=db, name=name, status="completed", conclusion=conclusion, headSha=sha,
-                        createdAt="2026-09-08T00:00:00Z")
+                       createdAt="2026-09-08T00:00:00Z", workflowDatabaseId=workflow,
+                       event=event).model_copy(update={"status": status})
 
 
 def _timed_run(started: str | None, updated: str | None, *, db: int = 1) -> WorkflowRun:
@@ -116,11 +120,65 @@ def test_flake_rate_cung_sha_cung_ket_qua_la_khong() -> None:
 
 def test_flake_rate_khong_co_run_lap_lai() -> None:
     runs = [_run("abc", "success", db=1), _run("def", "success", db=2)]
-    assert health.flake_rate(runs) == 0.0
+    assert health.flake_rate(runs) is None
 
 
 def test_flake_rate_danh_sach_rong() -> None:
-    assert health.flake_rate([]) == 0.0
+    assert health.flake_rate([]) is None
+
+
+@pytest.mark.parametrize("second", [
+    {"workflow": 2}, {"event": "pull_request"}, {"status": "in_progress"}, {"status": "queued"},
+])
+def test_flake_rate_does_not_pool_different_or_unfinished_workflows(second: dict) -> None:
+    runs = [_run("abc", "success", db=1), _run("abc", "failure", db=2, **second)]
+    assert health.flake_rate(runs) is None
+    assert health.flake_signal(runs) is None
+
+
+@pytest.mark.parametrize("conclusion", [None, "cancelled", "timed_out", "startup_failure", "action_required",
+                                         "neutral", "skipped", "stale"])
+def test_flake_rate_excludes_non_test_outcomes(conclusion: str | None) -> None:
+    assert health.flake_rate([_run("abc", "success", db=1), _run("abc", conclusion, db=2)]) is None
+
+
+@pytest.mark.parametrize("missing", [{"workflow": None}, {"workflow": 0}, {"event": ""}])
+def test_flake_rate_missing_comparison_identity_is_unknown(missing: dict) -> None:
+    assert health.flake_rate([_run("abc", "success", db=1, **missing),
+                              _run("abc", "failure", db=2, **missing)]) is None
+
+
+def test_flake_rate_missing_sha_is_unknown() -> None:
+    assert health.flake_rate([_run("", "success", db=1), _run("", "failure", db=2)]) is None
+
+
+def test_flake_rate_counts_comparable_workflow_groups_not_shas() -> None:
+    runs = [_run("abc", "success", db=1), _run("abc", "failure", db=2),
+            _run("abc", "success", db=3, workflow=2), _run("abc", "success", db=4, workflow=2)]
+    assert health.flake_rate(runs) == .5
+    signal = health.flake_signal(runs)
+    assert signal is not None
+    assert "workflow" in signal.detail and "test flake" in signal.detail
+    assert "comparable=2" in signal.evidence and "unstable=1" in signal.evidence
+    assert "matrix" in signal.evidence and "infra" in signal.evidence
+
+
+def test_flake_rate_duplicate_run_is_not_an_independent_sample() -> None:
+    assert health.flake_rate([_run("abc", "success", db=1), _run("abc", "failure", db=1)]) is None
+
+
+def test_flake_rate_display_name_does_not_replace_stable_workflow_identity() -> None:
+    assert health.flake_rate([_run("abc", "success", db=1, name="old name"),
+                              _run("abc", "failure", db=2, name="new name")]) == 1.0
+
+
+@pytest.mark.parametrize(("status", "conclusion"), [("in_progress", "success"), ("queued", "success"),
+                                                       ("completed", "cancelled")])
+def test_ci_duration_excludes_unfinished_or_cancelled_runs(status: str, conclusion: str) -> None:
+    complete = _timed_run("2026-09-08T00:00:00Z", "2026-09-08T00:00:10Z")
+    excluded = _timed_run("2026-09-08T00:00:00Z", "2026-09-08T00:00:50Z", db=2)
+    excluded = excluded.model_copy(update={"status": status, "conclusion": conclusion})
+    assert health.ci_duration_stats([complete, excluded]) == (10.0, 10.0)
 
 
 def test_flake_signal_phat_khi_co_flake() -> None:

@@ -247,7 +247,8 @@ def diagnose(bus: InMemoryBus, top: int = 10) -> dict[str, Any]:
     """Khuôn lỗi lặp lại, ticket quay vòng, gate — cho người vận hành, không phải cho agent.
 
     Trả lời đúng những câu tôi phải hỏi thủ công suốt phiên 2026-09-04: lỗi nào lặp nhiều nhất, agent nào hỏng,
-    ticket nào quay vòng mà không ai biết, gate nào mở mà không ai quyết.
+    ticket nào quay vòng mà không ai biết, gate nào mở mà không ai quyết. `reopen` chỉ đếm audit
+    `ticket.reopened` sau khi đã mở lại thật; quyết định gate spec/release/escalation không tự tính là mở lại.
     """
     khuon: dict[str, dict[str, Any]] = {}
     ticket: dict[str, dict[str, int]] = defaultdict(lambda: {"retry": 0, "blocked": 0, "reopen": 0, "review_block": 0})
@@ -273,12 +274,13 @@ def diagnose(bus: InMemoryBus, top: int = 10) -> dict[str, Any]:
                 if a.get("ticket_id"): k["tickets"].add(str(a["ticket_id"]))
             elif act == "ticket.blocked" and d.get("ticket_id"):
                 ticket[str(d["ticket_id"])]["blocked"] += 1
+            elif act == "ticket.reopened" and d.get("ticket_id"):
+                ticket[str(d["ticket_id"])]["reopen"] += 1
             elif act == "gate.request":
                 gate_dem["mo"] += 1
                 if d.get("subject_id"): mo_gate[str(d["subject_id"])] = str(d.get("kind") or "?")
             elif act == "gate.decide":
                 gate_dem["quyet"] += 1; mo_gate.pop(str(d.get("subject_id")), None)
-                if d.get("subject_id"): ticket[str(d["subject_id"])]["reopen"] += 1
             elif act == "gate.overdue":
                 gate_dem["qua_han"] += 1
 

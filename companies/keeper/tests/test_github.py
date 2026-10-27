@@ -257,6 +257,16 @@ def test_workflow_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert out[0].databaseId == 7
 
 
+def test_workflow_runs_requests_stable_comparison_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [{"databaseId": 7, "workflowDatabaseId": 11, "event": "push", "name": "ci",
+             "status": "completed", "conclusion": "success", "headSha": "a"}]
+    spy = _RunSpy(stdout=json.dumps(rows))
+    out = _reader(tmp_path, spy, monkeypatch).workflow_runs()
+    fields = spy.calls[0][spy.calls[0].index("--json") + 1].split(",")
+    assert {"workflowDatabaseId", "event"} <= set(fields)
+    assert out[0].workflowDatabaseId == 11 and out[0].event == "push"
+
+
 def test_merged_prs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     rows = [{"number": 8, "title": "t", "url": "u", "headRefName": "h", "mergedAt": "2026-09-05T00:00:00Z"}]
     spy = _RunSpy(stdout=json.dumps(rows))

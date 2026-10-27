@@ -6,6 +6,8 @@ Phiên bản: repo chưa gắn tag phiên bản cho chính nó (tag `v*` là c�
 
 ## Chưa phát hành
 
+- fix(dev): **phản hồi phát triển nhanh hơn và số đo đáng tin hơn** — usage riêng từng lượt runner song song; console bảo vệ token phiên khi khởi động trùng/thất bại; một hook sở hữu cổng trước commit, giữ đủ kiểm phụ thuộc và an toàn; chỉ số mở lại ticket và biến động workflow dựa trên đúng sự kiện/ngữ cảnh. Test hồi quy tái hiện lỗi trước sửa, không hạ coverage hoặc đổi prompt; nâng riêng certifi lên `2026.10.19` để vá advisory CRITICAL `GHSA-6q48-6c7w-9gw2` do audit phát hiện khi phát hành. Bằng chứng và giới hạn trong `docs/reports/2026-10-27-nang-cap-phan-hoi-phat-trien.md`.
+
 - fix(deploy): **`scripts/systemd.sh install` bỏ các thư mục Windows `/mnt/...` khỏi `PATH` ghi vào `hub.env`.** WSL tự nối thư mục Windows vào PATH của shell. Khi 9P sang Windows chậm, `docker` và `gh` tra PATH lúc khởi động bị kẹt ở trạng thái D `p9_client_rpc`. Hub thật 2026-10-18: `docker --version` mất 16–51 s trong khi daemon trả lời trong 0,05 s; egress của security quá 30 s ở 5 RC liền; deploy staging quá 60 s. `docs/TRIEN-KHAI-SYSTEMD.md` có lệnh kiểm và cách sửa `hub.env` đã cài từ trước.
 
 - fix(company): **hồ sơ escalation của release thấy lỗi agent không nhánh nào xử lý.** "Lịch sử thất bại" của escalation `REL-*` lấy thêm audit mang `subject` = release (`agent_error_unhandled`), không chỉ audit mang `release_id`. Hub thật 2026-10-18 REL-148: lượt release-check của security lỗi hạ tầng (egress `docker network connect` quá 30 s), supervisor mở escalation, nhưng hồ sơ không có dòng lỗi nên `reviewer:tu-dong` giữ gate với lý do "hồ sơ không nêu finding nào".

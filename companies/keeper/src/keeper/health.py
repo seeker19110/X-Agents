@@ -2,8 +2,8 @@
 coverage giữa package.
 
 Thời gian CI đo từ `WorkflowRun.startedAt` tới `.updatedAt` (tên trường thật của `gh run list --json` — kiểm
-bằng `gh run list --json bogus`, xem `github.py:WorkflowRun`). Run thiếu một trong hai mốc (chưa chạy xong,
-hoặc bản ghi cũ không có trường) bị LOẠI khỏi mẫu — không coi là 0 giây. Mẫu rỗng sau khi loại → `None`,
+bằng `gh run list --json bogus`, xem `github.py:WorkflowRun`). Chỉ lấy run hoàn tất success/failure; run huỷ,
+chưa hoàn tất hay thiếu một trong hai mốc bị LOẠI khỏi mẫu — không coi là 0 giây. Mẫu rỗng sau khi loại → `None`,
 không phải `0.0`: `0.0` đọc thành "CI nhanh vô hạn", `None` đọc thành "chưa đo được"; lẫn hai thứ là đúng khuôn
 "số xanh vì rỗng" đã ghi trong `TRAPS.md` gốc repo.
 """
@@ -27,29 +27,46 @@ class GitHubLike(Protocol):
     def pr_age_days(self, pr: int, *, now: object = None) -> float | None: ...
 
 
-def flake_rate(runs: list[WorkflowRun]) -> float:
-    """Tỉ lệ SHA có ít nhất hai kết luận (`conclusion`) khác nhau giữa các run của cùng SHA, trên tổng số SHA
-    có từ hai run trở lên. SHA chỉ chạy một lần không đóng góp gì (không có gì để so lệch)."""
-    by_sha: dict[str, set[str | None]] = {}
-    for r in runs:
-        by_sha.setdefault(r.headSha, set()).add(r.conclusion)
-    comparable = {sha: concs for sha, concs in by_sha.items() if _run_count(runs, sha) > 1}
-    if not comparable:
-        return 0.0
-    flaky = sum(1 for concs in comparable.values() if len(concs) > 1)
-    return flaky / len(comparable)
+def _completed_outcome(run: WorkflowRun) -> bool:
+    return run.status == "completed" and run.conclusion in {"success", "failure"}
 
 
-def _run_count(runs: list[WorkflowRun], sha: str) -> int:
-    return sum(1 for r in runs if r.headSha == sha)
+def _flake_counts(runs: list[WorkflowRun]) -> tuple[int, int]:
+    """(nhóm không ổn định, nhóm đủ mẫu); gh run list không cung cấp matrix hay nguyên nhân lỗi.
+
+    Khoá theo SHA + workflow ID + event, không theo tên hiển thị. Một databaseId chỉ là MỘT mẫu: run-list
+    chỉ có trạng thái hiện tại, không đủ dữ liệu tách các attempt cũ. Không suy matrix từ tên workflow.
+    """
+    groups: dict[tuple[str, int, str], dict[int, str | None]] = {}
+    for run in runs:
+        if (not _completed_outcome(run) or not run.headSha or run.workflowDatabaseId is None
+                or run.workflowDatabaseId <= 0 or not run.event):
+            continue
+        key = (run.headSha, run.workflowDatabaseId, run.event)
+        groups.setdefault(key, {})[run.databaseId] = run.conclusion
+    comparable = [set(outcomes.values()) for outcomes in groups.values() if len(outcomes) >= 2]
+    return sum(len(outcomes) > 1 for outcomes in comparable), len(comparable)
+
+
+def flake_rate(runs: list[WorkflowRun]) -> float | None:
+    """Tỉ lệ nhóm workflow có cả success/failure, không phải tỉ lệ flaky test đã xác minh.
+
+    Chỉ dùng run hoàn tất, cùng SHA/workflow ID/event và ít nhất hai run ID khác nhau. Thiếu danh tính,
+    chưa hoàn tất, huỷ hay timeout không vào mẫu; thiếu mẫu trả None, không phải 0. Chưa phân biệt matrix
+    và lỗi hạ tầng vì run-list không có dữ liệu đó.
+    """
+    unstable, comparable = _flake_counts(runs)
+    return unstable / comparable if comparable else None
 
 
 def flake_signal(runs: list[WorkflowRun]) -> Signal | None:
-    rate = flake_rate(runs)
-    if rate <= 0.0:
+    unstable, comparable = _flake_counts(runs)
+    if not unstable:
         return None
-    return Signal(subject="ci-workflow", kind="health", detail=f"flake rate = {rate:.2f}",
-                  evidence=f"workflow_runs()={len(runs)}")
+    return Signal(subject="ci-workflow", kind="health",
+                  detail=f"flake rate (workflow không ổn định, chưa xác nhận test flake) = {unstable / comparable:.2f}",
+                  evidence=f"workflow_runs()={len(runs)}; comparable={comparable}; unstable={unstable}; "
+                           "matrix/infra chưa phân loại")
 
 
 def _parse_ts(raw: str | None) -> datetime | None:
@@ -62,8 +79,10 @@ def _parse_ts(raw: str | None) -> datetime | None:
 
 
 def _run_duration_seconds(run: WorkflowRun) -> float | None:
-    """Thời lượng một run, `startedAt` -> `updatedAt`. `None` nếu thiếu một trong hai mốc, mốc hỏng không
-    parse được, hoặc thời lượng âm (đồng hồ ngược — dữ liệu hỏng, không phải "đo được 0")."""
+    """Thời lượng run hoàn tất success/failure, `startedAt` -> `updatedAt`; None nếu không thuộc mẫu, thiếu
+    mốc, mốc hỏng hay thời lượng âm (đồng hồ ngược — dữ liệu hỏng, không phải "đo được 0")."""
+    if not _completed_outcome(run):
+        return None
     started = _parse_ts(run.startedAt)
     updated = _parse_ts(run.updatedAt)
     if started is None or updated is None:
@@ -91,8 +110,8 @@ def _percentile(sorted_values: list[float], p: float) -> float:
 
 
 def ci_duration_stats(runs: list[WorkflowRun]) -> tuple[float, float] | None:
-    """(p50, p95) thời lượng CI tính bằng giây trên các run ĐỦ CẢ HAI mốc `startedAt`/`updatedAt`. Run thiếu
-    mốc bị loại khỏi mẫu trước khi tính, không đóng góp gì (không phải 0 giây). Mẫu rỗng sau khi loại -> `None`
+    """(p50, p95) thời lượng CI bằng giây trên run hoàn tất success/failure ĐỦ HAI mốc `startedAt`/`updatedAt`.
+    Run ngoài mẫu hoặc thiếu mốc không đóng góp gì (không phải 0 giây). Mẫu rỗng sau khi loại -> `None`
     (chưa đo được), không phải `(0.0, 0.0)` (sẽ đọc nhầm thành CI nhanh vô hạn)."""
     durations = sorted(d for r in runs if (d := _run_duration_seconds(r)) is not None)
     if not durations:

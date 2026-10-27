@@ -1060,7 +1060,7 @@ def test_moi_script_sh_duoc_chot_eol_lf() -> None:
 # --- hook của khung X-Templates 2.0.0 (cài chung với hook cũ) -----------------------------------------------------
 # `pre-bash-guard.sh` → `guard.py`: chặn/hỏi lệnh phá huỷ, ra khỏi máy dev, thêm phụ thuộc, publish/merge. Chạy SONG SONG
 # với `block-dangerous-git.sh` + `pre-commit-gate.sh` (hook cũ giữ nguyên). Mọi hook khung đọc payload qua stdin và in JSON
-# quyết định (rỗng = cho qua), luôn exit 0 trừ cổng commit.
+# quyết định (rỗng = cho qua), luôn exit 0; cổng commit do pre-commit-gate.sh sở hữu và chặn bằng exit 2.
 
 BASH_GUARD = HOOKS / "pre-bash-guard.sh"
 EDIT_GUARD = HOOKS / "pre-edit-guard.sh"
@@ -1189,6 +1189,102 @@ def test_settings_noi_hook_khung_va_khong_dang_ky_mot_script_hai_lan() -> None:
         ("Stop", None, "stop-guard.sh"),
     }
     assert can <= set(cap), f"thiếu hook khung trong settings.json: {sorted(can - set(cap))}"
+
+
+@pytest.fixture
+def cap_hook_commit(kho_main: Path) -> tuple[Path, Path]:
+    """Chạy nguyên bộ hook đã đăng ký như Claude Code, chỉ thay cổng nặng bằng spy có exit code thật."""
+    shutil.copytree(HOOKS, kho_main / ".claude" / "hooks")
+    # Hook/script phục vụ fixture không phải thay đổi sắp được `git add -A` lấy vào commit.
+    with (kho_main / ".git" / "info" / "exclude").open("a", encoding="utf-8") as f:
+        f.write("\n/.claude/\n/scripts/\n")
+    gate = kho_main / "scripts" / "dev-task.sh"
+    gate.parent.mkdir()
+    gate.write_text(
+        '#!/usr/bin/env bash\ncase "$1" in\n  repo-gate) : ;;\nesac\n'
+        'printf "%s\\n" "$*" >> "$GATE_CALLS_FILE"\nexit "${GATE_EXIT_CODE:-0}"\n',
+        encoding="utf-8",
+    )
+    gate.chmod(0o755)
+    return kho_main, kho_main.parent / "gate-calls.txt"
+
+
+def _cap_hook_chay(kho: Path, calls: Path, cmd: str, gate_exit: int = 0) -> list[subprocess.CompletedProcess[str]]:
+    """Không dừng khi hook đầu chặn: các hook PreToolUse có thể chạy song song, tất cả phải giữ đúng vai trò."""
+    cfg = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    commands = [h["command"] for group in cfg["hooks"]["PreToolUse"] if group.get("matcher") == "Bash"
+                for h in group["hooks"]]
+    assert {Path(c).name for c in commands} >= {"pre-commit-gate.sh", "pre-bash-guard.sh"}
+    assert BASH is not None
+    return [subprocess.run(
+        [BASH, "-c", command], input=_payload(cmd), capture_output=True, text=True, encoding="utf-8",
+        env={**os.environ, "CLAUDE_PROJECT_DIR": str(kho), "GATE_CALLS_FILE": str(calls),
+             "GATE_EXIT_CODE": str(gate_exit)}, cwd=kho,
+    ) for command in commands]
+
+
+@pytest.mark.parametrize(("ten", "cmd", "expected"), [
+    (("README.md",), "git commit -m x", ["repo-gate"]),
+    (("platform/console/src/console/x.py",), "git commit -m x", ["gate console"]),
+    (("platform/xagents-core/src/xagents_core/x.py",), "git commit -m x",
+     ["gate company", "gate console", "gate core", "gate keeper"]),
+    (("uv.lock",), "git commit -m x", ["gate all"]),
+    (("README.md",), "bash -c 'git commit -m x'", ["repo-gate"]),
+    (("README.md",), "env LANG=C git commit -m x", ["repo-gate"]),
+    (("platform/gateway/src/gateway/x.py",), "git add -A && git commit -m x", ["gate console", "gate gateway"]),
+])
+def test_cap_hook_commit_chi_chay_mot_chu_so_huu_cong(
+    cap_hook_commit: tuple[Path, Path], ten: tuple[str, ...], cmd: str, expected: list[str],
+) -> None:
+    """Đăng ký mỗi script một lần vẫn có thể chạy hai cổng: phải đo lệnh dev-task thực sự được gọi."""
+    kho, calls = cap_hook_commit
+    _stage(kho, *ten)
+    results = _cap_hook_chay(kho, calls, cmd)
+    assert all(r.returncode == 0 for r in results), [(r.stdout, r.stderr) for r in results]
+    assert calls.read_text(encoding="utf-8").splitlines() == expected
+
+
+def test_cap_hook_commit_cong_do_van_chan_va_khong_chay_lap(cap_hook_commit: tuple[Path, Path]) -> None:
+    kho, calls = cap_hook_commit
+    _stage(kho, "README.md")
+    results = _cap_hook_chay(kho, calls, "git commit -m x", gate_exit=1)
+    assert any(r.returncode == 2 for r in results), "cổng đỏ mà không hook nào chặn commit"
+    assert calls.read_text(encoding="utf-8").splitlines() == ["repo-gate"]
+
+
+@pytest.mark.parametrize("ly_do", ["main", "secret", "coverage"])
+def test_cap_hook_commit_kiem_tinh_van_chan_truoc_cong_nang(cap_hook_commit: tuple[Path, Path], ly_do: str) -> None:
+    kho, calls = cap_hook_commit
+    if ly_do == "main":
+        _tao(kho, "README.md")
+        _git(kho, "add", "README.md")
+    else:
+        _stage(kho, "llm.yaml" if ly_do == "secret" else "pyproject.toml")
+        if ly_do == "coverage":
+            (kho / "pyproject.toml").write_text("fail_under = 99\n", encoding="utf-8")
+            _git(kho, "add", "pyproject.toml")
+    results = _cap_hook_chay(kho, calls, "git commit -m x")
+    assert any(r.returncode == 2 for r in results), f"lọt luật {ly_do}"
+    assert not calls.exists(), "hook khung chạy cổng nặng dù hook chủ đã chặn bằng phép kiểm tĩnh"
+
+
+def test_cap_hook_commit_doi_candidate_thi_chay_lai_cong(cap_hook_commit: tuple[Path, Path]) -> None:
+    kho, calls = cap_hook_commit
+    _stage(kho, "README.md")
+    assert all(r.returncode == 0 for r in _cap_hook_chay(kho, calls, "git commit -m x"))
+    _stage_file_console(kho)
+    assert all(r.returncode == 0 for r in _cap_hook_chay(kho, calls, "git commit -m x"))
+    assert calls.read_text(encoding="utf-8").splitlines() == ["repo-gate", "gate console"]
+
+
+def test_cap_hook_commit_repo_ngoai_van_can_xac_nhan(cap_hook_commit: tuple[Path, Path], tmp_path: Path) -> None:
+    kho, calls = cap_hook_commit
+    _stage(kho, "README.md")
+    ngoai = tmp_path / "repo-ngoai"
+    ngoai.mkdir()
+    _git(ngoai, "init", "-q", "-b", "fix/ngoai")
+    results = _cap_hook_chay(kho, calls, f'git -C "{ngoai}" commit -m x')
+    assert any(r.stdout.strip() and _quyet_dinh(r) == "ask" for r in results), "commit repo ngoài không được hỏi"
 
 
 # --- .claude/commands/ ------------------------------------------------------

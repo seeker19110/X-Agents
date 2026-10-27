@@ -140,10 +140,14 @@ class WorkflowRun(BaseModel):
     để `gh` tự liệt kê trường hợp lệ — không phải `run_started_at`/`updated_at` của REST API thô, đó là tên
     JSON của endpoint HTTP, `gh` CLI đặt tên khác). Mặc định `None`: bản ghi thiếu (gh cũ, hay run đang chạy
     dở nên chưa có `updatedAt` kết thúc) không làm vỡ parse; `health.ci_duration_stats()` coi run thiếu một
-    trong hai mốc là chưa đo được, loại khỏi mẫu thay vì đoán 0."""
+    trong hai mốc là chưa đo được, loại khỏi mẫu thay vì đoán 0. `workflowDatabaseId` và `event` là danh tính
+    so kết quả giữa các run; bản ghi cũ thiếu chúng không được trộn theo tên hiển thị. Run-list không cung
+    cấp matrix jobs hay lịch sử từng attempt, nên không chứng minh được flaky test từ những trường này."""
     model_config = {"extra": "ignore"}
     databaseId: int
     name: str = ""
+    workflowDatabaseId: int | None = None
+    event: str = ""
     status: str = ""
     conclusion: str | None = None
     headSha: str = ""
@@ -282,7 +286,8 @@ class GitHubReader:
     def workflow_runs(self) -> list[WorkflowRun]:
         ok, out = self._run(
             "run", "list", "--json",
-            "databaseId,name,status,conclusion,headSha,createdAt,startedAt,updatedAt", "--limit", "50",
+            "databaseId,name,workflowDatabaseId,event,status,conclusion,headSha,createdAt,startedAt,updatedAt",
+            "--limit", "50",
         )
         if not ok:
             return []

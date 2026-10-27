@@ -14,6 +14,7 @@ mọi lớp phòng thủ ở dưới là bắt buộc, không phải tuỳ chọ
 from __future__ import annotations
 
 import atexit
+import fcntl
 import ipaddress
 import json
 import logging
@@ -22,8 +23,10 @@ import os
 import secrets
 import socket
 import sys
+import tempfile
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -116,17 +119,31 @@ def generate_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def write_token_file(token: str, path: Path = TOKEN_FILE) -> Path:
-    """Tạo file token với quyền 0600 ngay từ lúc tạo (os.open), không phải ghi rồi mới chmod:
-    khoảng giữa hai bước đó là lúc tiến trình khác đọc trộm được."""
+@contextmanager
+def lock_token_file(path: Path = TOKEN_FILE) -> Iterator[None]:
+    """Giữ quyền sở hữu file token suốt phiên; lock file giữ nguyên inode qua các lần chạy."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(path.name + ".lock")
+    fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise OSError("File token đang được console khác sử dụng") from None
+        yield
+
+
+def write_token_file(token: str, path: Path = TOKEN_FILE) -> Path:
+    """Ghi trọn vào file tạm 0600 rồi thay nguyên tử; lỗi ghi không làm mất token cũ."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    temporary = Path(name)
     try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(token + "\n")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(token + "\n")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
     return path
 
 

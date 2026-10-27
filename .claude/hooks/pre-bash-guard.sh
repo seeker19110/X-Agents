@@ -2,7 +2,9 @@
 # pre-bash-guard.sh — PreToolUse hook (matcher: Bash). Ba việc, theo thứ tự:
 #  1) DENY lệnh phá huỷ / không đảo ngược (deny chặn cả ở bypassPermissions).
 #  2) ASK lệnh "hành động đối ngoại" (riêng `gh pr merge` qua `xt.py merge-check` → có thể ALLOW, ADR-0013), nới hàng rào, ghi file cổng/bí mật qua Bash (điểm dừng bắt buộc — 11-autonomous-loop).
-#  3) Khi là `git commit`: chạy cổng chất lượng qua dev-task.sh gate; đỏ → chặn (exit 2).
+#  3) Khi là `git commit`: kiểm miền repo nhận commit và nhắc khi diff lớn.
+# Cổng chất lượng CHỈ do pre-commit-gate.sh (cùng đăng ký trong settings.json) chạy: gói bị đụng + phụ thuộc +
+# console, hoặc repo-gate cho tài liệu. Chạy gate ở đây lần nữa vừa lặp kiểm tra vừa mất chế độ nhanh đó.
 # Phân tích lệnh nằm ở guard.py (tách theo token shell, chuẩn hoá wrapper/tuỳ chọn git — audit AUD-SEC-001…010).
 # Payload đi qua stdin, không qua argv. guard.py lỗi/thiếu python3 → cho qua (fail-open về luồng), trừ merge/`gh api`.
 set -uo pipefail
@@ -32,14 +34,14 @@ fi
 decision="$(json_field "$res" decision)"
 [ "$decision" = "deny" ] && pretool_decision deny "$(json_field "$res" reason)"
 
-# ---- 3) Cổng trước commit (chạy TRƯỚC khi hỏi người — ask không được bỏ cổng, AUD-HAR-013) ----
+# ---- 3) Miền commit và lời nhắc (cổng trước commit thuộc pre-commit-gate.sh) ----
 # `--no-verify` là chính câu hỏi "bỏ cổng?" → không chạy cổng, để người quyết.
 if [ "$(json_field "$res" commit)" = "true" ] && [ "$(json_field "$res" no_verify)" != "true" ]; then
   # Gốc cổng = repo NHẬN commit (`cd ../repo-khac && git commit`, `git -C …`), không mặc định gốc phiên: từng chạy
   # cổng của dự án phiên cho commit ở repo khác (đỏ/xanh không liên quan). Chỉ tự chạy cổng của CHÍNH dự án: repo git
-  # lồng trong dự án mà không có xt.yaml/.xtemplates riêng (submodule, apps/web) → cổng của dự án. Repo NGOÀI dự án,
-  # hoặc repo lồng CÓ cổng riêng (repo bên thứ ba clone vào dự án) → hỏi người, không chạy cổng của nó: cổng là mã của
-  # repo đó và hook chạy TRƯỚC bước hỏi quyền (AUD-SEC-015).
+  # lồng trong dự án mà không có xt.yaml/.xtemplates riêng (submodule, apps/web) → cùng miền dự án. Repo NGOÀI dự án,
+  # hoặc repo lồng CÓ cổng riêng (repo bên thứ ba clone vào dự án) → vẫn hỏi người: không được chạy mã cổng của repo
+  # khác trước bước hỏi quyền (AUD-SEC-015).
   groot="$XT_ROOT"
   cdir="$(json_field "$res" commit_dir)"
   top=""
@@ -61,18 +63,6 @@ if [ "$(json_field "$res" commit)" = "true" ] && [ "$(json_field "$res" no_verif
       esac
       ;;
     esac
-  fi
-  gate=""
-  for g in "$groot/scripts/dev-task.sh" "$groot/.xtemplates/scripts/dev-task.sh" \
-    "$XT_ROOT/scripts/dev-task.sh" "$XT_ROOT/.xtemplates/scripts/dev-task.sh"; do
-    [ -x "$g" ] && { gate="$g"; break; }
-  done
-  if [ -n "$gate" ]; then
-    # stdout của cổng sang stderr: stdout của hook chỉ được chứa JSON quyết định.
-    if ! CLAUDE_PROJECT_DIR="$groot" "$gate" gate >&2; then
-      echo "❌ Cổng trước commit ĐỎ (build/typecheck/lint/test) ở $groot. Sửa rồi commit lại." >&2
-      exit 2
-    fi
   fi
   # Nhắc (không chặn) khi diff lớn: cổng máy chỉ bắt lỗi cú pháp, không bắt lỗi logic.
   lines="$(git -C "$groot" diff --cached --numstat 2>/dev/null | awk '{a+=$1; d+=$2} END{print a+d+0}')"

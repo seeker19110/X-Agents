@@ -12,6 +12,8 @@
 #   3. Diff staged HẠ `fail_under`         → chặn (luật cấm 6: thêm test, không hạ số)
 #   4. `scripts/dev-task.sh gate` đỏ       → chặn (luật bắt buộc 3): gói bị đụng + gói import nó + console
 #      (commit chỉ đụng tài liệu/config ngoài mọi gói: console chỉ chạy `dev-task.sh repo-gate`, F6)
+# Đây là CHỦ DUY NHẤT chạy cổng trước commit. pre-bash-guard.sh giữ kiểm lệnh/quyền/miền repo, không chạy cổng
+# lần hai; test đi qua toàn bộ đăng ký settings.json để bắt việc hai hook khác tên cùng gọi một cổng.
 #
 # Lấy từ `seeker19110/project-template` (`.claude/hooks/pre-commit-gate.sh`); phép 1–3 là của repo này, 2b lấy
 # từ `scripts/_commit-guard.sh` của họ (đối chiếu 2026-10-10).

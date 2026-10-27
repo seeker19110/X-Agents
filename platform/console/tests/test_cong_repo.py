@@ -511,3 +511,10 @@ def test_gate_review_theo_luat_uy_quyen_ky_mien_adr_0036() -> None:
     cmd = (ROOT / ".claude" / "commands" / "gate-review.md").read_text(encoding="utf-8")
     for tu in ("ADR gốc 0036", "không có bản sửa", "hạn xem lại", "chỉ dữ liệu giả"):
         assert tu in cmd, f"/gate-review phải nêu `{tu}`"
+
+
+@pytest.mark.parametrize("name", [".console-token.lock", ".console-token.interrupted.tmp"])
+def test_console_token_lock_bi_gitignore(name: str) -> None:
+    result = subprocess.run(["git", "check-ignore", "-q", "--no-index", f"platform/console/{name}"],
+                            cwd=ROOT, capture_output=True)
+    assert result.returncode == 0

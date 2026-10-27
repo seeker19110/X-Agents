@@ -28,7 +28,7 @@ import sys
 import time
 from collections.abc import Callable
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -203,6 +203,17 @@ class Generated(CoreGenerated):
         return json.dumps(d, ensure_ascii=False)
 
 
+@dataclass
+class _StepUsage:
+    """Số đo thuộc MỘT `generate`, không thuộc runner dùng chung giữa các ticket.
+
+    Giữ input của lượt đầu vì `fit` chỉ ước lượng prompt ban đầu; các lượt tool sau mang cả hội thoại.
+    Truyền tường minh qua vòng tool cũng giữ riêng state khi callback tái nhập runner trên cùng thread.
+    """
+    first_input: int | None = None
+    extra: dict[str, int] = field(default_factory=lambda: dict.fromkeys(USAGE_EXTRA, 0))
+
+
 def _said(g: Any) -> str:
     """Lời giải thích của agent trong đầu ra (summary/notes/reason) — để audit invalid_output nói được VÌ SAO."""
     p = (g.payloads or [{}])[0] if getattr(g, "payloads", None) else {}
@@ -234,11 +245,6 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         # ADR gốc 0009 (bổ sung 2026-10-10): span chỉ phát khi người vận hành bật `COMPANY_OTEL=1`; thiếu OTel →
         # `NullSink` (đo, không phát), không bật → `None` tuyệt đối như cũ (quyết định 5).
         if os.environ.get("COMPANY_OTEL") == "1": self.sink = otel_sink("company")
-        # Input token THẬT của lượt ĐẦU trong bước hiện tại, để đối chiếu với ước lượng của `fit` (p3.2a).
-        # Phải là lượt đầu chứ không phải lượt cuối: từ lượt hai trở đi prompt đã mang thêm cả hội thoại
-        # tool, mà `fit` chỉ đo prompt ban đầu — so lượt cuối là so hai thứ khác nhau rồi gọi đó là sai số.
-        self._first_input: int | None = None
-        self._usage_extra = dict.fromkeys(USAGE_EXTRA, 0)   # R1: cộng `usage` ngoài input/output qua các lượt của bước
 
     def _audit_scope(self, inp: Envelope) -> dict[str, Any]:
         return {"ticket_id": inp.payload.get("ticket_id") or (inp.key if inp.topic == "tasks" else None),
@@ -280,7 +286,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
 
     def _complete(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any],
                   messages: list[dict[str, Any]] | None = None, tools: ToolBox | None = None,
-                  tokens: int = 0, cost: float = 0.0, phase: str | None = None) -> Completion:
+                  tokens: int = 0, cost: float = 0.0, phase: str | None = None, *, usage: _StepUsage) -> Completion:
         """`tokens`/`cost`: đã đốt ở các lượt trước của vòng tool — lỗi giữa chừng thì audit `llm_error` mang theo,
         supervisor mới trừ đúng ngân sách (không thì token của các lượt trước biến mất khỏi sổ)."""
         drain = getattr(self.client, "drain_retries", None)
@@ -310,12 +316,13 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             raise
         if drain and (notes := drain()):
             self._audit(spec, "llm_retry", inp, evidence=json.dumps({"attempts": len(notes), "notes": notes}, ensure_ascii=False))
-        if self._first_input is None: self._first_input = c.input_tokens
-        for f in USAGE_EXTRA: self._usage_extra[f] += getattr(c, f)
+        if usage.first_input is None: usage.first_input = c.input_tokens
+        for f in USAGE_EXTRA: usage.extra[f] += getattr(c, f)
         return c
 
     def _tool_loop(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
-                   max_turns: int, budget: int | None, phase: str | None = None) -> tuple[Completion, int, int, float, int]:
+                   max_turns: int, budget: int | None, phase: str | None = None,
+                   *, usage: _StepUsage) -> tuple[Completion, int, int, float, int]:
         """model ↔ tool cho tới khi model trả lời cuối (không gọi tool). Trả về (completion cuối, tổng token, số lượt,
         USD, tổng token ĐẦU RA — ngân sách ticket đo theo con số cuối này, xem chú thích ở `_turns`).
         Hết lượt hoặc model trả rỗng → ép chốt một lượt không tool. Vượt ngân sách → audit rồi ném RunnerError."""
@@ -327,13 +334,14 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         bind = getattr(self.client, "bind_toolbox", None)
         if bind is not None: bind(tools)
         try:
-            return self._turns(spec, inp, user, schema, tools, max_turns, budget, msgs, total, turn, usd, c, phase)
+            return self._turns(spec, inp, user, schema, tools, max_turns, budget, msgs, total, turn, usd, c, phase, usage=usage)
         finally:
             if bind is not None: bind(None)
 
     def _turns(self, spec: AgentSpec, inp: Envelope, user: str, schema: dict[str, Any], tools: ToolBox,
                max_turns: int, budget: int | None, msgs: list[dict[str, Any]], total: int, turn: int,
-               usd: float, c: Completion | None, phase: str | None = None) -> tuple[Completion, int, int, float, int]:
+               usd: float, c: Completion | None, phase: str | None = None,
+               *, usage: _StepUsage) -> tuple[Completion, int, int, float, int]:
         produced = 0   # output token cộng dồn — thước đo cho ngân sách, xem chú thích dưới
         stopped = False   # 4L-3: vòng tool bị cắt vì lặp không tiến bộ (khác "hết lượt", nhưng chốt JSON y hệt)
         while turn < max_turns:
@@ -346,7 +354,8 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
                 if dropped:
                     self._audit(spec, "context_pruned", inp, evidence=json.dumps(
                         {"turn": turn, "dropped_chars": dropped}, ensure_ascii=False))
-            c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools, tokens=total, cost=usd, phase=phase)
+            c = self._complete(spec, inp, user, schema, messages=msgs, tools=tools, tokens=total, cost=usd, phase=phase,
+                               usage=usage)
             total += c.tokens; produced += c.output_tokens; usd += self._cost(c)[0]
             # Ngân sách đo OUTPUT, không đo tổng token. `budget_tokens` do delivery-lead đặt theo ƯỚC LƯỢNG
             # KHỐI LƯỢNG CÔNG VIỆC của ticket; còn `total` là tổng input cộng dồn qua mọi lượt tool — mỗi lượt
@@ -428,7 +437,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
             msgs.append({"role": "user", "content":
                          ("Dừng vòng tool: lặp lại cùng một lời gọi mà không tiến bộ. " if stopped else "Hết lượt tool. ")
                          + "Trả về DUY NHẤT JSON cuối cùng ngay; phần chưa xong nêu rõ trong summary."})
-            c = self._complete(spec, inp, user, schema, messages=msgs, tokens=total, cost=usd, phase=phase)
+            c = self._complete(spec, inp, user, schema, messages=msgs, tokens=total, cost=usd, phase=phase, usage=usage)
             total += c.tokens; produced += c.output_tokens; usd += self._cost(c)[0]; turn += 1
         urls = [x["args"]["url"] for x in tools.calls if x["name"] == "fetch_url" and x["ok"]]
         # `mode`: ai đã chạy vòng tool — "loop" (vòng lặp ở đây, mọi provider API), "mcp" (CLI chạy nhưng gọi ngược
@@ -499,8 +508,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         lessons = self.lesson_provider(inp) if self.lesson_provider is not None else []
         if lessons:
             inp = inp.model_copy(update={"payload": {**inp.payload, "related_lessons": lessons}})
-        self._first_input = None   # `_complete` ghi vào đây ở lượt đầu của CHÍNH bước này
-        self._usage_extra = dict.fromkeys(USAGE_EXTRA, 0)
+        usage = _StepUsage()
         payload, context, budget_ = fit(spec.system_prompt(phase), inp.payload, raw_ctx,
                                         min(spec.max_input_chars or self.max_input_chars, self.max_input_chars),
                                         paths=paths, context_cutter=cut_prd_sections, protect=PROTECTED_PAYLOAD_KEYS)
@@ -515,7 +523,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         with span("runner.step", self.sink, agent=agent_id, topic_out=topic_out, phase=phase,
                   event=inp.event_id) as step:
             if tools is None:
-                c = self._complete(spec, inp, user, out_schema, phase=phase); total, turns = c.tokens, 1
+                c = self._complete(spec, inp, user, out_schema, phase=phase, usage=usage); total, turns = c.tokens, 1
                 out_toks = c.output_tokens
                 usd, priced = self._cost(c)
             else:
@@ -524,7 +532,8 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
                 # `runner.py:523,564`, `tools.py:213`) — nhưng không có gì trong mã giữ điều đó đúng về sau:
                 # một `ToolBox` dùng lại giữa hai runner khác sink sẽ giữ nguyên sink của runner ĐẦU TIÊN.
                 if tools.sink is None: tools.sink = self.sink   # bảng tool dựng ở nơi khác vẫn phát cùng một sink
-                c, total, turns, usd, out_toks = self._tool_loop(spec, inp, user, out_schema, tools, max_turns, budget, phase)
+                c, total, turns, usd, out_toks = self._tool_loop(spec, inp, user, out_schema, tools, max_turns, budget, phase,
+                                                               usage=usage)
                 priced = self._cost(c)[1]
             if step is not None:
                 step.attrs.update(model=c.model, turns=turns, tokens=total)
@@ -532,7 +541,7 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         # p3.2a: `fit` chạy TRƯỚC lời gọi nên chỉ có ước lượng; `usage` chỉ có SAU. Nối hai đầu ở đây, sau
         # lượt, bằng một audit RIÊNG — không gộp vào `context_trimmed` vì sai số phải đo được ở MỌI bước,
         # kể cả bước không bị cắt; chỉ đo ở bước bị cắt là chỉ thấy đuôi phân phối.
-        budget_.actual_tokens = self._first_input or 0
+        budget_.actual_tokens = usage.first_input or 0
         self._audit(spec, "token_estimate", inp, evidence=json.dumps(budget_.report(), ensure_ascii=False),
                     phase=phase)
         try:
@@ -571,8 +580,8 @@ class AgentRunner(CoreAgentRunner[Envelope, AgentSpec]):
         return Generated(payloads=payloads, tokens=total, output_tokens=out_toks, model=c.model, context_writes=writes,
                          cache_hit_ratio=c.cache_hit_ratio, turns=turns, tool_calls=tools.summary() if tools else {},
                          cost_usd=round(usd, 6), priced=priced, duration_ms=duration, phase=phase,
-                         cached_input_tokens=self._usage_extra["cached_input_tokens"],
-                         cache_write_tokens=self._usage_extra["cache_write_tokens"], num_turns=self._usage_extra["num_turns"])
+                         cached_input_tokens=usage.extra["cached_input_tokens"],
+                         cache_write_tokens=usage.extra["cache_write_tokens"], num_turns=usage.extra["num_turns"])
 
     def author_tests(self, agent_id: str, inp: Envelope, ws: TicketWorkspace, budget: int | None = None,
                      max_turns: int = 25, phase: str | None = None) -> tuple[Generated, str]:

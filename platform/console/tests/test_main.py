@@ -3,13 +3,22 @@ make_server để không mở socket thật (trừ các test đã có sẵn ở 
 from __future__ import annotations
 
 import runpy
+import signal
+import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from console import __main__ as cli
+from console import server as srv
+
+
+def _token_writer(path: Path):
+    return lambda token: srv.write_token_file(token, path)
 
 
 class _FakeServer:
@@ -61,7 +70,7 @@ def test_host_khong_loopback_voi_i_know_canh_bao_va_tiep_tuc(
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
     token_path = tmp_path / "tok"
     token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
     monkeypatch.setattr(cli, "generate_token", lambda: "tok")
 
     code = cli.main(["--host", "8.8.8.8", "--i-know"])
@@ -90,7 +99,7 @@ def test_khoi_dong_thanh_cong_in_banner_va_dung_ctrl_c(
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
     token_path = tmp_path / "tok2"
     token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
 
     code = cli.main([])
 
@@ -107,7 +116,7 @@ def test_open_browser_thanh_cong(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
     token_path = tmp_path / "tok3"
     token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
     opened: list[str] = []
     monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
 
@@ -122,7 +131,7 @@ def test_open_browser_that_bai_khong_lam_hong_khoi_dong(
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
     token_path = tmp_path / "tok4"
     token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
 
     def _raise(url: str) -> None:
         raise RuntimeError("không có trình duyệt")
@@ -139,7 +148,7 @@ def test_dung_bang_thanh_cong_khong_ctrl_c(monkeypatch: pytest.MonkeyPatch, tmp_
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
     token_path = tmp_path / "tok5"
     token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
 
     assert cli.main([]) == 0
     assert fake.serve_forever_called and fake.server_close_called
@@ -161,7 +170,7 @@ def test_allow_submit_truyen_xuong_make_server_va_in_banner(
     monkeypatch.setattr(cli, "make_server", _make)
     token_path = tmp_path / "tok6"
     token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
 
     assert cli.main(flag) == 0
     assert seen["allow_submit"] is expect
@@ -190,7 +199,7 @@ def test_with_gateway_bat_gateway_truoc_khi_phuc_vu(
     fake = _FakeServer(raise_on_serve=KeyboardInterrupt())
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
     token_path = tmp_path / "tok-gw"; token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
 
     code = cli.main(["--with-gateway"])
 
@@ -223,7 +232,7 @@ def test_deliver_remote_di_toi_engine_manager(monkeypatch: pytest.MonkeyPatch, t
     fake = _FakeServer(raise_on_serve=KeyboardInterrupt())
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: (nhan.update(k), fake)[1])
     token_path = tmp_path / "tok-dl"; token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
 
     code = cli.main(["--allow-engine", "--deliver-remote", "origin"])
 
@@ -237,7 +246,7 @@ def test_mac_dinh_khong_giao_hang(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     fake = _FakeServer(raise_on_serve=KeyboardInterrupt())
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: (nhan.update(k), fake)[1])
     token_path = tmp_path / "tok-nodl"; token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
 
     assert cli.main([]) == 0
     assert nhan.get("deliver_remote") is None
@@ -267,7 +276,7 @@ def test_khong_co_co_thi_khong_dung_toi_gateway(monkeypatch: pytest.MonkeyPatch,
     fake = _FakeServer(raise_on_serve=KeyboardInterrupt())
     monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
     token_path = tmp_path / "tok-no-gw"; token_path.write_text("t", encoding="utf-8")
-    monkeypatch.setattr(cli, "write_token_file", lambda token: token_path)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(token_path))
 
     assert cli.main([]) == 0
 
@@ -307,3 +316,144 @@ def test_utf8_stdio_bo_qua_stream_khong_reconfigure_va_nuot_loi() -> None:
 
     cli._utf8_stdio(object(), Hong(), DoiDuoc())
     assert calls == [{"encoding": "utf-8", "errors": "replace"}]
+
+
+def test_bind_failure_preserves_existing_token(monkeypatch, tmp_path, capsys) -> None:
+    path = tmp_path / "active-token"
+    path.write_text("active-session", encoding="utf-8")
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(path))
+
+    def occupied(*args, **kwargs):
+        raise OSError("port occupied")
+
+    monkeypatch.setattr(cli, "make_server", occupied)
+    assert cli.main([]) == 1
+    assert path.read_text(encoding="utf-8") == "active-session"
+    assert "active-session" not in capsys.readouterr().out
+
+
+def test_token_write_failure_closes_server_and_releases_lock(monkeypatch, tmp_path, capsys) -> None:
+    fake = _FakeServer()
+    monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
+
+    def denied(token):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(cli, "write_token_file", denied)
+    assert cli.main([]) == 1
+    assert fake.server_close_called and not fake.serve_forever_called
+    assert "token" in capsys.readouterr().out.lower()
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(tmp_path / "restarted"))
+    assert cli.main([]) == 0
+
+
+def test_busy_token_lock_prevents_server_construction(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(cli, "make_server", lambda *args, **kwargs: calls.append("server"))
+
+    def busy():
+        raise OSError("another session owns the token")
+
+    monkeypatch.setattr(cli, "lock_token_file", busy)
+    assert cli.main([]) == 1
+    assert calls == []
+
+
+def test_constructor_exception_releases_token_lock(monkeypatch, tmp_path) -> None:
+    def broken(*args, **kwargs):
+        raise RuntimeError("constructor failed")
+
+    monkeypatch.setattr(cli, "make_server", broken)
+    with pytest.raises(RuntimeError, match="constructor failed") as failure:
+        cli.main([])
+    with srv.lock_token_file(tmp_path / ".console-token"):
+        assert failure.value is not None
+
+
+def test_unexpected_token_write_error_closes_server(monkeypatch, tmp_path) -> None:
+    fake = _FakeServer()
+    monkeypatch.setattr(cli, "make_server", lambda *args, **kwargs: fake)
+
+    def broken(token):
+        raise ValueError("writer failed")
+
+    monkeypatch.setattr(cli, "write_token_file", broken)
+    with pytest.raises(ValueError, match="writer failed") as failure:
+        cli.main([])
+    assert fake.server_close_called
+    with srv.lock_token_file(tmp_path / ".console-token"):
+        assert failure.value is not None
+
+
+def test_shutdown_preserves_replaced_token(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "session-token"
+    fake = _FakeServer()
+    monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(path))
+    monkeypatch.setattr(fake, "serve_forever", lambda: path.write_text("replacement-session", encoding="utf-8"))
+    assert cli.main([]) == 0
+    assert path.read_text(encoding="utf-8") == "replacement-session"
+    assert fake.server_close_called
+
+
+def test_shutdown_tolerates_removed_token(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "removed-token"
+    fake = _FakeServer()
+    monkeypatch.setattr(cli, "make_server", lambda *a, **k: fake)
+    monkeypatch.setattr(cli, "write_token_file", _token_writer(path))
+    monkeypatch.setattr(fake, "serve_forever", path.unlink)
+    assert cli.main([]) == 0
+    assert fake.server_close_called
+
+
+@pytest.mark.parametrize("same_port", [True, False])
+def test_duplicate_process_preserves_active_token(tmp_path: Path, same_port: bool) -> None:
+    """Two actual CLI processes share one token path, including distinct bound ports."""
+    path = tmp_path / "shared-token"
+    first_port = tmp_path / "first-port"
+    second_port = tmp_path / "second-port"
+    program = """
+import sys
+from pathlib import Path
+from console import __main__ as cli
+from console import server as srv
+path, port_path, port, token = sys.argv[1:]
+path, port_path = Path(path), Path(port_path)
+cli.generate_token = lambda: token
+cli.write_token_file = lambda value: srv.write_token_file(value, path)
+cli.lock_token_file = lambda: srv.lock_token_file(path)
+make = cli.make_server
+def make_server(*args, **kwargs):
+    server = make(*args, **kwargs)
+    port_path.write_text(str(server.port))
+    return server
+cli.make_server = make_server
+raise SystemExit(cli.main(["--readonly", "--port", port]))
+"""
+    command = [sys.executable, "-c", program, str(path)]
+    http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    first = subprocess.Popen([*command, str(first_port), "0", "first-session"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        deadline = time.monotonic() + 15
+        while not (first_port.exists() and path.exists()):
+            assert first.poll() is None, "first CLI exited before publishing its token"
+            assert time.monotonic() < deadline, "first CLI startup timed out"
+            time.sleep(0.01)
+        port = first_port.read_text()
+        base = f"http://127.0.0.1:{port}"
+        with http.open(base + "/healthz", timeout=5) as response:
+            assert response.status == 200
+        second = subprocess.run([*command, str(second_port), port if same_port else "0", "second-session"],
+                                capture_output=True, timeout=3)
+        assert second.returncode == 1
+        assert path.read_text(encoding="utf-8").strip() == "first-session"
+        request = urllib.request.Request(base + "/api/state", headers={"X-Console-Token": "first-session"})
+        with http.open(request, timeout=5) as response:
+            assert response.status == 200
+    finally:
+        first.send_signal(signal.SIGINT)
+        first.wait(timeout=10)
+    assert first.returncode == 0
+    assert not path.exists()
+    assert path.with_name(path.name + ".lock").exists(), "lock inode must remain stable across restarts"
