@@ -66,10 +66,12 @@ Rà soát độc lập đã kiểm tra các đường completion, phạm vi ch�
 
 ### Trạng thái giao thay đổi
 
-Lint, mypy, test/coverage, replay, kiểm tài sản và smoke đã có bằng chứng cục bộ trong phiên này. `CHANGELOG.md`, số test README, tài liệu hook/console/keeper và nhật ký phiên đi cùng bản vá. Bảy bước sửa prompt không áp dụng vì không thay `agents/`, `skills/` hoặc golden/recording. Chưa chạy CI từ xa hoặc ma trận Python 3.11/3.13; chưa mở hay merge PR, chưa deploy/publish. Kết luận là bản sửa đã được kiểm chứng cục bộ và cần bước PR/CI khi GitHub API được cấp đường mạng.
+Lint, mypy, test/coverage, replay, kiểm tài sản và smoke đã có bằng chứng cục bộ trong phiên triển khai. `CHANGELOG.md`, số test README, tài liệu hook/console/keeper và nhật ký phiên đi cùng bản vá. Bảy bước sửa prompt không áp dụng vì không thay `agents/`, `skills/` hoặc golden/recording. Lúc kết thúc lượt nâng cấp đầu, CI từ xa và PR còn chờ quyền truy cập GitHub API; các trạng thái đó không được coi là đã đạt.
+
+Lượt phát hành tiếp theo kiểm lại đúng commit `146e722e9276b84d0e73b9a3d7e5165eda5b9c3f` bằng **một lệnh `scripts/dev-task.sh gate all`, exit 0**: 5.392 test đạt, 3 ca container bỏ qua, cả năm gói giữ 100% dòng/nhánh; Ruff và mypy đều qua. Mã nguồn được giữ nguyên trong lượt kiểm này. Quy tắc required checks `quality` và `metadata` đã được đọc trực tiếp từ GitHub; phát hành vào main tiếp tục qua PR và squash merge sau khi các cổng từ xa đạt, không đẩy thẳng main.
 
 ## Bước tiếp theo cần dữ liệu vận hành
 
 Sau các bản sửa, lấy ít nhất 20 task và 30 lượt CI có thể so sánh để lập baseline p50/p95 thời gian phản hồi, chờ gate, nghiệm thu lần đầu và lỗi lọt. Thử tăng worker hoặc đổi tier theo pha chỉ khi số đo đáng tin và bài nghiệm thu sản phẩm thực tế không giảm. Mức giảm thời gian 20% trong khảo sát là mục tiêu pilot, chưa phải kết quả đo được.
 
-GitHub API của môi trường hiện bị proxy từ chối CONNECT tới `api.github.com`; đọc Git qua origin vẫn hoạt động. Đã lưu bổ sung hostname cụ thể vào bản nháp môi trường, không thay các preset hoặc cấp thêm secret. Kiểm tra PR/issue trùng, CI từ xa và publication chỉ được xác nhận sau khi thao tác thực tế thành công.
+Trong lượt nâng cấp đầu, proxy từ chối CONNECT tới `api.github.com`; hostname cụ thể được lưu vào bản nháp môi trường, không thay preset hoặc cấp thêm secret. Lượt phát hành đã kiểm lại GitHub API thành công bằng thao tác đọc repo, PR/issue và ruleset. Không tìm thấy PR mở trùng bản nâng cấp; các PR Dependabot giữ nguyên, chủ dự án cho phép ưu tiên PR này song song với hàng đợi đó. Thành công của PR/CI/merge được xác nhận bằng trạng thái và SHA trên GitHub, không suy từ việc lưu draft. Máy onboarding chưa có systemd/hub hoặc máy chủ production được cấu hình; cập nhật dịch vụ hub cần đích triển khai riêng.
