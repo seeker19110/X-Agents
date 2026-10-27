@@ -156,7 +156,7 @@ test bỏ qua theo biến môi trường hay theo `os.name`: đó đúng là "c�
 | File | Thay đổi |
 |---|---|
 | `scout.py` | đọc `uv.lock` + alert từ `github.py` → `Signal(kind="dependency", semver_jump="patch|minor|major", is_dev=…)` |
-| `health.py` | từ `workflow_runs()`: flake rate (cùng SHA, kết quả khác nhau), thời gian CI p50/p95, tuổi PR mở; đọc `coverage.xml` nếu có → độ trôi coverage giữa các package |
+| `health.py` | từ `workflow_runs()`: tỉ lệ workflow không ổn định (cùng SHA + workflow ID + event, ít nhất hai run ID hoàn tất success/failure); chưa xác nhận test flake vì thiếu matrix/nguyên nhân hạ tầng; mẫu không đủ → `None`, tín hiệu có tử/mẫu số. Thời gian CI p50/p95 chỉ lấy run hoàn tất success/failure đủ mốc; tuổi PR mở; đọc `coverage.xml` nếu có → độ trôi coverage giữa các package |
 | `drift.py` | ba phép so **thuần cục bộ**: (a) `.claude/agents/sc-*.md` vs `software-company/agents/**` + `skills/**` + `gates/checklists.md` (so hash nguồn ghi trong front matter bản dẫn xuất); (b) `tests/golden/**` vs agent md; (d) dòng `CHANGELOG.md` còn chỗ trống thay cho số PR (`(#PENDING)`, `(#PRNUM)`…). Phép (c) cũ — mỗi PR merged trong `git log` có `(#n)` trong `CHANGELOG.md` không — đã bỏ ở audit 2026-10-10 F1 (`scripts/pr_changelog_check.py` chặn trước merge; sau merge nó chỉ còn báo giả cho PR `no-changelog`) |
 | `signals.py` | `Signal` + `dedupe(signals)` theo `(kind, subject)`: giữ cái mới nhất, cộng `seen_count` |
 

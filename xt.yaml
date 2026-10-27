@@ -17,7 +17,8 @@
 #   (chỉ file .py vốn đã sạch ruff format).
 #   merge_autonomy: L1 — người merge mọi PR (AGENTS.md của repo + ruleset riêng quyết merge; khung 2.0.0 mặc định mẫu là L3).
 #   audit = lệnh job `audit` của CI (cần mạng); e2e: không có.
-# Cổng thật trước commit đã có `.claude/hooks/pre-commit-gate.sh` (chạy gói bị đụng); hook khung `pre-bash-guard.sh` chạy thêm `scripts/dev-task.sh gate` (cả 5 gói).
+# Cổng trước commit CHỈ do `.claude/hooks/pre-commit-gate.sh` chạy (gói bị đụng + phụ thuộc + console; tài liệu dùng repo-gate).
+# `pre-bash-guard.sh` giữ kiểm lệnh/quyền/miền repo và nhắc diff lớn, không chạy thêm cổng cả 5 gói.
 lint: scripts/dev-task.sh lint
 typecheck: scripts/dev-task.sh typecheck
 test: scripts/dev-task.sh test

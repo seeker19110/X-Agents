@@ -35,6 +35,7 @@ from console.server import (
     DEFAULT_PORT,
     generate_token,
     is_loopback_host,
+    lock_token_file,
     make_server,
     write_token_file,
 )
@@ -163,6 +164,12 @@ def _utf8_stdio(*streams: Any) -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
 
+def _remove_session_token(path: Path, token: str) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        if path.read_text(encoding="utf-8").strip() == token:
+            path.unlink()
+
+
 def main(argv: list[str] | None = None) -> int:
     _utf8_stdio(sys.stdout, sys.stderr)
     if argv is None:
@@ -211,61 +218,70 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     token = generate_token()
-    token_path = write_token_file(token)
-    try:
-        server = make_server(
-            args.host,
-            args.port,
-            token=token,
-            readonly=args.readonly,
-            allow_config=args.allow_config,
-            allow_submit=args.allow_submit,
-            allow_engine=args.allow_engine,
-            company_db=args.company_db,
-            keeper_db=args.keeper_db,
-            deliver_remote=args.deliver_remote,
-            notifier=notifier,
-        )
-    except OSError as e:
-        print(f"[-] Không mở được {args.host}:{args.port}: {e}")
-        return 1
-
-    url = f"http://{args.host}:{server.port}/"
-    mode = "CHỈ ĐỌC (--allow-decide để duyệt gate)" if args.readonly else "CHO PHÉP DUYỆT GATE"
-    print("=" * 68)
-    print("  CONSOLE — bảng điều hành hợp nhất của X-Agents")
-    print("=" * 68)
-    print(f"  Mở trang:    {url}")
-    print(f"  Chế độ:      {mode}")
-    print(f"  Cấu hình:    {'SỬA ĐƯỢC model/backend' if args.allow_config else 'chỉ xem (--allow-config để sửa)'}")
-    print(f"  Giao việc:   {'CHO PHÉP (form Giao việc ghi vào bus)' if args.allow_submit else 'khoá (--allow-submit để giao việc)'}")
-    print(f"  Động cơ:     {'BẬT/TẮT ĐƯỢC trên trang' if args.allow_engine else 'khoá (--allow-engine để bật orchestrator từ trang)'}")
-    if notifier.enabled:
-        print(f"  Thông báo:   {', '.join(notifier.status()['channels'])}  → link trong tin trỏ {notifier.public_url}")
-    else:
-        print("  Thông báo:   tắt (--notify-ntfy URL / --notify-telegram CHAT_ID để nhận tin khi có gate chờ)")
-    print(f"  Token file:  {token_path}  (quyền 0600, mới mỗi lần chạy)")
-    print(f"  company.db:  {args.company_db}{'' if args.company_db.exists() else '  (chưa có — phần này sẽ trống)'}")
-    print(f"  keeper.db:   {args.keeper_db}"
-          f"{'' if args.keeper_db.exists() else '  (chưa có — tab bảo trì ghi “chưa chạy lần nào”)'}")
-    print("-" * 68)
-    print("  Token đã được chèn sẵn vào trang; cứ mở URL trên là dùng được. Ctrl-C để dừng.")
-    print("=" * 68)
-
-    if args.open_browser:
+    with contextlib.ExitStack() as token_session:
         try:
-            webbrowser.open(url)
-        except Exception as e:  # trình duyệt là tiện ích, hỏng thì kệ
-            print(f"[*] Không mở được trình duyệt: {e}")
+            token_session.enter_context(lock_token_file())
+        except OSError as e:
+            print(f"[-] Không tạo được token phiên: {e}")
+            return 1
+        try:
+            server = make_server(
+                args.host,
+                args.port,
+                token=token,
+                readonly=args.readonly,
+                allow_config=args.allow_config,
+                allow_submit=args.allow_submit,
+                allow_engine=args.allow_engine,
+                company_db=args.company_db,
+                keeper_db=args.keeper_db,
+                deliver_remote=args.deliver_remote,
+                notifier=notifier,
+            )
+        except OSError as e:
+            print(f"[-] Không mở được {args.host}:{args.port}: {e}")
+            return 1
+        token_session.callback(server.server_close)
+        try:
+            token_path = write_token_file(token)
+        except OSError as e:
+            print(f"[-] Không tạo được token phiên: {e}")
+            return 1
+        token_session.callback(_remove_session_token, token_path, token)
 
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\n[*] Đã dừng console.")
-    finally:
-        server.server_close()
-        token_path.unlink(missing_ok=True)
-    return 0
+        url = f"http://{args.host}:{server.port}/"
+        mode = "CHỈ ĐỌC (--allow-decide để duyệt gate)" if args.readonly else "CHO PHÉP DUYỆT GATE"
+        print("=" * 68)
+        print("  CONSOLE — bảng điều hành hợp nhất của X-Agents")
+        print("=" * 68)
+        print(f"  Mở trang:    {url}")
+        print(f"  Chế độ:      {mode}")
+        print(f"  Cấu hình:    {'SỬA ĐƯỢC model/backend' if args.allow_config else 'chỉ xem (--allow-config để sửa)'}")
+        print(f"  Giao việc:   {'CHO PHÉP (form Giao việc ghi vào bus)' if args.allow_submit else 'khoá (--allow-submit để giao việc)'}")
+        print(f"  Động cơ:     {'BẬT/TẮT ĐƯỢC trên trang' if args.allow_engine else 'khoá (--allow-engine để bật orchestrator từ trang)'}")
+        if notifier.enabled:
+            print(f"  Thông báo:   {', '.join(notifier.status()['channels'])}  → link trong tin trỏ {notifier.public_url}")
+        else:
+            print("  Thông báo:   tắt (--notify-ntfy URL / --notify-telegram CHAT_ID để nhận tin khi có gate chờ)")
+        print(f"  Token file:  {token_path}  (quyền 0600, mới mỗi lần chạy)")
+        print(f"  company.db:  {args.company_db}{'' if args.company_db.exists() else '  (chưa có — phần này sẽ trống)'}")
+        print(f"  keeper.db:   {args.keeper_db}"
+              f"{'' if args.keeper_db.exists() else '  (chưa có — tab bảo trì ghi “chưa chạy lần nào”)'}")
+        print("-" * 68)
+        print("  Token đã được chèn sẵn vào trang; cứ mở URL trên là dùng được. Ctrl-C để dừng.")
+        print("=" * 68)
+
+        if args.open_browser:
+            try:
+                webbrowser.open(url)
+            except Exception as e:  # trình duyệt là tiện ích, hỏng thì kệ
+                print(f"[*] Không mở được trình duyệt: {e}")
+
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\n[*] Đã dừng console.")
+        return 0
 
 
 if __name__ == "__main__":

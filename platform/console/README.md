@@ -55,7 +55,7 @@ uv sync
 uv run python -m console          # mặc định 127.0.0.1:8200, chế độ chỉ đọc
 ```
 
-Terminal in ra địa chỉ kèm token phiên — mở đúng địa chỉ đó. Muốn duyệt gate ngay trên trang:
+Terminal in địa chỉ console; token phiên được chèn sẵn vào trang. Muốn duyệt gate ngay trên trang:
 
 ```bash
 uv run python -m console --allow-decide
@@ -131,6 +131,11 @@ chạy bao giờ (chưa có file DB) cũng không sao — trang báo phần đó
 - **Token mỗi lần chạy.** `secrets.token_urlsafe(32)`, sinh mới mỗi lần khởi động, ghi `console/.console-token`
   quyền 0600 (đã nằm trong `.gitignore`) và chèn vào trang. Mọi `/api/*` phải kèm header `X-Console-Token`;
   token ở header chứ không phải cookie nên trang ngoài không giả mạo POST được.
+  Mỗi checkout chỉ có một phiên console giữ file token, kể cả khi chọn cổng khác. Phiên thứ hai bị từ chối
+  trước khi dựng server; mở cổng thất bại không đổi token của phiên đang chạy. Token chỉ được công bố sau
+  khi bind thành công, qua file tạm 0600 rồi thay nguyên tử. Khi dừng, console chỉ xoá token của chính mình.
+  File `.console-token.lock` được giữ lại để khoá luôn dùng cùng inode; hệ điều hành tự nhả khoá khi tiến
+  trình thoát. File khoá và file tạm `.console-token.*.tmp` đều được gitignore.
 - **Chỉ đọc là mặc định.** Không có `--allow-decide` thì mọi POST bị chặn 403 và trang khoá sẵn các nút
   quyết định kèm giải thích cách bật. Bốn quyền ghi tách riêng và không cái nào mở cái nào:
   `--allow-decide` (ký gate) · `--allow-submit` (giao việc) · `--allow-config` (đổi model) ·

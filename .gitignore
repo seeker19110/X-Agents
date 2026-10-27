@@ -50,6 +50,10 @@ build/
 
 # console: token phiên sinh mỗi lần chạy server trực ban (quyền 0600) — không bao giờ commit
 platform/console/.console-token
+# Advisory lock stays on a stable inode; an exited console releases the OS lock.
+platform/console/.console-token.lock
+# Interrupted atomic token publication can leave a private temporary sibling.
+platform/console/.console-token.*.tmp
 # console: log của động cơ do console bật (ADR-0004) — nhật ký chạy, không phải mã nguồn
 platform/console/.engine/
 

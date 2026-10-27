@@ -18,6 +18,18 @@ from company.sqlite_bus import SQLiteBus as CompanySQLiteBus
 NOW = datetime.now(UTC)
 
 
+@pytest.fixture(autouse=True)
+def token_files_are_temporary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Mọi lời gọi CLI trong test dùng token/khoá tạm, không chạm phiên console đang chạy."""
+    from console import __main__ as cli
+    from console import server
+
+    path = tmp_path / ".console-token"
+    monkeypatch.setattr(cli, "generate_token", lambda: "test-session")
+    monkeypatch.setattr(cli, "write_token_file", lambda token: server.write_token_file(token, path))
+    monkeypatch.setattr(cli, "lock_token_file", lambda: server.lock_token_file(path))
+
+
 def gate_request(bus, envelope_cls, audit_cls, *, kind: str, subject_id: str, checklist: list[str],
                  created_by: str, age_hours: float = 0.0, **extra) -> None:
     """Một `gate.request` như PersistentGate ghi, với tuổi tuỳ chọn."""

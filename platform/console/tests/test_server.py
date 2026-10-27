@@ -404,6 +404,69 @@ def test_token_khac_nhau_moi_lan_chay() -> None:
     assert len(srv.generate_token()) >= 40
 
 
+def test_token_lock_exclusive_persistent_and_released_on_error(tmp_path: Path) -> None:
+    path = tmp_path / "sub" / ".console-token"
+    lock_path = path.with_name(path.name + ".lock")
+    with srv.lock_token_file(path):
+        inode = lock_path.stat().st_ino
+        assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+        with pytest.raises(OSError, match="console khác"):
+            with srv.lock_token_file(path):
+                pytest.fail("a second session must not acquire the token lock")
+    with pytest.raises(RuntimeError, match="startup failed"):
+        with srv.lock_token_file(path):
+            raise RuntimeError("startup failed")
+    with srv.lock_token_file(path):
+        assert lock_path.stat().st_ino == inode
+    assert lock_path.exists()
+
+
+@pytest.mark.parametrize("existing", [True, False])
+def test_partial_token_write_preserves_previous_file_and_removes_temporary(monkeypatch, tmp_path, existing) -> None:
+    path = tmp_path / ".console-token"
+    if existing:
+        path.write_text("previous-session", encoding="utf-8")
+    fdopen = srv.os.fdopen
+
+    class PartialWriter:
+        def __init__(self, fd, *args, **kwargs):
+            self.file = fdopen(fd, *args, **kwargs)
+
+        def __enter__(self):
+            return self
+
+        def write(self, value):
+            self.file.write("partial-session")
+            self.file.flush()
+            raise OSError("partial write failed")
+
+        def __exit__(self, *args):
+            self.file.close()
+
+    monkeypatch.setattr(srv.os, "fdopen", PartialWriter)
+    with pytest.raises(OSError, match="partial write failed"):
+        srv.write_token_file("next-session", path)
+    if existing:
+        assert path.read_text(encoding="utf-8") == "previous-session"
+    else:
+        assert not path.exists()
+    assert not list(tmp_path.glob(".console-token.*.tmp"))
+
+
+def test_token_rename_failure_preserves_previous_file(monkeypatch, tmp_path) -> None:
+    path = tmp_path / ".console-token"
+    path.write_text("previous-session", encoding="utf-8")
+
+    def denied(*args):
+        raise OSError("rename denied")
+
+    monkeypatch.setattr(Path, "replace", denied)
+    with pytest.raises(OSError, match="rename denied"):
+        srv.write_token_file("next-session", path)
+    assert path.read_text(encoding="utf-8") == "previous-session"
+    assert not list(tmp_path.glob(".console-token.*.tmp"))
+
+
 # --- CLI -------------------------------------------------------------------
 
 def test_cli_tu_choi_host_khong_loopback(capsys: pytest.CaptureFixture[str]) -> None:
