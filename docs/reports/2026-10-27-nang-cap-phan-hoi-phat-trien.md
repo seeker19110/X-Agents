@@ -70,6 +70,18 @@ Lint, mypy, test/coverage, replay, kiểm tài sản và smoke đã có bằng c
 
 Lượt phát hành tiếp theo kiểm lại đúng commit `146e722e9276b84d0e73b9a3d7e5165eda5b9c3f` bằng **một lệnh `scripts/dev-task.sh gate all`, exit 0**: 5.392 test đạt, 3 ca container bỏ qua, cả năm gói giữ 100% dòng/nhánh; Ruff và mypy đều qua. Mã nguồn được giữ nguyên trong lượt kiểm này. Quy tắc required checks `quality` và `metadata` đã được đọc trực tiếp từ GitHub; phát hành vào main tiếp tục qua PR và squash merge sau khi các cổng từ xa đạt, không đẩy thẳng main.
 
+## Bản vá phụ thuộc do cổng phát hành phát hiện
+
+Lượt CI đầu của PR nâng cấp đã qua các ma trận unit, static, replay, golden, vendor và bảo vệ nhánh nhưng bị chặn ở `audit`. Tái hiện đúng lệnh `pip-audit --strict` xác định `certifi==2026.7.22` đã có trên nền là package bị ảnh hưởng bởi `PYSEC-2026-4320` / [GHSA-6q48-6c7w-9gw2](https://github.com/advisories/GHSA-6q48-6c7w-9gw2), mức CRITICAL: bộ chứng chỉ chứa emSign CA có intermediate key bị xâm phạm. Advisory không có CVE ID; không suy rằng các kiểm tra mã xanh đồng nghĩa dependency an toàn.
+
+Phạm vi phát hành bổ sung bản vá certifi `2026.10.19`: bản 18 loại root bị ảnh hưởng, bản 19 khôi phục các root không bị ảnh hưởng. Chỉ cập nhật package đã có trong `uv.lock`, không thêm dependency mới hoặc sửa giới hạn trong manifest. Giữ nguyên kiểm tra TLS/checksum và cổng audit; không dùng waiver hoặc bỏ advisory để merge.
+
+Resolver được ghim theo repo sinh block certifi mới; toàn bộ byte ngoài block này được giữ nguyên, revision lockfile vẫn là 3 và 81 package khác không đổi. Wheel và sdist được tải qua HTTPS và kiểm SHA256 độc lập với metadata PyPI chính thức. `uv sync --locked --all-packages --all-groups` và `uv lock --check` đều exit 0, không làm đổi lockfile.
+
+Tái hiện lại đúng phạm vi CI với **27 dependency bên thứ ba**, có certifi `2026.10.19`: `uv export --no-hashes --no-dev --all-packages`, bỏ các dòng editable cục bộ, rồi `uvx pip-audit --strict -r <requirements>` trả **exit 0, No known vulnerabilities found**. Trong sandbox, cache được đặt qua `XDG_CACHE_HOME=/workspace/.cache` và các thư mục tool/cache của uv dưới `/workspace`; HOME, TLS và mức kiểm tra strict giữ nguyên. Cổng đầy đủ được chạy lại sau khi thay dependency, trước khi đẩy bản vá lên PR.
+
+Lượt `scripts/dev-task.sh gate all` sau bản vá certifi trả **exit 0: 5.392 đạt, 3 bỏ qua, 0 lỗi**, cả năm gói giữ coverage 100% dòng/nhánh; Ruff/mypy, gồm extra graph cô lập, đều qua. Ba ca bỏ qua vẫn là các test container thiếu image, không phải ca bị vô hiệu hóa để phát hành.
+
 ## Bước tiếp theo cần dữ liệu vận hành
 
 Sau các bản sửa, lấy ít nhất 20 task và 30 lượt CI có thể so sánh để lập baseline p50/p95 thời gian phản hồi, chờ gate, nghiệm thu lần đầu và lỗi lọt. Thử tăng worker hoặc đổi tier theo pha chỉ khi số đo đáng tin và bài nghiệm thu sản phẩm thực tế không giảm. Mức giảm thời gian 20% trong khảo sát là mục tiêu pilot, chưa phải kết quả đo được.
