@@ -123,7 +123,7 @@ jobs:
       # (điểm tụt là tín hiệu, không phải lỗi — `docs/sessions` 2026-09-06).
       - name: Mở PR với bản ghi mới
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        uses: peter-evans/create-pull-request@15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8 # v8.1.2
         with:
           add-paths: ${{ env.DIR }}/evals/recordings
           branch: eval-record/${{ inputs.package }}-${{ github.run_id }}
